@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VAIRIS - Fine Jewellery</title>
+    <meta name="description" content="VAIRIS Fine Jewellery - Where heritage meets the extraordinary.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="images/logo_icon.svg">
+    <meta property="og:image" content="images/vairis_main.jpeg">
+    <meta property="og:title" content="VAIRIS - Fine Jewellery">
+    <meta property="og:description" content="Where heritage meets the extraordinary. Fine jewellery, reimagined.">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body { background: #0f2418; font-family: 'Cormorant Garamond', Georgia, serif; color: #c9a84c; overflow: hidden; }
+        body.revealed { overflow-y: auto; }
+
+        /* GATE */
+        .gate {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0f2418; display: flex; align-items: center; justify-content: center;
+            z-index: 100; transition: transform 1.2s cubic-bezier(0.76,0,0.24,1), opacity 0.8s ease-out 0.4s;
+        }
+        .gate.lift { transform: translateY(-100%); opacity: 0; }
+        .gate::before {
+            content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-55%);
+            width: 600px; height: 600px; background: radial-gradient(circle, rgba(180,155,80,0.06) 0%, transparent 70%); pointer-events: none;
+        }
+        .gate-frame {
+            position: absolute; top: 12px; left: 12px; right: 12px; bottom: 12px;
+            border: 1px solid rgba(186,155,68,0.25); pointer-events: none; opacity: 0;
+            animation: frameFade 1.5s ease-out 1.8s forwards;
+        }
+        .gate-frame::before {
+            content: ''; position: absolute; top: 6px; left: 6px; right: 6px; bottom: 6px;
+            border: 1px solid rgba(186,155,68,0.1);
+        }
+        .corner { position: absolute; width: 24px; height: 24px; z-index: 11; }
+        .corner::before, .corner::after { content: ''; position: absolute; background: rgba(186,155,68,0.5); }
+        .corner::before { width: 24px; height: 1px; }
+        .corner::after { width: 1px; height: 24px; }
+        .corner-tl { top: -1px; left: -1px; }
+        .corner-tl::before { top: 0; left: 0; } .corner-tl::after { top: 0; left: 0; }
+        .corner-tr { top: -1px; right: -1px; }
+        .corner-tr::before { top: 0; right: 0; } .corner-tr::after { top: 0; right: 0; }
+        .corner-bl { bottom: -1px; left: -1px; }
+        .corner-bl::before { bottom: 0; left: 0; } .corner-bl::after { bottom: 0; left: 0; }
+        .corner-br { bottom: -1px; right: -1px; }
+        .corner-br::before { bottom: 0; right: 0; } .corner-br::after { bottom: 0; right: 0; }
+
+        .gate-content { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 5; }
+        .gate-icon { opacity: 0; transform: scale(0.95); animation: logoReveal 1.4s cubic-bezier(0.16,1,0.3,1) 0.3s forwards; }
+        .gate-icon img { width: min(180px, 40vw); height: auto; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.2)); }
+        .gate-divider {
+            width: 0; height: 1px; margin: 36px 0 32px;
+            animation: lineExpand 1s ease-out 1.2s forwards;
+        }
+        .gate-divider::after {
+            content: ''; display: block; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(186,155,68,0.5) 20%, rgba(201,168,76,0.7), rgba(186,155,68,0.5) 80%, transparent);
+        }
+        .enter-btn {
+            font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(12px, 2vw, 15px);
+            font-weight: 300; letter-spacing: 0.45em; text-transform: uppercase;
+            background: transparent; border: 1px solid rgba(186,155,68,0.4);
+            padding: 16px 48px; cursor: pointer; color: #c9a84c;
+            opacity: 0; transform: translateY(12px); animation: textReveal 1s ease-out 1.4s forwards;
+            transition: border-color 0.4s, box-shadow 0.4s, color 0.4s;
+        }
+        .enter-btn:hover {
+            border-color: rgba(212,185,94,0.8);
+            box-shadow: 0 0 20px rgba(186,155,68,0.15), inset 0 0 20px rgba(186,155,68,0.05);
+            color: #e8d48b;
+        }
+
+        /* SPARKLES */
+        .sparkle-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 200; overflow: hidden;
+        }
+        .sparkle {
+            position: absolute; border-radius: 50%;
+            background: radial-gradient(circle, #f0dfa0, #c9a84c);
+            animation: sparkleFloat 1.8s ease-out forwards;
+        }
+        .sparkle-diamond {
+            position: absolute; width: 8px; height: 8px;
+            transform: rotate(45deg);
+            background: linear-gradient(135deg, #f0dfa0, #c9a84c);
+            animation: sparkleFloat 2s ease-out forwards;
+        }
+        @keyframes sparkleFloat {
+            0% { opacity: 1; transform: translate(0,0) scale(1) rotate(var(--rot, 0deg)); }
+            100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0) rotate(var(--rot, 360deg)); }
+        }
+        .gold-flash {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 50% 50%, rgba(212,185,94,0.15), transparent 70%);
+            pointer-events: none; z-index: 199;
+            opacity: 0; animation: flashPulse 1.2s ease-out forwards;
+        }
+        @keyframes flashPulse {
+            0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; }
+        }
+
+        /* NAVBAR */
+        .navbar {
+            position: fixed; top: 0; left: 0; width: 100%; padding: 20px 48px;
+            display: flex; align-items: center; justify-content: space-between; z-index: 50;
+            background: linear-gradient(to bottom, #0f2418 0%, #0f2418 60%, transparent 100%);
+            opacity: 0; transform: translateY(-20px);
+            transition: opacity 0.6s ease 0.4s, transform 0.6s ease 0.4s;
+        }
+        .navbar.visible { opacity: 1; transform: translateY(0); }
+        .nav-logo-link { display: flex; align-items: center; text-decoration: none; }
+        .nav-logo-link img { width: 40px; height: auto; filter: drop-shadow(0 2px 8px rgba(186,155,68,0.1)); }
+        .nav-links { display: flex; gap: 40px; list-style: none; }
+        .nav-links a {
+            font-family: 'Cormorant Garamond', Georgia, serif; font-size: 14px; font-weight: 300;
+            letter-spacing: 0.25em; text-transform: uppercase; color: rgba(201,168,76,0.7);
+            text-decoration: none; transition: color 0.3s;
+        }
+        .nav-links a:hover { color: #e8d48b; }
+
+        /* MAIN SITE */
+        .main-site { opacity: 0; transition: opacity 0.6s ease 0.8s; }
+        .main-site.visible { opacity: 1; }
+
+        /* SECTIONS */
+        section { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 120px 24px; }
+        .section-inner {
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            max-width: 600px; opacity: 0; transform: translateY(30px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+        .section-inner.in-view { opacity: 1; transform: translateY(0); }
+        .section-diamond {
+            width: 6px; height: 6px; transform: rotate(45deg);
+            background: linear-gradient(135deg, #c9a84c, #e8d48b);
+            box-shadow: 0 0 12px rgba(186,155,68,0.3); margin-bottom: 40px;
+        }
+        .section-title {
+            font-size: clamp(28px, 5vw, 42px); font-weight: 300; letter-spacing: 0.35em; text-transform: uppercase;
+            background: linear-gradient(135deg, #a08a4a 0%, #d4b95e 25%, #f0dfa0 50%, #d4b95e 75%, #a08a4a 100%);
+            background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .section-divider {
+            width: min(200px, 50vw); height: 1px; margin: 32px 0;
+            background: linear-gradient(90deg, transparent, rgba(186,155,68,0.5) 20%, rgba(201,168,76,0.7), rgba(186,155,68,0.5) 80%, transparent);
+        }
+        .section-text {
+            font-size: clamp(16px, 2.5vw, 20px); font-weight: 300; font-style: italic;
+            line-height: 1.8; color: rgba(201,168,76,0.6); letter-spacing: 0.05em;
+        }
+
+        /* ABOUT */
+        .about-logo { width: min(340px, 70vw); height: auto; margin-bottom: 40px; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.12)); border-radius: 4px; }
+
+        /* COLLECTION */
+        .notify-form { display: flex; align-items: stretch; margin-top: 40px; transition: opacity 0.3s; }
+        .notify-input {
+            font-family: 'Cormorant Garamond', Georgia, serif; font-size: 15px; font-weight: 300;
+            letter-spacing: 0.1em; background: transparent; border: 1px solid rgba(186,155,68,0.3);
+            border-right: none; padding: 14px 20px; color: #e8d48b; outline: none; width: 280px;
+            transition: border-color 0.3s;
+        }
+        .notify-input::placeholder { color: rgba(201,168,76,0.3); }
+        .notify-input:focus { border-color: rgba(186,155,68,0.6); }
+        .notify-submit {
+            font-family: 'Cormorant Garamond', Georgia, serif; font-size: 13px; font-weight: 400;
+            letter-spacing: 0.2em; text-transform: uppercase; background: transparent;
+            border: 1px solid rgba(186,155,68,0.3); padding: 0 24px; color: #c9a84c;
+            cursor: pointer; transition: border-color 0.3s, background 0.3s; white-space: nowrap;
+        }
+        .notify-submit:hover { border-color: rgba(186,155,68,0.6); background: rgba(186,155,68,0.08); }
+        .thank-you {
+            margin-top: 40px; font-size: 15px; font-weight: 300; letter-spacing: 0.2em;
+            color: rgba(201,168,76,0.6); opacity: 0; transition: opacity 0.6s;
+        }
+        .thank-you.show { opacity: 1; }
+
+        /* CONTACT */
+        .contact-details { display: flex; flex-direction: column; gap: 16px; margin-top: 8px; }
+        .contact-details a, .contact-details span {
+            font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(15px, 2vw, 17px);
+            font-weight: 300; letter-spacing: 0.15em; color: rgba(201,168,76,0.5);
+            text-decoration: none; transition: color 0.3s;
+        }
+        .contact-details a:hover { color: #e8d48b; }
+
+        /* FOOTER */
+        .footer { padding: 60px 24px 40px; text-align: center; }
+        .footer-divider {
+            width: 100%; max-width: 800px; height: 1px; margin: 0 auto 32px;
+            background: linear-gradient(90deg, transparent, rgba(186,155,68,0.25), transparent);
+        }
+        .footer-brand { font-size: 13px; font-weight: 300; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(201,168,76,0.3); }
+        .footer-year { font-size: 12px; font-weight: 300; letter-spacing: 0.2em; color: rgba(201,168,76,0.2); margin-top: 8px; }
+
+        /* ANIMATIONS */
+        @keyframes logoReveal { to { opacity: 1; transform: scale(1); } }
+        @keyframes lineExpand { to { width: min(200px, 50vw); } }
+        @keyframes textReveal { to { opacity: 1; transform: translateY(0); } }
+        @keyframes frameFade { to { opacity: 1; } }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .gate-divider { margin: 28px 0 26px; }
+            .navbar { padding: 16px 24px; }
+            .nav-links { gap: 24px; }
+            .nav-links a { font-size: 12px; }
+            .notify-input { width: 200px; }
+            .about-logo { width: min(280px, 65vw); }
+        }
+        @media (max-width: 480px) {
+            .gate-frame { top: 8px; left: 8px; right: 8px; bottom: 8px; }
+            .gate-frame::before { top: 4px; left: 4px; right: 4px; bottom: 4px; }
+            .gate-icon img { width: min(120px, 32vw); }
+            .gate-divider { margin: 22px 0 20px; }
+            .enter-btn { letter-spacing: 0.3em; padding: 14px 36px; }
+            .navbar { flex-direction: column; gap: 12px; padding: 14px 20px; }
+            .nav-links { gap: 20px; }
+            .nav-links a { font-size: 11px; letter-spacing: 0.2em; }
+            section { padding: 100px 20px; }
+            .notify-form { flex-direction: column; }
+            .notify-input { width: 100%; max-width: 280px; border-right: 1px solid rgba(186,155,68,0.3); border-bottom: none; }
+            .notify-submit { width: 100%; max-width: 280px; padding: 14px 24px; }
+        }
+        @media (max-width: 360px) {
+            .gate-icon img { width: 30vw; }
+            .enter-btn { font-size: 11px; letter-spacing: 0.25em; }
+        }
+        @media (max-height: 500px) {
+            .gate-icon img { width: min(100px, 22vw); }
+            .gate-divider { margin: 14px 0 12px; }
+            .enter-btn { padding: 10px 32px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- GATE -->
+    <div class="gate" id="gate">
+        <div class="gate-frame">
+            <span class="corner corner-tl"></span><span class="corner corner-tr"></span>
+            <span class="corner corner-bl"></span><span class="corner corner-br"></span>
+        </div>
+        <div class="gate-content">
+            <div class="gate-icon">
+                <img src="images/logo_icon.svg" alt="VAIRIS">
+            </div>
+            <div class="gate-divider"></div>
+            <button class="enter-btn" id="enterBtn">Enter</button>
+        </div>
+    </div>
+
+    <!-- NAVBAR -->
+    <nav class="navbar" id="navbar">
+        <a href="#about" class="nav-logo-link">
+            <img src="images/logo_icon.svg" alt="VAIRIS">
+        </a>
+        <ul class="nav-links">
+            <li><a href="#about">About</a></li>
+            <li><a href="#collection">Collection</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </nav>
+
+    <!-- MAIN SITE -->
+    <div class="main-site" id="mainSite">
+        <section id="about">
+            <div class="section-inner">
+                <img src="images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" class="about-logo">
+                <div class="section-divider"></div>
+                <p class="section-text">Where heritage meets the extraordinary.<br>Fine jewellery, reimagined.</p>
+            </div>
+        </section>
+
+        <section id="collection">
+            <div class="section-inner">
+                <div class="section-diamond"></div>
+                <h2 class="section-title">Our Collection</h2>
+                <div class="section-divider"></div>
+                <p class="section-text">Something extraordinary is on its way.</p>
+                <div class="notify-form" id="notifyForm">
+                    <input type="email" class="notify-input" id="notifyEmail" placeholder="Enter your email" required>
+                    <button class="notify-submit" id="notifySubmit">Notify Me</button>
+                </div>
+                <p class="thank-you" id="thankYou">We will be in touch.</p>
+            </div>
+        </section>
+
+        <section id="contact">
+            <div class="section-inner">
+                <div class="section-diamond"></div>
+                <h2 class="section-title">Contact</h2>
+                <div class="section-divider"></div>
+                <div class="contact-details">
+                    <a href="mailto:contact@vairis.com">contact@vairis.com</a>
+                    <a href="tel:+13095544500">+1 (309) 554-4500</a>
+                    <span>45 Bruton St, London W1J 6QB</span>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <div class="footer-divider"></div>
+            <p class="footer-brand">VAIRIS Fine Jewellery</p>
+            <p class="footer-year">2026</p>
+        </footer>
+    </div>
+
+    <script>
+        var gate = document.getElementById('gate');
+        var enterBtn = document.getElementById('enterBtn');
+        var navbar = document.getElementById('navbar');
+        var mainSite = document.getElementById('mainSite');
+
+        function createSparkles() {
+            var container = document.createElement('div');
+            container.className = 'sparkle-container';
+            document.body.appendChild(container);
+
+            var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+
+            for (var i = 0; i < 60; i++) {
+                var el = document.createElement('div');
+                var isDiamond = Math.random() > 0.6;
+                el.className = isDiamond ? 'sparkle-diamond' : 'sparkle';
+
+                var size = isDiamond ? 0 : (Math.random() * 6 + 2);
+                if (!isDiamond) { el.style.width = size + 'px'; el.style.height = size + 'px'; }
+
+                var angle = Math.random() * Math.PI * 2;
+                var dist = Math.random() * Math.max(window.innerWidth, window.innerHeight) * 0.7;
+                var tx = Math.cos(angle) * dist;
+                var ty = Math.sin(angle) * dist - 200;
+
+                el.style.left = cx + 'px';
+                el.style.top = cy + 'px';
+                el.style.setProperty('--tx', tx + 'px');
+                el.style.setProperty('--ty', ty + 'px');
+                el.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
+                el.style.animationDelay = (Math.random() * 0.4) + 's';
+                el.style.animationDuration = (1.2 + Math.random() * 1) + 's';
+
+                container.appendChild(el);
+            }
+
+            var flash = document.createElement('div');
+            flash.className = 'gold-flash';
+            document.body.appendChild(flash);
+
+            setTimeout(function() {
+                container.remove();
+                flash.remove();
+            }, 3000);
+        }
+
+        enterBtn.addEventListener('click', function() {
+            createSparkles();
+            setTimeout(function() {
+                gate.classList.add('lift');
+                document.body.classList.add('revealed');
+                navbar.classList.add('visible');
+                mainSite.classList.add('visible');
+            }, 300);
+            setTimeout(function() { gate.style.display = 'none'; }, 1800);
+        });
+
+        var observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) entry.target.classList.add('in-view');
+            });
+        }, { threshold: 0.2 });
+        document.querySelectorAll('.section-inner').forEach(function(el) { observer.observe(el); });
+
+        var notifySubmit = document.getElementById('notifySubmit');
+        var notifyEmail = document.getElementById('notifyEmail');
+        var notifyForm = document.getElementById('notifyForm');
+        var thankYou = document.getElementById('thankYou');
+
+        notifySubmit.addEventListener('click', function() {
+            if (notifyEmail.value && notifyEmail.validity.valid) {
+                // Store email in localStorage
+                var emails = JSON.parse(localStorage.getItem('vairis_notify_emails') || '[]');
+                emails.push({ email: notifyEmail.value, date: new Date().toISOString() });
+                localStorage.setItem('vairis_notify_emails', JSON.stringify(emails));
+
+                // Send notification via mailto (opens email client)
+                var mailLink = document.createElement('a');
+                mailLink.href = 'mailto:contact@vairis.com?subject=New%20Collection%20Notification%20Signup&body=' +
+                    encodeURIComponent('New signup: ' + notifyEmail.value);
+                mailLink.click();
+
+                // Show thank you
+                notifyForm.style.opacity = '0';
+                setTimeout(function() { notifyForm.style.display = 'none'; thankYou.classList.add('show'); }, 300);
+            }
+        });
+        notifyEmail.addEventListener('keydown', function(e) { if (e.key === 'Enter') notifySubmit.click(); });
+    </script>
+</body>
+</html>

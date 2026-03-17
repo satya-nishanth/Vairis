@@ -1,0 +1,31 @@
+<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gold" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#8a7540"/>
+      <stop offset="35%" stop-color="#d4b95e"/>
+      <stop offset="50%" stop-color="#f0dfa0"/>
+      <stop offset="65%" stop-color="#d4b95e"/>
+      <stop offset="100%" stop-color="#8a7540"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Diamond frame -->
+  <path d="M100 7 L193 100 L100 193 L7 100 Z" stroke="url(#gold)" stroke-width="2" fill="none"/>
+  <path d="M100 15 L185 100 L100 185 L15 100 Z" stroke="url(#gold)" stroke-width="1" fill="none" opacity="0.4"/>
+
+  <!-- V left arm - 3 blades -->
+  <polygon points="100,164 48,68 56,64" fill="url(#gold)" opacity="0.6"/>
+  <polygon points="100,164 60,62 70,57" fill="url(#gold)" opacity="0.8"/>
+  <polygon points="100,164 74,54 84,50" fill="url(#gold)"/>
+
+  <!-- V right arm - 3 blades -->
+  <polygon points="100,164 152,68 144,64" fill="url(#gold)" opacity="0.6"/>
+  <polygon points="100,164 140,62 130,57" fill="url(#gold)" opacity="0.8"/>
+  <polygon points="100,164 126,54 116,50" fill="url(#gold)"/>
+
+  <!-- Bottom spike -->
+  <line x1="100" y1="164" x2="100" y2="182" stroke="url(#gold)" stroke-width="1.5"/>
+
+  <!-- Diamond gem -->
+  <polygon points="100,22 114,40 100,54 86,40" fill="url(#gold)"/>
+</svg>
