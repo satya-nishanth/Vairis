@@ -8,13 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="images/logo_icon.svg">
+    <link rel="icon" type="image/png" href="images/vairius_logo.png">
     <meta property="og:image" content="images/vairis_main.jpeg">
     <meta property="og:title" content="VAIRIS - Fine Jewellery">
     <meta property="og:description" content="Where heritage meets the extraordinary. Fine jewellery, reimagined.">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
+        html { scroll-behavior: auto; }
         body { background: #0f2418; font-family: 'Cormorant Garamond', Georgia, serif; color: #c9a84c; overflow: hidden; }
         body.revealed { overflow-y: auto; }
 
@@ -53,7 +53,7 @@
 
         .gate-content { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 5; }
         .gate-icon { opacity: 0; transform: scale(0.95); animation: logoReveal 1.4s cubic-bezier(0.16,1,0.3,1) 0.3s forwards; }
-        .gate-icon img { width: min(180px, 40vw); height: auto; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.2)); }
+        .gate-icon img { width: min(250px, 50vw); height: auto; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.2)); }
         .gate-divider {
             width: 0; height: 1px; margin: 36px 0 32px;
             animation: lineExpand 1s ease-out 1.2s forwards;
@@ -116,7 +116,7 @@
         }
         .navbar.visible { opacity: 1; transform: translateY(0); }
         .nav-logo-link { display: flex; align-items: center; text-decoration: none; }
-        .nav-logo-link img { width: 40px; height: auto; filter: drop-shadow(0 2px 8px rgba(186,155,68,0.1)); }
+        .nav-logo-link img { width: 125px; height: auto; filter: drop-shadow(0 2px 8px rgba(186,155,68,0.1)); }
         .nav-links { display: flex; gap: 40px; list-style: none; }
         .nav-links a {
             font-family: 'Cormorant Garamond', Georgia, serif; font-size: 14px; font-weight: 300;
@@ -130,37 +130,58 @@
         .main-site.visible { opacity: 1; }
 
         /* SECTIONS */
-        section { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 120px 24px; }
+        section { display: flex; align-items: center; justify-content: center; padding: 64px 24px; }
         .section-inner {
             display: flex; flex-direction: column; align-items: center; text-align: center;
-            max-width: 600px; opacity: 0; transform: translateY(30px);
-            transition: opacity 0.8s ease, transform 0.8s ease;
+            max-width: 600px; opacity: 0; transform: translateY(24px);
+            transition: opacity 0.7s cubic-bezier(0.25,0.46,0.45,0.94), transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94);
         }
         .section-inner.in-view { opacity: 1; transform: translateY(0); }
         .section-diamond {
-            width: 6px; height: 6px; transform: rotate(45deg);
+            width: 5px; height: 5px; transform: rotate(45deg);
             background: linear-gradient(135deg, #c9a84c, #e8d48b);
-            box-shadow: 0 0 12px rgba(186,155,68,0.3); margin-bottom: 40px;
+            box-shadow: 0 0 10px rgba(186,155,68,0.25); margin-bottom: 28px;
         }
         .section-title {
-            font-size: clamp(28px, 5vw, 42px); font-weight: 300; letter-spacing: 0.35em; text-transform: uppercase;
+            font-size: clamp(24px, 4vw, 36px); font-weight: 300; letter-spacing: 0.3em; text-transform: uppercase;
             background: linear-gradient(135deg, #a08a4a 0%, #d4b95e 25%, #f0dfa0 50%, #d4b95e 75%, #a08a4a 100%);
             background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
         .section-divider {
-            width: min(200px, 50vw); height: 1px; margin: 32px 0;
+            width: min(160px, 40vw); height: 1px; margin: 24px 0;
             background: linear-gradient(90deg, transparent, rgba(186,155,68,0.5) 20%, rgba(201,168,76,0.7), rgba(186,155,68,0.5) 80%, transparent);
         }
         .section-text {
-            font-size: clamp(16px, 2.5vw, 20px); font-weight: 300; font-style: italic;
-            line-height: 1.8; color: rgba(201,168,76,0.6); letter-spacing: 0.05em;
+            font-size: clamp(15px, 2.2vw, 18px); font-weight: 300; font-style: italic;
+            line-height: 1.7; color: rgba(201,168,76,0.6); letter-spacing: 0.03em;
         }
 
         /* ABOUT */
-        .about-logo { width: min(340px, 70vw); height: auto; margin-bottom: 40px; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.12)); border-radius: 4px; }
+        #about { min-height: 100vh; padding-top: 120px; }
+        .about-logo { width: min(320px, 65vw); height: auto; margin-bottom: 28px; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.12)); border-radius: 4px; }
+
+        /* PILLARS */
+        .pillars { display: flex; gap: 28px; margin-top: 36px; }
+        .pillar {
+            border: 1px solid rgba(186,155,68,0.15); padding: 32px 24px; flex: 1;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        .pillar-diamond {
+            width: 4px; height: 4px; transform: rotate(45deg); margin-bottom: 18px;
+            background: linear-gradient(135deg, #c9a84c, #e8d48b);
+            box-shadow: 0 0 8px rgba(186,155,68,0.2);
+        }
+        .pillar-title {
+            font-size: clamp(14px, 2vw, 17px); font-weight: 400; letter-spacing: 0.2em;
+            text-transform: uppercase; color: #c9a84c; margin-bottom: 12px;
+        }
+        .pillar-text {
+            font-size: clamp(13px, 1.8vw, 15px); font-weight: 300; font-style: italic;
+            line-height: 1.6; color: rgba(201,168,76,0.5); letter-spacing: 0.02em;
+        }
 
         /* COLLECTION */
-        .notify-form { display: flex; align-items: stretch; margin-top: 40px; transition: opacity 0.3s; }
+        .notify-form { display: flex; align-items: stretch; margin-top: 28px; transition: opacity 0.3s; }
         .notify-input {
             font-family: 'Cormorant Garamond', Georgia, serif; font-size: 15px; font-weight: 300;
             letter-spacing: 0.1em; background: transparent; border: 1px solid rgba(186,155,68,0.3);
@@ -192,7 +213,7 @@
         .contact-details a:hover { color: #e8d48b; }
 
         /* FOOTER */
-        .footer { padding: 60px 24px 40px; text-align: center; }
+        .footer { padding: 40px 24px 32px; text-align: center; }
         .footer-divider {
             width: 100%; max-width: 800px; height: 1px; margin: 0 auto 32px;
             background: linear-gradient(90deg, transparent, rgba(186,155,68,0.25), transparent);
@@ -212,6 +233,7 @@
             .navbar { padding: 16px 24px; }
             .nav-links { gap: 24px; }
             .nav-links a { font-size: 12px; }
+            .pillars { flex-direction: column; gap: 20px; }
             .notify-input { width: 200px; }
             .about-logo { width: min(280px, 65vw); }
         }
@@ -224,7 +246,7 @@
             .navbar { flex-direction: column; gap: 12px; padding: 14px 20px; }
             .nav-links { gap: 20px; }
             .nav-links a { font-size: 11px; letter-spacing: 0.2em; }
-            section { padding: 100px 20px; }
+            section { padding: 48px 20px; }
             .notify-form { flex-direction: column; }
             .notify-input { width: 100%; max-width: 280px; border-right: 1px solid rgba(186,155,68,0.3); border-bottom: none; }
             .notify-submit { width: 100%; max-width: 280px; padding: 14px 24px; }
@@ -249,7 +271,7 @@
         </div>
         <div class="gate-content">
             <div class="gate-icon">
-                <img src="images/logo_icon.svg" alt="VAIRIS">
+                <img src="images/vairius_logo.png" alt="VAIRIS">
             </div>
             <div class="gate-divider"></div>
             <button class="enter-btn" id="enterBtn">Enter</button>
@@ -259,10 +281,11 @@
     <!-- NAVBAR -->
     <nav class="navbar" id="navbar">
         <a href="#about" class="nav-logo-link">
-            <img src="images/logo_icon.svg" alt="VAIRIS">
+            <img src="images/vairius_logo.png" alt="VAIRIS">
         </a>
         <ul class="nav-links">
             <li><a href="#about">About</a></li>
+            <li><a href="#why">Why VAIRIS</a></li>
             <li><a href="#collection">Collection</a></li>
             <li><a href="#contact">Contact</a></li>
         </ul>
@@ -275,6 +298,30 @@
                 <img src="images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" class="about-logo">
                 <div class="section-divider"></div>
                 <p class="section-text">Where heritage meets the extraordinary.<br>Fine jewellery, reimagined.</p>
+            </div>
+        </section>
+
+        <section id="why">
+            <div class="section-inner" style="max-width: 800px;">
+                <div class="section-diamond"></div>
+                <h2 class="section-title">Why VAIRIS</h2>
+                <div class="section-divider"></div>
+                <p class="section-text">The traditional jewellery industry has long operated behind an opaque curtain.</p>
+                <p class="section-text" style="margin-top: 10px; font-style: normal; color: rgba(201,168,76,0.75);">We focus on the integrity of the metal, the brilliance of the stone, and the empowerment of the wearer.</p>
+                <div class="section-divider" style="margin: 28px 0;"></div>
+                <h3 class="section-title" style="font-size: clamp(18px, 3vw, 24px); margin-bottom: 24px;">Radical Integrity</h3>
+                <div class="pillars">
+                    <div class="pillar">
+                        <div class="pillar-diamond"></div>
+                        <h3 class="pillar-title">Transparent Pricing</h3>
+                        <p class="pillar-text">Semi-precious stones at wholesale rates. The price we quote is the price you pay.</p>
+                    </div>
+                    <div class="pillar">
+                        <div class="pillar-diamond"></div>
+                        <h3 class="pillar-title">Artisan Crafted</h3>
+                        <p class="pillar-text">Lightweight jewellery designed for daily expression, crafted by India's finest artisans.</p>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -298,9 +345,8 @@
                 <h2 class="section-title">Contact</h2>
                 <div class="section-divider"></div>
                 <div class="contact-details">
-                    <a href="mailto:contact@vairis.com">contact@vairis.com</a>
-                    <a href="tel:+13095544500">+1 (309) 554-4500</a>
-                    <span>45 Bruton St, London W1J 6QB</span>
+                    <a href="mailto:contact@thevairis.com">contact@thevairis.com</a>
+                    <a href="tel:+917075486464">+91 7075486464</a>
                 </div>
             </div>
         </section>
@@ -391,7 +437,7 @@
 
                 // Send notification via mailto (opens email client)
                 var mailLink = document.createElement('a');
-                mailLink.href = 'mailto:contact@vairis.com?subject=New%20Collection%20Notification%20Signup&body=' +
+                mailLink.href = 'mailto:contact@thevairis.com?subject=New%20Collection%20Notification%20Signup&body=' +
                     encodeURIComponent('New signup: ' + notifyEmail.value);
                 mailLink.click();
 
@@ -401,6 +447,27 @@
             }
         });
         notifyEmail.addEventListener('keydown', function(e) { if (e.key === 'Enter') notifySubmit.click(); });
+
+        // Apple-style smooth scroll
+        function smoothScroll(target, duration) {
+            var start = window.pageYOffset;
+            var end = target.getBoundingClientRect().top + start - 80;
+            var startTime = null;
+            function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+            function step(time) {
+                if (!startTime) startTime = time;
+                var progress = Math.min((time - startTime) / duration, 1);
+                window.scrollTo(0, start + (end - start) * ease(progress));
+                if (progress < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+        document.querySelectorAll('a[href^="#"]').forEach(function(link) {
+            link.addEventListener('click', function(e) {
+                var target = document.querySelector(this.getAttribute('href'));
+                if (target) { e.preventDefault(); smoothScroll(target, 900); }
+            });
+        });
     </script>
 </body>
 </html>
