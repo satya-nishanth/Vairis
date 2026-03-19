@@ -14,9 +14,9 @@
     <meta property="og:description" content="Where heritage meets the extraordinary. Fine jewellery, reimagined.">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        html { scroll-behavior: auto; }
-        body { background: #0f2418; font-family: 'Cormorant Garamond', Georgia, serif; color: #c9a84c; overflow: hidden; }
-        body.revealed { overflow-y: auto; }
+        html { scroll-behavior: auto; height: 100%; }
+        body { background: #0f2418; font-family: 'Cormorant Garamond', Georgia, serif; color: #c9a84c; overflow: hidden; height: 100%; }
+        body.revealed { overflow-y: scroll; scroll-snap-type: y mandatory; }
 
         /* GATE */
         .gate {
@@ -130,7 +130,7 @@
         .main-site.visible { opacity: 1; }
 
         /* SECTIONS */
-        section { display: flex; align-items: center; justify-content: center; padding: 64px 24px; }
+        section { display: flex; align-items: center; justify-content: center; padding: 64px 24px; scroll-snap-align: start; }
         .section-inner {
             display: flex; flex-direction: column; align-items: center; text-align: center;
             max-width: 600px; opacity: 0; transform: translateY(24px);
@@ -157,7 +157,7 @@
         }
 
         /* ABOUT */
-        #about { min-height: 100vh; padding-top: 120px; }
+        #about { height: 100vh; overflow: hidden; padding-top: 120px; }
         .about-logo { width: min(320px, 65vw); height: auto; margin-bottom: 28px; filter: drop-shadow(0 4px 30px rgba(186,155,68,0.12)); border-radius: 4px; }
 
         /* PILLARS */
@@ -211,6 +211,8 @@
             text-decoration: none; transition: color 0.3s;
         }
         .contact-details a:hover { color: #e8d48b; }
+        .instagram-link { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+        .instagram-link svg { flex-shrink: 0; }
 
         /* FOOTER */
         .footer { padding: 40px 24px 32px; text-align: center; }
@@ -243,7 +245,7 @@
             .gate-icon img { width: min(120px, 32vw); }
             .gate-divider { margin: 22px 0 20px; }
             .enter-btn { letter-spacing: 0.3em; padding: 14px 36px; }
-            .navbar { flex-direction: column; gap: 12px; padding: 14px 20px; }
+            .navbar { flex-direction: column; padding: 30px 20px 16px; }
             .nav-links { gap: 20px; }
             .nav-links a { font-size: 11px; letter-spacing: 0.2em; }
             section { padding: 48px 20px; }
@@ -347,6 +349,10 @@
                 <div class="contact-details">
                     <a href="mailto:contact@thevairis.com">contact@thevairis.com</a>
                     <a href="tel:+917075486464">+91 7075486464</a>
+                    <a href="https://www.instagram.com/vairis.jewellery" target="_blank" rel="noopener" class="instagram-link">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+                        <span>@vairis.jewellery</span>
+                    </a>
                 </div>
             </div>
         </section>
@@ -359,6 +365,8 @@
     </div>
 
     <script>
+        window.history.scrollRestoration = 'manual';
+        window.scrollTo(0, 0);
         var gate = document.getElementById('gate');
         var enterBtn = document.getElementById('enterBtn');
         var navbar = document.getElementById('navbar');
