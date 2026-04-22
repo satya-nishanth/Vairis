@@ -232,7 +232,8 @@ app/
 │   │   └── [id]/edit/page.tsx
 │   └── orders/
 │       ├── page.tsx
-│       └── [id]/page.tsx                Order detail + ship action
+│       ├── [id]/page.tsx                Order detail + ship action
+│       └── payment-link/page.tsx        Generate Razorpay payment link
 │
 ├── auth/
 │   ├── login/page.tsx
@@ -242,6 +243,7 @@ app/
     ├── razorpay/webhook/route.ts
     ├── courier/webhook/route.ts
     ├── whatsapp/webhook/route.ts
+    ├── cron/release-stock/route.ts      Stock timeout handler (every 5 min)
     └── internal/
         ├── products/route.ts
         ├── stock/route.ts
@@ -255,7 +257,16 @@ app/
 
 ---
 
-## 6. Checkout + Payment Flow
+## 6. Non-Functional Requirements
+
+- **Mobile-first responsive** — all customer-facing pages optimised for mobile. Desktop supported.
+- **SEO:** `sitemap.xml` auto-generated (Next.js), `robots.txt`, OpenGraph tags on all public pages. Product + catalog pages use ISR for crawlability.
+- **Product images:** Up to 5 images per product, first image = primary (used in catalog grid). Stored in Supabase Storage, served via Next.js Image component (auto-optimised).
+- **EMI display:** Razorpay Affordability Widget embedded on every product detail page — shows EMI breakdown (No-Cost EMI, standard EMI) without extra API calls.
+
+---
+
+## 7. Checkout + Payment Flow
 
 1. User on `/checkout` (must be logged in — redirect to `/auth/login` if not)
 2. Fills address, reviews cart, clicks "Place Order"
@@ -276,36 +287,76 @@ app/
 
 **Security:** Razorpay webhook is the only source of truth for payment. Client-side payment success callback is never trusted alone.
 
+**Email notifications (via Resend):**
+- Order confirmed (PAYMENT_CONFIRMED) — order summary + estimated delivery
+- Order shipped (SHIPPED) — AWB code + courier tracking link
+- Order delivered (DELIVERED) — delivery confirmation + care instructions
+
 ---
 
-## 7. User Accounts
+## 8. Order Cancellation + Refund Flow
+
+**Cancellation window:** Customer can cancel only while order status is `PENDING`, `PAYMENT_CONFIRMED`, or `PROCESSING`. Cannot cancel once `SHIPPED` (courier has the package).
+
+**Cancellation flow:**
+1. Customer clicks "Cancel Order" on `/account/orders/[id]`
+2. Server checks status — reject if `SHIPPED` or `DELIVERED`
+3. Restore stock (`stock += quantity` for each OrderItem variant)
+4. If payment was captured (status was `PAYMENT_CONFIRMED` or `PROCESSING`):
+   - Call Razorpay refund API: `POST /v1/payments/{razorpayPaymentId}/refund`
+   - Update `Payment.status` → `REFUNDED`
+   - Send refund confirmation email (Resend): "Refund initiated, 5–7 business days"
+5. Update `Order.status` → `CANCELLED`
+
+**Refund approach:** Automated via Razorpay API — no manual dashboard intervention. Razorpay handles bank transfer (5–7 business days). Full refund only (no partial refunds in MVP).
+
+---
+
+## 9. Direct Payment Links
+
+Admin can generate a Razorpay Payment Link for custom orders (e.g. negotiated bespoke pieces, WhatsApp sales).
+
+**Flow:**
+1. Admin goes to `/admin/orders/new-payment-link`
+2. Enters customer name, mobile, amount, description
+3. Server calls Razorpay Payment Links API: `POST /v1/payment_links`
+4. Razorpay returns a short URL (e.g. `rzp.io/l/abc123`)
+5. Admin copies link → shares via WhatsApp or email manually
+6. Customer pays via link → Razorpay webhook fires → order created in DB automatically
+
+**No separate order creation needed** — webhook handler detects payment link payments and auto-creates an Order record.
+
+---
+
+## 10. User Accounts
 
 - Browse: guest (no login required)
-- Order / track / wishlist (future): requires account
+- Order / track / cancel: requires account
 - Auth: Supabase Auth with Google OAuth provider
 - Data collected: name, email, mobile number
 - Migration path: swap Supabase Auth → NextAuth.js with Google provider
 
 ---
 
-## 8. Admin Panel (MVP scope)
+## 11. Admin Panel (MVP scope)
 
 Auth: email whitelist check via `ADMIN_EMAILS` env variable (comma-separated). No RBAC. Add roles when Fayaz takes ownership.
 
 **Products:**
 - Create / edit / deactivate product
-- Upload images (Supabase Storage)
+- Upload images to Supabase Storage (up to 5 per product, first = primary)
 - Manage variants + manual stock adjustment
 
 **Orders:**
 - View all orders + filter by status
-- Update status manually
+- Update status manually (PROCESSING → SHIPPED etc.)
 - Trigger Shiprocket booking
 - View payment details
+- Generate direct payment links (Razorpay Payment Links)
 
 ---
 
-## 9. Internal API (WhatsApp Bot Endpoints)
+## 12. Internal API (WhatsApp Bot Endpoints)
 
 All routes under `/api/internal/*`, protected by `X-API-Key` header.
 
@@ -321,7 +372,7 @@ Bot never queries Supabase directly — always through this layer. DB migration 
 
 ---
 
-## 10. Key Decisions Log
+## 13. Key Decisions Log
 
 | Decision | Choice | Reason |
 |---|---|---|
@@ -336,10 +387,14 @@ Bot never queries Supabase directly — always through this layer. DB migration 
 | Admin auth | Email whitelist | RBAC overkill until Fayaz onboards |
 | Cart persistence | DB (CartItem table) | Cart survives device switches |
 | Address in Order | Snapshot (not FK) | Historical accuracy if address later changed |
+| Order cancellation | Allowed up to PROCESSING only | Cannot recall package once SHIPPED |
+| Refund | Automated via Razorpay API | No manual dashboard intervention; better UX |
+| Direct payment links | In scope (admin-generated) | WhatsApp sales + custom/bespoke orders |
+| EMI display | Razorpay Affordability Widget on PDP | Zero extra API calls; Razorpay provides it |
 
 ---
 
-## 11. Open Items / Blockers
+## 14. Open Items / Blockers
 
 | Item | Owner | Status |
 |---|---|---|
