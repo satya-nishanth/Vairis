@@ -1,0 +1,339 @@
+# Vairis Fine Jewellery — E-commerce Website Design
+
+**Date:** 2026-04-23
+**Sub-project:** 1 of 4 (Website → Admin Panel → Payments → WhatsApp Bot)
+**Author:** Satya Nishanth (Nishi)
+**Status:** Approved, ready for implementation plan
+
+---
+
+## 1. Scope
+
+MVP e-commerce website for Vairis Fine Jewellery. Lean page set, full checkout capability (Razorpay in test mode until BIS certificate arrives), Google auth, delivery-only fulfillment via Shiprocket.
+
+**Out of scope for this sub-project:**
+- WhatsApp bot (designed with API hooks here, implemented separately)
+- Admin panel (separate sub-project, candidate owner: Fayaz)
+- Product reviews (planned, not MVP)
+- Kotak payment gateway (evaluate at scale via A/B test)
+
+---
+
+## 2. Architecture
+
+```
+Browser
+  └── Next.js 14 (App Router) — deployed on Vercel
+        ├── /app/(store)            customer-facing pages (SSR + ISR)
+        ├── /app/(admin)            basic admin (server-side, auth-gated)
+        └── /app/api/
+              ├── razorpay/webhook  payment confirmation (source of truth)
+              ├── courier/webhook   shipment status updates
+              ├── whatsapp/webhook  WhatsApp bot handler (Next.js, Meta API)
+              └── internal/         bot-callable endpoints (API key auth)
+                    ├── products/
+                    ├── stock/
+                    └── orders/
+
+Supabase (MVP backend — designed to eject)
+  ├── PostgreSQL via Prisma ORM     swap DATABASE_URL → done
+  ├── Auth (Google OAuth)           swap to NextAuth.js (~4 hrs work)
+  └── Storage (product images)      swap to Azure Blob (~2 hrs work)
+
+External
+  ├── Razorpay    payments + EMI
+  └── Shiprocket  courier booking + tracking
+```
+
+### Migration safety rules (enforced throughout)
+- All DB queries through Prisma — never Supabase SDK for data access
+- No Supabase Edge Functions — all logic in Next.js API routes
+- No Supabase Realtime in core flows
+- No Row Level Security in app logic — security enforced in API routes
+- WhatsApp bot calls `/api/internal/*` only, never touches Supabase directly
+
+### WhatsApp bot
+Built as Next.js API route (`/api/whatsapp/webhook`) using official Meta WhatsApp Business API (webhook-based, no persistent connection needed). No Python service. AI calls (smart replies, product queries) go to Azure OpenAI directly from Next.js.
+
+---
+
+## 3. Design Direction
+
+- **Nav + hero:** Dark luxury (forest green `#0f2418`, gold `#c9a84c`) — consistent with current brand identity at thevairis.com
+- **Product catalog + detail + checkout:** White/light background — product photography reads better, prices and variants clearer
+- **Font:** Cormorant Garamond (already in use)
+
+---
+
+## 4. Data Model
+
+Prisma schema. Works against Supabase PostgreSQL now; swap `DATABASE_URL` to migrate to Azure PostgreSQL.
+
+```prisma
+enum Category    { RINGS EARRINGS NECKLACES BRACELETS }
+enum MetalType   { GOLD_18K GOLD_22K SILVER_925 ROSE_GOLD }
+enum OrderStatus {
+  PENDING PAYMENT_CONFIRMED PROCESSING SHIPPED DELIVERED CANCELLED REFUNDED
+}
+enum PaymentStatus { CREATED AUTHORIZED CAPTURED FAILED REFUNDED }
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  mobile    String?
+  googleId  String?    @unique
+  createdAt DateTime   @default(now())
+  addresses Address[]
+  orders    Order[]
+  cartItems CartItem[]
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean @default(false)
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  description String
+  category    Category
+  images      String[]         // Supabase Storage URLs
+  basePrice   Decimal
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  variants    ProductVariant[]
+}
+
+model ProductVariant {
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id])
+  metalType  MetalType
+  size       String?     // null for earrings/necklaces
+  price      Decimal
+  stock      Int         @default(0)
+  sku        String      @unique
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int
+  @@unique([userId, variantId])
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  items        OrderItem[]
+  status       OrderStatus @default(PENDING)
+  totalAmount  Decimal
+  // address snapshot — survives user editing their saved address later
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  pincode      String
+  payment      Payment?
+  shipment     Shipment?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model OrderItem {
+  id          String         @id @default(cuid())
+  orderId     String
+  order       Order          @relation(fields: [orderId], references: [id])
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  quantity    Int
+  price       Decimal        // snapshot at purchase time
+  productName String         // snapshot — product name could change
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id])
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?
+  status            PaymentStatus @default(CREATED)
+  amount            Decimal
+  createdAt         DateTime      @default(now())
+}
+
+model Shipment {
+  id           String   @id @default(cuid())
+  orderId      String   @unique
+  order        Order    @relation(fields: [orderId], references: [id])
+  shiprocketId String?
+  awbCode      String?  // courier tracking number
+  courierName  String?
+  trackingUrl  String?
+  status       String?
+  updatedAt    DateTime @updatedAt
+}
+```
+
+---
+
+## 5. Page Routes
+
+```
+app/
+├── (store)/
+│   ├── page.tsx                          Homepage
+│   ├── shop/
+│   │   ├── page.tsx                      All products (filterable by category)
+│   │   ├── [category]/page.tsx           /shop/rings, /shop/earrings etc. (ISR)
+│   │   └── product/[id]/page.tsx         Product detail (ISR, revalidate 60s)
+│   ├── cart/page.tsx                     Cart (client-side)
+│   ├── checkout/page.tsx                 Checkout (auth-gated)
+│   ├── order/
+│   │   ├── confirmation/[id]/page.tsx    Post-payment success
+│   │   └── track/[id]/page.tsx           Order tracking
+│   └── account/
+│       ├── page.tsx                      Orders list
+│       ├── orders/[id]/page.tsx          Order detail
+│       └── profile/page.tsx             Name, mobile, addresses
+│
+├── (admin)/                              Separate layout, email whitelist auth
+│   ├── dashboard/page.tsx
+│   ├── products/
+│   │   ├── page.tsx
+│   │   ├── new/page.tsx
+│   │   └── [id]/edit/page.tsx
+│   └── orders/
+│       ├── page.tsx
+│       └── [id]/page.tsx                Order detail + ship action
+│
+├── auth/
+│   ├── login/page.tsx
+│   └── callback/page.tsx
+│
+└── api/
+    ├── razorpay/webhook/route.ts
+    ├── courier/webhook/route.ts
+    ├── whatsapp/webhook/route.ts
+    └── internal/
+        ├── products/route.ts
+        ├── stock/route.ts
+        └── orders/route.ts
+```
+
+**Rendering:**
+- Catalog + product detail → ISR (revalidate 60s) — SEO + fresh stock
+- Cart, checkout, account → client-side only
+- Admin → server-side, never cached
+
+---
+
+## 6. Checkout + Payment Flow
+
+1. User on `/checkout` (must be logged in — redirect to `/auth/login` if not)
+2. Fills address, reviews cart, clicks "Place Order"
+3. Server: atomic stock check — any variant with `stock = 0` blocks order, shows error
+4. Server: create `Order` (status: `PENDING`), decrement `stock` per item, create Razorpay order
+5. Client: Razorpay SDK modal opens (UPI / card / EMI)
+6. **Payment failure:** Order stays `PENDING`, stock restored, user sees retry option
+7. **Payment success:** Razorpay POSTs to `/api/razorpay/webhook`
+8. Webhook handler: verify Razorpay signature → update Order to `PAYMENT_CONFIRMED` → clear cart → send confirmation email → book Shiprocket shipment
+9. Redirect to `/order/confirmation/[id]`
+
+**Stock reservation approach (Option 1 — revisit at scale):**
+- Stock decremented when Order created (PENDING)
+- Restored if payment fails or times out (15-min cron/trigger)
+- No separate `reserved` field — add when concurrent checkout conflicts appear in logs
+
+**Security:** Razorpay webhook is the only source of truth for payment. Client-side payment success callback is never trusted alone.
+
+---
+
+## 7. User Accounts
+
+- Browse: guest (no login required)
+- Order / track / wishlist (future): requires account
+- Auth: Supabase Auth with Google OAuth provider
+- Data collected: name, email, mobile number
+- Migration path: swap Supabase Auth → NextAuth.js with Google provider
+
+---
+
+## 8. Admin Panel (MVP scope)
+
+Auth: email whitelist check (hardcoded, no RBAC). Add roles when Fayaz takes ownership.
+
+**Products:**
+- Create / edit / deactivate product
+- Upload images (Supabase Storage)
+- Manage variants + manual stock adjustment
+
+**Orders:**
+- View all orders + filter by status
+- Update status manually
+- Trigger Shiprocket booking
+- View payment details
+
+---
+
+## 9. Internal API (WhatsApp Bot Endpoints)
+
+All routes under `/api/internal/*`, protected by `X-API-Key` header.
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/internal/products` | GET | Search/list products by category, name |
+| `/api/internal/products/[id]` | GET | Product detail + variant stock |
+| `/api/internal/stock` | GET | Check variant availability |
+| `/api/internal/orders` | POST | Create order (bot-initiated) |
+| `/api/internal/orders/[id]` | GET | Order status |
+
+Bot never queries Supabase directly — always through this layer. DB migration transparent to bot.
+
+---
+
+## 10. Key Decisions Log
+
+| Decision | Choice | Reason |
+|---|---|---|
+| Checkout approach | Full e-commerce, Razorpay test mode | BIS cert in progress; don't delay build |
+| Payment gateway | Razorpay | Better adoption/reliability; evaluate Kotak at scale |
+| Backend for MVP | Supabase (PostgreSQL + Auth + Storage) | Saves 3–4 weeks on auth + devops |
+| Migration path | Prisma ORM + Next.js API routes only | Swap DATABASE_URL = done; Auth swap ~4 hrs |
+| WhatsApp bot | Next.js + Meta WhatsApp Business API | No Python service; one repo, one deploy |
+| Cloud | Azure (startup credits: $1k → $5k after business verify) | Cost saving; verify after MVP built locally |
+| Design | Dark nav/hero, white product pages | Brand identity at entry; clarity during shopping |
+| Stock reservation | Option 1 (simple decrement + restore) | Concurrent checkout conflicts won't happen at MVP scale |
+| Admin auth | Email whitelist | RBAC overkill until Fayaz onboards |
+| Cart persistence | DB (CartItem table) | Cart survives device switches |
+| Address in Order | Snapshot (not FK) | Historical accuracy if address later changed |
+
+---
+
+## 11. Open Items / Blockers
+
+| Item | Owner | Status |
+|---|---|---|
+| BIS/916 Hallmark certificate | Anil | Waiting on GST registration |
+| GST registration | Anil | In progress |
+| Razorpay account activation | Nishi (needs BIS) | Blocked |
+| Azure startup credits ($1k) | Nishi | Pending LinkedIn verification — do after MVP built locally |
+| Azure business credits ($4k) | Nishi/Anil | Pending business verification |
+| Meta WhatsApp Business API approval | Anil | Not started — needed for WhatsApp bot phase |
+| Shiprocket account setup | Anil/Nishi | Not started |
+| Fayaz onboarding decision | Nishi | Evaluate — candidate for admin panel ownership |
