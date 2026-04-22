@@ -28,17 +28,23 @@ MVP e-commerce website for Vairis Fine Jewellery. Lean page set, full checkout c
 
 ```
 Browser
-  └── Next.js 14 (App Router) — deployed on Vercel
+  └── Next.js 14 (App Router)
         ├── /app/(store)            customer-facing pages (SSR + ISR)
         ├── /app/(admin)            basic admin (server-side, auth-gated)
         └── /app/api/
               ├── razorpay/webhook  payment confirmation (source of truth)
               ├── courier/webhook   shipment status updates
               ├── whatsapp/webhook  WhatsApp bot handler (Next.js, Meta API)
+              ├── cron/release-stock  stock timeout handler (cron-triggered)
               └── internal/         bot-callable endpoints (API key auth)
                     ├── products/
                     ├── stock/
                     └── orders/
+
+Hosting
+  MVP:    Vercel (zero config, Vercel Cron for stock release)
+  Future: Azure Container Apps — Docker image, full ISR + API route support
+          DO NOT use Azure Static Web Apps (incomplete Next.js support)
 
 Supabase (MVP backend — designed to eject)
   ├── PostgreSQL via Prisma ORM     swap DATABASE_URL → done
@@ -47,7 +53,8 @@ Supabase (MVP backend — designed to eject)
 
 External
   ├── Razorpay    payments + EMI
-  └── Shiprocket  courier booking + tracking
+  ├── Shiprocket  courier booking + tracking
+  └── Resend      transactional email (order confirmation)
 ```
 
 ### Migration safety rules (enforced throughout)
@@ -262,7 +269,9 @@ app/
 
 **Stock reservation approach (Option 1 — revisit at scale):**
 - Stock decremented when Order created (PENDING)
-- Restored if payment fails or times out — 15-min timeout enforced via Vercel Cron job (`/api/cron/release-stock`) that runs every 5 min, finds PENDING orders older than 15 min, restores stock, marks order CANCELLED
+- Restored if payment fails or times out — 15-min timeout enforced via a cron endpoint (`/api/cron/release-stock`): finds PENDING orders older than 15 min, restores stock, marks order CANCELLED
+  - **Vercel (MVP):** Vercel Cron triggers the endpoint every 5 min
+  - **Azure (future):** Azure Functions timer trigger calls same endpoint every 5 min — no code change, just config
 - No separate `reserved` field — add when concurrent checkout conflicts appear in logs
 
 **Security:** Razorpay webhook is the only source of truth for payment. Client-side payment success callback is never trusted alone.
