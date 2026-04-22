@@ -11,9 +11,14 @@
 
 MVP e-commerce website for Vairis Fine Jewellery. Lean page set, full checkout capability (Razorpay in test mode until BIS certificate arrives), Google auth, delivery-only fulfillment via Shiprocket.
 
-**Out of scope for this sub-project:**
-- WhatsApp bot (designed with API hooks here, implemented separately)
-- Admin panel (separate sub-project, candidate owner: Fayaz)
+**In scope (this sub-project):**
+- Customer-facing store (all core pages)
+- Basic admin panel (product + order management, sufficient to run the store)
+- WhatsApp bot API hooks (`/api/internal/*`) — bot itself implemented separately
+
+**Out of scope:**
+- Full admin panel with RBAC (separate sub-project, candidate owner: Fayaz)
+- WhatsApp bot implementation
 - Product reviews (planned, not MVP)
 - Kotak payment gateway (evaluate at scale via A/B test)
 
@@ -252,12 +257,12 @@ app/
 5. Client: Razorpay SDK modal opens (UPI / card / EMI)
 6. **Payment failure:** Order stays `PENDING`, stock restored, user sees retry option
 7. **Payment success:** Razorpay POSTs to `/api/razorpay/webhook`
-8. Webhook handler: verify Razorpay signature → update Order to `PAYMENT_CONFIRMED` → clear cart → send confirmation email → book Shiprocket shipment
+8. Webhook handler: verify Razorpay signature → update Order to `PAYMENT_CONFIRMED` → clear cart → send confirmation email via Resend → book Shiprocket shipment
 9. Redirect to `/order/confirmation/[id]`
 
 **Stock reservation approach (Option 1 — revisit at scale):**
 - Stock decremented when Order created (PENDING)
-- Restored if payment fails or times out (15-min cron/trigger)
+- Restored if payment fails or times out — 15-min timeout enforced via Vercel Cron job (`/api/cron/release-stock`) that runs every 5 min, finds PENDING orders older than 15 min, restores stock, marks order CANCELLED
 - No separate `reserved` field — add when concurrent checkout conflicts appear in logs
 
 **Security:** Razorpay webhook is the only source of truth for payment. Client-side payment success callback is never trusted alone.
@@ -276,7 +281,7 @@ app/
 
 ## 8. Admin Panel (MVP scope)
 
-Auth: email whitelist check (hardcoded, no RBAC). Add roles when Fayaz takes ownership.
+Auth: email whitelist check via `ADMIN_EMAILS` env variable (comma-separated). No RBAC. Add roles when Fayaz takes ownership.
 
 **Products:**
 - Create / edit / deactivate product
