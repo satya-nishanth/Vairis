@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  RINGS
+  EARRINGS
+  NECKLACES
+  BRACELETS
+}
+
+enum MetalType {
+  GOLD_18K
+  GOLD_22K
+  SILVER_925
+  ROSE_GOLD
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  mobile    String?
+  googleId  String?    @unique
+  createdAt DateTime   @default(now())
+  addresses Address[]
+  orders    Order[]
+  cartItems CartItem[]
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  line1     String
+  line2     String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean @default(false)
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  description String
+  category    Category
+  images      String[]
+  basePrice   Decimal
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  variants    ProductVariant[]
+}
+
+model ProductVariant {
+  id                  String      @id @default(cuid())
+  productId           String
+  product             Product     @relation(fields: [productId], references: [id])
+  metalType           MetalType
+  size                String?
+  weightGrams         Decimal
+  makingChargePerGram Decimal
+  flatMakingCharge    Decimal     @default(0)
+  stoneCharges        Decimal     @default(0)
+  miscCharges         Decimal     @default(0)
+  stock               Int         @default(0)
+  sku                 String      @unique
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
+}
+
+model GoldRate {
+  metalType   MetalType
+  ratePerGram Decimal
+  fetchedAt   DateTime  @updatedAt
+
+  @@id([metalType])
+}
+
+model CartItem {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+  quantity  Int
+
+  @@unique([userId, variantId])
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  items        OrderItem[]
+  status       OrderStatus @default(PENDING)
+  totalAmount  Decimal
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  pincode      String
+  payment      Payment?
+  shipment     Shipment?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model OrderItem {
+  id          String         @id @default(cuid())
+  orderId     String
+  order       Order          @relation(fields: [orderId], references: [id])
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  quantity    Int
+  price       Decimal
+  productName String
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id])
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?
+  status            PaymentStatus @default(CREATED)
+  amount            Decimal
+  createdAt         DateTime      @default(now())
+}
+
+model Shipment {
+  id           String   @id @default(cuid())
+  orderId      String   @unique
+  order        Order    @relation(fields: [orderId], references: [id])
+  shiprocketId String?
+  awbCode      String?
+  courierName  String?
+  trackingUrl  String?
+  status       String?
+  updatedAt    DateTime @updatedAt
+}
