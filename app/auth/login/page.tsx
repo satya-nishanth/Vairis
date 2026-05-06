@@ -1,51 +1,37 @@
-'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
+import { redirect } from 'next/navigation'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import GoogleButton from '@/components/auth/GoogleButton'
 
-export default function LoginPage() {
-  const supabase = createClient()
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+async function signIn(formData: FormData) {
+  'use server'
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const supabase = await createServerSupabaseClient()
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) redirect(`/auth/login?error=${encodeURIComponent(error.message)}`)
+  redirect('/admin/dashboard')
+}
 
-  async function handleEmailAuth(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+async function signUp(formData: FormData) {
+  'use server'
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  const supabase = await createServerSupabaseClient()
+  const { error } = await supabase.auth.signUp({ email, password })
+  if (error) redirect(`/auth/login?error=${encodeURIComponent(error.message)}`)
+  redirect(`/auth/login?msg=${encodeURIComponent('Account created — sign in below')}`)
+}
 
-    const fn =
-      mode === 'signin'
-        ? supabase.auth.signInWithPassword({ email, password })
-        : supabase.auth.signUp({ email, password })
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; msg?: string }>
+}) {
+  const { error, msg } = await searchParams
 
-    const { error: authError } = await fn
-    setLoading(false)
-
-    if (authError) {
-      setError(authError.message)
-      return
-    }
-
-    if (mode === 'signup') {
-      setError('Account created — check email to confirm, then sign in.')
-      setMode('signin')
-      return
-    }
-
-    router.refresh()
-    router.push('/admin/dashboard')
-  }
-
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback` },
-    })
-  }
+  const inputCls =
+    'w-full border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold bg-white'
+  const labelCls = 'block text-xs text-gray-500 mb-1 tracking-widest uppercase'
 
   return (
     <main className="min-h-screen bg-brand-cream flex items-center justify-center px-4">
@@ -55,64 +41,77 @@ export default function LoginPage() {
           <p className="text-sm text-gray-400 mt-2 tracking-wide">Admin Access</p>
         </div>
 
-        <form onSubmit={handleEmailAuth} className="space-y-4">
+        {msg && (
+          <p className="text-xs bg-green-50 text-green-700 border border-green-100 px-3 py-2 rounded">
+            {msg}
+          </p>
+        )}
+        {error && (
+          <p className="text-xs bg-red-50 text-red-600 border border-red-100 px-3 py-2 rounded">
+            {error}
+          </p>
+        )}
+
+        {/* Sign In */}
+        <form action={signIn} className="space-y-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1 tracking-widest uppercase">
-              Email
-            </label>
+            <label className={labelCls}>Email</label>
             <input
+              name="email"
               type="email"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold"
+              className={inputCls}
               placeholder="nish99.sn@gmail.com"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1 tracking-widest uppercase">
-              Password
-            </label>
+            <label className={labelCls}>Password</label>
             <input
+              name="password"
               type="password"
               required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold"
+              minLength={6}
+              className={inputCls}
               placeholder="••••••••"
             />
           </div>
-
-          {error && (
-            <p
-              className={`text-xs px-3 py-2 rounded ${
-                error.includes('created')
-                  ? 'bg-green-50 text-green-700 border border-green-100'
-                  : 'bg-red-50 text-red-600 border border-red-100'
-              }`}
-            >
-              {error}
-            </p>
-          )}
-
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-brand-dark text-white text-sm tracking-widest uppercase hover:bg-brand-light transition-colors disabled:opacity-50"
+            className="w-full py-3 bg-brand-dark text-white text-sm tracking-widest uppercase hover:bg-brand-light transition-colors"
           >
-            {loading ? '…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+            Sign In
           </button>
         </form>
 
-        <div className="text-center">
-          <button
-            type="button"
-            onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError('') }}
-            className="text-xs text-gray-400 hover:text-brand-gold transition-colors"
-          >
-            {mode === 'signin' ? 'No account? Create one →' : '← Back to sign in'}
-          </button>
-        </div>
+        {/* Create account */}
+        <details className="group">
+          <summary className="text-xs text-gray-400 hover:text-brand-gold cursor-pointer list-none text-center">
+            No account? Create one →
+          </summary>
+          <form action={signUp} className="mt-4 space-y-3">
+            <input
+              name="email"
+              type="email"
+              required
+              className={inputCls}
+              placeholder="Email"
+            />
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={6}
+              className={inputCls}
+              placeholder="Password (min 6 chars)"
+            />
+            <button
+              type="submit"
+              className="w-full py-3 border border-brand-dark text-brand-dark text-sm tracking-widest uppercase hover:bg-brand-dark hover:text-white transition-colors"
+            >
+              Create Account
+            </button>
+          </form>
+        </details>
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -123,13 +122,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={signInWithGoogle}
-          className="w-full py-3 border border-gray-200 text-sm text-gray-600 hover:border-brand-gold hover:text-brand-gold transition-colors tracking-wide"
-        >
-          Continue with Google
-        </button>
+        <GoogleButton />
       </div>
     </main>
   )
