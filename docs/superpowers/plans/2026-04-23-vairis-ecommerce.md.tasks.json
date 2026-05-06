@@ -1,0 +1,124 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-23-vairis-ecommerce.md",
+  "tasks": [
+    {
+      "id": 9,
+      "subject": "Task 0: Project Setup",
+      "status": "pending",
+      "description": "**Goal:** Scaffold Next.js 14 app with all dependencies, env vars, and base config.\n\n**Files:**\n- Create: `package.json`, `tsconfig.json`, `tailwind.config.ts`, `.env.local.example`, `vercel.json`, `jest.config.ts`, `jest.setup.ts`\n\n**Acceptance Criteria:**\n- [ ] `npm run dev` starts without errors\n- [ ] TypeScript strict mode on\n- [ ] Tailwind working\n- [ ] All env vars documented in `.env.local.example`\n- [ ] `npm run build` exits 0\n\n**Verify:** `npm run build` → exits 0\n\n```json:metadata\n{\"files\": [\"package.json\",\"tsconfig.json\",\"tailwind.config.ts\",\".env.local.example\",\"vercel.json\",\"jest.config.ts\",\"jest.setup.ts\"], \"verifyCommand\": \"npm run build\", \"acceptanceCriteria\": [\"npm run dev starts without errors\",\"TypeScript strict mode on\",\"Tailwind working\",\"All env vars documented\",\"npm run build exits 0\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 1: Database Schema + Prisma",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** Define all Prisma models, connect to Supabase PostgreSQL, run first migration.\n\n**Files:**\n- Create: `prisma/schema.prisma`, `prisma/seed.ts`, `lib/prisma.ts`\n\n**Acceptance Criteria:**\n- [ ] `npx prisma migrate dev` succeeds\n- [ ] All tables visible in Prisma Studio\n- [ ] Singleton client exported\n- [ ] Seed creates 2 products with variants + PAYMENT_LINK sentinel user\n\n**Verify:** `npx prisma migrate dev --name init` → 'Your database is now in sync'\n\n```json:metadata\n{\"files\": [\"prisma/schema.prisma\",\"prisma/seed.ts\",\"lib/prisma.ts\"], \"verifyCommand\": \"npx prisma migrate dev --name init\", \"acceptanceCriteria\": [\"prisma migrate dev succeeds\",\"All tables visible\",\"Singleton client\",\"Seed works\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 2: Auth (Supabase + Middleware)",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Google OAuth via Supabase Auth, session helpers, admin guard, auth pages.\n\n**Files:**\n- Create: `lib/supabase.ts`, `lib/auth.ts`, `middleware.ts`, `app/auth/login/page.tsx`, `app/auth/callback/page.tsx`\n- Test: `__tests__/lib/auth.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `getSession()` returns null when no cookie\n- [ ] `requireUser()` throws redirect when unauthenticated\n- [ ] `requireAdmin()` throws 403 for non-admin email\n- [ ] Login page renders Google sign-in\n- [ ] Callback page exchanges code for session\n\n**Verify:** `npx jest __tests__/lib/auth.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"lib/supabase.ts\",\"lib/auth.ts\",\"middleware.ts\",\"app/auth/login/page.tsx\",\"app/auth/callback/page.tsx\"], \"verifyCommand\": \"npx jest __tests__/lib/auth.test.ts\", \"acceptanceCriteria\": [\"getSession null when unauthenticated\",\"requireUser throws redirect\",\"requireAdmin 403 for non-admin\",\"Login page renders\",\"Callback exchanges code\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 3: Stock Utility + Cart API",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Atomic stock decrement/restore helpers + cart CRUD endpoints.\n\n**Files:**\n- Create: `lib/stock.ts`, `app/api/cart/route.ts`, `app/api/cart/[itemId]/route.ts`\n- Test: `__tests__/lib/stock.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `decrementStock` atomic, throws if insufficient\n- [ ] `restoreStock` adds back correctly\n- [ ] Cart GET returns user's items\n- [ ] Cart POST upserts\n- [ ] Cart DELETE removes item\n\n**Verify:** `npx jest __tests__/lib/stock.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"lib/stock.ts\",\"app/api/cart/route.ts\",\"app/api/cart/[itemId]/route.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/stock.test.ts\", \"acceptanceCriteria\": [\"decrementStock atomic\",\"restoreStock correct\",\"Cart CRUD works\",\"Upsert works\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 4: Razorpay + Resend Lib",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Razorpay client, HMAC verification, refund + payment link helpers. Resend email templates for all 4 notification types.\n\n**Files:**\n- Create: `lib/razorpay.ts`, `lib/resend.ts`\n- Test: `__tests__/lib/razorpay.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `verifyWebhookSignature` correct for valid/invalid HMAC\n- [ ] `createRazorpayOrder` returns object with `id`\n- [ ] `refundPayment(paymentId, amountPaise)` callable\n- [ ] `createPaymentLink` returns `short_url`\n- [ ] All 4 email functions callable\n\n**Verify:** `npx jest __tests__/lib/razorpay.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"lib/razorpay.ts\",\"lib/resend.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/razorpay.test.ts\", \"acceptanceCriteria\": [\"verifyWebhookSignature correct\",\"createRazorpayOrder returns id\",\"refundPayment callable\",\"createPaymentLink returns short_url\",\"All 4 email functions callable\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 5: Shiprocket Lib",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "**Goal:** Shiprocket token auth (23hr cache), book shipment, fetch tracking.\n\n**Files:**\n- Create: `lib/shiprocket.ts`\n- Test: `__tests__/lib/shiprocket.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Token cached 23hr, re-fetched on expiry\n- [ ] `bookShipment` returns `{ shiprocketOrderId, awbCode, courierName, trackingUrl }`\n- [ ] `getTracking` returns status string\n\n**Verify:** `npx jest __tests__/lib/shiprocket.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"lib/shiprocket.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/shiprocket.test.ts\", \"acceptanceCriteria\": [\"Token cached 23hr\",\"bookShipment returns AWB\",\"getTracking returns status\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 6: Checkout + Razorpay Webhook",
+      "status": "pending",
+      "blockedBy": [14, 24, 25],
+      "description": "**Goal:** Checkout API (stock check → order → Razorpay order). Webhook (HMAC verify → PAYMENT_CONFIRMED → Resend → Shiprocket). Cancel endpoint.\n\n**Files:**\n- Create: `app/api/checkout/route.ts`, `app/api/checkout/cancel/route.ts`, `app/api/razorpay/webhook/route.ts`\n- Test: `__tests__/api/checkout.test.ts`\n\n**Acceptance Criteria:**\n- [ ] 409 when any cart item out of stock\n- [ ] Creates Order (PENDING) + Razorpay order\n- [ ] Webhook rejects invalid HMAC with 400\n- [ ] Webhook → PAYMENT_CONFIRMED, clears cart, books Shiprocket, sends email\n- [ ] Cancel endpoint restores stock\n\n**Verify:** `npx jest __tests__/api/checkout.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"app/api/checkout/route.ts\",\"app/api/checkout/cancel/route.ts\",\"app/api/razorpay/webhook/route.ts\"], \"verifyCommand\": \"npx jest __tests__/api/checkout.test.ts\", \"acceptanceCriteria\": [\"409 on out-of-stock\",\"Order+Razorpay order created\",\"Invalid HMAC rejected\",\"Order→PAYMENT_CONFIRMED\",\"Cancel restores stock\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 7: Shiprocket Webhook + Cron",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Shiprocket tracking webhook updates order status and triggers emails. Cron releases stale PENDING orders.\n\n**Files:**\n- Create: `app/api/courier/webhook/route.ts`, `app/api/cron/release-stock/route.ts`\n\n**Acceptance Criteria:**\n- [ ] 'Delivered' → Order→DELIVERED + delivery email\n- [ ] 'Shipped' → Order→SHIPPED + shipped email\n- [ ] Cron finds PENDING >15min, restores stock, marks CANCELLED\n- [ ] Cron requires `Authorization: Bearer <CRON_SECRET>`\n\n**Verify:** Manual — create stale PENDING order, hit cron, verify stock restored.\n\n```json:metadata\n{\"files\": [\"app/api/courier/webhook/route.ts\",\"app/api/cron/release-stock/route.ts\"], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"Delivered maps correctly\",\"Shipped maps correctly\",\"Cron restores stock\",\"Cron auth-protected\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 8: Order Cancellation + Refund API",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Customer cancel endpoint — guards status, restores stock, automated Razorpay refund, sends refund email.\n\n**Files:**\n- Create: `app/api/orders/[id]/cancel/route.ts`\n- Test: `__tests__/api/cancel.test.ts`\n\n**Acceptance Criteria:**\n- [ ] 400 when order is SHIPPED or DELIVERED\n- [ ] 404 when order belongs to another user\n- [ ] Stock restored for all OrderItems\n- [ ] Razorpay refund called when payment CAPTURED\n- [ ] Order→CANCELLED, Payment→REFUNDED\n- [ ] Refund email sent\n\n**Verify:** `npx jest __tests__/api/cancel.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"app/api/orders/[id]/cancel/route.ts\"], \"verifyCommand\": \"npx jest __tests__/api/cancel.test.ts\", \"acceptanceCriteria\": [\"400 when SHIPPED\",\"404 wrong user\",\"Stock restored\",\"Refund called\",\"Order→CANCELLED\",\"Email sent\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 9: Direct Payment Links API",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Admin generates Razorpay Payment Links; `payment_link.paid` webhook auto-creates Order.\n\n**Files:**\n- Create: `app/api/admin/payment-links/route.ts`\n- Modify: `app/api/razorpay/webhook/route.ts` (handle `payment_link.paid`)\n\n**Acceptance Criteria:**\n- [ ] Non-admin → 403\n- [ ] Returns Razorpay short URL\n- [ ] Creates stub Order + Payment linked to link ID\n- [ ] `payment_link.paid` webhook creates PAYMENT_CONFIRMED Order + sends email\n\n**Verify:** Manual — hit endpoint as admin, verify link in Razorpay dashboard.\n\n```json:metadata\n{\"files\": [\"app/api/admin/payment-links/route.ts\",\"app/api/razorpay/webhook/route.ts\"], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"Non-admin 403\",\"Returns short_url\",\"Stub Order+Payment\",\"payment_link.paid creates confirmed order\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 10: Internal API (WhatsApp Bot Hooks)",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** X-API-Key protected endpoints for WhatsApp bot — products search, stock check, order status.\n\n**Files:**\n- Create: `lib/internal-auth.ts`, `app/api/internal/products/route.ts`, `app/api/internal/stock/route.ts`, `app/api/internal/orders/route.ts`\n- Test: `__tests__/lib/internal-auth.test.ts`\n\n**Acceptance Criteria:**\n- [ ] No key → 401\n- [ ] Wrong key → 401\n- [ ] Products filters by category, name, maxPrice\n- [ ] Stock returns `{ available: boolean, stock: number }`\n- [ ] Orders returns status + tracking URL\n\n**Verify:** `npx jest __tests__/lib/internal-auth.test.ts` → all pass\n\n```json:metadata\n{\"files\": [\"lib/internal-auth.ts\",\"app/api/internal/products/route.ts\",\"app/api/internal/stock/route.ts\",\"app/api/internal/orders/route.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/internal-auth.test.ts\", \"acceptanceCriteria\": [\"No key 401\",\"Wrong key 401\",\"Products filter\",\"Stock available\",\"Order status\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 11: Admin Panel Pages",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Admin product CRUD (image upload to Supabase Storage), variant management, orders + payment links.\n\n**Files:**\n- Create: `app/(admin)/layout.tsx`, `app/(admin)/products/page.tsx`, `app/(admin)/products/new/page.tsx`, `app/(admin)/products/[id]/edit/page.tsx`, `app/(admin)/orders/page.tsx`, `app/(admin)/orders/[id]/page.tsx`, `app/(admin)/orders/payment-link/page.tsx`, `app/api/admin/products/route.ts`, `components/admin/ProductForm.tsx`, `components/admin/ImageUploader.tsx`, `components/admin/OrderTable.tsx`\n\n**Acceptance Criteria:**\n- [ ] Non-admin redirected to `/`\n- [ ] Product CRUD with up to 5 images\n- [ ] Variant CRUD (metal, size, price, stock)\n- [ ] Orders list filterable by status\n- [ ] Book Shipment button on PAYMENT_CONFIRMED orders\n- [ ] Payment link form generates copyable Razorpay URL\n\n**Verify:** Manual — log in as admin, create product, upload image, view in catalog.\n\n```json:metadata\n{\"files\": [\"app/(admin)/layout.tsx\",\"app/(admin)/products/page.tsx\",\"app/(admin)/products/new/page.tsx\",\"app/(admin)/orders/page.tsx\",\"app/(admin)/orders/payment-link/page.tsx\",\"components/admin/ImageUploader.tsx\"], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"Non-admin redirected\",\"Product CRUD 5 images\",\"Variant CRUD\",\"Orders filterable\",\"Book Shipment button\",\"Payment link form\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 12: Customer-Facing Store Pages",
+      "status": "pending",
+      "blockedBy": [15],
+      "description": "**Goal:** Homepage, catalog (ISR), PDP (EMI widget, variant selector), cart, checkout (Razorpay SDK), confirmation, tracking, account pages.\n\n**Files:**\n- Create: `app/(store)/layout.tsx`, `app/(store)/page.tsx`, `app/(store)/shop/page.tsx`, `app/(store)/shop/[category]/page.tsx`, `app/(store)/shop/product/[id]/page.tsx`, `app/(store)/cart/page.tsx`, `app/(store)/checkout/page.tsx`, `app/(store)/order/confirmation/[id]/page.tsx`, `app/(store)/order/track/[id]/page.tsx`, `app/(store)/account/page.tsx`, `app/(store)/account/orders/[id]/page.tsx`, `app/(store)/account/profile/page.tsx`, `app/api/products/[id]/route.ts`, `components/store/Navbar.tsx`, `components/store/ProductCard.tsx`, `components/store/EMIWidget.tsx`\n\n**Acceptance Criteria:**\n- [ ] Catalog filterable by category (ISR 60s)\n- [ ] PDP: image gallery, variant selector, EMI widget, Add to Cart\n- [ ] Cart shows items + total\n- [ ] Checkout → Razorpay SDK modal\n- [ ] After payment → `/order/confirmation/[id]`\n- [ ] Tracking shows status + courier link\n- [ ] Cancel button on order detail (calls cancel API)\n- [ ] Dark nav (`#0f2418` / `#c9a84c`) + white product pages\n\n**Verify:** Manual — browse → PDP → cart → checkout in Razorpay test mode.\n\n```json:metadata\n{\"files\": [\"app/(store)/shop/[category]/page.tsx\",\"app/(store)/shop/product/[id]/page.tsx\",\"app/(store)/checkout/page.tsx\",\"components/store/EMIWidget.tsx\",\"components/store/Navbar.tsx\"], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"Catalog ISR\",\"PDP variant selector\",\"EMI widget\",\"Razorpay checkout\",\"Confirmation page\",\"Tracking page\",\"Cancel button\",\"Dark nav\"]}\n```"
+    },
+    {
+      "id": 24,
+      "subject": "Task 15: lib/pricing.ts — Price Calculation Library",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Pure TypeScript function that calculates PriceBreakdown from variant weight/charge fields and current gold rate per gram.\n\n**Files:**\n- Create: `lib/pricing.ts`\n- Test: `__tests__/lib/pricing.test.ts`\n\n**Acceptance Criteria:**\n- [ ] calculatePrice returns correct goldValue, making, gst, total\n- [ ] GST: 3% on goldValue + 5% on making (not flat)\n- [ ] flatMakingCharge included in making\n- [ ] stoneCharges and miscCharges pass through without GST\n\n**Verify:** `npx jest __tests__/lib/pricing.test.ts` → 6 tests pass\n\n```json:metadata\n{\"files\": [\"lib/pricing.ts\",\"__tests__/lib/pricing.test.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/pricing.test.ts\", \"acceptanceCriteria\": [\"calculatePrice returns correct goldValue/making/gst/total\",\"GST: 3% on gold + 5% on making\",\"stoneCharges pass through without GST\"]}\n```"
+    },
+    {
+      "id": 25,
+      "subject": "Task 16: lib/goldprice.ts + Gold Rate Cron",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Fetch live gold/silver rates from GoldAPI.io, cache per-purity rates in GoldRate table, expose cron route to trigger refresh.\n\n**Files:**\n- Create: `lib/goldprice.ts`\n- Create: `app/api/cron/refresh-gold-rate/route.ts`\n- Test: `__tests__/lib/goldprice.test.ts`\n\n**Acceptance Criteria:**\n- [ ] fetchAndCacheRates() upserts 4 rows into GoldRate table\n- [ ] ROSE_GOLD rate = 18K rate\n- [ ] SILVER_925 rate = 24K silver × 0.925\n- [ ] Cron route returns 401 without correct Bearer token\n- [ ] Cron route returns { ok: true } with correct CRON_SECRET\n\n**Verify:** `npx jest __tests__/lib/goldprice.test.ts` → 4 tests pass\n\n```json:metadata\n{\"files\": [\"lib/goldprice.ts\",\"app/api/cron/refresh-gold-rate/route.ts\",\"__tests__/lib/goldprice.test.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/goldprice.test.ts\", \"acceptanceCriteria\": [\"fetchAndCacheRates upserts 4 GoldRate rows\",\"cron returns 401 without token\",\"SILVER_925 = 24K x 0.925\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 13: SEO — Sitemap, Robots, OG Tags",
+      "status": "pending",
+      "blockedBy": [21],
+      "description": "**Goal:** Auto-generated sitemap.xml from DB, robots.txt, OG metadata on all public pages.\n\n**Files:**\n- Create: `app/sitemap.ts`, `app/robots.ts`\n- Modify: `app/(store)/shop/product/[id]/page.tsx` (add `generateMetadata`), `app/layout.tsx` (root metadata)\n\n**Acceptance Criteria:**\n- [ ] `/sitemap.xml` valid XML with all product + category URLs\n- [ ] `/robots.txt` disallows `/admin` and `/api`\n- [ ] PDP has OG title + description + image\n- [ ] Root layout has default OG metadata\n\n**Verify:** `curl http://localhost:3000/sitemap.xml` → XML with product URLs\n\n```json:metadata\n{\"files\": [\"app/sitemap.ts\",\"app/robots.ts\",\"app/layout.tsx\"], \"verifyCommand\": \"curl http://localhost:3000/sitemap.xml\", \"acceptanceCriteria\": [\"sitemap.xml valid\",\"robots.txt correct\",\"PDP OG tags\",\"Root OG defaults\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 14: Deploy to Vercel + Env Config",
+      "status": "pending",
+      "blockedBy": [22],
+      "description": "**Goal:** Deploy to Vercel, configure all env vars, register webhooks, verify cron and end-to-end payment.\n\n**Files:** No code changes — configuration only.\n\n**Acceptance Criteria:**\n- [ ] Site live at thevairis.com\n- [ ] All env vars set in Vercel dashboard\n- [ ] Cron `/api/cron/release-stock` fires every 5 min\n- [ ] Razorpay webhooks registered (payment.captured + payment_link.paid)\n- [ ] Shiprocket webhook registered\n- [ ] Supabase redirect URL includes production domain\n- [ ] Test card `4111 1111 1111 1111` → confirmation page loads\n\n**Verify:** Place test order → confirmation page loads, DB shows PAYMENT_CONFIRMED.\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"manual\", \"acceptanceCriteria\": [\"Site live\",\"Env vars set\",\"Cron firing\",\"Webhooks registered\",\"Test payment succeeds\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-26T00:00:00.000Z"
+}

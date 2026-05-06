@@ -1,0 +1,44 @@
+import Link from 'next/link'
+import { requireAdmin } from '@/lib/auth'
+
+const NAV = [
+  { label: 'Dashboard', href: '/admin/dashboard' },
+  { label: 'Products', href: '/admin/products' },
+]
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  await requireAdmin()
+
+  return (
+    <div className="min-h-screen flex bg-gray-50">
+      {/* Sidebar */}
+      <aside className="w-56 bg-brand-dark flex-shrink-0 flex flex-col">
+        <Link
+          href="/"
+          className="h-16 flex items-center px-6 font-display text-xl tracking-widest text-brand-gold border-b border-white/10"
+        >
+          VAIRIS
+        </Link>
+        <nav className="flex-1 py-6 space-y-1 px-3">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center px-3 py-2.5 rounded text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors tracking-wide"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="px-6 py-4 border-t border-white/10">
+          <p className="text-xs text-white/30">Admin Panel</p>
+        </div>
+      </aside>
+
+      {/* Content */}
+      <main className="flex-1 overflow-auto">
+        {children}
+      </main>
+    </div>
+  )
+}

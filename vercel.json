@@ -1,7 +1,12 @@
 {
-  "projectSettings": {
-    "buildCommand": null,
-    "installCommand": null,
-    "outputDirectory": "."
-  }
+  "crons": [
+    {
+      "path": "/api/cron/release-stock",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-gold-rate",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }

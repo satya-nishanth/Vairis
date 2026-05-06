@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vairis HLD</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: -apple-system, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.05em; color: #c9a84c; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 32px; }
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #7c9eff; margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(124,158,255,0.2);
+  }
+  .diagram-wrap {
+    background: #161b22; border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 24px; overflow-x: auto;
+  }
+  .gap-box {
+    background: rgba(255,150,50,0.08); border: 1px solid rgba(255,150,50,0.25);
+    border-radius: 8px; padding: 16px 20px; margin-top: 32px;
+  }
+  .gap-box h3 { font-size: 13px; font-weight: 700; color: #ffaa50; margin-bottom: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .gap-list { list-style: none; }
+  .gap-list li { font-size: 13px; color: rgba(255,255,255,0.7); padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; gap: 10px; }
+  .gap-list li:last-child { border-bottom: none; }
+  .gap-label { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 3px; white-space: nowrap; align-self: flex-start; margin-top: 1px; }
+  .gap-missing { background: rgba(255,80,80,0.15); color: #ff8080; }
+  .gap-question { background: rgba(255,200,80,0.15); color: #ffd470; }
+  .gap-minor { background: rgba(100,200,100,0.12); color: #80d080; }
+  .mermaid { min-width: 600px; }
+</style>
+</head>
+<body>
+<h1>VAIRIS — High Level Design</h1>
+<p class="subtitle">E-commerce Website + WhatsApp Bot + Razorpay + Shiprocket · April 2026</p>
+
+<!-- 1. System Architecture -->
+<div class="section">
+  <div class="section-title">1 · Overall System Architecture</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+graph TB
+    subgraph CLIENT["🌐 Client (Browser)"]
+        B[Customer Browser]
+        AB[Admin Browser]
+        WA[WhatsApp App]
+    end
+
+    subgraph VERCEL["☁️ Vercel / Azure Container Apps"]
+        subgraph NEXTJS["Next.js 14 App Router"]
+            STORE["(store) pages\nHomepage · Catalog · PDP\nCart · Checkout · Orders"]
+            ADMIN["(admin) pages\nProducts · Orders · Dashboard"]
+            API_RZP["/api/razorpay/webhook"]
+            API_SHIP["/api/courier/webhook"]
+            API_WA["/api/whatsapp/webhook"]
+            API_CRON["/api/cron/release-stock"]
+            API_INT["/api/internal/*\nproducts · stock · orders"]
+        end
+    end
+
+    subgraph SUPABASE["🟢 Supabase (MVP → eject to Azure)"]
+        PG[(PostgreSQL\nvia Prisma ORM)]
+        AUTH[Google OAuth\nAuth service]
+        STORAGE[Storage\nProduct images]
+    end
+
+    subgraph EXTERNAL["🔌 External Services"]
+        RZP[Razorpay\nPayments + EMI]
+        SHIP[Shiprocket\nCourier + Tracking]
+        RESEND[Resend\nTransactional Email]
+        META[Meta Cloud API\nWhatsApp Business]
+        AZAI[Azure OpenAI\nBot intelligence]
+        CRON_T[Vercel Cron\nevery 5 min]
+    end
+
+    B -->|browse / shop / checkout| STORE
+    AB -->|manage products & orders| ADMIN
+    WA -->|sends message| META
+
+    STORE --> PG
+    STORE --> AUTH
+    STORE --> STORAGE
+    ADMIN --> PG
+    ADMIN --> STORAGE
+
+    STORE -->|init payment| RZP
+    RZP -->|payment.captured webhook| API_RZP
+    API_RZP --> PG
+    API_RZP -->|book shipment| SHIP
+    API_RZP -->|order confirm email| RESEND
+
+    SHIP -->|tracking update webhook| API_SHIP
+    API_SHIP --> PG
+    API_SHIP -->|shipping update email| RESEND
+
+    META -->|incoming message| API_WA
+    API_WA --> API_INT
+    API_WA --> AZAI
+    API_WA -->|reply| META
+
+    CRON_T -->|trigger| API_CRON
+    API_CRON -->|restore stock on timeout| PG
+    </div>
+  </div>
+</div>
+
+<!-- 2. Razorpay Flow -->
+<div class="section">
+  <div class="section-title">2 · Razorpay Payment Request Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor User
+    participant Browser
+    participant NextJS as Next.js Server
+    participant DB as PostgreSQL
+    participant RZP as Razorpay
+    participant Webhook as /api/razorpay/webhook
+    participant Resend
+    participant Shiprocket
+
+    User->>Browser: Click "Place Order"
+    Browser->>NextJS: POST /api/checkout
+    NextJS->>DB: Atomic stock check
+    alt Out of stock
+        DB-->>NextJS: stock = 0
+        NextJS-->>Browser: 409 error — show out-of-stock
+    else In stock
+        NextJS->>DB: Create Order (PENDING), decrement stock
+        NextJS->>RZP: Create Razorpay Order (amount, currency)
+        RZP-->>NextJS: razorpay_order_id
+        NextJS-->>Browser: Return order_id + key
+        Browser->>RZP: Open Razorpay SDK modal
+        User->>RZP: Pay (UPI / Card / EMI)
+        alt Payment failed
+            RZP-->>Browser: failure callback
+            Browser->>NextJS: POST /api/checkout/cancel
+            NextJS->>DB: Restore stock
+            Browser-->>User: Show retry
+        else Payment success
+            RZP->>Webhook: POST payment.captured (HMAC signed)
+            Webhook->>Webhook: Verify Razorpay signature
+            Webhook->>DB: Order → PAYMENT_CONFIRMED, clear cart
+            Webhook->>Resend: Send order confirmation email
+            Webhook->>Shiprocket: Book shipment (POST /orders/create)
+            Shiprocket-->>Webhook: shiprocket_order_id + AWB
+            Webhook->>DB: Save shipment record
+            Webhook-->>RZP: 200 OK
+            Browser->>Browser: Redirect → /order/confirmation/[id]
+        end
+    end
+    </div>
+  </div>
+</div>
+
+<!-- 3. Shiprocket Flow -->
+<div class="section">
+  <div class="section-title">3 · Shiprocket Fulfillment + Tracking Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    participant Webhook as /api/razorpay/webhook
+    participant NextJS as Next.js Server
+    participant DB as PostgreSQL
+    participant SHIP as Shiprocket API
+    participant Courier as Physical Courier
+    participant ShipWH as /api/courier/webhook
+    participant Resend
+    actor Customer
+
+    Note over Webhook,SHIP: Triggered immediately after payment confirmed
+
+    Webhook->>SHIP: POST /orders/create\n(items, address, SKUs, weight)
+    SHIP-->>Webhook: order_id + AWB code + courier name
+    Webhook->>DB: Save Shipment (awbCode, courierName, shiprocketId)
+    DB-->>Webhook: OK
+    NextJS->>DB: Order status → PROCESSING
+
+    Note over SHIP,Courier: Shiprocket assigns courier, pickup scheduled
+
+    Courier->>Courier: Pickup → In Transit → Out for Delivery
+
+    loop Tracking updates
+        SHIP->>ShipWH: POST tracking webhook\n(AWB, status, timestamp)
+        ShipWH->>DB: Update Shipment.status
+        alt Status = SHIPPED
+            ShipWH->>DB: Order → SHIPPED
+            ShipWH->>Resend: Send "Your order is on the way" email
+        else Status = DELIVERED
+            ShipWH->>DB: Order → DELIVERED
+            ShipWH->>Resend: Send delivery confirmation email
+        end
+    end
+
+    Customer->>NextJS: GET /order/track/[id]
+    NextJS->>DB: Fetch Shipment (status, AWB, trackingUrl)
+    NextJS-->>Customer: Show tracking status + courier link
+    </div>
+  </div>
+</div>
+
+<!-- 4. WhatsApp Bot Flow -->
+<div class="section">
+  <div class="section-title">4 · WhatsApp Bot Request Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor Customer as WhatsApp Customer
+    participant META as Meta Cloud API
+    participant WAHOOK as /api/whatsapp/webhook
+    participant INTENT as Intent Parser
+    participant INT as /api/internal/*
+    participant DB as PostgreSQL
+    participant AZAI as Azure OpenAI
+    participant META2 as Meta Cloud API
+
+    Customer->>META: "Show me gold rings under 15000"
+    META->>WAHOOK: POST webhook (message, sender)
+    WAHOOK->>WAHOOK: Verify Meta signature (X-Hub-Signature-256)
+
+    WAHOOK->>INTENT: Parse intent from message
+    Note over INTENT: Intents: product_search · stock_check\norder_status · general_query
+
+    alt Intent = product_search
+        INTENT->>INT: GET /api/internal/products\n?category=rings&maxPrice=15000&metal=GOLD
+        INT->>DB: Query products + variants
+        DB-->>INT: Matching products with stock
+        INT-->>INTENT: Product list
+        INTENT->>AZAI: Format response naturally\n(product name, price, image URL)
+        AZAI-->>WAHOOK: Human-friendly reply text
+    else Intent = order_status
+        INTENT->>INT: GET /api/internal/orders/[id]
+        INT->>DB: Fetch order + shipment
+        DB-->>INT: Order status + tracking
+        INT-->>WAHOOK: Status response
+    else Intent = general_query
+        WAHOOK->>AZAI: Send message + Vairis context prompt
+        AZAI-->>WAHOOK: Smart reply (brand tone)
+    end
+
+    WAHOOK->>META2: POST /messages (reply to customer)
+    META2-->>Customer: WhatsApp message delivered
+    WAHOOK-->>META: 200 OK
+    </div>
+  </div>
+</div>
+
+<!-- Gaps Found -->
+<div class="gap-box">
+  <h3>⚠ Gaps Found in Current Spec</h3>
+  <ul class="gap-list">
+    <li><span class="gap-label gap-missing">MISSING</span><div><strong>Shipping update emails</strong> — spec mentions order confirm email but not "shipped" or "delivered" emails. Shiprocket webhooks trigger these — need to add to spec.</div></li>
+    <li><span class="gap-label gap-missing">MISSING</span><div><strong>EMI display on product page</strong> — Anil explicitly asked for EMI info on product detail pages. Not in spec. Razorpay provides affordability widget for this.</div></li>
+    <li><span class="gap-label gap-missing">MISSING</span><div><strong>/api/cron/release-stock not in route tree</strong> — Section 5 page routes omits this endpoint. Minor but should be there.</div></li>
+    <li><span class="gap-label gap-missing">MISSING</span><div><strong>SEO basics</strong> — Next.js chosen for SEO but spec doesn't mention sitemap.xml, robots.txt, or OG tags. Should be specified.</div></li>
+    <li><span class="gap-label gap-question">DECIDE</span><div><strong>Order cancellation</strong> — can customers cancel? Only before PROCESSING? What triggers stock restore + refund? No flow defined.</div></li>
+    <li><span class="gap-label gap-question">DECIDE</span><div><strong>Refund flow</strong> — PaymentStatus has REFUNDED but the process isn't described. Manual via Razorpay dashboard? Or automated?</div></li>
+    <li><span class="gap-label gap-question">DECIDE</span><div><strong>Direct payment links</strong> — Anil asked if Razorpay can generate shareable payment links (custom amount). In scope or not?</div></li>
+    <li><span class="gap-label gap-minor">MINOR</span><div><strong>Mobile responsiveness</strong> — mentioned in team chat as requirement, not in spec. Should be stated explicitly.</div></li>
+    <li><span class="gap-label gap-minor">MINOR</span><div><strong>Product image count</strong> — how many images per product? Any ordering/primary image? Not specified.</div></li>
+  </ul>
+</div>
+
+</body>
+</html>

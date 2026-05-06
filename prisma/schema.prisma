@@ -10,7 +10,7 @@ datasource db {
 enum Category {
   RINGS
   EARRINGS
-  NECKLACES
+  PENDANTS
   BRACELETS
 }
 
@@ -69,20 +69,37 @@ model Product {
   description String
   category    Category
   images      String[]
-  basePrice   Decimal
+  basePrice   Decimal          @default(0)
   isActive    Boolean          @default(true)
   createdAt   DateTime         @default(now())
+
+  // Design identity
+  itemCode    String?          @unique
+  designStyle String?
+
+  // Physical dimensions
+  totalLengthMm Decimal?
+  motifSizeMm   Decimal?
+  thicknessMm   Decimal?
+
+  // Gemstone details
+  stoneType   String?
+  stoneShape  String?
+  stoneDimMm  String?
+  gemCount    Int?
+  caratWeight Decimal?
+
   variants    ProductVariant[]
 }
 
 model ProductVariant {
   id                  String      @id @default(cuid())
   productId           String
-  product             Product     @relation(fields: [productId], references: [id])
+  product             Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   metalType           MetalType
   size                String?
   weightGrams         Decimal
-  makingChargePerGram Decimal
+  makingChargePerGram Decimal     @default(0)
   flatMakingCharge    Decimal     @default(0)
   stoneCharges        Decimal     @default(0)
   miscCharges         Decimal     @default(0)

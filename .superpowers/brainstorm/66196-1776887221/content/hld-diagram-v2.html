@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vairis HLD v2</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: -apple-system, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.05em; color: #c9a84c; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
+  .version-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; background: rgba(124,158,255,0.15); color: #7c9eff; margin-bottom: 28px; }
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #7c9eff; margin-bottom: 16px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(124,158,255,0.2);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .new-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; background: rgba(80,200,120,0.15); color: #70e090; letter-spacing: 0.05em; }
+  .updated-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; background: rgba(255,200,80,0.15); color: #ffd470; letter-spacing: 0.05em; }
+  .diagram-wrap {
+    background: #161b22; border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 24px; overflow-x: auto;
+  }
+  .mermaid { min-width: 600px; }
+  .note { margin-top: 10px; font-size: 12px; color: rgba(255,255,255,0.4); padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 2px solid rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<h1>VAIRIS — High Level Design</h1>
+<p class="subtitle">E-commerce Website + WhatsApp Bot + Razorpay + Shiprocket</p>
+<span class="version-badge">v2 · Updated 2026-04-23</span>
+
+<!-- 1. System Architecture (UPDATED) -->
+<div class="section">
+  <div class="section-title">1 · Overall System Architecture <span class="updated-badge">UPDATED</span></div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+graph TB
+    subgraph CLIENT["🌐 Clients"]
+        B[Customer Browser]
+        AB[Admin Browser]
+        WA[WhatsApp App]
+    end
+
+    subgraph VERCEL["☁️ Vercel → Azure Container Apps"]
+        subgraph NEXTJS["Next.js 14 App Router"]
+            STORE["(store) pages\nHomepage · Catalog · PDP + EMI Widget\nCart · Checkout · Orders · Cancel"]
+            ADMIN["(admin) pages\nProducts · Orders · Payment Links"]
+            API_RZP["/api/razorpay/webhook\npayment.captured + payment_link.paid"]
+            API_SHIP["/api/courier/webhook\ntracking updates"]
+            API_WA["/api/whatsapp/webhook"]
+            API_CRON["/api/cron/release-stock\nevery 5 min"]
+            API_CANCEL["/api/orders/[id]/cancel\ncancel + refund trigger"]
+            API_INT["/api/internal/*\nproducts · stock · orders"]
+        end
+    end
+
+    subgraph SUPABASE["🟢 Supabase → Azure PostgreSQL"]
+        PG[(PostgreSQL\nvia Prisma ORM)]
+        AUTH[Google OAuth\nAuth]
+        STORAGE[Storage\nProduct images ×5]
+    end
+
+    subgraph EXTERNAL["🔌 External Services"]
+        RZP[Razorpay\nPayments + EMI + Payment Links]
+        SHIP[Shiprocket\nCourier + Tracking]
+        RESEND[Resend\nConfirmed · Shipped · Delivered\n+ Refund emails]
+        META[Meta Cloud API\nWhatsApp Business]
+        AZAI[Azure OpenAI\nBot intelligence]
+        CRON_T[Vercel Cron / Azure Functions Timer]
+    end
+
+    B -->|browse / shop / checkout / cancel| STORE
+    AB -->|products · orders · payment links| ADMIN
+    WA -->|sends message| META
+
+    STORE & ADMIN --> PG
+    STORE --> AUTH
+    ADMIN --> STORAGE
+
+    STORE -->|init payment| RZP
+    STORE -->|cancel order| API_CANCEL
+    API_CANCEL -->|refund API call| RZP
+    API_CANCEL --> PG
+    API_CANCEL -->|refund email| RESEND
+
+    RZP -->|payment.captured webhook| API_RZP
+    RZP -->|payment_link.paid webhook| API_RZP
+    API_RZP --> PG
+    API_RZP -->|book shipment| SHIP
+    API_RZP -->|confirmation email| RESEND
+
+    ADMIN -->|create payment link| RZP
+
+    SHIP -->|tracking webhook| API_SHIP
+    API_SHIP --> PG
+    API_SHIP -->|shipped + delivered emails| RESEND
+
+    META -->|incoming message| API_WA
+    API_WA --> API_INT & AZAI
+    API_WA -->|reply| META
+
+    CRON_T --> API_CRON
+    API_CRON -->|restore stock on timeout| PG
+    </div>
+  </div>
+  <p class="note">Migration path: swap DATABASE_URL → Azure PostgreSQL (Prisma). Auth → NextAuth.js (~4 hrs). Storage → Azure Blob (~2 hrs). Hosting → Azure Container Apps (Dockerfile). Cron → Azure Functions timer (no code change).</p>
+</div>
+
+<!-- 2. Razorpay Flow (unchanged) -->
+<div class="section">
+  <div class="section-title">2 · Razorpay Checkout Payment Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor User
+    participant Browser
+    participant NextJS as Next.js Server
+    participant DB as PostgreSQL
+    participant RZP as Razorpay
+    participant Webhook as /api/razorpay/webhook
+    participant Resend
+    participant Shiprocket
+
+    User->>Browser: Click "Place Order"
+    Browser->>NextJS: POST /api/checkout
+    NextJS->>DB: Atomic stock check
+    alt Out of stock
+        DB-->>NextJS: stock = 0
+        NextJS-->>Browser: 409 — show out-of-stock item
+    else In stock
+        NextJS->>DB: Create Order (PENDING), decrement stock
+        NextJS->>RZP: Create Razorpay Order
+        RZP-->>NextJS: razorpay_order_id
+        NextJS-->>Browser: order_id + key
+        Browser->>RZP: Open Razorpay SDK modal (UPI / Card / EMI)
+        User->>RZP: Pays
+        alt Payment failed
+            RZP-->>Browser: failure callback
+            Browser->>NextJS: POST /api/checkout/cancel
+            NextJS->>DB: Restore stock
+            Browser-->>User: Show retry
+        else Payment success
+            RZP->>Webhook: POST payment.captured (HMAC signed)
+            Webhook->>Webhook: Verify Razorpay signature
+            Webhook->>DB: Order → PAYMENT_CONFIRMED, clear cart
+            Webhook->>Resend: Order confirmation email
+            Webhook->>Shiprocket: Book shipment
+            Shiprocket-->>Webhook: AWB + shiprocket_id
+            Webhook->>DB: Save Shipment record
+            Webhook-->>RZP: 200 OK
+            Browser->>Browser: Redirect → /order/confirmation/[id]
+        end
+    end
+    </div>
+  </div>
+</div>
+
+<!-- 3. Shiprocket Flow (unchanged) -->
+<div class="section">
+  <div class="section-title">3 · Shiprocket Fulfillment + Tracking Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    participant Webhook as /api/razorpay/webhook
+    participant NextJS as Next.js
+    participant DB as PostgreSQL
+    participant SHIP as Shiprocket API
+    participant Courier as Physical Courier
+    participant ShipWH as /api/courier/webhook
+    participant Resend
+    actor Customer
+
+    Webhook->>SHIP: POST /orders/create (items, address, SKUs)
+    SHIP-->>Webhook: order_id + AWB + courier name
+    Webhook->>DB: Save Shipment, Order → PROCESSING
+
+    Courier->>Courier: Pickup → Transit → Out for Delivery
+
+    loop Tracking updates from Shiprocket
+        SHIP->>ShipWH: POST tracking webhook (AWB, status)
+        ShipWH->>DB: Update Shipment.status
+        alt SHIPPED
+            ShipWH->>DB: Order → SHIPPED
+            ShipWH->>Resend: "Your order is on the way" + AWB + tracking link
+        else DELIVERED
+            ShipWH->>DB: Order → DELIVERED
+            ShipWH->>Resend: Delivery confirmation + jewellery care guide
+        end
+    end
+
+    Customer->>NextJS: GET /order/track/[id]
+    NextJS->>DB: Fetch Shipment (status, AWB, trackingUrl, courier)
+    NextJS-->>Customer: Tracking status + courier link
+    </div>
+  </div>
+</div>
+
+<!-- 4. WhatsApp Bot Flow (unchanged) -->
+<div class="section">
+  <div class="section-title">4 · WhatsApp Bot Request Cycle</div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor Customer as WhatsApp Customer
+    participant META as Meta Cloud API
+    participant WAHOOK as /api/whatsapp/webhook
+    participant INT as /api/internal/*
+    participant DB as PostgreSQL
+    participant AZAI as Azure OpenAI
+
+    Customer->>META: "Show me gold rings under 15000"
+    META->>WAHOOK: POST webhook (message + sender)
+    WAHOOK->>WAHOOK: Verify Meta signature (X-Hub-Signature-256)
+
+    alt product_search intent
+        WAHOOK->>INT: GET /products?category=rings&maxPrice=15000&metal=GOLD_18K
+        INT->>DB: Query products + variants + stock
+        DB-->>INT: Matching products
+        INT-->>WAHOOK: Product list
+        WAHOOK->>AZAI: Format as natural reply (name, price, image URL)
+        AZAI-->>WAHOOK: Human-friendly message
+    else order_status intent
+        WAHOOK->>INT: GET /orders/[id]
+        INT->>DB: Order + Shipment
+        DB-->>INT: Status + tracking URL
+        INT-->>WAHOOK: Status response
+    else general_query intent
+        WAHOOK->>AZAI: Message + Vairis brand context prompt
+        AZAI-->>WAHOOK: Smart reply
+    end
+
+    WAHOOK->>META: POST /messages (reply)
+    META-->>Customer: WhatsApp message delivered
+    </div>
+  </div>
+</div>
+
+<!-- 5. Cancellation + Refund Flow (NEW) -->
+<div class="section">
+  <div class="section-title">5 · Order Cancellation + Refund Cycle <span class="new-badge">NEW</span></div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor Customer
+    participant Browser
+    participant NextJS as /api/orders/[id]/cancel
+    participant DB as PostgreSQL
+    participant RZP as Razorpay Refund API
+    participant Resend
+
+    Customer->>Browser: Click "Cancel Order" on /account/orders/[id]
+    Browser->>NextJS: POST /api/orders/[id]/cancel
+
+    NextJS->>DB: Fetch Order (status, items, payment)
+
+    alt Order is SHIPPED or DELIVERED
+        NextJS-->>Browser: 400 — Cannot cancel, already shipped
+        Browser-->>Customer: Show error message
+    else Order is PENDING, PAYMENT_CONFIRMED, or PROCESSING
+        NextJS->>DB: Restore stock (stock += qty for each OrderItem variant)
+
+        alt Payment was captured (PAYMENT_CONFIRMED or PROCESSING)
+            NextJS->>RZP: POST /v1/payments/{razorpayPaymentId}/refund\namount = full order total
+            RZP-->>NextJS: refund_id + status
+            NextJS->>DB: Payment.status → REFUNDED
+            NextJS->>Resend: "Refund initiated — 5 to 7 business days"
+        end
+
+        NextJS->>DB: Order.status → CANCELLED
+        NextJS-->>Browser: 200 OK
+        Browser-->>Customer: Order cancelled confirmation
+    end
+    </div>
+  </div>
+  <p class="note">Full refund only in MVP. No partial refunds. Razorpay processes bank transfer in 5–7 business days automatically — no manual intervention needed.</p>
+</div>
+
+<!-- 6. Direct Payment Links Flow (NEW) -->
+<div class="section">
+  <div class="section-title">6 · Direct Payment Links Cycle <span class="new-badge">NEW</span></div>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+sequenceDiagram
+    actor Admin
+    actor Customer as WhatsApp Customer
+    participant AdminUI as /admin/orders/payment-link
+    participant NextJS as Next.js Server
+    participant DB as PostgreSQL
+    participant RZP as Razorpay Payment Links API
+    participant Webhook as /api/razorpay/webhook
+    participant Resend
+
+    Note over Admin,RZP: Admin generates link for bespoke/custom order
+
+    Admin->>AdminUI: Enter customer name, mobile, amount, description
+    AdminUI->>NextJS: POST /api/admin/payment-links
+    NextJS->>RZP: POST /v1/payment_links\n(amount, customer details, description)
+    RZP-->>NextJS: payment_link_id + short URL (rzp.io/l/xxx)
+    NextJS->>DB: Save PaymentLink record (id, amount, customerId)
+    NextJS-->>AdminUI: Short URL
+    Admin->>Customer: Share URL via WhatsApp manually
+
+    Note over Customer,Webhook: Customer pays via link
+
+    Customer->>RZP: Opens link, pays (UPI / Card / EMI)
+    RZP->>Webhook: POST payment_link.paid webhook (HMAC signed)
+    Webhook->>Webhook: Verify signature
+    Webhook->>DB: Create Order (PAYMENT_CONFIRMED)\nlink to PaymentLink record
+    Webhook->>Resend: Send payment confirmation email to customer
+    Webhook-->>RZP: 200 OK
+    </div>
+  </div>
+  <p class="note">No cart or checkout flow involved. Order is created directly in DB on webhook receipt. Useful for bespoke pieces, Instagram DM sales, or any off-site negotiation.</p>
+</div>
+
+</body>
+</html>

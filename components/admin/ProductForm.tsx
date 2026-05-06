@@ -1,0 +1,412 @@
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import ImageUploader from './ImageUploader'
+
+const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS']
+const METAL_TYPES = [
+  { value: 'GOLD_18K', label: '18kt Gold' },
+  { value: 'GOLD_22K', label: '22kt Gold' },
+  { value: 'SILVER_925', label: 'Silver 925' },
+  { value: 'ROSE_GOLD', label: 'Rose Gold 18kt' },
+]
+
+type Variant = {
+  metalType: string
+  weightGrams: string
+  stock: string
+  sku: string
+}
+
+type FormData = {
+  name: string
+  description: string
+  category: string
+  itemCode: string
+  designStyle: string
+  totalLengthMm: string
+  motifSizeMm: string
+  thicknessMm: string
+  stoneType: string
+  stoneShape: string
+  stoneDimMm: string
+  gemCount: string
+  caratWeight: string
+  images: string[]
+  variants: Variant[]
+  isActive: boolean
+}
+
+type Props = {
+  initialData?: Partial<FormData> & { id?: string }
+  mode: 'create' | 'edit'
+}
+
+function emptyVariant(): Variant {
+  return { metalType: 'GOLD_18K', weightGrams: '', stock: '0', sku: '' }
+}
+
+function initialForm(data?: Partial<FormData>): FormData {
+  return {
+    name: data?.name ?? '',
+    description: data?.description ?? '',
+    category: data?.category ?? 'RINGS',
+    itemCode: data?.itemCode ?? '',
+    designStyle: data?.designStyle ?? '',
+    totalLengthMm: data?.totalLengthMm ?? '',
+    motifSizeMm: data?.motifSizeMm ?? '',
+    thicknessMm: data?.thicknessMm ?? '',
+    stoneType: data?.stoneType ?? '',
+    stoneShape: data?.stoneShape ?? '',
+    stoneDimMm: data?.stoneDimMm ?? '',
+    gemCount: data?.gemCount ?? '',
+    caratWeight: data?.caratWeight ?? '',
+    images: data?.images ?? [],
+    variants: data?.variants?.length ? data.variants : [emptyVariant()],
+    isActive: data?.isActive ?? true,
+  }
+}
+
+export default function ProductForm({ initialData, mode }: Props) {
+  const router = useRouter()
+  const [form, setForm] = useState<FormData>(initialForm(initialData))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  function set(field: keyof FormData, value: any) {
+    setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  function setVariant(idx: number, field: keyof Variant, value: string) {
+    setForm((f) => {
+      const v = [...f.variants]
+      v[idx] = { ...v[idx], [field]: value }
+      // Auto-generate SKU when itemCode + metalType both present
+      if ((field === 'metalType') && form.itemCode) {
+        v[idx].sku = `${form.itemCode}-${value}`
+      }
+      return { ...f, variants: v }
+    })
+  }
+
+  function addVariant() {
+    const sku = form.itemCode ? `${form.itemCode}-${emptyVariant().metalType}` : ''
+    setForm((f) => ({ ...f, variants: [...f.variants, { ...emptyVariant(), sku }] }))
+  }
+
+  function removeVariant(idx: number) {
+    setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== idx) }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+
+    const url =
+      mode === 'create'
+        ? '/api/admin/products'
+        : `/api/admin/products/${initialData?.id}`
+
+    const res = await fetch(url, {
+      method: mode === 'create' ? 'POST' : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+
+    setSaving(false)
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setError(j.error ?? 'Save failed')
+      return
+    }
+
+    router.push('/admin/products')
+    router.refresh()
+  }
+
+  const inputCls =
+    'w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold'
+  const labelCls = 'block text-xs font-medium text-gray-600 mb-1 tracking-wide uppercase'
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-8 max-w-3xl">
+      {/* Basic info */}
+      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+        <h2 className="font-display text-lg text-gray-900">Basic Information</h2>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Product Name *</label>
+            <input
+              required
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. Heart Diamond Bracelet"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Item Code</label>
+            <input
+              value={form.itemCode}
+              onChange={(e) => set('itemCode', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. AJBR-74"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Category *</label>
+            <select
+              required
+              value={form.category}
+              onChange={(e) => set('category', e.target.value)}
+              className={inputCls}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c.charAt(0) + c.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.isActive}
+                onChange={(e) => set('isActive', e.target.checked)}
+                className="w-4 h-4 accent-brand-gold"
+              />
+              <span className="text-sm text-gray-700">Active (visible on store)</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Description</label>
+          <textarea
+            value={form.description}
+            onChange={(e) => set('description', e.target.value)}
+            rows={3}
+            className={inputCls}
+            placeholder="Brief product description"
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Design Style</label>
+          <textarea
+            value={form.designStyle}
+            onChange={(e) => set('designStyle', e.target.value)}
+            rows={2}
+            className={inputCls}
+            placeholder="e.g. Alternating open heart motifs and bezel-set round stones"
+          />
+        </div>
+      </section>
+
+      {/* Images */}
+      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-3">
+        <h2 className="font-display text-lg text-gray-900">Product Images</h2>
+        <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
+      </section>
+
+      {/* Physical specs */}
+      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+        <h2 className="font-display text-lg text-gray-900">Design Specifications</h2>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className={labelCls}>Total Length (mm)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={form.totalLengthMm}
+              onChange={(e) => set('totalLengthMm', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 152.4 (6 inch)"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Motif Size (mm)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={form.motifSizeMm}
+              onChange={(e) => set('motifSizeMm', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 9"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Thickness/Depth (mm)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={form.thicknessMm}
+              onChange={(e) => set('thicknessMm', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 2.7"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Gemstone */}
+      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+        <h2 className="font-display text-lg text-gray-900">Gemstone Details</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Stone Type</label>
+            <input
+              value={form.stoneType}
+              onChange={(e) => set('stoneType', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. Diamond"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Stone Shape</label>
+            <input
+              value={form.stoneShape}
+              onChange={(e) => set('stoneShape', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. Round"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Stone Dimensions (mm)</label>
+            <input
+              value={form.stoneDimMm}
+              onChange={(e) => set('stoneDimMm', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 4.80 x 4.80"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Gem Count</label>
+            <input
+              type="number"
+              value={form.gemCount}
+              onChange={(e) => set('gemCount', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 5"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Total Carat Weight (ctw)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={form.caratWeight}
+              onChange={(e) => set('caratWeight', e.target.value)}
+              className={inputCls}
+              placeholder="e.g. 2.00"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Variants */}
+      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg text-gray-900">Metal Variants &amp; Weights</h2>
+          <button
+            type="button"
+            onClick={addVariant}
+            className="text-xs text-brand-gold hover:underline"
+          >
+            + Add variant
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {form.variants.map((v, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-3">
+                {idx === 0 && <label className={labelCls}>Metal Type</label>}
+                <select
+                  value={v.metalType}
+                  onChange={(e) => setVariant(idx, 'metalType', e.target.value)}
+                  className={inputCls}
+                >
+                  {METAL_TYPES.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2">
+                {idx === 0 && <label className={labelCls}>Weight (g)</label>}
+                <input
+                  type="number"
+                  step="0.001"
+                  value={v.weightGrams}
+                  onChange={(e) => setVariant(idx, 'weightGrams', e.target.value)}
+                  className={inputCls}
+                  placeholder="8.500"
+                />
+              </div>
+              <div className="col-span-2">
+                {idx === 0 && <label className={labelCls}>Stock</label>}
+                <input
+                  type="number"
+                  value={v.stock}
+                  onChange={(e) => setVariant(idx, 'stock', e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div className="col-span-4">
+                {idx === 0 && <label className={labelCls}>SKU</label>}
+                <input
+                  value={v.sku}
+                  onChange={(e) => setVariant(idx, 'sku', e.target.value)}
+                  className={inputCls}
+                  placeholder="AJBR-74-GOLD_18K"
+                />
+              </div>
+              <div className="col-span-1 flex items-end pb-[1px]">
+                {form.variants.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeVariant(idx)}
+                    className="w-8 h-9 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors text-lg"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {error && (
+        <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded px-4 py-2">
+          {error}
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={saving}
+          className="px-8 py-3 bg-brand-dark text-white text-sm tracking-widest uppercase hover:bg-brand-light transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : mode === 'create' ? 'Create Product' : 'Save Changes'}
+        </button>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="px-6 py-3 border border-gray-200 text-sm text-gray-600 hover:border-gray-400 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
