@@ -31,7 +31,3 @@ images/
 
 # ── Dev tooling artifacts ─────────────────────────────────────────────────────
 .superpowers/
-
-# ── Unused / personal ─────────────────────────────────────────────────────────
-index.html
-chats.txt
