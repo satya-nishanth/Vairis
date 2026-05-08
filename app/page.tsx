@@ -58,34 +58,60 @@ export default async function HomePage() {
       <Navbar />
       <main>
         {/* Hero */}
-        <section className="bg-brand-dark min-h-[85vh] flex items-center justify-center text-center px-4 relative overflow-hidden">
+        <section className="bg-brand-dark min-h-[90vh] flex items-center justify-center text-center px-4 relative overflow-hidden">
+          {/* Radial glow */}
           <div
             className="absolute inset-0 opacity-10"
             style={{
-              backgroundImage: `radial-gradient(circle at 20% 50%, #c9a84c 0%, transparent 50%), radial-gradient(circle at 80% 20%, #c9a84c 0%, transparent 40%)`,
+              backgroundImage: `radial-gradient(circle at 30% 40%, #c9a84c 0%, transparent 55%), radial-gradient(circle at 70% 70%, #c9a84c 0%, transparent 40%)`,
             }}
           />
-          <div className="relative space-y-6 max-w-2xl">
-            {/* Actual brand logo */}
-            <div className="flex justify-center mb-2">
+
+          <div className="relative flex flex-col items-center gap-8 max-w-3xl">
+            {/* Brand identity card — the main visual */}
+            <div className="relative">
               <img
-                src="/images/vairius_logo.png"
-                alt="VAIRIS"
-                style={{ height: '80px', width: 'auto' }}
-                className="drop-shadow-[0_4px_30px_rgba(201,168,76,0.25)]"
+                src="/images/vairis_main.jpeg"
+                alt="VAIRIS Fine Jewellery"
+                style={{
+                  width: 'min(380px, 85vw)',
+                  height: 'auto',
+                  borderRadius: '4px',
+                }}
+                className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.3)]"
               />
             </div>
-            <p className="text-white/50 text-base max-w-sm mx-auto leading-relaxed tracking-wide">
-              Every piece tells a story of craftsmanship, precision and timeless beauty.
-            </p>
-            <div className="flex items-center justify-center gap-6 mt-8">
-              <Link
-                href="/shop"
-                className="w-full sm:w-auto px-10 py-3.5 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-300 tracking-[0.2em] text-xs uppercase"
+
+            {/* Caption — from index.html */}
+            <div className="space-y-3">
+              <p
+                className="font-display text-white/80 leading-relaxed"
+                style={{ fontSize: 'clamp(17px, 3vw, 22px)', fontWeight: 300, letterSpacing: '0.03em', fontStyle: 'italic' }}
               >
-                Explore Collection
-              </Link>
+                Where heritage meets the extraordinary.
+              </p>
+              <p
+                className="font-display text-brand-gold/60"
+                style={{ fontSize: 'clamp(12px, 2vw, 15px)', fontWeight: 300, letterSpacing: '0.3em' }}
+              >
+                FINE JEWELLERY, REIMAGINED
+              </p>
             </div>
+
+            {/* Divider */}
+            <div
+              className="w-40 h-px"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.5) 20%, rgba(201,168,76,0.7), rgba(201,168,76,0.5) 80%, transparent)' }}
+            />
+
+            {/* CTA */}
+            <Link
+              href="/shop"
+              className="w-full sm:w-auto px-12 py-4 border border-brand-gold/60 text-brand-gold hover:border-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-400 font-display"
+              style={{ fontSize: 'clamp(12px, 2vw, 14px)', fontWeight: 300, letterSpacing: '0.45em' }}
+            >
+              EXPLORE COLLECTION
+            </Link>
           </div>
         </section>
 

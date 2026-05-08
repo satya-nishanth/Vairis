@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
-import { Playfair_Display, Inter } from 'next/font/google'
+import { Cormorant_Garamond, Inter } from 'next/font/google'
 import './globals.css'
 
-const display = Playfair_Display({
+// Cormorant Garamond — matches index.html, more elegant for jewellery
+const display = Cormorant_Garamond({
   subsets: ['latin'],
   variable: '--font-display',
+  weight: ['300', '400', '500', '600'],
+  style: ['normal', 'italic'],
   display: 'swap',
 })
 
@@ -15,7 +18,7 @@ const body = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Vairis Fine Jewellery',
+  title: 'VAIRIS — Fine Jewellery',
   description: 'Where heritage meets the extraordinary. Fine jewellery, reimagined.',
   openGraph: {
     title: 'VAIRIS — Fine Jewellery',

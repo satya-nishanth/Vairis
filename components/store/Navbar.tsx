@@ -27,13 +27,14 @@ export default function Navbar() {
 
   return (
     <header className="bg-brand-dark sticky top-0 z-50 shadow-lg">
-      <nav className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Logo image */}
+      <nav className="max-w-7xl mx-auto px-6 h-[68px] flex items-center justify-between">
+        {/* Logo */}
         <Link href="/" className="flex items-center">
           <img
             src="/images/vairius_logo.png"
-            alt="VAIRIS"
-            style={{ height: '38px', width: 'auto' }}
+            alt="VAIRIS Fine Jewellery"
+            style={{ height: '46px', width: 'auto' }}
+            className="drop-shadow-[0_2px_12px_rgba(201,168,76,0.15)]"
           />
         </Link>
 

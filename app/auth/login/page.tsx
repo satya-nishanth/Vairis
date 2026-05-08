@@ -66,13 +66,16 @@ export default async function LoginPage({
         />
         <div className="relative text-center space-y-6">
           <img
-            src="/images/vairius_logo.png"
-            alt="VAIRIS"
-            style={{ height: '90px', width: 'auto', margin: '0 auto' }}
-            className="drop-shadow-[0_4px_30px_rgba(201,168,76,0.3)]"
+            src="/images/vairis_main.jpeg"
+            alt="VAIRIS Fine Jewellery"
+            style={{ width: 'min(280px, 40vw)', height: 'auto', borderRadius: '4px' }}
+            className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.25)]"
           />
-          <p className="text-white/40 text-sm leading-relaxed max-w-xs mx-auto">
-            Crafted with precision. Worn with pride.
+          <p
+            className="font-display text-white/70 italic"
+            style={{ fontSize: '18px', fontWeight: 300, letterSpacing: '0.03em' }}
+          >
+            Where heritage meets the extraordinary.
           </p>
           <div className="w-16 h-px bg-brand-gold/30 mx-auto" />
           <p className="text-white/30 text-xs tracking-widest uppercase">
@@ -84,8 +87,8 @@ export default async function LoginPage({
       {/* Right — form */}
       <div className="w-full lg:w-1/2 flex flex-col items-center justify-center px-8 py-12">
         {/* Mobile logo */}
-        <div className="lg:hidden text-center mb-10">
-          <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '52px', width: 'auto', margin: '0 auto' }} />
+        <div className="lg:hidden text-center mb-8">
+          <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" style={{ height: '120px', width: 'auto', margin: '0 auto', borderRadius: '4px' }} />
         </div>
 
         <div className="w-full max-w-sm space-y-6">
