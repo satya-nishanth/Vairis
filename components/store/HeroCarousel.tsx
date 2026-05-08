@@ -182,7 +182,7 @@ export default function HeroCarousel() {
             priority
             sizes="100vw"
             quality={82}
-            className="object-cover"
+            className={`object-cover hero-slide-${i}`}
             style={{ objectPosition: i === 0 ? '30% center' : 'center' }}
             onLoad={handleImageLoad}
           />
