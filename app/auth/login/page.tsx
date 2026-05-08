@@ -54,7 +54,7 @@ async function forgotPassword(formData: FormData) {
   await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/update-password`,
   })
-  redirect(`/auth/login?msg=${encodeURIComponent('If that email exists, a reset link has been sent. Check your inbox or Mailpit (local: http://127.0.0.1:54324).')}`)
+  redirect(`/auth/login?msg=${encodeURIComponent('If that email exists, a reset link has been sent. Check your inbox.')}`)
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────
