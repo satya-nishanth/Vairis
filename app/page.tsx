@@ -70,7 +70,7 @@ export default async function HomePage() {
         <section className="bg-brand-cream">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-12 md:py-24">
           <div className="text-center mb-10 md:mb-14">
-            <p className="font-display tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300, color: '#b89640' }}>
+            <p className="font-display tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300, color: '#6b7280' }}>
               Collections
             </p>
             <h2 className="font-display text-gray-800" style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, letterSpacing: '0.08em' }}>
@@ -123,7 +123,7 @@ export default async function HomePage() {
           <section className="bg-brand-cream">
           <div className="max-w-7xl mx-auto px-4 md:px-6 pb-12 md:pb-24 pt-12 md:pt-24">
             <div className="text-center mb-10 md:mb-14">
-              <p className="font-display tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300, color: '#b89640' }}>
+              <p className="font-display tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300, color: '#6b7280' }}>
                 Latest
               </p>
               <h2
