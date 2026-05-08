@@ -134,7 +134,7 @@ export default async function HomePage() {
               </h2>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
-              {products.map((p) => (
+              {products.map((p, i) => (
                 <ProductCard
                   key={p.id}
                   id={p.id}
@@ -145,6 +145,7 @@ export default async function HomePage() {
                   stoneType={p.stoneType}
                   caratWeight={p.caratWeight?.toString() ?? null}
                   comingSoon={p.comingSoon}
+                  priority={i < 4}
                 />
               ))}
             </div>

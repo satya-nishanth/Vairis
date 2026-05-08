@@ -75,7 +75,7 @@ export default async function ShopPage({
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 lg:gap-8">
-          {products.map((p) => (
+          {products.map((p, i) => (
             <ProductCard
               key={p.id}
               id={p.id}
@@ -86,6 +86,7 @@ export default async function ShopPage({
               stoneType={p.stoneType}
               caratWeight={p.caratWeight?.toString() ?? null}
                 comingSoon={p.comingSoon}
+                  priority={i < 4}
             />
           ))}
         </div>

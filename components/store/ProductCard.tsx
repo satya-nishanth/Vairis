@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { thumb } from '@/lib/imageUrl'
+
+// Tiny warm-cream base64 placeholder shown while image loads (no extra request)
+const BLUR_PLACEHOLDER =
+  'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoH BwYIDAoMCwsKCwsNCxAQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABsQAAICAwEAAAAAAAAAAAAAAAABAgMREiH/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxCFPl0AAAAAAAB//9k='
 
 type ProductCardProps = {
   id: string
@@ -11,6 +14,8 @@ type ProductCardProps = {
   stoneType: string | null
   caratWeight: number | string | null
   comingSoon?: boolean
+  /** Pass true for the first 4-6 cards on screen — skips lazy load, adds <link rel="preload"> */
+  priority?: boolean
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -21,7 +26,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function ProductCard({
-  id, name, itemCode, category, images, stoneType, caratWeight, comingSoon,
+  id, name, itemCode, category, images, stoneType, caratWeight, comingSoon, priority = false,
 }: ProductCardProps) {
   const img = images[0]
 
@@ -33,6 +38,13 @@ export default function ProductCard({
             src={img}
             alt={name}
             fill
+            // First-fold images: preloaded via <link rel="preload"> in <head>
+            // Below-fold images: browser lazy-loads ~500px before entering viewport
+            priority={priority}
+            loading={priority ? 'eager' : 'lazy'}
+            // Cream blur shown while loading — no extra request, comes from HTML
+            placeholder="blur"
+            blurDataURL={BLUR_PLACEHOLDER}
             sizes="(max-width: 768px) 50vw, 25vw"
             className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
           />
