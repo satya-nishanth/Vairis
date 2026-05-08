@@ -165,7 +165,7 @@ export default function HeroCarousel() {
 
   return (
     <section
-      className="relative w-full overflow-hidden"
+      className="hero-carousel relative w-full overflow-hidden"
       style={{ height: 'min(90vh, 720px)' }}
     >
       {/* All 3 images preloaded */}
