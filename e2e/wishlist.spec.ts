@@ -85,7 +85,8 @@ test.describe('Customer login & wishlist flows', () => {
     await page.goto('/auth/login')
     await page.waitForLoadState('networkidle')
 
-    await expect(page.locator('h1', { hasText: 'VAIRIS' }).first()).toBeVisible()
+    // VAIRIS on login page is now an img (vairis_main.jpeg), not h1
+    await expect(page.locator('img[alt="VAIRIS Fine Jewellery"], img[alt="VAIRIS"]').first()).toBeVisible()
     await expect(page.locator('h2', { hasText: 'Welcome back' })).toBeVisible()
     await expect(page.locator('input[name="email"]').first()).toBeVisible()
     await expect(page.locator('input[name="password"]').first()).toBeVisible()

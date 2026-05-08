@@ -1,16 +1,13 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Public store flows', () => {
-  test('Homepage loads with VAIRIS heading and Explore Collection link', async ({ page }) => {
+  test('Homepage loads with VAIRIS in navbar and Shop by Category section', async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
-
-    await expect(page.locator('h1', { hasText: 'VAIRIS' })).toBeVisible()
-    await expect(page.locator('a', { hasText: 'Explore Collection' })).toBeVisible()
-    await expect(page.locator('a', { hasText: 'Explore Collection' })).toHaveAttribute(
-      'href',
-      '/shop'
-    )
+    await page.waitForLoadState('domcontentloaded')
+    // Navbar logo is always visible (server-rendered)
+    await expect(page.locator('img[alt="VAIRIS Fine Jewellery"]')).toBeVisible({ timeout: 8000 })
+    // Category section heading (server-rendered, always present)
+    await expect(page.locator('h2', { hasText: 'Shop by Category' })).toBeVisible({ timeout: 8000 })
   })
 
   test('/shop loads and shows category filter pills', async ({ page }) => {

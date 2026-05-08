@@ -6,7 +6,8 @@ test.describe('Customer login page (/auth/login)', () => {
     await page.waitForLoadState('networkidle')
 
     // Brand heading visible
-    await expect(page.locator('h1', { hasText: 'VAIRIS' }).first()).toBeVisible()
+    // VAIRIS on login page is now an <img alt="VAIRIS"> (vairis_main.jpeg)
+    await expect(page.locator('img[alt="VAIRIS Fine Jewellery"], img[alt="VAIRIS"]').first()).toBeVisible()
     await expect(page.locator('input[name="email"]').first()).toBeVisible()
     await expect(page.locator('input[name="password"]').first()).toBeVisible()
     await expect(page.locator('button[type="submit"]', { hasText: 'Sign In' })).toBeVisible()
