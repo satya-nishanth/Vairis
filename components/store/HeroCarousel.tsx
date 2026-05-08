@@ -40,7 +40,7 @@ const SLIDES = [
 ]
 
 // Separate overlays optimised per layout
-const OVERLAY_MOBILE = 'linear-gradient(to top, rgba(8,22,14,0.88) 0%, rgba(8,22,14,0.55) 45%, rgba(8,22,14,0.12) 100%)'
+const OVERLAY_MOBILE = 'linear-gradient(to top, rgba(8,22,14,0.65) 0%, rgba(8,22,14,0.30) 50%, rgba(8,22,14,0.05) 100%)'
 const OVERLAY_DESKTOP = 'linear-gradient(to left, rgba(8,22,14,0.90) 0%, rgba(8,22,14,0.68) 42%, rgba(8,22,14,0.10) 100%)'
 
 export default function HeroCarousel() {
@@ -80,12 +80,13 @@ export default function HeroCarousel() {
       {/* Collection label */}
       <p style={{
         fontFamily: 'var(--font-body)',
-        fontSize: '10px',
+        fontSize: '9px',
         fontWeight: 400,
         letterSpacing: '0.38em',
         textTransform: 'uppercase',
-        color: s.subColor,
-        marginBottom: '10px',
+        // Mobile: more transparent — jewelry shows through
+        color: align === 'center' ? s.subColor.replace(/[\d.]+\)$/, '0.55)') : s.subColor,
+        marginBottom: '8px',
         textAlign: align,
       }}>
         {s.collection} Collection
@@ -94,38 +95,44 @@ export default function HeroCarousel() {
       {/* VAIRIS brand name */}
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: align === 'center' ? 'clamp(36px, 10vw, 58px)' : 'clamp(32px, 4.5vw, 58px)',
+        // Mobile: smaller so it doesn't dominate the frame
+        fontSize: align === 'center' ? 'clamp(26px, 7.5vw, 42px)' : 'clamp(32px, 4.5vw, 58px)',
         fontWeight: 300,
         letterSpacing: '0.22em',
         lineHeight: 1,
-        color: s.textColor,
-        textShadow: '0 2px 20px rgba(0,0,0,0.5)',
-        marginBottom: '14px',
+        // Mobile: semi-transparent so jewelry bleeds through
+        color: align === 'center'
+          ? s.textColor + (s.textColor === '#ffffff' ? 'cc' : 'bb')   // ~80% opacity
+          : s.textColor,
+        textShadow: '0 1px 12px rgba(0,0,0,0.35)',
+        marginBottom: '10px',
         textAlign: align,
       }}>
         VAIRIS
       </p>
 
-      {/* Divider */}
+      {/* Divider — thinner + more transparent on mobile */}
       <div style={{
-        width: '60px',
+        width: align === 'center' ? '44px' : '60px',
         height: '1px',
-        margin: align === 'center' ? '0 auto 14px' : '0 0 14px auto',
-        background: `linear-gradient(${align === 'center' ? 'to right' : 'to left'}, transparent, ${s.textColor}70, ${s.textColor})`,
+        margin: align === 'center' ? '0 auto 10px' : '0 0 14px auto',
+        background: `linear-gradient(${align === 'center' ? 'to right' : 'to left'}, transparent, ${s.textColor}45, ${s.textColor}80)`,
       }} />
 
       {/* Headline */}
       <h1 style={{
         fontFamily: 'var(--font-display)',
-        fontSize: align === 'center' ? 'clamp(18px, 5vw, 30px)' : 'clamp(17px, 2.2vw, 30px)',
+        fontSize: align === 'center' ? 'clamp(13px, 3.8vw, 22px)' : 'clamp(17px, 2.2vw, 30px)',
         fontWeight: 300,
         fontStyle: 'italic',
         letterSpacing: '0.01em',
         lineHeight: 1.5,
-        color: s.headlineColor,
+        color: align === 'center'
+          ? s.headlineColor.replace(/[\d.]+\)$/, '0.70)')  // more transparent on mobile
+          : s.headlineColor,
         whiteSpace: 'pre-line',
-        textShadow: '0 2px 16px rgba(0,0,0,0.4)',
-        marginBottom: '24px',
+        textShadow: '0 1px 10px rgba(0,0,0,0.3)',
+        marginBottom: '18px',
         textAlign: align,
       }}>
         {s.headline}
@@ -137,12 +144,15 @@ export default function HeroCarousel() {
           href={s.href}
           style={{
             fontFamily: 'var(--font-display)',
-            fontSize: '11px',
+            fontSize: '10px',
             fontWeight: 300,
             letterSpacing: '0.35em',
-            padding: '12px 32px',
-            border: `1px solid ${s.textColor}65`,
-            color: s.textColor,
+            // Mobile: smaller padding, more transparent border
+            padding: align === 'center' ? '9px 24px' : '12px 32px',
+            border: `1px solid ${s.textColor}${align === 'center' ? '45' : '65'}`,
+            color: align === 'center'
+              ? s.textColor + (s.textColor === '#ffffff' ? 'cc' : 'bb')
+              : s.textColor,
             display: 'inline-block',
             transition: 'background 0.25s, color 0.25s',
           }}

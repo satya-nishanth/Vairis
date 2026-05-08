@@ -48,8 +48,8 @@ body {
   /* 78vh so category cards peek below fold — scroll invitation */
   .hero-carousel { height: 78vh !important; }
 
-  .hero-slide-0 { object-position: 12% center !important; }
-  .hero-slide-1 { object-position: 22% center !important; }
+  .hero-slide-0 { object-position: 20% center !important; }
+  .hero-slide-1 { object-position: 40% center !important; }
   .hero-slide-2 { object-position: 22% center !important; }
 }
 
