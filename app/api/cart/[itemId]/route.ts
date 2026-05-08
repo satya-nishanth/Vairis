@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = "force-dynamic"
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ itemId: string }> }) {
   const user = await requireUser()
   const { itemId } = await params

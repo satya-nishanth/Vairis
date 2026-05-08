@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+export const dynamic = "force-dynamic"
+
 const BUCKET = 'product-media'
 
 // Supabase Storage supports any file — images + videos
