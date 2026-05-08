@@ -45,10 +45,8 @@ body {
    Portrait crop (mobile) must pan left to show the subject, not
    the empty space on the right side of each image.          */
 @media (max-width: 767px) {
-  /* hero-1: model + earrings on far left → crop to ~15% x */
-  .hero-slide-0 { object-position: 15% center !important; }
-  /* hero-2: bracelet wrist shot, subject center-left → 30% fine */
-  .hero-slide-1 { object-position: 30% center !important; }
+  .hero-slide-0 { object-position: 12% center !important; }
+  .hero-slide-1 { object-position: 22% center !important; }
   /* hero-3: couple + pendant on left → crop to ~20% x */
   .hero-slide-2 { object-position: 22% center !important; }
 }
