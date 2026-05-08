@@ -31,3 +31,4 @@ images/
 
 # ── Dev tooling artifacts ─────────────────────────────────────────────────────
 .superpowers/
+.env.prod
