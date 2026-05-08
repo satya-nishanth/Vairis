@@ -14,6 +14,8 @@ const SLIDES = [
     accentColor: '#c9a84c',
     subColor: 'rgba(201,168,76,0.8)',
     vairisColor: '#c9a84c',
+    // Dark green bg → gold logo visible as-is
+    logoFilter: 'none',
   },
   {
     src: '/images/website-assets/hero-2.jpeg',
@@ -25,6 +27,8 @@ const SLIDES = [
     accentColor: '#ffffff',
     subColor: 'rgba(255,255,255,0.7)',
     vairisColor: '#ffffff',
+    // Cream bg → invert to white so logo is always visible
+    logoFilter: 'brightness(0) invert(1)',
   },
   {
     src: '/images/website-assets/hero-3.jpeg',
@@ -36,6 +40,8 @@ const SLIDES = [
     accentColor: '#ffffff',
     subColor: 'rgba(255,255,255,0.7)',
     vairisColor: '#ffffff',
+    // Golden bokeh bg → invert to white
+    logoFilter: 'brightness(0) invert(1)',
   },
 ]
 
@@ -106,7 +112,22 @@ export default function HeroCarousel() {
             textAlign: 'right',
           }}
         >
-          {/* VAIRIS — display text only, no image (logo invisible on warm bgs) */}
+          {/* Logo — CSS filter makes it visible on any background */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+            <img
+              src="/images/vairius_logo.png"
+              alt="VAIRIS"
+              style={{
+                height: '44px',
+                width: 'auto',
+                filter: slide.logoFilter,
+                opacity: 0.92,
+                transition: 'filter 0.5s',
+              }}
+            />
+          </div>
+
+          {/* VAIRIS — display text */}
           <p
             style={{
               fontFamily: 'var(--font-display)',
