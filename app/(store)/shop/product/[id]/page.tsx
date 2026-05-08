@@ -1,9 +1,9 @@
 import { notFound } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import NotifyMeButton from '@/components/store/NotifyMeButton'
 import VariantSelector from '@/components/store/VariantSelector'
+import MediaGallery from '@/components/store/MediaGallery'
 import type { Metadata } from 'next'
 
 export const revalidate = 60
@@ -101,57 +101,8 @@ export default async function ProductPage({
       </nav>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 lg:gap-20">
-        {/* Images / Videos */}
-        <div className="space-y-3">
-          <div className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative">
-            {product.images[0] ? (
-              /\.(mp4|webm|mov|avi)(\?|$)/i.test(product.images[0]) ? (
-                <video
-                  src={product.images[0]}
-                  controls
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Image
-                  src={product.images[0]}
-                  alt={product.name}
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="object-cover"
-                />
-              )
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span className="font-display text-8xl text-brand-gold/10">V</span>
-              </div>
-            )}
-          </div>
-
-          {product.images.length > 1 && (
-            <div className="grid grid-cols-4 gap-2">
-              {product.images.slice(1, 5).map((img, i) => (
-                <div key={i} className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative">
-                  {/\.(mp4|webm|mov|avi)(\?|$)/i.test(img) ? (
-                    <video src={img} muted playsInline className="w-full h-full object-cover" />
-                  ) : (
-                  <Image
-                    src={img}
-                    alt={`${product.name} ${i + 2}`}
-                    fill
-                    sizes="20vw"
-                    className="object-cover"
-                  />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Interactive gallery — images + video, prev/next arrows, thumbnail strip */}
+        <MediaGallery media={product.images} productName={product.name} />
 
         {/* Details */}
         <div className="space-y-6">

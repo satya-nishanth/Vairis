@@ -321,12 +321,16 @@ function compressPng(src, destDir) {
   return dest
 }
 
-/** Get ordered media files from product folder */
+/** Get ordered media files from product folder (excludes CAD — technical ref only) */
 function getMediaFiles(folderPath) {
   const all = readdirSync(folderPath)
-  const order = ['front', 'back', 'left', 'right', 'cad', 'video']
+  const order = ['front', 'back', 'left', 'right', 'video']
   return all
-    .filter(f => [...IMAGE_EXT, ...VIDEO_EXT].includes(extname(f).toLowerCase()))
+    .filter(f => {
+      const lc = f.toLowerCase()
+      if (lc.includes('cad')) return false   // skip CAD reference images
+      return [...IMAGE_EXT, ...VIDEO_EXT].includes(extname(f).toLowerCase())
+    })
     .sort((a, b) => {
       const ai = order.findIndex(o => a.toLowerCase().includes(o))
       const bi = order.findIndex(o => b.toLowerCase().includes(o))
