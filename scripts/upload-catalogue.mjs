@@ -344,7 +344,7 @@ async function ensureBucket() {
   const { error } = await supabase.storage.createBucket(BUCKET, {
     public: true,
     allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'],
-    fileSizeLimit: 200 * 1024 * 1024,
+    fileSizeLimit: 50 * 1024 * 1024,
   })
   if (error && !error.message.toLowerCase().includes('already exist')) throw error
 }

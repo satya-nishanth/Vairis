@@ -6,7 +6,7 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   // Supabase requires direct connection URL for migrations (not the pooler)
-  directUrl = env("DIRECT_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum Category {
