@@ -16,12 +16,17 @@ const body = Inter({
 
 export const metadata: Metadata = {
   title: 'Vairis Fine Jewellery',
-  description: 'Discover exquisite jewellery crafted with precision. Rings, earrings, pendants and bracelets.',
+  description: 'Where heritage meets the extraordinary. Fine jewellery, reimagined.',
   openGraph: {
-    title: 'Vairis Fine Jewellery',
-    description: 'Discover exquisite jewellery crafted with precision.',
+    title: 'VAIRIS — Fine Jewellery',
+    description: 'Where heritage meets the extraordinary. Fine jewellery, reimagined.',
     siteName: 'Vairis',
     type: 'website',
+  },
+  icons: {
+    icon: '/images/logo_icon.png',
+    shortcut: '/images/logo_icon.png',
+    apple: '/images/logo_icon.png',
   },
 }
 

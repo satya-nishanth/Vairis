@@ -65,8 +65,12 @@ export default async function LoginPage({
           }}
         />
         <div className="relative text-center space-y-6">
-          <p className="text-brand-gold/50 tracking-[0.5em] text-xs uppercase">Fine Jewellery</p>
-          <h1 className="font-display text-7xl text-white tracking-[0.2em]">VAIRIS</h1>
+          <img
+            src="/images/vairius_logo.png"
+            alt="VAIRIS"
+            style={{ height: '90px', width: 'auto', margin: '0 auto' }}
+            className="drop-shadow-[0_4px_30px_rgba(201,168,76,0.3)]"
+          />
           <p className="text-white/40 text-sm leading-relaxed max-w-xs mx-auto">
             Crafted with precision. Worn with pride.
           </p>
@@ -80,9 +84,8 @@ export default async function LoginPage({
       {/* Right — form */}
       <div className="w-full lg:w-1/2 flex flex-col items-center justify-center px-8 py-12">
         {/* Mobile logo */}
-        <div className="lg:hidden text-center mb-10 space-y-2">
-          <h1 className="font-display text-4xl text-white tracking-widest">VAIRIS</h1>
-          <p className="text-white/40 text-xs tracking-widest uppercase">Fine Jewellery</p>
+        <div className="lg:hidden text-center mb-10">
+          <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '52px', width: 'auto', margin: '0 auto' }} />
         </div>
 
         <div className="w-full max-w-sm space-y-6">

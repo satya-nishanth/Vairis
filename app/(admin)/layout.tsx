@@ -13,11 +13,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
       {/* Mobile top bar */}
       <div className="flex md:hidden items-center justify-between h-14 bg-brand-dark px-4 shadow-md">
-        <Link
-          href="/"
-          className="font-display text-lg tracking-widest text-brand-gold"
-        >
-          VAIRIS Admin
+        <Link href="/" className="flex items-center">
+          <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '28px', width: 'auto' }} />
         </Link>
         <div className="flex items-center gap-4">
           {NAV.map((item) => (
@@ -34,11 +31,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-56 bg-brand-dark flex-shrink-0 flex-col">
-        <Link
-          href="/"
-          className="h-16 flex items-center px-6 font-display text-xl tracking-widest text-brand-gold border-b border-white/10"
-        >
-          VAIRIS
+        <Link href="/" className="h-16 flex items-center justify-center px-6 border-b border-white/10">
+          <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '32px', width: 'auto' }} />
         </Link>
         <nav className="flex-1 py-6 space-y-1 px-3">
           {NAV.map((item) => (
