@@ -1,5 +1,7 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import Navbar from '@/components/store/Navbar'
+import HeroCarousel from '@/components/store/HeroCarousel'
 import ProductCard from '@/components/store/ProductCard'
 import { prisma } from '@/lib/prisma'
 
@@ -10,25 +12,29 @@ const CATEGORIES = [
     id: 'rings',
     label: 'Rings',
     desc: 'Timeless bands & solitaires',
-    grad: 'from-[#1a0a00] to-[#3d2400]',
+    image: '/images/website-assets/category-ring.jpeg',
+    focus: 'center',
   },
   {
     id: 'earrings',
     label: 'Earrings',
     desc: 'Studs, hoops & drops',
-    grad: 'from-[#0a1a0e] to-[#0f2418]',
+    image: '/images/website-assets/category-earring.jpeg',
+    focus: 'top',
   },
   {
     id: 'pendants',
     label: 'Pendants',
     desc: 'Elegant statement pieces',
-    grad: 'from-[#0d0a1a] to-[#1a1035]',
+    image: '/images/website-assets/category-pendant.jpeg',
+    focus: 'top',
   },
   {
     id: 'bracelets',
     label: 'Bracelets',
     desc: 'Chains, bangles & tennis',
-    grad: 'from-[#1a0a0e] to-[#2d0f18]',
+    image: '/images/website-assets/category-bracelet.jpeg',
+    focus: 'center',
   },
 ]
 
@@ -57,87 +63,54 @@ export default async function HomePage() {
     <>
       <Navbar />
       <main>
-        {/* Hero */}
-        <section className="bg-brand-dark min-h-[90vh] flex items-center justify-center text-center px-4 relative overflow-hidden">
-          {/* Radial glow */}
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{
-              backgroundImage: `radial-gradient(circle at 30% 40%, #c9a84c 0%, transparent 55%), radial-gradient(circle at 70% 70%, #c9a84c 0%, transparent 40%)`,
-            }}
-          />
-
-          <div className="relative flex flex-col items-center gap-8 max-w-3xl">
-            {/* Brand identity card — the main visual */}
-            <div className="relative">
-              <img
-                src="/images/vairis_main.jpeg"
-                alt="VAIRIS Fine Jewellery"
-                style={{
-                  width: 'min(380px, 85vw)',
-                  height: 'auto',
-                  borderRadius: '4px',
-                }}
-                className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.3)]"
-              />
-            </div>
-
-            {/* Caption — from index.html */}
-            <div className="space-y-3">
-              <p
-                className="font-display text-white/80 leading-relaxed"
-                style={{ fontSize: 'clamp(17px, 3vw, 22px)', fontWeight: 300, letterSpacing: '0.03em', fontStyle: 'italic' }}
-              >
-                Where heritage meets the extraordinary.
-              </p>
-              <p
-                className="font-display text-brand-gold/60"
-                style={{ fontSize: 'clamp(12px, 2vw, 15px)', fontWeight: 300, letterSpacing: '0.3em' }}
-              >
-                FINE JEWELLERY, REIMAGINED
-              </p>
-            </div>
-
-            {/* Divider */}
-            <div
-              className="w-40 h-px"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.5) 20%, rgba(201,168,76,0.7), rgba(201,168,76,0.5) 80%, transparent)' }}
-            />
-
-            {/* CTA */}
-            <Link
-              href="/shop"
-              className="w-full sm:w-auto px-12 py-4 border border-brand-gold/60 text-brand-gold hover:border-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-400 font-display"
-              style={{ fontSize: 'clamp(12px, 2vw, 14px)', fontWeight: 300, letterSpacing: '0.45em' }}
-            >
-              EXPLORE COLLECTION
-            </Link>
-          </div>
-        </section>
+        {/* Hero — rotating carousel */}
+        <HeroCarousel />
 
         {/* Categories */}
         <section className="max-w-7xl mx-auto px-4 md:px-6 py-12 md:py-24">
-          <div className="text-center mb-14">
-            <p className="text-xs text-brand-gold/60 tracking-[0.4em] uppercase mb-3">Collections</p>
-            <h2 className="font-display text-4xl text-gray-900">Shop by Category</h2>
+          <div className="text-center mb-10 md:mb-14">
+            <p className="font-display text-brand-gold/60 tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300 }}>
+              Collections
+            </p>
+            <h2 className="font-display text-gray-900" style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, letterSpacing: '0.08em' }}>
+              Shop by Category
+            </h2>
           </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {CATEGORIES.map((cat) => (
               <Link
                 key={cat.id}
                 href={`/shop/${cat.id}`}
-                className={`group relative aspect-[3/4] bg-gradient-to-br ${cat.grad} overflow-hidden rounded-sm`}
+                className="group relative aspect-[3/4] overflow-hidden rounded-sm"
               >
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
-                <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
-                  <h3 className="font-display text-xl md:text-2xl group-hover:text-brand-gold transition-colors duration-300">
+                {/* Real category photo */}
+                <Image
+                  src={cat.image}
+                  alt={cat.label}
+                  fill
+                  sizes="(max-width: 768px) 50vw, 25vw"
+                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                  style={{ objectPosition: cat.focus }}
+                />
+                {/* Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/70" />
+                {/* Hover tint */}
+                <div className="absolute inset-0 bg-brand-dark/0 group-hover:bg-brand-dark/20 transition-colors duration-400" />
+                {/* Text */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 text-white">
+                  <h3
+                    className="font-display group-hover:text-brand-gold transition-colors duration-300"
+                    style={{ fontSize: 'clamp(18px, 2.5vw, 26px)', fontWeight: 400, letterSpacing: '0.08em' }}
+                  >
                     {cat.label}
                   </h3>
-                  <p className="text-xs text-white/50 mt-1 group-hover:text-white/70 transition-colors">
+                  <p className="text-xs text-white/55 mt-0.5 group-hover:text-white/75 transition-colors tracking-wide">
                     {cat.desc}
                   </p>
                 </div>
-                <div className="absolute inset-0 border border-white/0 group-hover:border-brand-gold/30 transition-colors duration-300 rounded-sm" />
+                {/* Gold border on hover */}
+                <div className="absolute inset-0 border border-transparent group-hover:border-brand-gold/40 transition-colors duration-300 rounded-sm" />
               </Link>
             ))}
           </div>
@@ -146,9 +119,16 @@ export default async function HomePage() {
         {/* New Arrivals */}
         {products.length > 0 && (
           <section className="max-w-7xl mx-auto px-4 md:px-6 pb-12 md:pb-24">
-            <div className="text-center mb-14">
-              <p className="text-xs text-brand-gold/60 tracking-[0.4em] uppercase mb-3">Latest</p>
-              <h2 className="font-display text-4xl text-gray-900">New Arrivals</h2>
+            <div className="text-center mb-10 md:mb-14">
+              <p className="font-display text-brand-gold/60 tracking-[0.4em] text-xs uppercase mb-3" style={{ fontWeight: 300 }}>
+                Latest
+              </p>
+              <h2
+                className="font-display text-gray-900"
+                style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 400, letterSpacing: '0.08em' }}
+              >
+                New Arrivals
+              </h2>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
               {products.map((p) => (
@@ -161,16 +141,17 @@ export default async function HomePage() {
                   images={p.images}
                   stoneType={p.stoneType}
                   caratWeight={p.caratWeight?.toString() ?? null}
-                comingSoon={p.comingSoon}
+                  comingSoon={p.comingSoon}
                 />
               ))}
             </div>
             <div className="text-center mt-12">
               <Link
                 href="/shop"
-                className="inline-block px-10 py-3 border border-gray-300 text-sm text-gray-600 hover:border-brand-gold hover:text-brand-gold transition-colors tracking-widest uppercase"
+                className="inline-block font-display border border-gray-300 text-gray-600 hover:border-brand-gold hover:text-brand-gold transition-colors"
+                style={{ padding: '12px 40px', fontSize: '13px', letterSpacing: '0.3em', fontWeight: 300 }}
               >
-                View All
+                VIEW ALL
               </Link>
             </div>
           </section>
