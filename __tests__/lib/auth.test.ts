@@ -82,9 +82,9 @@ describe('requireUser', () => {
 // ─── requireAdmin ─────────────────────────────────────────────────────────
 
 describe('requireAdmin', () => {
-  it('redirects to /auth/login when no session', async () => {
+  it('redirects to /auth/admin when no session', async () => {
     mockCreateClient.mockResolvedValue(mockSupabase(null))
-    await expect(requireAdmin()).rejects.toThrow('REDIRECT:/auth/login')
+    await expect(requireAdmin()).rejects.toThrow('REDIRECT:/auth/admin')
   })
 
   it('redirects to / when email not in ADMIN_EMAILS', async () => {

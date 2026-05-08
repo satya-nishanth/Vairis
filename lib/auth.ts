@@ -20,7 +20,7 @@ export async function requireUser() {
 
 export async function requireAdmin() {
   const session = await getSession()
-  if (!session) redirect('/auth/login')
+  if (!session) redirect('/auth/admin')
   const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim())
   if (!adminEmails.includes(session.user.email!)) redirect('/')
   return session

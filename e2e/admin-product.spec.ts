@@ -3,12 +3,11 @@ import { test, expect, type Page } from '@playwright/test'
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 async function loginAsAdmin(page: Page) {
-  await page.goto('/auth/login')
+  await page.goto('/auth/admin')
   await page.waitForLoadState('networkidle')
-  // Use the Sign In form's email/password inputs (first form on the page)
-  await page.locator('form').first().locator('input[name="email"]').fill('nish99.sn@gmail.com')
-  await page.locator('form').first().locator('input[name="password"]').fill('Admin1234!')
-  await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
+  await page.locator('input[name="email"]').fill('nish99.sn@gmail.com')
+  await page.locator('input[name="password"]').fill('Admin1234!')
+  await page.locator('button[type="submit"]').click()
   await page.waitForURL('**/admin/dashboard', { timeout: 15000 })
 }
 

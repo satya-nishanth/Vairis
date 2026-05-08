@@ -1,54 +1,69 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('Auth flows', () => {
-  test('/auth/login shows VAIRIS heading and email/password form', async ({ page }) => {
+test.describe('Customer login page (/auth/login)', () => {
+  test('shows VAIRIS heading and email/password form', async ({ page }) => {
     await page.goto('/auth/login')
     await page.waitForLoadState('networkidle')
 
-    await expect(page.locator('h1', { hasText: 'VAIRIS' })).toBeVisible()
+    // Brand heading visible
+    await expect(page.locator('h1', { hasText: 'VAIRIS' }).first()).toBeVisible()
     await expect(page.locator('input[name="email"]').first()).toBeVisible()
     await expect(page.locator('input[name="password"]').first()).toBeVisible()
     await expect(page.locator('button[type="submit"]', { hasText: 'Sign In' })).toBeVisible()
   })
 
-  test('Submitting wrong credentials shows error in URL (?error=...)', async ({ page }) => {
+  test('shows link to admin login', async ({ page }) => {
     await page.goto('/auth/login')
     await page.waitForLoadState('networkidle')
-
-    await page.locator('input[name="email"]').first().fill('wrong@example.com')
-    await page.locator('input[name="password"]').first().fill('wrongpassword')
-    await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
-
-    // Server Action redirects back with ?error= on bad credentials
-    await page.waitForURL(/\/auth\/login\?error=/)
-    await expect(page).toHaveURL(/error=/)
-
-    // The error message should be visible on the page
-    await expect(page.locator('p').filter({ hasText: /invalid/i }).or(
-      page.locator('p').filter({ hasText: /error/i }).or(
-        page.locator('p').filter({ hasText: /credential/i })
-      )
-    ).first()).toBeVisible()
+    await expect(page.locator('a[href="/auth/admin"]')).toBeVisible()
   })
 
-  test('/admin/dashboard without login redirects to /auth/login', async ({ page }) => {
-    // Use a fresh context without any stored cookies
+  test('wrong credentials shows error', async ({ page }) => {
+    await page.goto('/auth/login')
+    await page.waitForLoadState('networkidle')
+    await page.locator('input[name="email"]').first().fill('nobody@example.com')
+    await page.locator('input[name="password"]').first().fill('wrongpassword')
+    await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
+    await page.waitForURL(/\/auth\/login\?error=/)
+    await expect(page).toHaveURL(/error=/)
+  })
+})
+
+test.describe('Admin login page (/auth/admin)', () => {
+  test('shows Admin Portal heading and unauthorized warning', async ({ page }) => {
+    await page.goto('/auth/admin')
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.locator('h1', { hasText: 'Admin Portal' })).toBeVisible()
+    await expect(page.locator('text=Authorised personnel only')).toBeVisible()
+    await expect(page.locator('a', { hasText: 'Return to store' })).toBeVisible()
+    await expect(page.locator('input[name="email"]')).toBeVisible()
+    await expect(page.locator('input[name="password"]')).toBeVisible()
+  })
+
+  test('wrong credentials shows error', async ({ page }) => {
+    await page.goto('/auth/admin')
+    await page.waitForLoadState('networkidle')
+    await page.locator('input[name="email"]').fill('wrong@example.com')
+    await page.locator('input[name="password"]').fill('wrongpassword')
+    await page.locator('button[type="submit"]').click()
+    await page.waitForURL(/\/auth\/admin\?error=/)
+    await expect(page).toHaveURL(/error=/)
+  })
+
+  test('/admin/dashboard without login redirects to /auth/admin', async ({ page }) => {
     await page.context().clearCookies()
     await page.goto('/admin/dashboard')
     await page.waitForLoadState('networkidle')
-
-    await expect(page).toHaveURL(/\/auth\/login/)
+    await expect(page).toHaveURL(/\/auth\/admin/)
   })
 
-  test('Successful login lands on /admin/dashboard', async ({ page }) => {
-    await page.goto('/auth/login')
+  test('successful admin login lands on /admin/dashboard', async ({ page }) => {
+    await page.goto('/auth/admin')
     await page.waitForLoadState('networkidle')
-
-    await page.locator('input[name="email"]').first().fill('nish99.sn@gmail.com')
-    await page.locator('input[name="password"]').first().fill('Admin1234!')
-    await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
-
-    // Successful login redirects to /admin/dashboard
+    await page.locator('input[name="email"]').fill('nish99.sn@gmail.com')
+    await page.locator('input[name="password"]').fill('Admin1234!')
+    await page.locator('button[type="submit"]').click()
     await page.waitForURL('**/admin/dashboard', { timeout: 15000 })
     await expect(page).toHaveURL(/\/admin\/dashboard/)
   })
