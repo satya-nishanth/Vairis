@@ -13,7 +13,7 @@ const SLIDES = [
     cta: 'Discover Earrings',
     textColor: '#c9a84c',
     headlineColor: 'rgba(255,255,255,0.92)',
-    subColor: 'rgba(201,168,76,0.7)',
+    subColor: 'rgba(201,168,76,0.72)',
   },
   {
     src: '/images/website-assets/hero-2.jpeg',
@@ -24,7 +24,7 @@ const SLIDES = [
     cta: 'Shop Bracelets',
     textColor: '#ffffff',
     headlineColor: 'rgba(255,255,255,0.92)',
-    subColor: 'rgba(255,255,255,0.6)',
+    subColor: 'rgba(255,255,255,0.65)',
   },
   {
     src: '/images/website-assets/hero-3.jpeg',
@@ -35,9 +35,13 @@ const SLIDES = [
     cta: 'Explore Pendants',
     textColor: '#ffffff',
     headlineColor: 'rgba(255,255,255,0.92)',
-    subColor: 'rgba(255,255,255,0.6)',
+    subColor: 'rgba(255,255,255,0.65)',
   },
 ]
+
+// Separate overlays optimised per layout
+const OVERLAY_MOBILE = 'linear-gradient(to top, rgba(8,22,14,0.88) 0%, rgba(8,22,14,0.55) 45%, rgba(8,22,14,0.12) 100%)'
+const OVERLAY_DESKTOP = 'linear-gradient(to left, rgba(8,22,14,0.90) 0%, rgba(8,22,14,0.68) 42%, rgba(8,22,14,0.10) 100%)'
 
 export default function HeroCarousel() {
   const [current, setCurrent] = useState(0)
@@ -62,13 +66,109 @@ export default function HeroCarousel() {
   }, [allLoaded, current, goTo])
 
   const s = SLIDES[current]
+  const shown = visible === current
+
+  // Shared text content rendered twice — once mobile-centred, once desktop-right
+  const textContent = (align: 'center' | 'right') => (
+    <div
+      style={{
+        opacity: shown ? 1 : 0,
+        transform: shown ? 'translateY(0)' : 'translateY(14px)',
+        transition: 'opacity 0.5s ease, transform 0.5s ease',
+      }}
+    >
+      {/* Collection label */}
+      <p style={{
+        fontFamily: 'var(--font-body)',
+        fontSize: '10px',
+        fontWeight: 400,
+        letterSpacing: '0.38em',
+        textTransform: 'uppercase',
+        color: s.subColor,
+        marginBottom: '10px',
+        textAlign: align,
+      }}>
+        {s.collection} Collection
+      </p>
+
+      {/* VAIRIS brand name */}
+      <p style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: align === 'center' ? 'clamp(36px, 10vw, 58px)' : 'clamp(32px, 4.5vw, 58px)',
+        fontWeight: 300,
+        letterSpacing: '0.22em',
+        lineHeight: 1,
+        color: s.textColor,
+        textShadow: '0 2px 20px rgba(0,0,0,0.5)',
+        marginBottom: '14px',
+        textAlign: align,
+      }}>
+        VAIRIS
+      </p>
+
+      {/* Divider */}
+      <div style={{
+        width: '60px',
+        height: '1px',
+        margin: align === 'center' ? '0 auto 14px' : '0 0 14px auto',
+        background: `linear-gradient(${align === 'center' ? 'to right' : 'to left'}, transparent, ${s.textColor}70, ${s.textColor})`,
+      }} />
+
+      {/* Headline */}
+      <h1 style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: align === 'center' ? 'clamp(18px, 5vw, 30px)' : 'clamp(17px, 2.2vw, 30px)',
+        fontWeight: 300,
+        fontStyle: 'italic',
+        letterSpacing: '0.01em',
+        lineHeight: 1.5,
+        color: s.headlineColor,
+        whiteSpace: 'pre-line',
+        textShadow: '0 2px 16px rgba(0,0,0,0.4)',
+        marginBottom: '24px',
+        textAlign: align,
+      }}>
+        {s.headline}
+      </h1>
+
+      {/* CTA */}
+      <div style={{ display: 'flex', justifyContent: align === 'center' ? 'center' : 'flex-end' }}>
+        <Link
+          href={s.href}
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '11px',
+            fontWeight: 300,
+            letterSpacing: '0.35em',
+            padding: '12px 32px',
+            border: `1px solid ${s.textColor}65`,
+            color: s.textColor,
+            display: 'inline-block',
+            transition: 'background 0.25s, color 0.25s',
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = s.textColor
+            el.style.color = '#0f2418'
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = 'transparent'
+            el.style.color = s.textColor
+          }}
+        >
+          {s.cta.toUpperCase()}
+        </Link>
+      </div>
+    </div>
+  )
 
   return (
     <section
       className="relative w-full overflow-hidden"
       style={{ height: 'min(90vh, 720px)' }}
     >
-      {/* All 3 images preloaded — opacity switch, no flicker */}
+      {/* All 3 images preloaded */}
       {SLIDES.map((slide, i) => (
         <div
           key={slide.src}
@@ -89,134 +189,27 @@ export default function HeroCarousel() {
         </div>
       ))}
 
-      {/* Dark overlay — darker on right for desktop text readability */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: [
-            'linear-gradient(to left,  rgba(8,22,14,0.90) 0%, rgba(8,22,14,0.65) 45%, rgba(8,22,14,0.10) 100%)',
-          ].join(''),
-        }}
-      />
+      {/* Mobile overlay — bottom-heavy (text sits at bottom) */}
+      <div className="absolute inset-0 md:hidden" style={{ background: OVERLAY_MOBILE }} />
+      {/* Desktop overlay — right-heavy (text sits on right) */}
+      <div className="absolute inset-0 hidden md:block" style={{ background: OVERLAY_DESKTOP }} />
 
-      {/* Text block — absolute, right side, vertically centered, safe margins */}
+      {/* ── MOBILE text — centred, bottom of hero ── */}
+      <div className="md:hidden absolute bottom-16 left-0 right-0 px-6">
+        {textContent('center')}
+      </div>
+
+      {/* ── DESKTOP text — right side, vertically centred ── */}
       <div
-        className="absolute"
+        className="hidden md:block absolute"
         style={{
           right: '5%',
           top: '50%',
           transform: 'translateY(-50%)',
           width: 'min(400px, 42vw)',
-          // Mobile: full width centred at bottom
         }}
       >
-        {/* Mobile fallback: reposition to bottom-center */}
-        <style>{`
-          @media (max-width: 767px) {
-            .hero-text-block {
-              right: 0 !important;
-              left: 0 !important;
-              top: auto !important;
-              bottom: 60px !important;
-              transform: none !important;
-              width: 100% !important;
-              padding: 0 24px !important;
-              text-align: center !important;
-            }
-          }
-        `}</style>
-
-        <div
-          className="hero-text-block"
-          style={{
-            opacity: visible === current ? 1 : 0,
-            transform: `translateY(${visible === current ? 0 : 14}px)`,
-            transition: 'opacity 0.5s ease, transform 0.5s ease',
-            textAlign: 'right',
-          }}
-        >
-          {/* Collection label */}
-          <p style={{
-            fontFamily: 'var(--font-body)',
-            fontSize: '10px',
-            fontWeight: 400,
-            letterSpacing: '0.35em',
-            textTransform: 'uppercase',
-            color: s.subColor,
-            marginBottom: '10px',
-          }}>
-            {s.collection} Collection
-          </p>
-
-          {/* VAIRIS — safe letter-spacing, safe size */}
-          <p style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(32px, 4.5vw, 58px)',
-            fontWeight: 300,
-            letterSpacing: '0.22em',
-            lineHeight: 1,
-            color: s.textColor,
-            textShadow: '0 2px 20px rgba(0,0,0,0.5)',
-            marginBottom: '14px',
-          }}>
-            VAIRIS
-          </p>
-
-          {/* Divider — flush right */}
-          <div style={{
-            width: '60px',
-            height: '1px',
-            marginLeft: 'auto',
-            background: `linear-gradient(to left, transparent, ${s.textColor}70, ${s.textColor})`,
-            marginBottom: '14px',
-          }} />
-
-          {/* Headline */}
-          <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(17px, 2.2vw, 30px)',
-            fontWeight: 300,
-            fontStyle: 'italic',
-            letterSpacing: '0.01em',
-            lineHeight: 1.45,
-            color: s.headlineColor,
-            whiteSpace: 'pre-line',
-            textShadow: '0 2px 16px rgba(0,0,0,0.4)',
-            marginBottom: '24px',
-          }}>
-            {s.headline}
-          </h1>
-
-          {/* CTA */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Link
-              href={s.href}
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '11px',
-                fontWeight: 300,
-                letterSpacing: '0.35em',
-                padding: '12px 32px',
-                border: `1px solid ${s.textColor}65`,
-                color: s.textColor,
-                display: 'inline-block',
-                transition: 'background 0.25s, color 0.25s',
-              }}
-              onMouseEnter={(e) => {
-                const el = e.currentTarget as HTMLElement
-                el.style.background = s.textColor
-                el.style.color = '#0f2418'
-              }}
-              onMouseLeave={(e) => {
-                const el = e.currentTarget as HTMLElement
-                el.style.background = 'transparent'
-                el.style.color = s.textColor
-              }}
-            >
-              {s.cta.toUpperCase()}
-            </Link>
-          </div>
-        </div>
+        {textContent('right')}
       </div>
 
       {/* Loading dots */}
