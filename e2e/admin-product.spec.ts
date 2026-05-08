@@ -60,14 +60,15 @@ test.describe('Admin product CRUD + store reflection', () => {
   }) => {
     await loginAsAdmin(page)
     await page.goto('/admin/products/new')
-    await page.waitForLoadState('networkidle')
+    // Wait for client component to fully hydrate before interacting
+    await page.waitForSelector('input[placeholder*="Heart Diamond"]', { state: 'visible', timeout: 15000 })
 
     // --- Basic Information ---
     // Product Name input (placeholder: "e.g. Heart Diamond Bracelet")
     await page.locator('input[placeholder*="Heart Diamond"]').fill('E2E Test Ring')
 
-    // Item Code input (placeholder: "e.g. AJBR-74")
-    await page.locator('input[placeholder*="AJBR"]').fill('E2E-001')
+    // Item Code input — use exact placeholder to avoid matching SKU input (which also contains AJBR)
+    await page.getByPlaceholder('e.g. AJBR-74').fill('E2E-001')
 
     // Category select — first <select> on the form
     await page.locator('form select').first().selectOption('RINGS')
@@ -96,12 +97,10 @@ test.describe('Admin product CRUD + store reflection', () => {
     const stockInput = variantsSection.locator('input[type="number"]:not([step="0.001"])').first()
     await stockInput.fill('5')
 
-    // SKU input (placeholder "AJBR-74-GOLD_18K") — auto-generated but we set explicitly
-    // After filling itemCode, the SKU is auto-set to "E2E-001-G18K" via buildSku()
-    // Verify and/or set it
-    const skuInput = page.locator('input[placeholder*="AJBR-74-GOLD_18K"]')
-    // Wait a moment for React to propagate the itemCode → sku computation
-    await page.waitForTimeout(300)
+    // SKU input — exact placeholder "AJBR-74-GOLD_18K"
+    // After filling itemCode "E2E-001", buildSku auto-sets value to "E2E-001-G18K"
+    const skuInput = page.getByPlaceholder('AJBR-74-GOLD_18K')
+    await page.waitForTimeout(300) // let React propagate itemCode → sku
     const currentSku = await skuInput.inputValue()
     if (!currentSku) {
       await skuInput.fill('E2E-001-G18K')

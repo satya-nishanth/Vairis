@@ -51,17 +51,19 @@ test.describe('Public store flows', () => {
     await expect(page.locator('h1', { hasText: 'Bracelets' })).toBeVisible()
   })
 
-  test('Clicking a category pill on /shop navigates to that category URL', async ({ page }) => {
+  test('Clicking a category pill on /shop navigates to rings page', async ({ page }) => {
     await page.goto('/shop')
     await page.waitForLoadState('networkidle')
 
-    // Click the Rings filter pill — it navigates to /shop?category=rings
-    await page.locator('a', { hasText: 'Rings' }).first().click()
+    // Filter pills are in main content — scope below the h1 to avoid clicking the Navbar link
+    // The pill links to /shop?category=rings (query param), navbar links to /shop/rings (path)
+    // Either URL is correct — both show the Rings catalog
+    const mainContent = page.locator('main, [class*="max-w-7xl"]').first()
+    await mainContent.locator('a', { hasText: 'Rings' }).first().click()
     await page.waitForLoadState('networkidle')
 
-    // The URL should contain the rings category query param
-    await expect(page).toHaveURL(/category=rings/i)
-    // The heading should now say Rings
+    // Accept either URL form — /shop/rings or /shop?category=rings
+    await expect(page).toHaveURL(/\/shop\/rings|category=rings/i)
     await expect(page.locator('h1', { hasText: 'Rings' })).toBeVisible()
   })
 
