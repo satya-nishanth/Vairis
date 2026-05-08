@@ -13,6 +13,7 @@ const SLIDES = [
     cta: 'Discover Earrings',
     accentColor: '#c9a84c',
     subColor: 'rgba(201,168,76,0.8)',
+    vairisColor: '#c9a84c',
   },
   {
     src: '/images/website-assets/hero-2.jpeg',
@@ -23,6 +24,7 @@ const SLIDES = [
     cta: 'Shop Bracelets',
     accentColor: '#ffffff',
     subColor: 'rgba(255,255,255,0.7)',
+    vairisColor: '#ffffff',
   },
   {
     src: '/images/website-assets/hero-3.jpeg',
@@ -33,12 +35,12 @@ const SLIDES = [
     cta: 'Explore Pendants',
     accentColor: '#ffffff',
     subColor: 'rgba(255,255,255,0.7)',
+    vairisColor: '#ffffff',
   },
 ]
 
-// Full-cover dark overlay — centred layout needs even coverage
 const OVERLAY =
-  'linear-gradient(to top, rgba(15,36,24,0.85) 0%, rgba(15,36,24,0.55) 45%, rgba(15,36,24,0.25) 100%)'
+  'linear-gradient(to left, rgba(15,36,24,0.92) 0%, rgba(15,36,24,0.72) 38%, rgba(15,36,24,0.3) 62%, rgba(15,36,24,0.05) 100%)'
 
 export default function HeroCarousel() {
   const [current, setCurrent] = useState(0)
@@ -85,56 +87,48 @@ export default function HeroCarousel() {
             priority
             sizes="100vw"
             quality={80}
-            className="object-cover object-center"
+            className="object-cover object-left-top"
             onLoad={handleImageLoad}
           />
         </div>
       ))}
 
-      {/* Dark overlay — bottom-heavy so centred text floats over any image */}
+      {/* Dark-right overlay */}
       <div className="absolute inset-0" style={{ background: OVERLAY }} />
 
-      {/* Text — centred */}
-      <div className="absolute inset-0 flex items-center justify-center px-4">
+      {/* Text — RIGHT side */}
+      <div className="absolute inset-0 flex items-center justify-end">
         <div
-          className="flex flex-col items-center text-center space-y-4 max-w-2xl transition-all duration-500"
+          className="px-8 md:px-16 lg:px-20 space-y-4 max-w-md xl:max-w-lg transition-all duration-500"
           style={{
             opacity: visible === current ? 1 : 0,
-            transform: visible === current ? 'translateY(0)' : 'translateY(14px)',
+            transform: visible === current ? 'translateY(0)' : 'translateY(12px)',
+            textAlign: 'right',
           }}
         >
-          {/* Logo image — bigger */}
-          <img
-            src="/images/vairius_logo.png"
-            alt="VAIRIS"
-            style={{ height: '64px', width: 'auto', opacity: 0.95 }}
-            className="drop-shadow-[0_2px_16px_rgba(201,168,76,0.25)]"
-          />
+          {/* Logo image */}
+          <div className="flex justify-end">
+            <img
+              src="/images/vairius_logo.png"
+              alt="VAIRIS"
+              style={{ height: '42px', width: 'auto', opacity: 0.9 }}
+            />
+          </div>
 
           {/* VAIRIS display text */}
           <p
-            className="text-white"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(36px, 7vw, 88px)',
+              fontSize: 'clamp(32px, 5vw, 64px)',
               fontWeight: 300,
-              letterSpacing: '0.45em',
+              letterSpacing: '0.4em',
               lineHeight: 1,
-              textShadow: '0 2px 24px rgba(0,0,0,0.5)',
+              color: slide.vairisColor,
+              textShadow: '0 2px 20px rgba(0,0,0,0.4)',
             }}
           >
             VAIRIS
           </p>
-
-          {/* Thin divider */}
-          <div
-            className="mx-auto"
-            style={{
-              width: 'min(160px, 40vw)',
-              height: '1px',
-              background: `linear-gradient(90deg, transparent, ${slide.accentColor}66 20%, ${slide.accentColor}cc, ${slide.accentColor}66 80%, transparent)`,
-            }}
-          />
 
           {/* Collection label */}
           <p
@@ -146,13 +140,13 @@ export default function HeroCarousel() {
 
           {/* Headline */}
           <h1
-            className="text-white leading-snug"
+            className="text-white leading-tight"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(20px, 3.2vw, 42px)',
+              fontSize: 'clamp(20px, 3vw, 42px)',
               fontWeight: 300,
-              letterSpacing: '0.02em',
               fontStyle: 'italic',
+              letterSpacing: '0.02em',
               whiteSpace: 'pre-line',
               textShadow: '0 2px 20px rgba(0,0,0,0.4)',
             }}
@@ -160,32 +154,43 @@ export default function HeroCarousel() {
             {slide.headline}
           </h1>
 
-          {/* CTA */}
-          <Link
-            href={slide.href}
-            className="inline-block mt-2 transition-all duration-300"
+          {/* Accent divider — right-aligned */}
+          <div
+            className="h-px ml-auto"
             style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(11px, 1.4vw, 13px)',
-              fontWeight: 300,
-              letterSpacing: '0.4em',
-              padding: '14px 42px',
-              border: `1px solid ${slide.accentColor}80`,
-              color: slide.accentColor,
+              width: '80px',
+              background: `linear-gradient(to left, transparent, ${slide.accentColor}88, ${slide.accentColor})`,
             }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLElement
-              el.style.background = slide.accentColor
-              el.style.color = '#0f2418'
-            }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLElement
-              el.style.background = 'transparent'
-              el.style.color = slide.accentColor
-            }}
-          >
-            {slide.cta.toUpperCase()}
-          </Link>
+          />
+
+          {/* CTA button */}
+          <div className="flex justify-end">
+            <Link
+              href={slide.href}
+              className="inline-block transition-all duration-300"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(11px, 1.4vw, 13px)',
+                fontWeight: 300,
+                letterSpacing: '0.4em',
+                padding: '14px 36px',
+                border: `1px solid ${slide.accentColor}80`,
+                color: slide.accentColor,
+              }}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLElement
+                el.style.background = slide.accentColor
+                el.style.color = '#0f2418'
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLElement
+                el.style.background = 'transparent'
+                el.style.color = slide.accentColor
+              }}
+            >
+              {slide.cta.toUpperCase()}
+            </Link>
+          </div>
         </div>
       </div>
 
