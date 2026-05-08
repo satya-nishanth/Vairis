@@ -151,10 +151,10 @@ export default function ProductForm({ initialData, mode }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-8 max-w-3xl">
       {/* Basic info */}
-      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
         <h2 className="font-display text-lg text-gray-900">Basic Information</h2>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Product Name *</label>
             <input
@@ -176,7 +176,7 @@ export default function ProductForm({ initialData, mode }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Category *</label>
             <select
@@ -229,15 +229,15 @@ export default function ProductForm({ initialData, mode }: Props) {
       </section>
 
       {/* Images */}
-      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-3">
+      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-3">
         <h2 className="font-display text-lg text-gray-900">Product Images</h2>
         <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
       </section>
 
       {/* Physical specs */}
-      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
         <h2 className="font-display text-lg text-gray-900">Design Specifications</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className={labelCls}>Total Length (mm)</label>
             <input
@@ -275,9 +275,9 @@ export default function ProductForm({ initialData, mode }: Props) {
       </section>
 
       {/* Gemstone */}
-      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
         <h2 className="font-display text-lg text-gray-900">Gemstone Details</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Stone Type</label>
             <input
@@ -330,7 +330,7 @@ export default function ProductForm({ initialData, mode }: Props) {
       </section>
 
       {/* Variants */}
-      <section className="bg-white border border-gray-100 rounded-lg p-6 space-y-4">
+      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg text-gray-900">Metal Variants &amp; Weights</h2>
           <button
@@ -344,7 +344,7 @@ export default function ProductForm({ initialData, mode }: Props) {
 
         <div className="space-y-3">
           {form.variants.map((v, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-end">
+            <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
               <div className="col-span-3">
                 {idx === 0 && <label className={labelCls}>Metal Type</label>}
                 <select

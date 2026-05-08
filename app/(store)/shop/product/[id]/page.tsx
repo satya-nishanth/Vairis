@@ -70,9 +70,9 @@ export default async function ProductPage({
     product.caratWeight
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-6 md:px-6 md:py-12">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs text-gray-400 mb-8">
+      <nav className="flex flex-wrap items-center gap-2 text-xs text-gray-400 mb-8">
         <Link href="/shop" className="hover:text-brand-gold">Shop</Link>
         <span>/</span>
         <Link
@@ -85,7 +85,7 @@ export default async function ProductPage({
         <span className="text-gray-600">{product.name}</span>
       </nav>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-20">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 lg:gap-20">
         {/* Images */}
         <div className="space-y-3">
           <div className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative">
@@ -131,7 +131,7 @@ export default async function ProductPage({
           )}
 
           <div>
-            <h1 className="font-display text-4xl text-gray-900 leading-tight">{product.name}</h1>
+            <h1 className="font-display text-2xl md:text-4xl text-gray-900 leading-tight">{product.name}</h1>
             <p className="text-sm text-brand-gold/70 mt-1 tracking-widest uppercase">
               {CATEGORY_LABELS[product.category]}
             </p>

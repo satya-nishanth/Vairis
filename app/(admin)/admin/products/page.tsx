@@ -11,7 +11,7 @@ export default async function AdminProductsPage() {
   })
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="font-display text-3xl text-gray-900">Products</h1>
         <Link
@@ -30,8 +30,8 @@ export default async function AdminProductsPage() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-gray-100 rounded-lg overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Product</th>

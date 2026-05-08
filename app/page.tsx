@@ -68,7 +68,7 @@ export default async function HomePage() {
             <p className="text-brand-gold/60 tracking-[0.5em] text-xs uppercase">
               Fine Jewellery
             </p>
-            <h1 className="font-display text-7xl md:text-9xl text-white tracking-[0.2em]">
+            <h1 className="font-display text-5xl md:text-7xl lg:text-9xl text-white tracking-[0.2em]">
               VAIRIS
             </h1>
             <p className="text-white/50 text-base max-w-sm mx-auto leading-relaxed tracking-wide">
@@ -77,7 +77,7 @@ export default async function HomePage() {
             <div className="flex items-center justify-center gap-6 mt-8">
               <Link
                 href="/shop"
-                className="px-10 py-3.5 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-300 tracking-[0.2em] text-xs uppercase"
+                className="w-full sm:w-auto px-10 py-3.5 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-300 tracking-[0.2em] text-xs uppercase"
               >
                 Explore Collection
               </Link>
@@ -86,12 +86,12 @@ export default async function HomePage() {
         </section>
 
         {/* Categories */}
-        <section className="max-w-7xl mx-auto px-6 py-24">
+        <section className="max-w-7xl mx-auto px-4 md:px-6 py-12 md:py-24">
           <div className="text-center mb-14">
             <p className="text-xs text-brand-gold/60 tracking-[0.4em] uppercase mb-3">Collections</p>
             <h2 className="font-display text-4xl text-gray-900">Shop by Category</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {CATEGORIES.map((cat) => (
               <Link
                 key={cat.id}
@@ -100,7 +100,7 @@ export default async function HomePage() {
               >
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60" />
                 <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
-                  <h3 className="font-display text-2xl group-hover:text-brand-gold transition-colors duration-300">
+                  <h3 className="font-display text-xl md:text-2xl group-hover:text-brand-gold transition-colors duration-300">
                     {cat.label}
                   </h3>
                   <p className="text-xs text-white/50 mt-1 group-hover:text-white/70 transition-colors">
@@ -115,12 +115,12 @@ export default async function HomePage() {
 
         {/* New Arrivals */}
         {products.length > 0 && (
-          <section className="max-w-7xl mx-auto px-6 pb-24">
+          <section className="max-w-7xl mx-auto px-4 md:px-6 pb-12 md:pb-24">
             <div className="text-center mb-14">
               <p className="text-xs text-brand-gold/60 tracking-[0.4em] uppercase mb-3">Latest</p>
               <h2 className="font-display text-4xl text-gray-900">New Arrivals</h2>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
               {products.map((p) => (
                 <ProductCard
                   key={p.id}

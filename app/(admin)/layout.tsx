@@ -10,9 +10,30 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireAdmin()
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-56 bg-brand-dark flex-shrink-0 flex flex-col">
+    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
+      {/* Mobile top bar */}
+      <div className="flex md:hidden items-center justify-between h-14 bg-brand-dark px-4 shadow-md">
+        <Link
+          href="/"
+          className="font-display text-lg tracking-widest text-brand-gold"
+        >
+          VAIRIS Admin
+        </Link>
+        <div className="flex items-center gap-4">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="text-xs text-white/70 hover:text-brand-gold transition-colors tracking-wide uppercase"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex w-56 bg-brand-dark flex-shrink-0 flex-col">
         <Link
           href="/"
           className="h-16 flex items-center px-6 font-display text-xl tracking-widest text-brand-gold border-b border-white/10"
