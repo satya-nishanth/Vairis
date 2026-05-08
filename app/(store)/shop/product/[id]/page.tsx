@@ -3,6 +3,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import NotifyMeButton from '@/components/store/NotifyMeButton'
+import VariantSelector from '@/components/store/VariantSelector'
 import type { Metadata } from 'next'
 
 export const revalidate = 60
@@ -49,14 +50,27 @@ export default async function ProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id, isActive: true },
-    include: {
-      variants: {
-        select: { id: true, metalType: true, weightGrams: true, sku: true },
+  const [product, goldRates] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id, isActive: true },
+      include: {
+        variants: {
+          select: {
+            id: true,
+            metalType: true,
+            weightGrams: true,
+            makingChargePerGram: true,
+            flatMakingCharge: true,
+            stoneCharges: true,
+            miscCharges: true,
+            sku: true,
+            size: true,
+          },
+        },
       },
-    },
-  })
+    }),
+    prisma.goldRate.findMany(),
+  ])
 
   if (!product) notFound()
 
@@ -166,28 +180,22 @@ export default async function ProductPage({
 
           <hr className="border-gray-100" />
 
-          {/* Metal variants */}
+          {/* Metal variants — interactive selector with price */}
           {product.variants.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 tracking-[0.2em] uppercase mb-3">
-                Available In
-              </p>
-              <div className="space-y-2">
-                {product.variants.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between px-4 py-3 border border-gray-100 rounded-sm hover:border-brand-gold/40 transition-colors"
-                  >
-                    <span className="text-sm font-medium text-gray-900">
-                      {METAL_LABELS[v.metalType] ?? v.metalType}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {parseFloat(v.weightGrams.toString()).toFixed(3)}g
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <VariantSelector
+              variants={product.variants.map(v => ({
+                ...v,
+                weightGrams: v.weightGrams.toString(),
+                makingChargePerGram: v.makingChargePerGram.toString(),
+                flatMakingCharge: v.flatMakingCharge.toString(),
+                stoneCharges: v.stoneCharges.toString(),
+                miscCharges: v.miscCharges.toString(),
+              }))}
+              goldRates={goldRates.map(r => ({
+                metalType: r.metalType,
+                ratePerGram: r.ratePerGram.toString(),
+              }))}
+            />
           )}
 
           {/* Design specs */}
