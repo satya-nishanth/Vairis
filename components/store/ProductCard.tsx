@@ -30,7 +30,7 @@ export default function ProductCard({
       <div className="aspect-square bg-brand-cream overflow-hidden relative rounded-sm">
         {img ? (
           <Image
-            src={thumb(img)}
+            src={img}
             alt={name}
             fill
             sizes="(max-width: 768px) 50vw, 25vw"
