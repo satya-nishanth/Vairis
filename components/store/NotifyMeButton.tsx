@@ -3,13 +3,19 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
+type Props = {
+  productId: string
+  productPath: string
+  label?: string
+  savedLabel?: string
+}
+
 export default function NotifyMeButton({
   productId,
   productPath,
-}: {
-  productId: string
-  productPath: string
-}) {
+  label = 'Notify Me When Available',
+  savedLabel = "✓ We'll notify you when this is available",
+}: Props) {
   const router = useRouter()
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
 
@@ -51,14 +57,11 @@ export default function NotifyMeButton({
       <div className="space-y-2">
         <div
           data-testid="notify-success"
-          className="w-full py-4 bg-green-50 border border-green-200 text-green-700 text-sm text-center tracking-wide rounded-sm"
+          className="w-full py-3 bg-green-50 border border-green-200 text-green-700 text-sm text-center tracking-wide rounded-sm"
         >
-          ✓ We'll notify you when this is available
+          {savedLabel}
         </div>
-        <a
-          href="/wishlist"
-          className="block text-center text-xs text-brand-gold hover:underline"
-        >
+        <a href="/wishlist" className="block text-center text-xs text-brand-gold hover:underline">
           View your wishlist →
         </a>
       </div>
@@ -70,9 +73,9 @@ export default function NotifyMeButton({
       onClick={handleClick}
       disabled={state === 'loading'}
       data-testid="notify-me-button"
-      className="w-full py-4 border-2 border-brand-gold text-brand-gold text-sm tracking-[0.2em] uppercase hover:bg-brand-gold hover:text-brand-dark transition-all disabled:opacity-50"
+      className="w-full py-3 border border-gray-300 text-gray-600 text-sm tracking-[0.15em] uppercase hover:border-brand-gold hover:text-brand-gold transition-all disabled:opacity-50"
     >
-      {state === 'loading' ? 'Saving…' : 'Notify Me When Available'}
+      {state === 'loading' ? 'Saving…' : label}
     </button>
   )
 }

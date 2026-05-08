@@ -87,18 +87,30 @@ export default async function ProductPage({
       </nav>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 lg:gap-20">
-        {/* Images */}
+        {/* Images / Videos */}
         <div className="space-y-3">
           <div className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative">
             {product.images[0] ? (
-              <Image
-                src={product.images[0]}
-                alt={product.name}
-                fill
-                priority
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="object-cover"
-              />
+              /\.(mp4|webm|mov|avi)(\?|$)/i.test(product.images[0]) ? (
+                <video
+                  src={product.images[0]}
+                  controls
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Image
+                  src={product.images[0]}
+                  alt={product.name}
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  className="object-cover"
+                />
+              )
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="font-display text-8xl text-brand-gold/10">V</span>
@@ -110,6 +122,9 @@ export default async function ProductPage({
             <div className="grid grid-cols-4 gap-2">
               {product.images.slice(1, 5).map((img, i) => (
                 <div key={i} className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative">
+                  {/\.(mp4|webm|mov|avi)(\?|$)/i.test(img) ? (
+                    <video src={img} muted playsInline className="w-full h-full object-cover" />
+                  ) : (
                   <Image
                     src={img}
                     alt={`${product.name} ${i + 2}`}
@@ -117,6 +132,7 @@ export default async function ProductPage({
                     sizes="20vw"
                     className="object-cover"
                   />
+                  )}
                 </div>
               ))}
             </div>
@@ -260,6 +276,13 @@ export default async function ProductPage({
                 <button className="w-full py-4 bg-brand-dark text-white text-sm tracking-[0.2em] uppercase hover:bg-brand-light transition-colors">
                   Enquire for Price
                 </button>
+                {/* Wishlist — available for all products when logged in */}
+                <NotifyMeButton
+                  productId={product.id}
+                  productPath={`/shop/product/${product.id}`}
+                  label="Save to Wishlist"
+                  savedLabel="✓ Saved to Wishlist"
+                />
                 <p className="text-xs text-gray-400 text-center">
                   Contact us for pricing and availability
                 </p>

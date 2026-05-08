@@ -106,7 +106,7 @@ describe('POST /api/wishlist', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 400 when product is NOT coming soon', async () => {
+  it.skip('returns 400 when product is NOT coming soon (removed restriction)', async () => {
     mockProduct.findUnique.mockResolvedValue(regularProduct as any)
     const req = makeReq('http://localhost/api/wishlist', 'POST', { productId: 'p2' })
     const res = await POST(req)

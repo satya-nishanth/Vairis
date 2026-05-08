@@ -24,14 +24,12 @@ export async function POST(req: NextRequest) {
 
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 })
 
-  // Verify product exists and is active + comingSoon
+  // Any active product can be wishlisted — not just coming-soon
   const product = await prisma.product.findUnique({
     where: { id: productId, isActive: true },
-    select: { id: true, comingSoon: true },
+    select: { id: true },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
-  if (!product.comingSoon)
-    return NextResponse.json({ error: 'Only coming-soon products can be wishlisted' }, { status: 400 })
 
   const item = await prisma.wishlist.upsert({
     where: { userId_productId: { userId: user.id, productId } },
