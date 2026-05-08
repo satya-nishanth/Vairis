@@ -1,0 +1,214 @@
+import { test, expect, type Page } from '@playwright/test'
+
+// ─── helpers ───────────────────────────────────────────────────────────────
+
+async function loginAsAdmin(page: Page) {
+  await page.goto('/auth/login')
+  await page.waitForLoadState('networkidle')
+  // Use the Sign In form's email/password inputs (first form on the page)
+  await page.locator('form').first().locator('input[name="email"]').fill('nish99.sn@gmail.com')
+  await page.locator('form').first().locator('input[name="password"]').fill('Admin1234!')
+  await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
+  await page.waitForURL('**/admin/dashboard', { timeout: 15000 })
+}
+
+async function deleteProductViaApi(page: Page, productId: string) {
+  const res = await page.request.delete(`/api/admin/products/${productId}`)
+  expect([204, 404]).toContain(res.status())
+}
+
+// ─── tests ─────────────────────────────────────────────────────────────────
+
+test.describe('Admin product CRUD + store reflection', () => {
+  // Shared state between tests — Playwright runs tests within a describe
+  // sequentially when fullyParallel is false.
+  let createdProductId = ''
+
+  test.afterAll(async ({ browser }) => {
+    if (createdProductId) {
+      const context = await browser.newContext()
+      const page = await context.newPage()
+      try {
+        await loginAsAdmin(page)
+        await deleteProductViaApi(page, createdProductId)
+      } catch {
+        // Best-effort cleanup
+      } finally {
+        await context.close()
+      }
+    }
+  })
+
+  test('Step 1: Login as admin and reach /admin/dashboard', async ({ page }) => {
+    await loginAsAdmin(page)
+    await expect(page).toHaveURL(/\/admin\/dashboard/)
+  })
+
+  test('Step 2: /admin/products/new page loads correctly', async ({ page }) => {
+    await loginAsAdmin(page)
+    await page.goto('/admin/products/new')
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.locator('h1', { hasText: 'New Product' })).toBeVisible()
+    // ProductForm sections present
+    await expect(page.locator('text=Basic Information')).toBeVisible()
+    await expect(page.locator('text=Metal Variants')).toBeVisible()
+  })
+
+  test('Steps 3–5: Create product → redirected to products list → product in table', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page)
+    await page.goto('/admin/products/new')
+    await page.waitForLoadState('networkidle')
+
+    // --- Basic Information ---
+    // Product Name input (placeholder: "e.g. Heart Diamond Bracelet")
+    await page.locator('input[placeholder*="Heart Diamond"]').fill('E2E Test Ring')
+
+    // Item Code input (placeholder: "e.g. AJBR-74")
+    await page.locator('input[placeholder*="AJBR"]').fill('E2E-001')
+
+    // Category select — first <select> on the form
+    await page.locator('form select').first().selectOption('RINGS')
+
+    // Description textarea (first textarea)
+    await page.locator('textarea').first().fill('E2E test product')
+
+    // isActive checkbox — default is true; ensure it stays checked
+    const activeCheckbox = page.locator('input[type="checkbox"]')
+    await expect(activeCheckbox).toBeChecked()
+
+    // --- Metal Variants section ---
+    // Metal type select — the second <select> on the page (index 1)
+    await page.locator('form select').nth(1).selectOption('GOLD_18K')
+
+    // Weight input (placeholder "8.500") — only one with this placeholder
+    await page.locator('input[placeholder="8.500"]').fill('3.5')
+
+    // Stock input — the number input directly after the weight input in the variant row.
+    // It has no placeholder. We scope to the Variants section to target it precisely.
+    // The variants section heading contains "Metal Variants".
+    const variantsSection = page.locator('section', { hasText: 'Metal Variants' })
+
+    // The variant row has: select, weight(number,step=0.001), stock(number), sku(text)
+    // stock is the number input without step=0.001 and without a placeholder
+    const stockInput = variantsSection.locator('input[type="number"]:not([step="0.001"])').first()
+    await stockInput.fill('5')
+
+    // SKU input (placeholder "AJBR-74-GOLD_18K") — auto-generated but we set explicitly
+    // After filling itemCode, the SKU is auto-set to "E2E-001-G18K" via buildSku()
+    // Verify and/or set it
+    const skuInput = page.locator('input[placeholder*="AJBR-74-GOLD_18K"]')
+    // Wait a moment for React to propagate the itemCode → sku computation
+    await page.waitForTimeout(300)
+    const currentSku = await skuInput.inputValue()
+    if (!currentSku) {
+      await skuInput.fill('E2E-001-G18K')
+    }
+
+    // --- Submit ---
+    await page.locator('button[type="submit"]', { hasText: 'Create Product' }).click()
+
+    // ProductForm does router.push('/admin/products') after successful fetch
+    await page.waitForURL('**/admin/products', { timeout: 20000 })
+    await page.waitForLoadState('networkidle')
+
+    // Product must appear in the table
+    await expect(page.locator('text=E2E Test Ring')).toBeVisible()
+
+    // Capture product ID from the last Edit link (newest product is last or first depending on sort)
+    // Admin sorts by createdAt desc so the newest is at the top → first row's Edit link
+    const editLinks = page.locator('a', { hasText: 'Edit' })
+    const count = await editLinks.count()
+    for (let i = 0; i < count; i++) {
+      const href = await editLinks.nth(i).getAttribute('href')
+      const match = href?.match(/\/admin\/products\/([^/]+)\/edit/)
+      if (match?.[1]) {
+        // Verify by checking if the row contains "E2E Test Ring"
+        const row = editLinks.nth(i).locator('..').locator('..').locator('..')
+        const rowText = await row.textContent().catch(() => '')
+        if (rowText?.includes('E2E Test Ring')) {
+          createdProductId = match[1]
+          break
+        }
+        // Fallback: store the first match if we can't read the row text
+        if (!createdProductId) createdProductId = match[1]
+      }
+    }
+  })
+
+  test('Step 6: /shop/rings shows the created product', async ({ page }) => {
+    test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
+
+    await page.goto('/shop/rings')
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.locator('text=E2E Test Ring')).toBeVisible()
+  })
+
+  test('Steps 7–8: Product detail page shows item code E2E-001 and 18kt Gold variant', async ({
+    page,
+  }) => {
+    test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
+
+    await page.goto(`/shop/product/${createdProductId}`)
+    await page.waitForLoadState('networkidle')
+
+    // Item code shown in font-mono element
+    await expect(page.locator('p.font-mono', { hasText: 'E2E-001' })).toBeVisible()
+
+    // Product name in h1
+    await expect(page.locator('h1', { hasText: 'E2E Test Ring' })).toBeVisible()
+
+    // Metal variant row: "18kt Gold" label and "3.500g" weight
+    await expect(page.locator('text=18kt Gold')).toBeVisible()
+    await expect(page.locator('text=3.500g')).toBeVisible()
+  })
+
+  test('Steps 9–10: Edit product name and verify updated name on /shop/rings', async ({
+    page,
+  }) => {
+    test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
+
+    await loginAsAdmin(page)
+    await page.goto(`/admin/products/${createdProductId}/edit`)
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.locator('h1', { hasText: 'Edit Product' })).toBeVisible()
+
+    // Clear the product name and enter new value
+    const nameInput = page.locator('input[placeholder*="Heart Diamond"]')
+    await nameInput.clear()
+    await nameInput.fill('E2E Test Ring Updated')
+
+    // Submit
+    await page.locator('button[type="submit"]', { hasText: 'Save Changes' }).click()
+
+    // Wait for redirect back to products list
+    await page.waitForURL('**/admin/products', { timeout: 20000 })
+    await page.waitForLoadState('networkidle')
+
+    // Admin table shows updated name
+    await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
+
+    // Store /shop/rings also shows updated name (revalidate=60 but dev mode skips cache)
+    await page.goto('/shop/rings')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
+  })
+
+  test('Step 11: Cleanup — delete test product via API', async ({ page }) => {
+    test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
+
+    await loginAsAdmin(page)
+    await deleteProductViaApi(page, createdProductId)
+
+    // Verify it no longer appears in admin products list
+    await page.goto('/admin/products')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('text=E2E Test Ring Updated')).not.toBeVisible()
+
+    createdProductId = ''
+  })
+})

@@ -13,3 +13,8 @@ build/
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright
+test-results/
+playwright-report/
+e2e/test-results/
