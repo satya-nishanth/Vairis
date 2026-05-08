@@ -34,6 +34,7 @@ export default async function ShopPage({
       images: true,
       stoneType: true,
       caratWeight: true,
+      comingSoon: true,
     },
   })
 
@@ -84,6 +85,7 @@ export default async function ShopPage({
               images={p.images}
               stoneType={p.stoneType}
               caratWeight={p.caratWeight?.toString() ?? null}
+                comingSoon={p.comingSoon}
             />
           ))}
         </div>

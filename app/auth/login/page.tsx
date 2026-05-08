@@ -1,33 +1,58 @@
 import { redirect } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { prisma } from '@/lib/prisma'
 import GoogleButton from '@/components/auth/GoogleButton'
 
 async function signIn(formData: FormData) {
   'use server'
   const email = formData.get('email') as string
   const password = formData.get('password') as string
+  const next = (formData.get('next') as string) || null
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) redirect(`/auth/login?error=${encodeURIComponent(error.message)}`)
-  redirect('/admin/dashboard')
+  if (error) {
+    const q = next ? `&next=${encodeURIComponent(next)}` : ''
+    redirect(`/auth/login?error=${encodeURIComponent(error.message)}${q}`)
+  }
+  // Upsert user in DB on sign-in too (covers email/password logins)
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (session?.user) {
+    await prisma.user.upsert({
+      where: { email: session.user.email! },
+      update: {},
+      create: {
+        email: session.user.email!,
+        name: session.user.user_metadata?.full_name ?? session.user.email!,
+      },
+    })
+  }
+  redirect(next ?? '/admin/dashboard')
 }
 
 async function signUp(formData: FormData) {
   'use server'
   const email = formData.get('email') as string
   const password = formData.get('password') as string
+  const next = (formData.get('next') as string) || null
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase.auth.signUp({ email, password })
-  if (error) redirect(`/auth/login?error=${encodeURIComponent(error.message)}`)
-  redirect(`/auth/login?msg=${encodeURIComponent('Account created — sign in below')}`)
+  if (error) {
+    const q = next ? `&next=${encodeURIComponent(next)}` : ''
+    redirect(`/auth/login?error=${encodeURIComponent(error.message)}${q}`)
+  }
+  const q = next ? `&next=${encodeURIComponent(next)}` : ''
+  redirect(`/auth/login?msg=${encodeURIComponent('Account created — sign in below')}${q}`)
 }
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; msg?: string }>
+  searchParams: Promise<{ error?: string; msg?: string; next?: string }>
 }) {
-  const { error, msg } = await searchParams
+  const { error, msg, next } = await searchParams
+  const isAdminFlow = !next || next.startsWith('/admin')
 
   const inputCls =
     'w-full border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold bg-white'
@@ -38,7 +63,9 @@ export default async function LoginPage({
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <h1 className="font-display text-4xl tracking-widest text-brand-dark">VAIRIS</h1>
-          <p className="text-sm text-gray-400 mt-2 tracking-wide">Admin Access</p>
+          <p className="text-sm text-gray-400 mt-2 tracking-wide">
+            {isAdminFlow ? 'Admin Access' : 'Sign in to continue'}
+          </p>
         </div>
 
         {msg && (
@@ -54,26 +81,14 @@ export default async function LoginPage({
 
         {/* Sign In */}
         <form action={signIn} className="space-y-4">
+          {next && <input type="hidden" name="next" value={next} />}
           <div>
             <label className={labelCls}>Email</label>
-            <input
-              name="email"
-              type="email"
-              required
-              className={inputCls}
-              placeholder="nish99.sn@gmail.com"
-            />
+            <input name="email" type="email" required className={inputCls} placeholder="your@email.com" />
           </div>
           <div>
             <label className={labelCls}>Password</label>
-            <input
-              name="password"
-              type="password"
-              required
-              minLength={6}
-              className={inputCls}
-              placeholder="••••••••"
-            />
+            <input name="password" type="password" required minLength={6} className={inputCls} placeholder="••••••••" />
           </div>
           <button
             type="submit"
@@ -89,13 +104,8 @@ export default async function LoginPage({
             No account? Create one →
           </summary>
           <form action={signUp} className="mt-4 space-y-3">
-            <input
-              name="email"
-              type="email"
-              required
-              className={inputCls}
-              placeholder="Email"
-            />
+            {next && <input type="hidden" name="next" value={next} />}
+            <input name="email" type="email" required className={inputCls} placeholder="Email" />
             <input
               name="password"
               type="password"
@@ -122,7 +132,7 @@ export default async function LoginPage({
           </div>
         </div>
 
-        <GoogleButton />
+        <GoogleButton next={next} />
       </div>
     </main>
   )

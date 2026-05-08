@@ -39,6 +39,7 @@ const patchSchema = z.object({
   caratWeight: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
   images: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
+  comingSoon: z.boolean().optional(),
   variants: z.array(patchVariantSchema).min(1).optional(),
 })
 
@@ -86,6 +87,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
       ...(data.caratWeight !== undefined && { caratWeight: data.caratWeight }),
       ...(data.images !== undefined && { images: data.images }),
       ...(data.isActive !== undefined && { isActive: data.isActive }),
+      ...(data.comingSoon !== undefined && { comingSoon: data.comingSoon }),
       ...(data.variants !== undefined && {
         variants: {
           deleteMany: {},

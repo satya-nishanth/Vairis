@@ -9,6 +9,7 @@ type ProductCardProps = {
   images: string[]
   stoneType: string | null
   caratWeight: number | string | null
+  comingSoon?: boolean
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -19,7 +20,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function ProductCard({
-  id, name, itemCode, category, images, stoneType, caratWeight,
+  id, name, itemCode, category, images, stoneType, caratWeight, comingSoon,
 }: ProductCardProps) {
   const img = images[0]
 
@@ -40,6 +41,11 @@ export default function ProductCard({
           </div>
         )}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300" />
+        {comingSoon && (
+          <div className="absolute top-2 left-2 bg-brand-dark/90 text-brand-gold text-[9px] tracking-[0.2em] uppercase px-2 py-1 rounded-sm">
+            Coming Soon
+          </div>
+        )}
       </div>
 
       <div className="mt-3 space-y-0.5">
@@ -49,13 +55,12 @@ export default function ProductCard({
         <h3 className="font-display text-base text-gray-900 leading-snug group-hover:text-brand-dark transition-colors">
           {name}
         </h3>
-        {itemCode && (
-          <p className="text-xs text-gray-400 font-mono">{itemCode}</p>
-        )}
+        {itemCode && <p className="text-xs text-gray-400 font-mono">{itemCode}</p>}
         {stoneType && caratWeight && (
-          <p className="text-xs text-gray-500">
-            {caratWeight}ctw {stoneType}
-          </p>
+          <p className="text-xs text-gray-500">{caratWeight}ctw {stoneType}</p>
+        )}
+        {comingSoon && (
+          <p className="text-xs text-brand-gold/70 tracking-wide">Notify me →</p>
         )}
       </div>
     </Link>

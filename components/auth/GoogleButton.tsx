@@ -1,13 +1,17 @@
 'use client'
 import { createClient } from '@/lib/supabase'
 
-export default function GoogleButton() {
+export default function GoogleButton({ next }: { next?: string }) {
   const supabase = createClient()
 
   async function signInWithGoogle() {
+    const redirectTo = next
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(next)}`
+      : `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback` },
+      options: { redirectTo },
     })
   }
 

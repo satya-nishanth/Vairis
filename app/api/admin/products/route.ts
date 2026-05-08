@@ -39,6 +39,7 @@ const productSchema = z.object({
   caratWeight: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
   images: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),
+  comingSoon: z.boolean().default(false),
   variants: z.array(variantSchema).min(1, 'At least one variant is required'),
 })
 
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
       caratWeight: data.caratWeight,
       images: data.images,
       isActive: data.isActive,
+      comingSoon: data.comingSoon,
       variants: {
         create: data.variants.map((v) => ({
           metalType: v.metalType,

@@ -49,6 +49,7 @@ model User {
   addresses Address[]
   orders    Order[]
   cartItems CartItem[]
+  wishlists Wishlist[]
 }
 
 model Address {
@@ -89,7 +90,10 @@ model Product {
   gemCount    Int?
   caratWeight Decimal?
 
+  comingSoon  Boolean          @default(false)
+
   variants    ProductVariant[]
+  wishlists   Wishlist[]
 }
 
 model ProductVariant {
@@ -178,4 +182,15 @@ model Shipment {
   trackingUrl  String?
   status       String?
   updatedAt    DateTime @updatedAt
+}
+
+model Wishlist {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
 }

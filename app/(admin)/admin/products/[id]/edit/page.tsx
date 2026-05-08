@@ -44,6 +44,7 @@ export default async function EditProductPage({
           caratWeight: product.caratWeight?.toString() ?? '',
           images: product.images,
           isActive: product.isActive,
+          comingSoon: product.comingSoon,
           variants: product.variants.map((v) => ({
             metalType: v.metalType,
             weightGrams: v.weightGrams.toString(),

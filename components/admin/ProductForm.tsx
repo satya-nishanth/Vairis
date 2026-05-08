@@ -65,6 +65,7 @@ type FormData = {
   images: string[]
   variants: Variant[]
   isActive: boolean
+  comingSoon: boolean
 }
 
 type Props = {
@@ -103,6 +104,7 @@ function initialForm(data?: Partial<FormData>): FormData {
     images: data?.images ?? [],
     variants: data?.variants?.length ? data.variants as Variant[] : [emptyVariant()],
     isActive: data?.isActive ?? true,
+    comingSoon: (data as any)?.comingSoon ?? false,
   }
 }
 
@@ -150,11 +152,17 @@ export default function ProductForm({ initialData, mode }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    // FE guard: making charge required on all variants
-    for (const v of form.variants) {
-      if (!v.makingChargePerGram || parseFloat(v.makingChargePerGram) < 0) {
-        setError('Every variant must have a Making Charge (₹/g) of 0 or more.')
-        return
+    // FE guard: making charge required unless product is Coming Soon
+    if (!form.comingSoon) {
+      for (const v of form.variants) {
+        if (v.makingChargePerGram === '' || v.makingChargePerGram === undefined) {
+          setError('Every variant must have a Making Charge (₹/g). Mark as "Coming Soon" if pricing is not set yet.')
+          return
+        }
+        if (parseFloat(v.makingChargePerGram) < 0) {
+          setError('Making Charge cannot be negative.')
+          return
+        }
       }
     }
 
@@ -228,7 +236,7 @@ export default function ProductForm({ initialData, mode }: Props) {
               ))}
             </select>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-col gap-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -238,6 +246,20 @@ export default function ProductForm({ initialData, mode }: Props) {
               />
               <span className="text-sm text-gray-700">Active (visible on store)</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.comingSoon}
+                onChange={(e) => set('comingSoon', e.target.checked)}
+                className="w-4 h-4 accent-brand-gold"
+              />
+              <span className="text-sm text-gray-700">Coming Soon</span>
+            </label>
+            {form.comingSoon && (
+              <p className="text-[10px] text-amber-600 leading-tight">
+                Pricing optional — shown as "Coming Soon" with a Notify Me button. No price displayed.
+              </p>
+            )}
           </div>
         </div>
 
@@ -461,13 +483,13 @@ export default function ProductForm({ initialData, mode }: Props) {
                     {/* Making ₹/g */}
                     <div>
                       <label className={labelCls}>
-                        Making ₹/g <span className="text-red-400">*</span>
+                        Making ₹/g{' '}
+                        {!form.comingSoon && <span className="text-red-400">*</span>}
                       </label>
                       <input
                         type="number"
                         step="1"
                         min="0"
-                        required
                         value={v.makingChargePerGram}
                         onChange={(e) => setVariant(idx, 'makingChargePerGram', e.target.value)}
                         className={`${inputCls} ${makingHigh ? 'border-amber-400' : ''}`}

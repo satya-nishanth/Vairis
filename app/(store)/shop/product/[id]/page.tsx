@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import NotifyMeButton from '@/components/store/NotifyMeButton'
 import type { Metadata } from 'next'
 
 export const revalidate = 60
@@ -237,15 +238,33 @@ export default async function ProductPage({
           )}
 
           {/* CTA */}
-          <div className="pt-4">
-            <button
-              className="w-full py-4 bg-brand-dark text-white text-sm tracking-[0.2em] uppercase hover:bg-brand-light transition-colors"
-            >
-              Enquire for Price
-            </button>
-            <p className="text-xs text-gray-400 text-center mt-3">
-              Contact us for pricing and availability
-            </p>
+          <div className="pt-4 space-y-3">
+            {product.comingSoon ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block bg-brand-dark text-brand-gold text-[9px] tracking-[0.2em] uppercase px-2 py-1 rounded-sm">
+                    Coming Soon
+                  </span>
+                  <span className="text-xs text-gray-400">Pricing not yet available</span>
+                </div>
+                <NotifyMeButton
+                  productId={product.id}
+                  productPath={`/shop/product/${product.id}`}
+                />
+                <p className="text-xs text-gray-400 text-center">
+                  Sign in to save this piece — we'll notify you when it's ready to purchase.
+                </p>
+              </>
+            ) : (
+              <>
+                <button className="w-full py-4 bg-brand-dark text-white text-sm tracking-[0.2em] uppercase hover:bg-brand-light transition-colors">
+                  Enquire for Price
+                </button>
+                <p className="text-xs text-gray-400 text-center">
+                  Contact us for pricing and availability
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

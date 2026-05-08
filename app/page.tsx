@@ -45,6 +45,7 @@ async function getFeatured() {
       images: true,
       stoneType: true,
       caratWeight: true,
+      comingSoon: true,
     },
   })
 }
@@ -131,6 +132,7 @@ export default async function HomePage() {
                   images={p.images}
                   stoneType={p.stoneType}
                   caratWeight={p.caratWeight?.toString() ?? null}
+                comingSoon={p.comingSoon}
                 />
               ))}
             </div>
