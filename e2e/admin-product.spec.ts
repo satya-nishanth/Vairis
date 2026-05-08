@@ -75,8 +75,8 @@ test.describe('Admin product CRUD + store reflection', () => {
     // Description textarea (first textarea)
     await page.locator('textarea').first().fill('E2E test product')
 
-    // isActive checkbox — default is true; ensure it stays checked
-    const activeCheckbox = page.locator('input[type="checkbox"]')
+    // isActive checkbox — default is true; use accessible role to avoid matching 'Coming Soon'
+    const activeCheckbox = page.getByRole('checkbox', { name: 'Active (visible on store)' })
     await expect(activeCheckbox).toBeChecked()
 
     // --- Metal Variants section ---
@@ -86,19 +86,21 @@ test.describe('Admin product CRUD + store reflection', () => {
     // Weight input (placeholder "8.500") — only one with this placeholder
     await page.locator('input[placeholder="8.500"]').fill('3.5')
 
-    // Stock input — the number input directly after the weight input in the variant row.
-    // It has no placeholder. We scope to the Variants section to target it precisely.
-    // The variants section heading contains "Metal Variants".
-    const variantsSection = page.locator('section', { hasText: 'Metal Variants' })
+    // Making charge per gram (now required) — wait for pricing section to render
+    const makingInput = page.locator('input[placeholder="e.g. 400"]')
+    await makingInput.waitFor({ state: 'visible', timeout: 10000 })
+    await makingInput.scrollIntoViewIfNeeded()
+    await makingInput.fill('300')
 
-    // The variant row has: select, weight(number,step=0.001), stock(number), sku(text)
-    // stock is the number input without step=0.001 and without a placeholder
-    const stockInput = variantsSection.locator('input[type="number"]:not([step="0.001"])').first()
+    // Stock input — data-testid="variant-stock"
+    const stockInput = page.getByTestId('variant-stock')
+    await stockInput.waitFor({ state: 'visible', timeout: 5000 })
     await stockInput.fill('5')
 
-    // SKU input — exact placeholder "AJBR-74-GOLD_18K"
+    // SKU input — placeholder "AJBR-74-G18K" (uses short suffix format)
     // After filling itemCode "E2E-001", buildSku auto-sets value to "E2E-001-G18K"
-    const skuInput = page.getByPlaceholder('AJBR-74-GOLD_18K')
+    const skuInput = page.getByPlaceholder('AJBR-74-G18K')
+    await skuInput.waitFor({ state: 'visible', timeout: 5000 })
     await page.waitForTimeout(300) // let React propagate itemCode → sku
     const currentSku = await skuInput.inputValue()
     if (!currentSku) {

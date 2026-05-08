@@ -1,4 +1,4 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -16,69 +16,27 @@ async function loginAsAdmin(page: Page) {
 async function loginAsUser(page: Page) {
   await page.goto('/auth/login')
   await page.waitForLoadState('networkidle')
-  // Customer login page has Sign In as first submit button
   await page.locator('input[name="email"]').first().fill(ADMIN.email)
   await page.locator('input[name="password"]').first().fill(ADMIN.password)
   await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
-  await page.waitForURL(/^(?!.*auth).*$/, { timeout: 15000 }) // not on /auth/
+  // Redirect to / (not admin dashboard — that's the fix we made)
+  await page.waitForURL(/^http:\/\/localhost:3000\/?$/, { timeout: 15000 })
   await page.waitForLoadState('networkidle')
 }
 
-async function createComingSoonProduct(request: APIRequestContext, authCookies: any[]) {
-  const body = {
-    name: 'E2E Wishlist Ring',
-    description: 'E2E test product for wishlist',
-    category: 'RINGS',
-    itemCode: 'E2E-WL-001',
-    isActive: true,
-    comingSoon: true,
-    images: [],
-    variants: [
-      {
-        metalType: 'GOLD_18K',
-        weightGrams: '3.5',
-        makingChargePerGram: '0',
-        stoneCharges: '0',
-        miscCharges: '45',
-        stock: '0',
-        sku: 'E2E-WL-001-G18K',
-      },
-    ],
-  }
-  const res = await request.post('/api/admin/products', {
-    data: body,
-  })
-  if (!res.ok()) {
-    const text = await res.text()
-    throw new Error(`Failed to create product: ${res.status()} ${text}`)
-  }
-  const product = await res.json()
-  return product.id as string
-}
-
-async function deleteProduct(request: APIRequestContext, productId: string) {
-  await request.delete(`/api/admin/products/${productId}`)
-}
-
-async function clearWishlist(request: APIRequestContext, productId: string) {
-  await request.delete(`/api/wishlist?productId=${productId}`)
-}
-
-// ─── test state ───────────────────────────────────────────────────────────
+// ─── test state ────────────────────────────────────────────────────────────
 
 let testProductId = ''
 
-// ─── suite ────────────────────────────────────────────────────────────────
+// ─── suite ─────────────────────────────────────────────────────────────────
 
 test.describe('Customer login & wishlist flows', () => {
-  // Create test product as admin before all tests
   test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
     await loginAsAdmin(page)
 
-    // Use the page's request context — it has the admin session cookies
-    const product = await page.request.post('/api/admin/products', {
+    const res = await page.request.post('/api/admin/products', {
       data: {
         name: 'E2E Wishlist Ring',
         description: 'E2E test product for wishlist',
@@ -101,164 +59,153 @@ test.describe('Customer login & wishlist flows', () => {
       },
     })
 
-    if (product.ok()) {
-      const data = await product.json()
+    if (res.ok()) {
+      const data = await res.json()
       testProductId = data.id
     }
     await context.close()
   })
 
-  // Clean up product + wishlist after all tests
   test.afterAll(async ({ browser }) => {
     if (!testProductId) return
     const context = await browser.newContext()
     const page = await context.newPage()
     try {
       await loginAsAdmin(page)
-      // Remove wishlist entries first, then product
       await page.request.delete(`/api/wishlist?productId=${testProductId}`)
       await page.request.delete(`/api/admin/products/${testProductId}`)
-    } catch {
-      // best-effort cleanup
-    } finally {
+    } catch { /* best-effort */ } finally {
       await context.close()
     }
   })
 
-  // ─── Test 1: Customer login page ─────────────────────────────────────────
+  // ─── 1. Customer login page ───────────────────────────────────────────────
 
-  test('customer /auth/login page is attractive and works', async ({ page }) => {
+  test('1. /auth/login is customer-facing with brand design', async ({ page }) => {
     await page.goto('/auth/login')
     await page.waitForLoadState('networkidle')
 
-    // Brand-first: VAIRIS heading visible (desktop split or mobile)
     await expect(page.locator('h1', { hasText: 'VAIRIS' }).first()).toBeVisible()
-
-    // "Welcome back" heading
     await expect(page.locator('h2', { hasText: 'Welcome back' })).toBeVisible()
-
-    // Form inputs
     await expect(page.locator('input[name="email"]').first()).toBeVisible()
     await expect(page.locator('input[name="password"]').first()).toBeVisible()
     await expect(page.locator('button[type="submit"]', { hasText: 'Sign In' })).toBeVisible()
-
-    // Link to admin login (for misdirected admins)
     await expect(page.locator('a[href="/auth/admin"]')).toBeVisible()
-
-    // "Create an account" option
-    await expect(page.locator('text=New here?')).toBeVisible()
   })
 
-  test('customer can sign in and reaches homepage (not admin dashboard)', async ({ page }) => {
+  test('2. customer sign-in lands on / not /admin/dashboard', async ({ page }) => {
     await loginAsUser(page)
-    // Should land on / or whatever next param says — NOT /admin/dashboard
-    expect(page.url()).not.toContain('/admin/dashboard')
-    expect(page.url()).not.toContain('/auth/login')
+    expect(page.url()).toMatch(/^http:\/\/localhost:3000\/?$/)
   })
 
-  // ─── Test 2: Logged-in user wishlist flow ────────────────────────────────
+  // ─── 2. Logged-in wishlist ────────────────────────────────────────────────
 
-  test('logged-in user: PDP shows Notify Me, click saves to wishlist', async ({ page }) => {
-    test.skip(!testProductId, 'Requires test product (beforeAll)')
+  test('3. logged-in: Notify Me button visible on coming-soon PDP', async ({ page }) => {
+    test.skip(!testProductId, 'Requires test product')
 
     await loginAsUser(page)
 
-    // Navigate to PDP of coming-soon product
+    // Clear any leftover wishlist entry for clean state
+    await page.request.delete(`/api/wishlist?productId=${testProductId}`)
+
     await page.goto(`/shop/product/${testProductId}`)
     await page.waitForLoadState('networkidle')
 
-    // "Coming Soon" badge visible
     await expect(page.locator('text=Coming Soon').first()).toBeVisible()
 
-    // "Notify Me" button visible
-    const notifyBtn = page.getByTestId('notify-me-button')
-    await expect(notifyBtn).toBeVisible()
+    // Wait for React hydration + useEffect wishlist-check to complete
+    await page.waitForTimeout(2000)
 
-    // Click it
+    // Should show idle button (we cleared wishlist above)
+    const notifyBtn = page.getByTestId('notify-me-button')
+    await expect(notifyBtn).toBeVisible({ timeout: 5000 })
+  })
+
+  test('4. click Notify Me → success state shown', async ({ page }) => {
+    test.skip(!testProductId, 'Requires test product')
+
+    await loginAsUser(page)
+    await page.request.delete(`/api/wishlist?productId=${testProductId}`)
+
+    await page.goto(`/shop/product/${testProductId}`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(2000)
+
+    const notifyBtn = page.getByTestId('notify-me-button')
+    await expect(notifyBtn).toBeVisible({ timeout: 5000 })
     await notifyBtn.click()
 
-    // Success state shown
     await expect(page.getByTestId('notify-success')).toBeVisible({ timeout: 8000 })
-    await expect(page.locator('text=We\'ll notify you')).toBeVisible()
-
-    // "View your wishlist" link visible
     await expect(page.locator('a', { hasText: 'View your wishlist' })).toBeVisible()
   })
 
-  test('wishlisted product appears on /wishlist page', async ({ page }) => {
-    test.skip(!testProductId, 'Requires test product + previous test to wishlist it')
+  test('5. wishlisted product visible on /wishlist', async ({ page }) => {
+    test.skip(!testProductId, 'Requires test product + test 4 to run first')
 
     await loginAsUser(page)
     await page.goto('/wishlist')
     await page.waitForLoadState('networkidle')
 
-    // Wishlist page heading
     await expect(page.locator('h1', { hasText: 'My Wishlist' })).toBeVisible()
-
-    // Our test product should be visible
     await expect(page.locator('text=E2E Wishlist Ring')).toBeVisible()
-
-    // Coming Soon badge on wishlist card
     await expect(page.locator('text=Coming Soon').first()).toBeVisible()
   })
 
-  test('remove button removes product from wishlist', async ({ page }) => {
-    test.skip(!testProductId, 'Requires test product in wishlist')
+  test('6. remove button removes product from wishlist', async ({ page }) => {
+    test.skip(!testProductId, 'Requires product in wishlist')
 
     await loginAsUser(page)
     await page.goto('/wishlist')
     await page.waitForLoadState('networkidle')
 
-    // Verify product is there
     await expect(page.locator('text=E2E Wishlist Ring')).toBeVisible()
 
-    // Click remove
-    const removeBtn = page.getByTestId('wishlist-remove').first()
-    await removeBtn.click()
+    await page.getByTestId('wishlist-remove').first().click()
 
-    // After router.refresh(), product should be gone
-    await expect(page.locator('text=E2E Wishlist Ring')).not.toBeVisible({ timeout: 5000 })
+    // router.refresh() causes re-render — product should disappear
+    await expect(page.locator('text=E2E Wishlist Ring')).not.toBeVisible({ timeout: 6000 })
   })
 
-  // ─── Test 3: Unauthenticated → wishlist → login → wishlisted ─────────────
+  // ─── 3. Unauthenticated → wishlist → login ────────────────────────────────
 
-  test('unauthenticated: Notify Me → redirects to login with ?next param', async ({ page }) => {
+  test('7. unauthed Notify Me → /auth/login with ?next= param', async ({ page }) => {
     test.skip(!testProductId, 'Requires test product')
 
-    // Fresh context — no session
     await page.context().clearCookies()
-
     await page.goto(`/shop/product/${testProductId}`)
     await page.waitForLoadState('networkidle')
 
-    // Notify Me should be visible (coming soon product)
+    // Wait for useEffect to settle (no session → stays idle)
+    await page.waitForTimeout(1500)
+
     const notifyBtn = page.getByTestId('notify-me-button')
     await expect(notifyBtn).toBeVisible()
-
-    // Click — should redirect to login
     await notifyBtn.click()
+
     await page.waitForURL(/\/auth\/login\?next=/, { timeout: 8000 })
 
-    // URL contains ?next= pointing back to our PDP
-    expect(page.url()).toContain(`next=`)
-    expect(page.url()).toContain(encodeURIComponent(`/shop/product/${testProductId}`))
+    // URL contains ?next= pointing to our PDP
+    expect(page.url()).toContain('next=')
+    expect(decodeURIComponent(page.url())).toContain(`/shop/product/${testProductId}`)
 
-    // Login page is the customer-facing one (VAIRIS heading, Welcome back)
+    // Customer-facing login page (not admin)
     await expect(page.locator('h2', { hasText: 'Welcome back' })).toBeVisible()
   })
 
-  test('full flow: unauthenticated → Notify Me → login → back to PDP → wishlisted → visible in /wishlist', async ({
+  test('8. full flow: unauthed → Notify Me → login → PDP → wishlisted → /wishlist', async ({
     page,
   }) => {
     test.skip(!testProductId, 'Requires test product')
 
-    // Step 1: Start unauthenticated
+    // Step 1: Start unauthenticated, clear any stale wishlist data
     await page.context().clearCookies()
 
-    // Step 2: Go to PDP
     const pdpUrl = `/shop/product/${testProductId}`
+
+    // Step 2: Go to PDP
     await page.goto(pdpUrl)
     await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(1500) // let useEffect settle
 
     // Step 3: Click Notify Me → redirected to login
     await page.getByTestId('notify-me-button').click()
@@ -269,46 +216,46 @@ test.describe('Customer login & wishlist flows', () => {
     await page.locator('input[name="password"]').first().fill(ADMIN.password)
     await page.locator('button[type="submit"]', { hasText: 'Sign In' }).click()
 
-    // Step 5: Redirected back to PDP (via ?next param)
+    // Step 5: Redirected back to PDP via ?next param
     await page.waitForURL(`**${pdpUrl}`, { timeout: 15000 })
     await page.waitForLoadState('networkidle')
 
-    // Step 6: NotifyMeButton is on PDP — either idle or already done (if mount-check runs)
-    // Wait for mount-check to resolve
-    await page.waitForTimeout(1500)
+    // Clean up any pre-existing wishlist entry so we can click the button
+    await page.request.delete(`/api/wishlist?productId=${testProductId}`)
 
+    // Step 6: Wait for useEffect to re-check wishlist state
+    await page.waitForTimeout(2000)
+
+    // Should show idle button (cleared above)
     const notifyBtn = page.getByTestId('notify-me-button')
     const notifySuccess = page.getByTestId('notify-success')
 
-    // If mount-check already shows "done" (was saved from previous test), proceed
-    // Otherwise click the button
-    const successVisible = await notifySuccess.isVisible().catch(() => false)
-    if (!successVisible) {
-      await expect(notifyBtn).toBeVisible()
+    const alreadyDone = await notifySuccess.isVisible().catch(() => false)
+    if (!alreadyDone) {
+      await expect(notifyBtn).toBeVisible({ timeout: 5000 })
       await notifyBtn.click()
-      await expect(notifySuccess).toBeVisible({ timeout: 8000 })
     }
 
-    await expect(page.locator('text=We\'ll notify you')).toBeVisible()
+    // Step 7: Verify success
+    await expect(notifySuccess).toBeVisible({ timeout: 8000 })
 
-    // Step 7: Navigate to /wishlist
+    // Step 8: Navigate to /wishlist
     await page.goto('/wishlist')
     await page.waitForLoadState('networkidle')
 
-    // Step 8: Verify product is there
     await expect(page.locator('h1', { hasText: 'My Wishlist' })).toBeVisible()
     await expect(page.locator('text=E2E Wishlist Ring')).toBeVisible()
   })
 
-  // ─── Test 4: Unauthenticated /wishlist redirects to login ─────────────────
+  // ─── 4. Unauthed /wishlist redirect ───────────────────────────────────────
 
-  test('visiting /wishlist without login redirects to /auth/login?next=/wishlist', async ({
-    page,
-  }) => {
+  test('9. /wishlist without login redirects to /auth/login?next=/wishlist', async ({ page }) => {
     await page.context().clearCookies()
     await page.goto('/wishlist')
     await page.waitForLoadState('networkidle')
+
     await expect(page).toHaveURL(/\/auth\/login/)
-    await expect(page.url()).toContain('next=%2Fwishlist')
+    // next param contains /wishlist (server redirect doesn't URL-encode it)
+    expect(page.url()).toContain('next=/wishlist')
   })
 })

@@ -447,6 +447,8 @@ export default function ProductForm({ initialData, mode }: Props) {
                     <input
                       type="number"
                       min="0"
+                      placeholder="0"
+                      data-testid="variant-stock"
                       value={v.stock}
                       onChange={(e) => setVariant(idx, 'stock', e.target.value)}
                       className={inputCls}
