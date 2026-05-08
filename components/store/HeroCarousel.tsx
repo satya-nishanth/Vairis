@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 
@@ -11,8 +11,9 @@ const SLIDES = [
     sub: 'Earrings Collection',
     href: '/shop/earrings',
     cta: 'Discover Earrings',
-    // Model on left — text anchored right
-    textAlign: 'right' as const,
+    // Dark green bg on right → gold accent readable
+    accentColor: '#c9a84c',
+    subColor: 'rgba(201,168,76,0.75)',
   },
   {
     src: '/images/website-assets/hero-2.jpeg',
@@ -21,7 +22,9 @@ const SLIDES = [
     sub: 'Bracelets Collection',
     href: '/shop/bracelets',
     cta: 'Shop Bracelets',
-    textAlign: 'center' as const,
+    // Warm cream bg → strong dark overlay, use white accent (gold invisible)
+    accentColor: '#ffffff',
+    subColor: 'rgba(255,255,255,0.65)',
   },
   {
     src: '/images/website-assets/hero-3.jpeg',
@@ -30,126 +33,200 @@ const SLIDES = [
     sub: 'Pendants Collection',
     href: '/shop/pendants',
     cta: 'Explore Pendants',
-    textAlign: 'center' as const,
+    // Warm golden bokeh → gold barely visible, use white
+    accentColor: '#ffffff',
+    subColor: 'rgba(255,255,255,0.65)',
   },
 ]
 
+// Strong dark-right gradient ensures text readability on ALL backgrounds
+const OVERLAY =
+  'linear-gradient(to left, rgba(15,36,24,0.92) 0%, rgba(15,36,24,0.72) 38%, rgba(15,36,24,0.3) 62%, rgba(15,36,24,0.05) 100%)'
+
 export default function HeroCarousel() {
   const [current, setCurrent] = useState(0)
-  const [transitioning, setTransitioning] = useState(false)
+  const [visible, setVisible] = useState(0)        // image currently shown
+  const [allLoaded, setAllLoaded] = useState(false)
+  const loadedCount = useRef(0)
 
-  const goTo = useCallback((idx: number) => {
-    if (transitioning) return
-    setTransitioning(true)
-    setTimeout(() => {
+  // Track when all 3 images finish loading
+  const handleImageLoad = useCallback(() => {
+    loadedCount.current += 1
+    if (loadedCount.current >= SLIDES.length) setAllLoaded(true)
+  }, [])
+
+  // Crossfade: set current immediately (for text), delay image switch
+  const goTo = useCallback(
+    (idx: number) => {
       setCurrent(idx)
-      setTransitioning(false)
-    }, 400)
-  }, [transitioning])
+      // Brief delay so next image is painted before fading in
+      setTimeout(() => setVisible(idx), 50)
+    },
+    []
+  )
 
+  // Auto-advance only after all images are loaded
   useEffect(() => {
-    const timer = setInterval(() => {
+    if (!allLoaded) return
+    const t = setInterval(() => {
       goTo((current + 1) % SLIDES.length)
-    }, 5000)
-    return () => clearInterval(timer)
-  }, [current, goTo])
+    }, 5500)
+    return () => clearInterval(t)
+  }, [allLoaded, current, goTo])
 
   const slide = SLIDES[current]
 
   return (
-    <section className="relative w-full overflow-hidden" style={{ height: 'min(90vh, 720px)' }}>
-      {/* Background image */}
-      <div
-        className="absolute inset-0 transition-opacity duration-700"
-        style={{ opacity: transitioning ? 0 : 1 }}
-      >
-        <Image
-          src={slide.src}
-          alt={slide.alt}
-          fill
-          priority={current === 0}
-          sizes="100vw"
-          className="object-cover object-center"
-        />
-      </div>
-
-      {/* Gradient overlay — darker on the text side */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: slide.textAlign === 'right'
-            ? 'linear-gradient(to left, rgba(15,36,24,0.85) 0%, rgba(15,36,24,0.55) 50%, rgba(15,36,24,0.1) 100%)'
-            : 'linear-gradient(to top, rgba(15,36,24,0.80) 0%, rgba(15,36,24,0.45) 50%, rgba(15,36,24,0.15) 100%)',
-        }}
-      />
-
-      {/* Text content */}
-      <div
-        className={`absolute inset-0 flex items-center ${
-          slide.textAlign === 'right' ? 'justify-end' : 'justify-center'
-        }`}
-      >
+    <section
+      className="relative w-full overflow-hidden select-none"
+      style={{ height: 'min(88vh, 700px)' }}
+    >
+      {/* ── All images stacked — opacity switch eliminates flicker ── */}
+      {SLIDES.map((s, i) => (
         <div
-          className={`px-8 md:px-16 space-y-5 max-w-lg transition-all duration-700 ${
-            transitioning ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'
-          } ${slide.textAlign === 'center' ? 'text-center' : 'text-right'}`}
+          key={s.src}
+          className="absolute inset-0 transition-opacity duration-700"
+          style={{ opacity: i === visible ? 1 : 0 }}
         >
+          <Image
+            src={s.src}
+            alt={s.alt}
+            fill
+            priority             // all 3 preloaded — no lazy loading
+            sizes="100vw"
+            quality={80}
+            className="object-cover object-left-top"
+            onLoad={handleImageLoad}
+          />
+        </div>
+      ))}
+
+      {/* ── Dark-right overlay — works on every background ── */}
+      <div className="absolute inset-0" style={{ background: OVERLAY }} />
+
+      {/* ── Text — always RIGHT aligned ── */}
+      <div className="absolute inset-0 flex items-center justify-end">
+        <div
+          className="px-8 md:px-16 lg:px-20 space-y-5 max-w-md xl:max-w-lg transition-all duration-500"
+          style={{
+            opacity: visible === current ? 1 : 0,
+            transform: visible === current ? 'translateY(0)' : 'translateY(12px)',
+            textAlign: 'right',
+          }}
+        >
+          {/* VAIRIS logo on every slide */}
+          <div className="flex justify-end mb-1">
+            <img
+              src="/images/vairius_logo.png"
+              alt="VAIRIS"
+              style={{ height: '36px', width: 'auto', opacity: 0.9 }}
+            />
+          </div>
+
+          {/* Collection label */}
           <p
-            className="text-brand-gold/70 tracking-[0.4em] text-xs uppercase"
+            className="tracking-[0.4em] text-xs uppercase"
+            style={{ color: slide.subColor, fontFamily: 'var(--font-body)', fontWeight: 400 }}
           >
             {slide.sub}
           </p>
+
+          {/* Headline */}
           <h1
-            className="font-display text-white leading-tight"
+            className="text-white leading-tight"
             style={{
-              fontSize: 'clamp(28px, 4.5vw, 56px)',
+              fontFamily: 'var(--font-display)',
+              fontSize: 'clamp(26px, 4vw, 54px)',
               fontWeight: 300,
               letterSpacing: '0.02em',
               whiteSpace: 'pre-line',
+              textShadow: '0 2px 20px rgba(0,0,0,0.4)',
             }}
           >
             {slide.headline}
           </h1>
+
+          {/* Gold accent divider — right-aligned */}
           <div
-            className={`h-px w-24 bg-gradient-to-r from-brand-gold/30 via-brand-gold/60 to-brand-gold/30 ${
-              slide.textAlign === 'center' ? 'mx-auto' : 'ml-auto'
-            }`}
-          />
-          <Link
-            href={slide.href}
-            className="inline-block font-display border border-brand-gold/60 text-brand-gold hover:bg-brand-gold hover:text-brand-dark transition-all duration-300"
+            className="h-px ml-auto"
             style={{
-              padding: '14px 40px',
-              fontSize: 'clamp(11px, 1.5vw, 13px)',
-              letterSpacing: '0.4em',
-              fontWeight: 300,
+              width: '80px',
+              background: `linear-gradient(to left, transparent, ${slide.accentColor}88, ${slide.accentColor})`,
             }}
-          >
-            {slide.cta.toUpperCase()}
-          </Link>
+          />
+
+          {/* CTA button */}
+          <div className="flex justify-end">
+            <Link
+              href={slide.href}
+              className="inline-block transition-all duration-300 hover:scale-105"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(11px, 1.4vw, 13px)',
+                fontWeight: 300,
+                letterSpacing: '0.4em',
+                padding: '14px 36px',
+                border: `1px solid ${slide.accentColor}88`,
+                color: slide.accentColor,
+                background: 'transparent',
+              }}
+              onMouseEnter={(e) => {
+                ;(e.currentTarget as HTMLAnchorElement).style.background = slide.accentColor
+                ;(e.currentTarget as HTMLAnchorElement).style.color =
+                  slide.accentColor === '#ffffff' ? '#0f2418' : '#0f2418'
+              }}
+              onMouseLeave={(e) => {
+                ;(e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
+                ;(e.currentTarget as HTMLAnchorElement).style.color = slide.accentColor
+              }}
+            >
+              {slide.cta.toUpperCase()}
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Dot navigation */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3">
-        {SLIDES.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => goTo(i)}
-            className="transition-all duration-300"
-            style={{
-              width: i === current ? '28px' : '6px',
-              height: '6px',
-              borderRadius: i === current ? '3px' : '50%',
-              background: i === current ? '#c9a84c' : 'rgba(201,168,76,0.35)',
-            }}
-            aria-label={`Go to slide ${i + 1}`}
-          />
-        ))}
-      </div>
+      {/* ── Loading indicator until all images ready ── */}
+      {!allLoaded && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse"
+              style={{ animationDelay: `${i * 0.2}s` }}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Slide counter */}
-      <div className="absolute bottom-6 right-8 font-display text-white/30 text-xs tracking-widest">
+      {/* ── Dot navigation — bottom center ── */}
+      {allLoaded && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-10">
+          {SLIDES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(i)}
+              className="transition-all duration-300 focus:outline-none"
+              style={{
+                width: i === current ? '28px' : '6px',
+                height: '6px',
+                borderRadius: '3px',
+                background:
+                  i === current
+                    ? '#c9a84c'
+                    : 'rgba(255,255,255,0.35)',
+              }}
+              aria-label={`Go to slide ${i + 1}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── Slide counter — bottom right ── */}
+      <div
+        className="absolute bottom-6 right-8 text-white/30 text-xs tracking-widest"
+        style={{ fontFamily: 'var(--font-display)', fontWeight: 300 }}
+      >
         {String(current + 1).padStart(2, '0')} / {String(SLIDES.length).padStart(2, '0')}
       </div>
     </section>
