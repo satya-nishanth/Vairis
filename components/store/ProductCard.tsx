@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import { thumb } from '@/lib/imageUrl'
 
 type ProductCardProps = {
   id: string
@@ -29,7 +30,7 @@ export default function ProductCard({
       <div className="aspect-square bg-brand-cream overflow-hidden relative rounded-sm">
         {img ? (
           <Image
-            src={img}
+            src={thumb(img)}
             alt={name}
             fill
             sizes="(max-width: 768px) 50vw, 25vw"
