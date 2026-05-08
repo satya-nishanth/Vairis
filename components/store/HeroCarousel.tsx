@@ -106,65 +106,67 @@ export default function HeroCarousel() {
             textAlign: 'right',
           }}
         >
-          {/* Logo image */}
-          <div className="flex justify-end">
-            <img
-              src="/images/vairius_logo.png"
-              alt="VAIRIS"
-              style={{ height: '42px', width: 'auto', opacity: 0.9 }}
-            />
-          </div>
-
-          {/* VAIRIS display text */}
+          {/* VAIRIS — display text only, no image (logo invisible on warm bgs) */}
           <p
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(32px, 5vw, 64px)',
+              fontSize: 'clamp(36px, 5.5vw, 72px)',
               fontWeight: 300,
-              letterSpacing: '0.4em',
+              letterSpacing: '0.45em',
               lineHeight: 1,
               color: slide.vairisColor,
-              textShadow: '0 2px 20px rgba(0,0,0,0.4)',
+              textShadow: '0 2px 24px rgba(0,0,0,0.5)',
+              textAlign: 'right',
             }}
           >
             VAIRIS
           </p>
 
+          {/* Thin divider flush right */}
+          <div
+            style={{
+              width: '80px',
+              height: '1px',
+              marginLeft: 'auto',
+              background: `linear-gradient(to left, transparent, ${slide.accentColor}88, ${slide.accentColor})`,
+            }}
+          />
+
           {/* Collection label */}
           <p
-            className="tracking-[0.4em] text-xs uppercase"
-            style={{ color: slide.subColor, fontFamily: 'var(--font-body)', fontWeight: 400 }}
+            style={{
+              color: slide.subColor,
+              fontFamily: 'var(--font-body)',
+              fontWeight: 400,
+              fontSize: '11px',
+              letterSpacing: '0.38em',
+              textTransform: 'uppercase',
+              textAlign: 'right',
+            }}
           >
             {slide.sub}
           </p>
 
           {/* Headline */}
           <h1
-            className="text-white leading-tight"
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(20px, 3vw, 42px)',
+              fontSize: 'clamp(18px, 2.8vw, 38px)',
               fontWeight: 300,
               fontStyle: 'italic',
               letterSpacing: '0.02em',
               whiteSpace: 'pre-line',
+              color: '#ffffff',
               textShadow: '0 2px 20px rgba(0,0,0,0.4)',
+              lineHeight: 1.35,
+              textAlign: 'right',
             }}
           >
             {slide.headline}
           </h1>
 
-          {/* Accent divider — right-aligned */}
-          <div
-            className="h-px ml-auto"
-            style={{
-              width: '80px',
-              background: `linear-gradient(to left, transparent, ${slide.accentColor}88, ${slide.accentColor})`,
-            }}
-          />
-
           {/* CTA button */}
-          <div className="flex justify-end">
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Link
               href={slide.href}
               className="inline-block transition-all duration-300"
@@ -173,7 +175,7 @@ export default function HeroCarousel() {
                 fontSize: 'clamp(11px, 1.4vw, 13px)',
                 fontWeight: 300,
                 letterSpacing: '0.4em',
-                padding: '14px 36px',
+                padding: '13px 36px',
                 border: `1px solid ${slide.accentColor}80`,
                 color: slide.accentColor,
               }}
