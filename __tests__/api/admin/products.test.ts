@@ -107,8 +107,8 @@ describe('POST /api/admin/products', () => {
     gemCount: 5,
     caratWeight: 2.0,
     variants: [
-      { metalType: 'GOLD_18K', weightGrams: '8.5', stock: '3', sku: 'AJBR-74-G18K' },
-      { metalType: 'SILVER_925', weightGrams: '5.95', stock: '5', sku: 'AJBR-74-S925' },
+      { metalType: 'GOLD_18K', weightGrams: '8.5', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '3', sku: 'AJBR-74-G18K' },
+      { metalType: 'SILVER_925', weightGrams: '5.95', makingChargePerGram: '50', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '5', sku: 'AJBR-74-S925' },
     ],
   }
 
@@ -139,6 +139,9 @@ describe('POST /api/admin/products', () => {
     expect(call.data.variants.create).toHaveLength(2)
     expect(call.data.variants.create[0].metalType).toBe('GOLD_18K')
     expect(Number(call.data.variants.create[0].weightGrams)).toBe(8.5)
+    expect(Number(call.data.variants.create[0].makingChargePerGram)).toBe(400)
+    expect(Number(call.data.variants.create[0].stoneCharges)).toBe(18000)
+    expect(Number(call.data.variants.create[0].miscCharges)).toBe(45)
     expect(call.data.variants.create[0].sku).toBe('AJBR-74-G18K')
   })
 
@@ -147,6 +150,28 @@ describe('POST /api/admin/products', () => {
     const req = makeReq('http://localhost/api/admin/products', 'POST', { ...validBody, itemCode: '' })
     await createProduct(req)
     expect(mockProduct.create.mock.calls[0][0].data.itemCode).toBeNull()
+  })
+
+  it('returns 400 when makingChargePerGram is missing from a variant', async () => {
+    const badBody = {
+      ...validBody,
+      variants: [{ metalType: 'GOLD_18K', weightGrams: '8.5', stock: '3', sku: 'AJBR-74-G18K' }],
+    }
+    const req = makeReq('http://localhost/api/admin/products', 'POST', badBody)
+    const res = await createProduct(req)
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toBe('Validation failed')
+  })
+
+  it('returns 400 when weight is zero', async () => {
+    const badBody = {
+      ...validBody,
+      variants: [{ ...validBody.variants[0], weightGrams: '0' }],
+    }
+    const req = makeReq('http://localhost/api/admin/products', 'POST', badBody)
+    const res = await createProduct(req)
+    expect(res.status).toBe(400)
   })
 
   it('requires admin auth', async () => {
@@ -192,7 +217,7 @@ describe('PATCH /api/admin/products/[id]', () => {
   it('replaces variants when variants array provided', async () => {
     mockProduct.update.mockResolvedValue(fakeProduct() as any)
     const req = makeReq('http://localhost/api/admin/products/p1', 'PATCH', {
-      variants: [{ metalType: 'GOLD_22K', weightGrams: '9.0', stock: '2', sku: 'AJBR-74-G22K' }],
+      variants: [{ metalType: 'GOLD_22K', weightGrams: '9.0', makingChargePerGram: '350', stoneCharges: '0', miscCharges: '45', stock: '2', sku: 'AJBR-74-G22K' }],
     })
     await updateProduct(req, idParams())
     const call = mockProduct.update.mock.calls[0][0]

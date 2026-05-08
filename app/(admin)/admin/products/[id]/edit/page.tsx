@@ -47,6 +47,10 @@ export default async function EditProductPage({
           variants: product.variants.map((v) => ({
             metalType: v.metalType,
             weightGrams: v.weightGrams.toString(),
+            makingChargePerGram: v.makingChargePerGram.toString(),
+            flatMakingCharge: v.flatMakingCharge.toString(),
+            stoneCharges: v.stoneCharges.toString(),
+            miscCharges: v.miscCharges.toString(),
             stock: v.stock.toString(),
             sku: v.sku,
           })),
