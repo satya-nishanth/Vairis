@@ -1,20 +1,37 @@
-# Vercel
+# ── Vercel ───────────────────────────────────────────────────────────────────
 .vercel
 
-# Env files
+# ── Environment files ─────────────────────────────────────────────────────────
 .env*.local
 
-# Next.js
+# ── Next.js ──────────────────────────────────────────────────────────────────
 .next/
 out/
-node_modules/
 build/
 
-# TypeScript
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── TypeScript ───────────────────────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
 
-# Playwright
+# ── Testing ──────────────────────────────────────────────────────────────────
 test-results/
 playwright-report/
 e2e/test-results/
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ── Local raw assets ─────────────────────────────────────────────────────────
+# Production images are in public/ and hosted on Supabase Storage
+images/
+
+# ── Dev tooling artifacts ─────────────────────────────────────────────────────
+.superpowers/
+
+# ── Unused / personal ─────────────────────────────────────────────────────────
+index.html
+chats.txt
