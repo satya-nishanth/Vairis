@@ -48,20 +48,26 @@ test.describe('Public store flows', () => {
     await expect(page.locator('h1', { hasText: 'Bracelets' })).toBeVisible()
   })
 
-  test('Clicking a category pill on /shop navigates to rings page', async ({ page }) => {
+  test('Clicking a category pill on /shop navigates to /shop/rings', async ({ page }) => {
     await page.goto('/shop')
     await page.waitForLoadState('networkidle')
 
-    // Filter pills are in main content — scope below the h1 to avoid clicking the Navbar link
-    // The pill links to /shop?category=rings (query param), navbar links to /shop/rings (path)
-    // Either URL is correct — both show the Rings catalog
+    // Filter pills all link to /shop/[category] — same as navbar
     const mainContent = page.locator('main, [class*="max-w-7xl"]').first()
     await mainContent.locator('a', { hasText: 'Rings' }).first().click()
     await page.waitForLoadState('networkidle')
 
-    // Accept either URL form — /shop/rings or /shop?category=rings
-    await expect(page).toHaveURL(/\/shop\/rings|category=rings/i)
+    await expect(page).toHaveURL(/\/shop\/rings/)
     await expect(page.locator('h1', { hasText: 'Rings' })).toBeVisible()
+  })
+
+  test('/shop filter pills have active state on category pages', async ({ page }) => {
+    await page.goto('/shop/earrings')
+    await page.waitForLoadState('networkidle')
+
+    // Earrings pill should have active styling (bg-brand-dark text-white)
+    const earringsPill = page.locator('a[href="/shop/earrings"]').first()
+    await expect(earringsPill).toHaveClass(/bg-brand-dark/)
   })
 
   test('/shop/product/[nonexistent-id] returns 404 page', async ({ page }) => {

@@ -192,7 +192,7 @@ test.describe('Admin product CRUD + store reflection', () => {
     // Admin table shows updated name
     await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
 
-    // Store /shop/rings also shows updated name (revalidate=60 but dev mode skips cache)
+    // Store /shop/rings also shows updated name (revalidate=120 but dev mode skips cache)
     await page.goto('/shop/rings')
     await page.waitForLoadState('networkidle')
     await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
