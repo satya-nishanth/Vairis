@@ -2,12 +2,13 @@ import { createServerSupabaseClient } from './supabase-server'
 import { prisma } from './prisma'
 import { redirect } from 'next/navigation'
 
+// Uses getUser() which verifies the JWT with Supabase Auth servers — safe for server-side use.
+// getSession() only reads cookies without verification and should not be used for auth decisions.
 export async function getSession() {
   const supabase = await createServerSupabaseClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  return session
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  return { user }
 }
 
 export async function requireUser() {
