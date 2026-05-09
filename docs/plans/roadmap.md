@@ -180,7 +180,87 @@ Razorpay EMI works automatically for cards above ₹3,000 — no extra code. Jus
 
 ---
 
-## 5. Azure Migration
+## 5. Shiprocket Integration
+
+**Time:** 1 day (after Razorpay is done)
+
+### Prerequisites
+- Razorpay checkout working (orders being created in DB)
+- Shiprocket account — sign up at [shiprocket.in](https://shiprocket.in) (free to start)
+- For international: FedEx account (separate, later)
+
+### What needs building
+
+**A — Shiprocket lib** `lib/shiprocket.ts`
+```ts
+// Handles: auth token, create shipment, track shipment
+const BASE = 'https://apiv2.shiprocket.in/v1/external'
+
+async function getToken() {
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.SHIPROCKET_EMAIL,
+      password: process.env.SHIPROCKET_PASSWORD,
+    }),
+  })
+  const { token } = await res.json()
+  return token
+}
+
+export async function createShipment(order: Order) { ... }
+export async function trackShipment(awbCode: string) { ... }
+export async function cancelShipment(shiprocketId: string) { ... }
+```
+
+**B — API routes**
+- `POST /api/orders/[id]/ship` — admin triggers shipping after payment confirmed, creates Shiprocket order, stores `awbCode` + `shiprocketId` in `Shipment` table
+- `POST /api/shiprocket/webhook` — Shiprocket status updates (picked → in transit → delivered), updates `Shipment.status`
+
+**C — Admin UI**
+- Orders list shows shipment status
+- "Create Shipment" button per order (appears after PAYMENT_CONFIRMED)
+- Tracking URL shown per order
+
+### Flow
+```
+Order PAYMENT_CONFIRMED
+  → Admin clicks "Create Shipment"
+  → POST /api/orders/[id]/ship
+  → Shiprocket order created → AWB code assigned → courier picked
+  → Shiprocket webhook fires on status changes
+  → POST /api/shiprocket/webhook → updates Shipment.status
+  → Customer sees tracking URL in /orders/[id]
+```
+
+### Key env vars
+```
+SHIPROCKET_EMAIL=your@email.com
+SHIPROCKET_PASSWORD=yourpassword
+```
+
+Note: Shiprocket uses email/password auth (not API key). Token expires every 24hrs — fetch fresh token per request or cache with 23hr TTL.
+
+### Shipment model (already in schema)
+```prisma
+model Shipment {
+  shiprocketId  String?   // Shiprocket order ID
+  awbCode       String?   // tracking number
+  courierName   String?   // e.g. "Delhivery"
+  trackingUrl   String?
+  status        String?   // picked_up, in_transit, delivered, etc.
+}
+```
+
+### International (FedEx — later)
+- Same pattern but different API
+- FedEx requires separate account + API credentials
+- Add `carrier` field to Shipment to distinguish domestic vs international
+
+---
+
+## 6. Azure Migration
 
 **Time:** 1-2 days setup, then gradual
 
@@ -262,7 +342,7 @@ Vercel reads `next.config.mjs` natively. Azure Static Web Apps uses a hybrid ren
 | Live Gold Rate | ⏳ Pending |
 | Razorpay dev account | ⏳ Pending |
 | Razorpay integration | ⏳ Pending (needs BIS cert for prod) |
-| Shiprocket | ⏳ Pending (after Razorpay) |
+| Shiprocket | ⏳ Pending (after Razorpay — plan in §5) |
 | Checkout flow | ⏳ Pending (after Razorpay) |
 | Azure migration | ⏳ Background (Vercel sufficient now) |
 | SEO sitemap/robots | ⏳ Low priority |
