@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import sharp from 'sharp'
 import { requireAdmin } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
 const BUCKET = 'product-media'
+const VIDEO_SIZE_LIMIT = 50 * 1024 * 1024 // 50MB — Supabase free tier cap
 
-// Supabase Storage supports any file — images + videos
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
@@ -16,7 +17,7 @@ async function ensureBucket() {
   const { error } = await supabaseAdmin.storage.createBucket(BUCKET, {
     public: true,
     allowedMimeTypes: ALLOWED_TYPES,
-    fileSizeLimit: 200 * 1024 * 1024, // 200 MB — covers 4K product videos
+    fileSizeLimit: VIDEO_SIZE_LIMIT,
   })
   if (error && !error.message.toLowerCase().includes('already exist')) throw error
 }
@@ -30,27 +31,46 @@ export async function POST(req: NextRequest) {
 
   if (!ALLOWED_TYPES.includes(file.type)) {
     return NextResponse.json(
-      { error: `Unsupported file type: ${file.type}. Allowed: images (jpg/png/webp) and videos (mp4/webm/mov).` },
+      { error: `Unsupported type: ${file.type}. Allowed: jpg/png/webp and mp4/webm/mov.` },
       { status: 400 }
     )
   }
 
   await ensureBucket()
 
-  const ext = file.name.split('.').pop() ?? 'bin'
-  const folder = file.type.startsWith('video/') ? 'videos' : 'images'
-  const path = `products/${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
+  const isVideo = file.type.startsWith('video/')
   const arrayBuffer = await file.arrayBuffer()
+
+  if (isVideo) {
+    if (file.size > VIDEO_SIZE_LIMIT) {
+      return NextResponse.json(
+        { error: 'Video must be under 50MB. Use 720p, max 15 seconds.' },
+        { status: 413 }
+      )
+    }
+    const ext = file.name.split('.').pop() ?? 'mp4'
+    const path = `products/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(path, arrayBuffer, { contentType: file.type, upsert: false })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
+    return NextResponse.json({ url: data.publicUrl, type: 'video' })
+  }
+
+  // Image — resize with Sharp, always output JPEG
+  const buffer = Buffer.from(arrayBuffer)
+  const resized = await sharp(buffer)
+    .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer()
+
+  const path = `products/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, arrayBuffer, { contentType: file.type, upsert: false })
-
+    .upload(path, resized, { contentType: 'image/jpeg', upsert: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
-  return NextResponse.json({
-    url: data.publicUrl,
-    type: file.type.startsWith('video/') ? 'video' : 'image',
-  })
+  return NextResponse.json({ url: data.publicUrl, type: 'image' })
 }
