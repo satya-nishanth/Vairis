@@ -6,7 +6,7 @@ import VariantSelector from '@/components/store/VariantSelector'
 import MediaGallery from '@/components/store/MediaGallery'
 import type { Metadata } from 'next'
 
-export const revalidate = 60
+export const revalidate = 120
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: '18kt Gold',
