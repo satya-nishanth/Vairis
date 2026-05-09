@@ -45,7 +45,19 @@ PDP skeleton matching the real two-column layout:
 
 ---
 
-## Section 2: Static PDP + ISR Shop with Client-Side Filter
+## Section 2: Static PDP + Static Category Pages + ISR Shop
+
+### Routing reality
+
+Two separate route files handle category browsing:
+
+| URL | File | Used by |
+|---|---|---|
+| `/shop` | `app/(store)/shop/page.tsx` | "All" link, direct visits |
+| `/shop/rings` | `app/(store)/shop/[category]/page.tsx` | Navbar, HeroCarousel, PDP breadcrumb |
+| `/shop?category=rings` | `app/(store)/shop/page.tsx` (via searchParams) | Shop page filter pills only |
+
+The `?category=rings` pattern is a dead end — it conflicts with the primary `/shop/rings` route used everywhere else and forces the shop page to SSR. **Eliminate it.**
 
 ### PDP — `app/(store)/shop/product/[id]/page.tsx`
 
@@ -64,20 +76,36 @@ export async function generateStaticParams() {
 Change `revalidate = 60` → `revalidate = 120`.
 
 **How it works:**
-- Build time: Next.js calls `generateStaticParams`, pre-renders all active product pages as static HTML
+- Build time: Next.js pre-renders all 23 active product pages as static HTML
 - Stored at Vercel CDN edge — loads in ~50ms instead of 500ms+
 - After 120s, next visitor to a stale page triggers silent background re-render (ISR)
 - When admin edits a product: visible to next visitor within 120s
 
 **Future extension:** Call `revalidatePath('/shop/product/[id]')` from the admin product update API route for instant cache busting. Not included now — 120s lag acceptable.
 
-### Shop Page — `app/(store)/shop/page.tsx` + new `components/store/ShopGrid.tsx`
+### Category Pages — `app/(store)/shop/[category]/page.tsx`
 
-**Why searchParams breaks ISR:** Accessing `await searchParams` inside a server component marks the entire page as dynamically rendered — `revalidate` is ignored, every request hits the DB. `/shop`, `/shop?category=rings`, `/shop?category=earrings` all SSR cold every time.
+Add `generateStaticParams` for the 4 known categories:
 
-**Fix:** Remove searchParams from `page.tsx` entirely. Page fetches all products once (ISR). A `'use client'` `ShopGrid` component filters in the browser.
+```typescript
+export async function generateStaticParams() {
+  return ['rings', 'earrings', 'pendants', 'bracelets'].map((c) => ({ category: c }))
+}
+```
 
-`page.tsx` becomes:
+Change `revalidate = 60` → `revalidate = 120`.
+
+**How it works:**
+- Build time: Next.js pre-renders `/shop/rings`, `/shop/earrings`, `/shop/pendants`, `/shop/bracelets` as static HTML
+- Navbar + HeroCarousel + PDP breadcrumb links already point to `/shop/rings` etc. — these become instant CDN loads
+- After 120s, next visitor triggers background re-render (ISR)
+
+### Shop Page — `app/(store)/shop/page.tsx`
+
+Remove `searchParams` entirely. Page shows all products, no category filtering.
+
+Change filter pills from `?category=rings` links to `/shop/rings` links — consistent with navbar. Filter pills become standard `<Link>` components pointing to the static category pages.
+
 ```typescript
 export const revalidate = 120
 
@@ -87,28 +115,25 @@ export default async function ShopPage() {
     orderBy: { createdAt: 'desc' },
     select: { id, name, itemCode, category, images, stoneType, caratWeight, comingSoon },
   })
-  return <ShopGrid products={products} />
+  // No searchParams — clean ISR, no DB hit per request
+  return (
+    <div>
+      {/* Filter pills now link to /shop/rings etc — static pages */}
+      <FilterPills /> 
+      <ProductGrid products={products} />
+    </div>
+  )
 }
 ```
 
-`ShopGrid.tsx` (new client component):
-- Receives all products as props (~5KB JSON, already in HTML)
-- Reads initial category from `useSearchParams()` on mount for shareable URLs
-- `useState` for active category filter
-- `useRouter().push()` updates URL on filter change (back button works, links shareable)
-- Filters products in-memory — zero network request
-- Renders same `ProductCard` grid as before
-
-**Pagination:** Not needed now (23 products). Client-side slice can be added to `ShopGrid` when catalogue exceeds ~80–100 products — no architecture change required.
+**Pagination:** Not needed now (23 products). When catalogue exceeds ~80–100 products, add client-side slice or cursor-based API. No architecture change needed.
 
 **Result:**
-- `/shop` loads from ISR cache — instant
-- Category filter clicks → instant JS filter, URL updates, zero DB
-- All 23 product image URLs in HTML, actual image bytes lazy-loaded by browser
-
-### Category Pages — `app/(store)/shop/[category]/page.tsx`
-
-Same treatment: remove searchParams dependency if present, or redirect to `/shop?category=X` and let ShopGrid handle it. Simplifies routing.
+- `/shop` — ISR cached, instant
+- `/shop/rings` — statically pre-rendered, CDN, ~50ms
+- Switching categories = CDN page load (~50ms) not client-side filter — fast enough, simpler code
+- No `ShopGrid` client component needed
+- All image URLs in HTML, bytes lazy-loaded by browser
 
 ---
 
@@ -179,10 +204,11 @@ Is video? (mp4/webm/mov/avi by extension)
 | File | Change |
 |---|---|
 | `app/(store)/shop/loading.tsx` | **Create** — grid skeleton |
+| `app/(store)/shop/[category]/loading.tsx` | **Create** — category grid skeleton |
 | `app/(store)/shop/product/[id]/loading.tsx` | **Create** — PDP skeleton |
-| `app/(store)/shop/page.tsx` | **Modify** — remove searchParams, add ISR, render ShopGrid |
-| `app/(store)/shop/product/[id]/page.tsx` | **Modify** — add generateStaticParams, revalidate=120 |
-| `components/store/ShopGrid.tsx` | **Create** — client filter component |
+| `app/(store)/shop/page.tsx` | **Modify** — remove searchParams, change filter pills to /shop/[category] links, revalidate=120 |
+| `app/(store)/shop/[category]/page.tsx` | **Modify** — add generateStaticParams for 4 categories, revalidate=120 |
+| `app/(store)/shop/product/[id]/page.tsx` | **Modify** — add generateStaticParams for all active products, revalidate=120 |
 | `app/api/admin/upload/route.ts` | **Modify** — Sharp resize pipeline |
 | `components/admin/ImageUploader.tsx` | **Modify** — named slots (Front/Left/Right/Back/Video) |
 | `package.json` | **Modify** — add sharp dependency |
