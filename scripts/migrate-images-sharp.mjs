@@ -44,7 +44,7 @@ const CATALOGUE = [
   { folder: 'Rings/10',     itemCode: 'AJLR-601',      name: 'Blue Topaz Heart Ring' },
   { folder: 'Rings/11',     itemCode: 'AJLR-663',      name: 'Swirl Cluster Ring' },
   { folder: 'Rings/13',     itemCode: 'AJLR-593',      name: 'Bezel Diamond Eternity Band' },
-  { folder: 'Rings/14',     itemCode: null,             name: 'Rings/14' },
+  { folder: 'Rings/14',     itemCode: 'AJLR-598',      name: 'Heart Solitaire Diamond Ring' },
   { folder: 'Ear_rings/02', itemCode: 'AJER-398',      name: 'Leaf Drop Hoop Earrings' },
   { folder: 'Ear_rings/03', itemCode: 'AJER-319',      name: 'Heart Diamond Stud Earrings' },
   { folder: 'Ear_rings/04', itemCode: 'AJER-310',      name: 'Circle Diamond Stud Earrings' },

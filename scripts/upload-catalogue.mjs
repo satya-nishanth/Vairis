@@ -152,6 +152,17 @@ const CATALOGUE = [
     ],
   },
   {
+    folder: 'Rings/14', category: 'RINGS', itemCode: 'AJLR-598',
+    name: 'Heart Solitaire Diamond Ring',
+    description: 'Heart-shaped diamond solitaire in a sleek four-prong setting on a slim tapered band.',
+    designStyle: 'Heart diamond solitaire in four-prong setting',
+    totalLengthMm: null, motifSizeMm: 8.8, thicknessMm: 1.8,
+    stoneType: 'Diamond', stoneShape: 'Heart', stoneDimMm: '7.40 x 7.60', gemCount: 1, caratWeight: 1.56,
+    variants: [
+      { metalType: 'GOLD_18K', weightGrams: 2.200, size: '12', makingChargePerGram: 500, miscCharges: 45 },
+    ],
+  },
+  {
     folder: 'Rings/13', category: 'RINGS', itemCode: 'AJLR-593',
     name: 'Bezel Diamond Eternity Band',
     description: 'Minimalist eternity band with bezel-set diamonds.',
