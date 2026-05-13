@@ -32,3 +32,5 @@ images/
 # ── Dev tooling artifacts ─────────────────────────────────────────────────────
 .superpowers/
 .env.prod
+# Added by code-review-graph
+.code-review-graph/
