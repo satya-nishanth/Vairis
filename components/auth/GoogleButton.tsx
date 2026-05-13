@@ -12,8 +12,8 @@ export default function GoogleButton({
 
   async function signInWithGoogle() {
     const redirectTo = next
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(next)}`
-      : `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback?next=${encodeURIComponent(next)}`
+      : `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`
 
     await supabase.auth.signInWithOAuth({
       provider: 'google',
