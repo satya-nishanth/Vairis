@@ -26,8 +26,7 @@ type Props = {
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: '18kt Gold',
-  GOLD_22K: '22kt Gold',
-  SILVER_925: 'Silver 925',
+  GOLD_14K: '14kt Gold',
   ROSE_GOLD: 'Rose Gold 18kt',
 }
 
@@ -123,7 +122,7 @@ export default function VariantSelector({ variants, goldRates }: Props) {
             <span className="text-sm font-semibold text-brand-dark">{formatINR(price.total)}</span>
           </div>
           <p className="text-[10px] text-gray-400 pt-1">
-            Price based on current gold rate. Final price may vary at time of order.
+            Gold price only. Gemstone & other charges applicable — enquire for final price.
           </p>
         </div>
       )}
