@@ -17,9 +17,8 @@ enum Category {
 }
 
 enum MetalType {
+  GOLD_14K
   GOLD_18K
-  GOLD_22K
-  SILVER_925
   ROSE_GOLD
 }
 

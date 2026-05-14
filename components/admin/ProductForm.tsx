@@ -6,16 +6,14 @@ import ImageUploader from './ImageUploader'
 const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS']
 const METAL_TYPES = [
   { value: 'GOLD_18K', label: '18kt Gold', skuSuffix: 'G18K' },
-  { value: 'GOLD_22K', label: '22kt Gold', skuSuffix: 'G22K' },
-  { value: 'SILVER_925', label: 'Silver 925', skuSuffix: 'S925' },
+  { value: 'GOLD_14K', label: '14kt Gold', skuSuffix: 'G14K' },
   { value: 'ROSE_GOLD', label: 'Rose Gold 18kt', skuSuffix: 'RG' },
 ]
 
-// Stored gold rates (from DB seed — updates when gold-rate cron runs)
+// Approximate rates for admin price preview — updated by gold rate cron
 const STORED_RATES: Record<string, number> = {
   GOLD_18K: 5100,
-  GOLD_22K: 6225,
-  SILVER_925: 78,
+  GOLD_14K: 3967,
   ROSE_GOLD: 5100,
 }
 

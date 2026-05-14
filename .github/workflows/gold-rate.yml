@@ -1,0 +1,22 @@
+name: Sync Gold Rate
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 7:30 AM IST daily
+  workflow_dispatch:        # manual trigger from GitHub Actions UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call gold rate sync endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ vars.APP_URL }}/api/admin/sync-gold-rate" \
+            -H "Authorization: Bearer ${{ secrets.GOLD_SYNC_SECRET }}")
+          echo "Response: $response"
+          if [ "$response" != "200" ]; then
+            echo "Sync failed with status $response"
+            exit 1
+          fi
+          echo "Gold rates synced successfully"

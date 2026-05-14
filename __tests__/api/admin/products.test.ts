@@ -108,7 +108,7 @@ describe('POST /api/admin/products', () => {
     caratWeight: 2.0,
     variants: [
       { metalType: 'GOLD_18K', weightGrams: '8.5', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '3', sku: 'AJBR-74-G18K' },
-      { metalType: 'SILVER_925', weightGrams: '5.95', makingChargePerGram: '50', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '5', sku: 'AJBR-74-S925' },
+      { metalType: 'GOLD_14K', weightGrams: '5.95', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '5', sku: 'AJBR-74-G14K' },
     ],
   }
 
@@ -217,13 +217,13 @@ describe('PATCH /api/admin/products/[id]', () => {
   it('replaces variants when variants array provided', async () => {
     mockProduct.update.mockResolvedValue(fakeProduct() as any)
     const req = makeReq('http://localhost/api/admin/products/p1', 'PATCH', {
-      variants: [{ metalType: 'GOLD_22K', weightGrams: '9.0', makingChargePerGram: '350', stoneCharges: '0', miscCharges: '45', stock: '2', sku: 'AJBR-74-G22K' }],
+      variants: [{ metalType: 'GOLD_14K', weightGrams: '9.0', makingChargePerGram: '350', stoneCharges: '0', miscCharges: '45', stock: '2', sku: 'AJBR-74-G14K' }],
     })
     await updateProduct(req, idParams())
     const call = mockProduct.update.mock.calls[0][0]
     expect(call.data.variants).toMatchObject({
       deleteMany: {},
-      create: [expect.objectContaining({ metalType: 'GOLD_22K' })],
+      create: [expect.objectContaining({ metalType: 'GOLD_14K' })],
     })
   })
 

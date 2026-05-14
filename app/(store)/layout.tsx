@@ -1,8 +1,10 @@
 import Navbar from '@/components/store/Navbar'
+import GoldRateBanner from '@/components/store/GoldRateBanner'
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <GoldRateBanner />
       <Navbar />
       {children}
       <footer className="bg-brand-dark text-white/40 pt-12 pb-8 mt-24">

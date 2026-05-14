@@ -10,8 +10,7 @@ export const revalidate = 120
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: '18kt Gold',
-  GOLD_22K: '22kt Gold',
-  SILVER_925: 'Silver 925',
+  GOLD_14K: '14kt Gold',
   ROSE_GOLD: 'Rose Gold 18kt',
 }
 
