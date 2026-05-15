@@ -117,6 +117,10 @@ export default function VariantSelector({ variants, goldRates }: Props) {
               <span className="text-gray-700">{formatINR(row.value)}</span>
             </div>
           ))}
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Gemstone Price</span>
+            <span className="text-brand-gold tracking-widest">💎💎💎</span>
+          </div>
           {/* Gold subtotal */}
           <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
             <span className="text-xs text-gray-500">Gold price</span>
