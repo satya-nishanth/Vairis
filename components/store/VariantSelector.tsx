@@ -117,12 +117,18 @@ export default function VariantSelector({ variants, goldRates }: Props) {
               <span className="text-gray-700">{formatINR(row.value)}</span>
             </div>
           ))}
-          <div className="border-t border-gray-200 pt-2 flex justify-between">
-            <span className="text-sm font-medium text-gray-900">Total</span>
+          <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
+            <span className="text-xs text-gray-500">Gold estimate</span>
             <span className="text-sm font-semibold text-brand-dark">{formatINR(price.total)}</span>
           </div>
-          <p className="text-[10px] text-gray-400 pt-1">
-            Gold price only. Gemstone & other charges applicable — enquire for final price.
+          <div className="border border-brand-gold/30 bg-brand-gold/5 rounded-sm px-3 py-2 flex items-center justify-between mt-2">
+            <span className="text-[10px] text-gray-500 leading-snug">
+              Gemstone &amp; other charges applicable
+            </span>
+            <span className="text-base leading-none ml-2 flex-shrink-0">💎💎💎</span>
+          </div>
+          <p className="text-[10px] text-gray-400 text-center pt-0.5">
+            Enquire for final price
           </p>
         </div>
       )}
