@@ -14,7 +14,16 @@ function isAuthorised(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!isAuthorised(req)) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+    const auth = req.headers.get('authorization')
+    const secret = process.env.GOLD_SYNC_SECRET
+    return NextResponse.json({
+      error: 'Unauthorised',
+      debug: {
+        secretSet: !!secret,
+        secretLen: secret?.length ?? 0,
+        authHeader: auth ? `${auth.slice(0, 10)}... (len ${auth.length})` : null,
+      },
+    }, { status: 401 })
   }
 
   // Rate limit: reject if synced within last 30 minutes
