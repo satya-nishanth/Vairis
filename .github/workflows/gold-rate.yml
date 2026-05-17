@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Call gold rate sync endpoint
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" \
             -X POST "${{ vars.APP_URL }}/api/admin/sync-gold-rate" \
             -H "Authorization: Bearer ${{ secrets.GOLD_SYNC_SECRET }}")
           echo "Response: $response"
