@@ -44,7 +44,7 @@ async function signUp(formData: FormData) {
     redirect(`/auth/login?mode=signup&error=${encodeURIComponent(error.message)}${q}`)
   }
   const q = next ? `&next=${encodeURIComponent(next)}` : ''
-  redirect(`/auth/login?msg=${encodeURIComponent('Account created — sign in below')}${q}`)
+  redirect(`/auth/login?mode=confirm&email=${encodeURIComponent(email)}${q}`)
 }
 
 async function forgotPassword(formData: FormData) {
@@ -63,9 +63,9 @@ async function forgotPassword(formData: FormData) {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; msg?: string; next?: string; mode?: string }>
+  searchParams: Promise<{ error?: string; msg?: string; next?: string; mode?: string; email?: string }>
 }) {
-  const { error, msg, next, mode = 'signin' } = await searchParams
+  const { error, msg, next, mode = 'signin', email } = await searchParams
 
   const inputCls =
     'w-full border border-white/20 bg-white/10 text-white placeholder-white/40 px-4 py-3 text-sm focus:outline-none focus:border-brand-gold focus:bg-white/20 transition-all'
@@ -107,8 +107,33 @@ export default async function LoginPage({
 
         <div className="w-full max-w-sm space-y-6">
 
+          {/* ── Confirm Email ── */}
+          {mode === 'confirm' && (
+            <div className="text-center space-y-5 py-4">
+              <div className="text-4xl">✉️</div>
+              <div className="space-y-2">
+                <h2 className="font-display text-2xl text-white" style={{ fontWeight: 400 }}>Check your inbox</h2>
+                <p className="text-sm text-white/60">
+                  We sent a confirmation link to
+                </p>
+                {email && (
+                  <p className="text-sm text-brand-gold font-medium">{email}</p>
+                )}
+                <p className="text-xs text-white/40 pt-1">
+                  Click the link in the email to activate your account, then click below to sign in.
+                </p>
+              </div>
+              <Link
+                href={`/auth/login${next ? `?next=${encodeURIComponent(next)}` : ''}`}
+                className="inline-block text-xs text-white/40 hover:text-brand-gold transition-colors border-b border-white/20 pb-0.5"
+              >
+                Back to Sign In
+              </Link>
+            </div>
+          )}
+
           {/* Tabs */}
-          {mode !== 'forgot' && (
+          {mode !== 'forgot' && mode !== 'confirm' && (
             <div className="flex items-center gap-6">
               <Link href={`/auth/login${next ? `?next=${encodeURIComponent(next)}` : ''}`} className={mode === 'signin' ? tabActive : tabInactive}>
                 Sign In
@@ -127,12 +152,12 @@ export default async function LoginPage({
           )}
 
           {/* Messages */}
-          {msg && (
+          {mode !== 'confirm' && msg && (
             <p className="text-xs bg-green-900/40 text-green-300 border border-green-700/40 px-3 py-2 rounded">
               {msg}
             </p>
           )}
-          {error && (
+          {mode !== 'confirm' && error && (
             <p className="text-xs bg-red-900/40 text-red-300 border border-red-700/40 px-3 py-2 rounded">
               {error}
             </p>
@@ -190,7 +215,7 @@ export default async function LoginPage({
           )}
 
           {/* Google OAuth (sign-in and sign-up) */}
-          {mode !== 'forgot' && (
+          {mode !== 'forgot' && mode !== 'confirm' && (
             <>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">

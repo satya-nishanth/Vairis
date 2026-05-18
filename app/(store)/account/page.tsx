@@ -10,8 +10,13 @@ export default async function AccountPage() {
   const session = await getSession()
   if (!session) redirect('/auth/login?next=/account')
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.upsert({
     where: { email: session.user.email! },
+    update: {},
+    create: {
+      email: session.user.email!,
+      name: session.user.user_metadata?.full_name ?? session.user.email!,
+    },
     select: { name: true, email: true, createdAt: true },
   })
 
