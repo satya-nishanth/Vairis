@@ -33,7 +33,7 @@ export default function Navbar() {
           <img
             src="/images/vairius_logo.png"
             alt="VAIRIS Fine Jewellery"
-            style={{ height: '46px', width: 'auto' }}
+            style={{ height: '56px', width: 'auto' }}
             className="drop-shadow-[0_2px_12px_rgba(201,168,76,0.15)]"
           />
         </Link>
