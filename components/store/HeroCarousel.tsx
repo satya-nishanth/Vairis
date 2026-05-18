@@ -48,6 +48,7 @@ export default function HeroCarousel() {
   const [visible, setVisible] = useState(0)
   const [allLoaded, setAllLoaded] = useState(false)
   const loadedCount = useRef(0)
+  const touchStartX = useRef(0)
 
   const handleImageLoad = useCallback(() => {
     loadedCount.current += 1
@@ -173,10 +174,19 @@ export default function HeroCarousel() {
     </div>
   )
 
+  function onTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0].clientX }
+  function onTouchEnd(e: React.TouchEvent) {
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) < 50) return
+    goTo(diff > 0 ? (current + 1) % SLIDES.length : (current - 1 + SLIDES.length) % SLIDES.length)
+  }
+
   return (
     <section
       className="hero-carousel relative w-full overflow-hidden"
       style={{ height: 'min(90vh, 720px)' }}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
     >
       {/* All 3 images preloaded */}
       {SLIDES.map((slide, i) => (

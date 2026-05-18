@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Image from 'next/image'
 import { isVideo } from '@/lib/imageUrl'
 
@@ -21,14 +21,22 @@ export default function MediaGallery({ media, productName }: Props) {
 
   const current = media[active]
   const isCurrentVideo = isVideo(current)
+  const touchStartX = useRef(0)
 
   function prev() { setActive((active - 1 + media.length) % media.length) }
   function next() { setActive((active + 1) % media.length) }
 
+  function onTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0].clientX }
+  function onTouchEnd(e: React.TouchEvent) {
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) < 50) return
+    diff > 0 ? next() : prev()
+  }
+
   return (
     <div className="space-y-3">
       {/* Main display */}
-      <div className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative group">
+      <div className="aspect-square bg-brand-cream rounded-sm overflow-hidden relative group" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {isCurrentVideo ? (
           <video
             key={current}
