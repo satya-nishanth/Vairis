@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
 import GoogleButton from '@/components/auth/GoogleButton'
+import SubmitButton from '@/components/auth/SubmitButton'
 
 // ── Server Actions ────────────────────────────────────────────────────────
 
@@ -149,9 +150,7 @@ export default async function LoginPage({
                 <label className={labelCls}>Password</label>
                 <input name="password" type="password" required minLength={6} className={inputCls} placeholder="••••••••" autoComplete="current-password" />
               </div>
-              <button type="submit" className="w-full py-3.5 bg-brand-gold text-brand-dark text-sm font-semibold tracking-widest uppercase hover:bg-brand-gold/90 transition-colors">
-                Sign In
-              </button>
+              <SubmitButton label="Sign In" loadingLabel="Signing in…" variant="gold" />
               <div className="text-right">
                 <Link href={`/auth/login?mode=forgot${next ? `&next=${encodeURIComponent(next)}` : ''}`} className="text-xs text-white/40 hover:text-brand-gold transition-colors">
                   Forgot password?
@@ -172,9 +171,7 @@ export default async function LoginPage({
                 <label className={labelCls}>Password</label>
                 <input name="password" type="password" required minLength={6} className={inputCls} placeholder="Min 6 characters" autoComplete="new-password" />
               </div>
-              <button type="submit" className="w-full py-3.5 border border-brand-gold/60 text-brand-gold text-sm tracking-widest uppercase hover:bg-brand-gold hover:text-brand-dark transition-colors">
-                Create Account
-              </button>
+              <SubmitButton label="Create Account" loadingLabel="Creating account…" variant="outline" />
             </form>
           )}
 
@@ -185,9 +182,7 @@ export default async function LoginPage({
                 <label className={labelCls}>Email</label>
                 <input name="email" type="email" required className={inputCls} placeholder="you@example.com" autoComplete="email" />
               </div>
-              <button type="submit" className="w-full py-3.5 bg-brand-gold text-brand-dark text-sm font-semibold tracking-widest uppercase hover:bg-brand-gold/90 transition-colors">
-                Send Reset Link
-              </button>
+              <SubmitButton label="Send Reset Link" loadingLabel="Sending…" variant="gold" />
               <Link href="/auth/login" className="block text-center text-xs text-white/40 hover:text-brand-gold transition-colors">
                 ← Back to Sign In
               </Link>

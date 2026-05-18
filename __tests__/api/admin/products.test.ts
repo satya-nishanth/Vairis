@@ -136,13 +136,14 @@ describe('POST /api/admin/products', () => {
     const req = makeReq('http://localhost/api/admin/products', 'POST', validBody)
     await createProduct(req)
     const call = mockProduct.create.mock.calls[0][0]
-    expect(call.data.variants.create).toHaveLength(2)
-    expect(call.data.variants.create[0].metalType).toBe('GOLD_18K')
-    expect(Number(call.data.variants.create[0].weightGrams)).toBe(8.5)
-    expect(Number(call.data.variants.create[0].makingChargePerGram)).toBe(400)
-    expect(Number(call.data.variants.create[0].stoneCharges)).toBe(18000)
-    expect(Number(call.data.variants.create[0].miscCharges)).toBe(45)
-    expect(call.data.variants.create[0].sku).toBe('AJBR-74-G18K')
+    const creates = (call.data.variants as any).create as any[]
+    expect(creates).toHaveLength(2)
+    expect(creates[0].metalType).toBe('GOLD_18K')
+    expect(Number(creates[0].weightGrams)).toBe(8.5)
+    expect(Number(creates[0].makingChargePerGram)).toBe(400)
+    expect(Number(creates[0].stoneCharges)).toBe(18000)
+    expect(Number(creates[0].miscCharges)).toBe(45)
+    expect(creates[0].sku).toBe('AJBR-74-G18K')
   })
 
   it('converts empty itemCode to null', async () => {
