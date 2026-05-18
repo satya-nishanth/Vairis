@@ -239,9 +239,9 @@ export default async function LoginPage({
             </>
           )}
 
-          <p className="text-center text-xs text-white/20">
+          <p className="text-center text-xs text-white/40">
             Admin?{' '}
-            <a href="/auth/admin" className="text-white/40 hover:text-white/60 underline transition-colors">
+            <a href="/auth/admin" className="text-brand-gold hover:text-brand-gold/80 underline transition-colors">
               Sign in here
             </a>
           </p>
