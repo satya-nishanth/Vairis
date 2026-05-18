@@ -85,12 +85,14 @@ export default async function LoginPage({
           }}
         />
         <div className="relative text-center space-y-6">
-          <img
-            src="/images/vairis_main.jpeg"
-            alt="VAIRIS Fine Jewellery"
-            style={{ width: 'min(280px, 40vw)', height: 'auto', borderRadius: '4px' }}
-            className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.25)]"
-          />
+          <Link href="/">
+            <img
+              src="/images/vairis_main.jpeg"
+              alt="VAIRIS Fine Jewellery"
+              style={{ width: 'min(280px, 40vw)', height: 'auto', borderRadius: '4px' }}
+              className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.25)]"
+            />
+          </Link>
           <p className="font-display text-white/70 italic" style={{ fontSize: '18px', fontWeight: 300 }}>
             Where heritage meets the extraordinary.
           </p>
@@ -101,10 +103,18 @@ export default async function LoginPage({
       <div className="w-full lg:w-1/2 flex flex-col items-center justify-center px-8 py-12">
         {/* Mobile logo */}
         <div className="lg:hidden text-center mb-8">
-          <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery"
-            style={{ height: '100px', width: 'auto', margin: '0 auto', borderRadius: '4px' }} />
+          <Link href="/">
+            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery"
+              style={{ height: '100px', width: 'auto', margin: '0 auto', borderRadius: '4px' }} />
+          </Link>
         </div>
 
+        <Link href="/" className="self-start mb-2 flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+          </svg>
+          Back to store
+        </Link>
         <div className="w-full max-w-sm space-y-6">
 
           {/* ── Confirm Email ── */}
