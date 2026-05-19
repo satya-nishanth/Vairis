@@ -14,7 +14,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             <img
               src="/images/vairius_logo.png"
               alt="VAIRIS"
-              style={{ height: '48px', width: 'auto', opacity: 0.8 }}
+              style={{ height: '64px', width: 'auto', opacity: 0.8 }}
             />
           </div>
 

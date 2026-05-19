@@ -166,7 +166,7 @@ export default async function HomePage() {
       <footer className="bg-brand-dark text-white/40 pt-12 pb-8">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex justify-center mb-8">
-            <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '48px', width: 'auto', opacity: 0.8 }} />
+            <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '64px', width: 'auto', opacity: 0.8 }} />
           </div>
           <div className="w-full max-w-md mx-auto h-px bg-gradient-to-r from-transparent via-brand-gold/20 to-transparent mb-8" />
           <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-sm mb-6">
