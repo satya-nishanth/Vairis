@@ -64,6 +64,10 @@ async function mirrorUrl(url) {
 }
 
 async function clearLocalCatalogue() {
+  const dbUrl = process.env.DATABASE_URL ?? ''
+  if (dbUrl.includes('pooler.supabase.com') && !dbUrl.includes('localhost') && !dbUrl.includes('127.0.0.1')) {
+    throw new Error(`Refusing to clear — DATABASE_URL looks like production (${dbUrl.split('@')[1] ?? dbUrl}). Set DATABASE_URL to local DB first.`)
+  }
   log('Clearing local catalogue tables…')
   await prisma.wishlist.deleteMany()
   await prisma.cartItem.deleteMany()

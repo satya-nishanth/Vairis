@@ -23,6 +23,7 @@ export default function InlineComment({
   const [body, setBody] = useState('')
   const [posting, setPosting] = useState(false)
   const [entered, setEntered] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -54,18 +55,28 @@ export default function InlineComment({
     }
 
     setPosting(true)
+    setError(null)
     try {
       const res = await fetch('/api/catalogue/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId, body: text }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.error('[InlineComment] post failed', res.status, data)
+        setError('Failed to send. Try again.')
+        return
+      }
       const data = await res.json()
       if (data.comment) {
         setBody('')
         onPosted()
       }
       onComplete()
+    } catch (err) {
+      console.error('[InlineComment] network error', err)
+      setError('No connection. Try again.')
     } finally {
       setPosting(false)
     }
@@ -86,6 +97,9 @@ export default function InlineComment({
       <p className="text-[10px] text-brand-gold/80 tracking-[0.2em] uppercase mb-2 pl-0.5">
         One more step · swipe up after this
       </p>
+      {error && (
+        <p className="text-[10px] text-red-400 mb-1 pl-0.5">{error}</p>
+      )}
 
       <form
         onSubmit={handleContinue}

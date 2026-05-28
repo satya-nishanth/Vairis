@@ -219,14 +219,19 @@ model CatalogueProgress {
   updatedAt      DateTime  @updatedAt
 }
 
+enum ReactionType {
+  like
+  dislike
+}
+
 model CatalogueReaction {
-  id          String    @id @default(cuid())
+  id          String       @id @default(cuid())
   guestUserId String
-  guestUser   GuestUser @relation(fields: [guestUserId], references: [id], onDelete: Cascade)
+  guestUser   GuestUser    @relation(fields: [guestUserId], references: [id], onDelete: Cascade)
   productId   String
-  reaction    String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  reaction    ReactionType
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@unique([guestUserId, productId])
 }

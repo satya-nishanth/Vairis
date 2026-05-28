@@ -7,12 +7,10 @@ export async function getGuestUser() {
   const jar = await cookies()
   const id = jar.get(COOKIE)?.value
   if (!id) return null
-  return prisma.guestUser.findUnique({ where: { id } })
-}
-
-export function setGuestCookie(res: Response, guestId: string) {
-  res.headers.append(
-    'Set-Cookie',
-    `${COOKIE}=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
-  )
+  try {
+    return await prisma.guestUser.findUnique({ where: { id }, select: { id: true, username: true } })
+  } catch (err) {
+    console.error('[catalogue-auth] getGuestUser failed', err)
+    return null
+  }
 }

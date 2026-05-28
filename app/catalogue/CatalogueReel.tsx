@@ -87,7 +87,9 @@ export default function CatalogueReel({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lastFrameIndex: frameIndex }),
       keepalive: true,
-    }).catch(() => {})
+    }).catch((err) => {
+      console.error('[CatalogueReel] saveProgress failed', frameIndex, err)
+    })
   }, [])
 
   const flushProgress = useCallback(() => {
@@ -198,11 +200,15 @@ export default function CatalogueReel({
 
   useEffect(() => {
     const onHide = () => flushProgress()
-    window.addEventListener('pagehide', onHide)
-    document.addEventListener('visibilitychange', () => {
+    const onVisibility = () => {
       if (document.visibilityState === 'hidden') flushProgress()
-    })
-    return () => window.removeEventListener('pagehide', onHide)
+    }
+    window.addEventListener('pagehide', onHide)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [flushProgress])
 
   const onMediaChange = useCallback((productIdx: number, mediaIdx: number) => {
@@ -210,15 +216,25 @@ export default function CatalogueReel({
   }, [])
 
   const goToFirst = useCallback(async () => {
-    maxViewedRef.current = -1
-    await fetch('/api/catalogue/progress', { method: 'DELETE' }).catch(() => {})
-    scrollToProduct(0, 0)
+    try {
+      const res = await fetch('/api/catalogue/progress', { method: 'DELETE' })
+      if (!res.ok) throw new Error(`status ${res.status}`)
+      maxViewedRef.current = -1
+      scrollToProduct(0, 0)
+    } catch (err) {
+      console.error('[CatalogueReel] goToFirst failed', err)
+    }
   }, [scrollToProduct])
 
   const logout = useCallback(async () => {
     flushProgress()
-    await fetch('/api/catalogue/logout', { method: 'POST' }).catch(() => {})
-    router.replace('/catalogue/login')
+    try {
+      const res = await fetch('/api/catalogue/logout', { method: 'POST' })
+      if (!res.ok) throw new Error(`status ${res.status}`)
+      router.replace('/catalogue/login')
+    } catch (err) {
+      console.error('[CatalogueReel] logout failed', err)
+    }
   }, [flushProgress, router])
 
   const progressPct = totalMedia > 0 ? ((currentFlat + 1) / totalMedia) * 100 : 0
@@ -245,11 +261,22 @@ export default function CatalogueReel({
       if (next === 'like') bump('likes', 1)
       if (next === 'dislike') bump('dislikes', 1)
 
-      await fetch('/api/catalogue/reaction', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, reaction: next }),
-      })
+      try {
+        const res = await fetch('/api/catalogue/reaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId, reaction: next }),
+        })
+        if (!res.ok) throw new Error(`status ${res.status}`)
+      } catch (err) {
+        console.error('[CatalogueReel] reaction failed', productId, err)
+        // rollback optimistic update
+        setMyReactions((s) => ({ ...s, [productId]: prev ?? null }))
+        if (next === 'like') bump('likes', -1)
+        if (next === 'dislike') bump('dislikes', -1)
+        if (prev === 'like') bump('likes', 1)
+        if (prev === 'dislike') bump('dislikes', 1)
+      }
     },
     [myReactions]
   )
