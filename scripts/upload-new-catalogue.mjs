@@ -102,8 +102,15 @@ function parseFolderName(name) {
   // Fallback: trailing alpha suffix of itemCode — "AJCO3025ER" → ER, "AJBB0539CUF" → CUF
   const codeMatch = itemCode.match(/[A-Z]+$/)
   if (codeMatch) {
-    const category = CODE_SUFFIX_MAP[codeMatch[0]]
-    if (category) return { itemCode, category }
+    const tail = codeMatch[0]
+    // Exact match first
+    if (CODE_SUFFIX_MAP[tail]) return { itemCode, category: CODE_SUFFIX_MAP[tail] }
+    // Compound suffix (e.g. NLER, NKER) — check if it ends with a known type
+    for (const known of Object.keys(CODE_SUFFIX_MAP).sort((a, b) => b.length - a.length)) {
+      if (tail.length > known.length && tail.endsWith(known)) {
+        return { itemCode, category: CODE_SUFFIX_MAP[known] }
+      }
+    }
   }
 
   return null
