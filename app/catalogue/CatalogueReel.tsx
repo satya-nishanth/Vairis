@@ -80,6 +80,8 @@ export default function CatalogueReel({
   const maxViewedRef = useRef(startFlatIndex > 0 ? startFlatIndex - 1 : -1)
   const currentFlatRef = useRef(0)
   const lockedProductRef = useRef(startProductIndex)
+  const currentProductRef = useRef(startProductIndex)
+  const autoScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const saveProgress = useCallback((frameIndex: number) => {
     fetch('/api/catalogue/progress', {
@@ -108,6 +110,7 @@ export default function CatalogueReel({
   const canAdvance = activeProductId ? (engagementDone[activeProductId] ?? false) : true
 
   lockedProductRef.current = canAdvance ? currentProduct : lockedProductRef.current
+  currentProductRef.current = currentProduct
 
   const scrollToProduct = useCallback((idx: number, mediaIdx = 0) => {
     const el = slideRefs.current[idx]
@@ -135,21 +138,16 @@ export default function CatalogueReel({
     document.head.appendChild(link)
   }, [products])
 
-  // Prefetch current and adjacent products so scroll feels instant
+  // Prefetch next 3 products (all their media) so scroll feels instant
   useEffect(() => {
-    const indices = [currentProduct - 1, currentProduct, currentProduct + 1].filter(
-      (i) => i >= 0 && i < products.length
-    )
+    const indices = Array.from({ length: 5 }, (_, k) => currentProduct - 1 + k)
+      .filter((i) => i >= 0 && i < products.length)
     for (const i of indices) {
-      const p = products[i]
-      const mIdx = i === currentProduct ? (mediaByProduct[i] ?? 0) : 0
-      const item = p.media[mIdx] ?? p.media[0]
-      if (item) prefetchCatalogueMedia(item.url, item.isVideo)
-      if (i !== currentProduct && p.media[0] && p.media[0] !== item) {
-        prefetchCatalogueMedia(p.media[0].url, p.media[0].isVideo)
+      for (const item of products[i].media) {
+        prefetchCatalogueMedia(item.url, item.isVideo)
       }
     }
-  }, [currentProduct, mediaByProduct, products])
+  }, [currentProduct, products])
 
   useEffect(() => {
     const obs = new IntersectionObserver(
@@ -208,6 +206,7 @@ export default function CatalogueReel({
     return () => {
       window.removeEventListener('pagehide', onHide)
       document.removeEventListener('visibilitychange', onVisibility)
+      if (autoScrollTimer.current) clearTimeout(autoScrollTimer.current)
     }
   }, [flushProgress])
 
@@ -245,9 +244,16 @@ export default function CatalogueReel({
       const next = prev === reaction ? null : reaction
       setMyReactions((s) => ({ ...s, [productId]: next }))
 
-      // Like or un-tap → done immediately (no comment needed)
-      // Dislike → show optional comment gate
-      setEngagementDone((s) => ({ ...s, [productId]: next !== 'dislike' }))
+      // Like or un-tap → done immediately, auto-advance after brief pause
+      // Dislike → show optional comment gate (auto-advance after comment/skip)
+      const isDone = next !== 'dislike'
+      setEngagementDone((s) => ({ ...s, [productId]: isDone }))
+      if (isDone && next === 'like') {
+        autoScrollTimer.current = setTimeout(() => {
+          const nextIdx = currentProductRef.current + 1
+          if (nextIdx < products.length) scrollToProduct(nextIdx)
+        }, 500)
+      }
 
       const bump = (field: 'likes' | 'dislikes', delta: number) => {
         const setter = field === 'likes' ? setLikes : setDislikes
@@ -271,6 +277,7 @@ export default function CatalogueReel({
         if (!res.ok) throw new Error(`status ${res.status}`)
       } catch (err) {
         console.error('[CatalogueReel] reaction failed', productId, err)
+        if (autoScrollTimer.current) { clearTimeout(autoScrollTimer.current); autoScrollTimer.current = null }
         // rollback optimistic update
         setMyReactions((s) => ({ ...s, [productId]: prev ?? null }))
         if (next === 'like') bump('likes', -1)
@@ -279,15 +286,19 @@ export default function CatalogueReel({
         if (prev === 'dislike') bump('dislikes', 1)
       }
     },
-    [myReactions]
+    [myReactions, products.length, scrollToProduct]
   )
 
   const completeEngagement = useCallback(
     (productId: string) => {
       setEngagementDone((s) => ({ ...s, [productId]: true }))
       flushProgress()
+      setTimeout(() => {
+        const nextIdx = currentProductRef.current + 1
+        if (nextIdx < products.length) scrollToProduct(nextIdx)
+      }, 350)
     },
-    [flushProgress]
+    [flushProgress, products.length, scrollToProduct]
   )
 
   const onCommentPosted = useCallback((productId: string) => {
@@ -375,15 +386,10 @@ export default function CatalogueReel({
         style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
       >
         <div className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 shadow-lg text-center">
-          <span className="text-white/80 text-xs font-medium tabular-nums block">
+          <span className="text-white/80 text-xs font-medium tabular-nums">
             <span className="text-brand-gold font-semibold">{currentProduct + 1}</span>
             <span className="text-white/30"> / {products.length}</span>
           </span>
-          {active && active.media.length > 1 && (
-            <span className="text-white/35 text-[10px] tabular-nums mt-0.5 block">
-              {active.media[currentMedia]?.isVideo ? 'Video' : 'Photo'} {currentMedia + 1}/{active.media.length}
-            </span>
-          )}
         </div>
         {canAdvance ? (
           <span className="flex items-center gap-1.5 text-[10px] text-white/50 tracking-widest uppercase">
@@ -446,7 +452,7 @@ function ActionButton({
       className="flex flex-col items-center gap-1.5 group transition-transform active:scale-90 touch-manipulation"
     >
       <span
-        className={`w-13 h-13 rounded-full flex items-center justify-center backdrop-blur-xl border-2 transition-all duration-200 shadow-lg ${
+        className={`rounded-full flex items-center justify-center backdrop-blur-xl border-2 transition-all duration-200 shadow-lg ${
           active
             ? activeClass + ' border-transparent scale-110'
             : 'bg-black/40 border-white/10 text-white/90 group-hover:border-white/25 group-hover:bg-black/60'
@@ -480,7 +486,7 @@ function ProductSlide({
   onMediaChange,
   slideRef,
 }: ProductSlideProps) {
-  const nearActive = Math.abs(productIndex - currentProduct) <= 1
+  const nearActive = Math.abs(productIndex - currentProduct) <= 2
   const reacted = myReaction !== null
   const showCommentInput = reacted && !engagementDone
 
@@ -518,7 +524,7 @@ function ProductSlide({
 
       {/* Bottom info + comment area */}
       <div
-        className={`absolute bottom-0 left-0 right-0 ${showCommentInput ? 'z-50' : 'z-10'}`}
+        className={`absolute bottom-0 left-0 right-0 pointer-events-none ${showCommentInput ? 'z-50' : 'z-10'}`}
         style={{
           paddingBottom: showCommentInput
             ? 'max(6rem, calc(6rem + env(safe-area-inset-bottom, 0px)))'
@@ -557,7 +563,7 @@ function ProductSlide({
         </div>
 
         {/* Comment input (dislike only) */}
-        <div className="px-3">
+        <div className="px-3 pointer-events-auto">
           <InlineComment
             productId={product.productId}
             guestUsername={guestUsername}

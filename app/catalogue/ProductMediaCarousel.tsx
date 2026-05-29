@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CatalogueMedia } from '@/lib/catalogue-feed'
 import { prefetchCatalogueMedia } from '@/lib/catalogue-prefetch'
+import { IconChevronLeft, IconChevronRight } from '@/components/catalogue/CatalogueIcons'
 
 type Props = {
   media: CatalogueMedia[]
@@ -151,23 +152,33 @@ export default function ProductMediaCarousel({
 
       {hasMultiple && isActive && allowPhotoNav && (
         <>
-          {/* Invisible tap zones — no visual arrows, just interaction targets */}
+          {/* Left tap zone + arrow — arrow at top-[30%], not flex-centered */}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); goTo(mediaIndex - 1) }}
             disabled={!canPrev}
             aria-label="Previous photo"
-            className="absolute left-0 top-0 bottom-52 w-[30%] z-20 disabled:pointer-events-none touch-manipulation"
-          />
+            className="absolute left-0 top-0 bottom-48 w-[28%] z-20 disabled:pointer-events-none touch-manipulation"
+          >
+            <span className={`absolute left-2 top-[30%] w-9 h-9 rounded-full flex items-center justify-center bg-black/50 backdrop-blur-md transition-opacity ${canPrev ? 'opacity-80 active:opacity-100' : 'opacity-0'}`}>
+              <IconChevronLeft className="w-4 h-4 text-white" />
+            </span>
+          </button>
+
+          {/* Right tap zone + arrow */}
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); goTo(mediaIndex + 1) }}
             disabled={!canNext}
             aria-label="Next photo"
-            className="absolute right-16 top-0 bottom-52 w-[30%] z-20 disabled:pointer-events-none touch-manipulation"
-          />
+            className="absolute right-16 top-0 bottom-48 w-[28%] z-20 disabled:pointer-events-none touch-manipulation"
+          >
+            <span className={`absolute right-2 top-[30%] w-9 h-9 rounded-full flex items-center justify-center bg-black/50 backdrop-blur-md transition-opacity ${canNext ? 'opacity-80 active:opacity-100' : 'opacity-0'}`}>
+              <IconChevronRight className="w-4 h-4 text-white" />
+            </span>
+          </button>
 
-          {/* Dot indicators below navbar */}
+          {/* Dot indicators */}
           <div className="absolute top-[68px] left-0 right-0 z-20 flex justify-center gap-1.5 pointer-events-none">
             {media.map((m, i) => (
               <span
@@ -180,13 +191,6 @@ export default function ProductMediaCarousel({
               />
             ))}
           </div>
-
-          {/* Tap hint — only on first photo, fades after first interaction */}
-          {mediaIndex === 0 && (
-            <div className="absolute top-[80px] left-0 right-0 z-20 flex justify-center pointer-events-none">
-              <span className="text-[9px] text-white/35 tracking-widest uppercase">tap sides to switch</span>
-            </div>
-          )}
         </>
       )}
     </>
