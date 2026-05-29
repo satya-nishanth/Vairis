@@ -19,6 +19,7 @@
  * Run:
  *   export $(grep -v '^#' .env.prod | xargs) && node scripts/upload-new-catalogue.mjs
  *   node scripts/upload-new-catalogue.mjs --dry-run
+ *   node scripts/upload-new-catalogue.mjs --dir "/path/to/catalogue"
  *   node scripts/upload-new-catalogue.mjs --crf 28        # higher quality, more space
  *   node scripts/upload-new-catalogue.mjs --720p          # 720p video, more space
  */
@@ -33,9 +34,15 @@ import sharp from 'sharp'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const CATALOGUE_DIR = '/Users/nishi/Downloads/VairisCatalogue'
+const CATALOGUE_DIR = (() => {
+  const i = process.argv.indexOf('--dir')
+  return i !== -1 ? process.argv[i + 1] : '/Users/nishi/Downloads/VairisCatalogue'
+})()
 const BUCKET = 'product-media'
-const STATE_FILE = join(process.cwd(), 'scripts/.upload-new-catalogue-state.json')
+const STATE_FILE = join(
+  process.cwd(),
+  `scripts/.upload-catalogue-state-${Buffer.from(CATALOGUE_DIR).toString('base64').slice(-12).replace(/[/+=]/g, '_')}.json`
+)
 const VIDEO_EXT = ['.mp4', '.webm', '.mov']
 
 const DRY_RUN = process.argv.includes('--dry-run')
@@ -44,6 +51,10 @@ const CRF = (() => {
   return i !== -1 ? parseInt(process.argv[i + 1], 10) : 30
 })()
 const VIDEO_HEIGHT = process.argv.includes('--720p') ? 720 : 480
+const LIMIT = (() => {
+  const i = process.argv.indexOf('--limit')
+  return i !== -1 ? parseInt(process.argv[i + 1], 10) : Infinity
+})()
 
 // ── Category maps ─────────────────────────────────────────────────────────────
 
@@ -56,8 +67,10 @@ const CODE_SUFFIX_MAP = {
   // Pendants (+ nose pins, necklaces, maang sets — closest category)
   PD: 'PENDANTS', PND: 'PENDANTS', PSET: 'PENDANTS',
   NL: 'PENDANTS', NS: 'PENDANTS', NP: 'PENDANTS', MS: 'PENDANTS',
-  // Bracelets
-  BR: 'BRACELETS', CUF: 'BRACELETS', BNL: 'BRACELETS',
+  // Bracelets / bangles
+  BR: 'BRACELETS', CUF: 'BRACELETS', BNL: 'BRACELETS', BB: 'BRACELETS', BA: 'BRACELETS',
+  // Pendants / necklaces / maang tikka
+  N: 'PENDANTS', MT: 'PENDANTS',
 }
 
 // ── Env check ─────────────────────────────────────────────────────────────────
@@ -71,7 +84,17 @@ const supabase = DRY_RUN ? null : createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 )
-const prisma = DRY_RUN ? null : new PrismaClient()
+const prisma = DRY_RUN ? null : new PrismaClient({
+  datasources: {
+    db: {
+      url: (() => {
+        const u = process.env.DATABASE_URL ?? ''
+        const sep = u.includes('?') ? '&' : '?'
+        return u.includes('pgbouncer') ? u : `${u}${sep}pgbouncer=true&connection_limit=1`
+      })(),
+    },
+  },
+})
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -100,7 +123,9 @@ function parseFolderName(name) {
   }
 
   // Fallback: trailing alpha suffix of itemCode — "AJCO3025ER" → ER, "AJBB0539CUF" → CUF
-  const codeMatch = itemCode.match(/[A-Z]+$/)
+  // Strip trailing non-alpha (e.g. "P.SET" → "PSET") before matching
+  const cleanCode = itemCode.replace(/[^A-Z0-9]/g, '')
+  const codeMatch = cleanCode.match(/[A-Z]+$/)
   if (codeMatch) {
     const tail = codeMatch[0]
     // Exact match first
@@ -266,9 +291,12 @@ async function main() {
     folders.filter(f => !f.parsed).forEach(f => console.warn(`   ${f.folderName}`))
   }
 
-  for (let i = 0; i < validFolders.length; i++) {
-    const { folderName, folderPath, parsed: { itemCode, category } } = validFolders[i]
-    const tag = `[${i + 1}/${validFolders.length}] ${itemCode}`
+  const runFolders = validFolders.slice(0, LIMIT)
+  if (LIMIT !== Infinity) console.log(`\n⚡ Limited to ${LIMIT} products (--limit flag)\n`)
+
+  for (let i = 0; i < runFolders.length; i++) {
+    const { folderName, folderPath, parsed: { itemCode, category } } = runFolders[i]
+    const tag = `[${i + 1}/${runFolders.length}] ${itemCode}`
 
     if (state[itemCode]?.done) {
       console.log(`${tag} — already done, skipping`)
