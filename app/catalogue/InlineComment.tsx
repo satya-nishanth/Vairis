@@ -95,7 +95,7 @@ export default function InlineComment({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <p className="text-[10px] text-brand-gold/80 tracking-[0.2em] uppercase mb-2 pl-0.5">
-        One more step · swipe up after this
+        What didn't appeal? · swipe up to continue
       </p>
       {error && (
         <p className="text-[10px] text-red-400 mb-1 pl-0.5">{error}</p>
@@ -126,7 +126,7 @@ export default function InlineComment({
                 handleContinue(e)
               }
             }}
-            placeholder="Your note (optional)"
+            placeholder="Your feedback (optional)"
             className="flex-1 min-w-0 bg-transparent text-white placeholder-white/30 px-1 py-2.5 text-[16px] focus:outline-none"
             style={{ fontSize: '16px' }}
           />

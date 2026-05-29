@@ -13,6 +13,7 @@ export type CatalogueProduct = {
   itemCode: string | null
   stoneType: string | null
   caratWeight: number | null
+  isActive: boolean
   media: CatalogueMedia[]
   likes: number
   dislikes: number

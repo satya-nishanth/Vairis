@@ -17,7 +17,6 @@ async function getGuestFromCookie() {
 
 async function getProducts(): Promise<Omit<CatalogueProduct, 'likes' | 'dislikes' | 'commentCount' | 'myReaction'>[]> {
   const rows = await prisma.product.findMany({
-    where: { isActive: true },
     orderBy: { createdAt: 'asc' },
     select: {
       id: true,
@@ -28,6 +27,7 @@ async function getProducts(): Promise<Omit<CatalogueProduct, 'likes' | 'dislikes
       caratWeight: true,
       description: true,
       itemCode: true,
+      isActive: true,
     },
   })
 
@@ -39,6 +39,7 @@ async function getProducts(): Promise<Omit<CatalogueProduct, 'likes' | 'dislikes
     itemCode: p.itemCode ?? null,
     stoneType: p.stoneType ?? null,
     caratWeight: p.caratWeight ? Number(p.caratWeight) : null,
+    isActive: p.isActive,
     media: sortProductMedia(p.images ?? []),
   }))
 }

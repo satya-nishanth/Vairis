@@ -245,8 +245,9 @@ export default function CatalogueReel({
       const next = prev === reaction ? null : reaction
       setMyReactions((s) => ({ ...s, [productId]: next }))
 
-      // any like/dislike tap (even un-tap) opens the comment gate
-      setEngagementDone((s) => ({ ...s, [productId]: false }))
+      // Like or un-tap → done immediately (no comment needed)
+      // Dislike → show optional comment gate
+      setEngagementDone((s) => ({ ...s, [productId]: next !== 'dislike' }))
 
       const bump = (field: 'likes' | 'dislikes', delta: number) => {
         const setter = field === 'likes' ? setLikes : setDislikes
@@ -370,22 +371,32 @@ export default function CatalogueReel({
       </div>
 
       <div
-        className="fixed left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-1"
+        className="fixed left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-1.5"
         style={{ bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
       >
-        <div className="px-4 py-1.5 rounded-full bg-black/55 backdrop-blur-xl border border-white/10 shadow-lg text-center">
-          <span className="text-white/90 text-xs font-medium tabular-nums block">
-            Product <span className="text-brand-gold">{currentProduct + 1}</span>
-            <span className="text-white/35"> / {products.length}</span>
+        <div className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 shadow-lg text-center">
+          <span className="text-white/80 text-xs font-medium tabular-nums block">
+            <span className="text-brand-gold font-semibold">{currentProduct + 1}</span>
+            <span className="text-white/30"> / {products.length}</span>
           </span>
           {active && active.media.length > 1 && (
-            <span className="text-white/45 text-[10px] tabular-nums mt-0.5 block">
-              {active.media[currentMedia]?.isVideo ? 'Video' : 'Photo'} {currentMedia + 1}/
-              {active.media.length} · tap sides to switch
+            <span className="text-white/35 text-[10px] tabular-nums mt-0.5 block">
+              {active.media[currentMedia]?.isVideo ? 'Video' : 'Photo'} {currentMedia + 1}/{active.media.length}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-white/30 tracking-widest uppercase">Swipe up · next piece</span>
+        {canAdvance ? (
+          <span className="flex items-center gap-1.5 text-[10px] text-white/50 tracking-widest uppercase">
+            <svg className="w-3 h-3 animate-bounce" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+            </svg>
+            Swipe up for next
+          </span>
+        ) : (
+          <span className="text-[10px] text-brand-gold/60 tracking-widest uppercase">
+            Rate to continue ↑
+          </span>
+        )}
       </div>
     </div>
   )
@@ -432,18 +443,19 @@ function ActionButton({
       onClick={onClick}
       aria-label={label}
       aria-pressed={active}
-      className="flex flex-col items-center gap-1 group transition-transform active:scale-90 touch-manipulation"
+      className="flex flex-col items-center gap-1.5 group transition-transform active:scale-90 touch-manipulation"
     >
       <span
-        className={`w-12 h-12 rounded-full flex items-center justify-center backdrop-blur-md border transition-all ${
+        className={`w-13 h-13 rounded-full flex items-center justify-center backdrop-blur-xl border-2 transition-all duration-200 shadow-lg ${
           active
-            ? activeClass + ' border-transparent shadow-lg scale-105'
-            : 'bg-black/35 border-white/15 text-white group-hover:bg-black/50 group-hover:border-white/25'
+            ? activeClass + ' border-transparent scale-110'
+            : 'bg-black/40 border-white/10 text-white/90 group-hover:border-white/25 group-hover:bg-black/60'
         }`}
+        style={{ width: 52, height: 52 }}
       >
         {children}
       </span>
-      <span className={`text-[11px] font-medium tabular-nums ${active ? 'text-white' : 'text-white/55'}`}>
+      <span className={`text-[11px] font-semibold tabular-nums tracking-wide ${active ? 'text-white' : 'text-white/50'}`}>
         {formatCount(count)}
       </span>
     </button>
@@ -492,63 +504,85 @@ function ProductSlide({
         <div className="absolute inset-0 bg-black" aria-hidden />
       )}
 
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30 pointer-events-none" />
+      {/* Gradient overlays */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-black/40 pointer-events-none" />
 
+      {/* Draft badge */}
+      {!product.isActive && (
+        <div className="absolute top-[72px] left-4 z-20 pointer-events-none">
+          <span className="px-2.5 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white/60 text-[9px] font-semibold tracking-[0.25em] uppercase">
+            Preview
+          </span>
+        </div>
+      )}
+
+      {/* Bottom info + comment area */}
       <div
-        className={`absolute bottom-0 left-0 right-0 px-4 pt-16 bg-gradient-to-t from-black via-black/95 to-transparent ${
-          showCommentInput ? 'z-50' : 'z-10'
-        } pointer-events-none`}
+        className={`absolute bottom-0 left-0 right-0 ${showCommentInput ? 'z-50' : 'z-10'}`}
         style={{
           paddingBottom: showCommentInput
-            ? 'max(6.5rem, calc(6.5rem + env(safe-area-inset-bottom, 0px)))'
-            : 'max(5.5rem, calc(5.5rem + env(safe-area-inset-bottom, 0px)))',
+            ? 'max(6rem, calc(6rem + env(safe-area-inset-bottom, 0px)))'
+            : 'max(5rem, calc(5rem + env(safe-area-inset-bottom, 0px)))',
         }}
       >
-        <div className={`pointer-events-none transition-all ${showCommentInput ? 'pr-2' : 'pr-16'}`}>
-          <p className="text-[10px] text-brand-gold tracking-[0.3em] uppercase font-medium mb-1">
-            {CATEGORY_LABELS[product.category] ?? product.category}
-          </p>
-          <h2 className="font-display text-2xl text-white leading-tight mb-0.5">{product.name}</h2>
+        {/* Info card */}
+        <div className={`mx-3 mb-3 px-4 pt-4 pb-3 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/8 shadow-2xl pointer-events-none transition-all ${showCommentInput ? 'pr-3' : 'pr-[4.5rem]'}`}>
+          {/* Category pill */}
+          <div className="mb-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-brand-gold/15 border border-brand-gold/30 text-brand-gold text-[9px] font-semibold tracking-[0.25em] uppercase">
+              {CATEGORY_LABELS[product.category] ?? product.category}
+            </span>
+          </div>
+
+          <h2 className="font-display text-xl sm:text-2xl text-white leading-snug mb-0.5 line-clamp-2">
+            {product.name}
+          </h2>
+
           {product.itemCode && (
-            <p className="text-white/35 text-xs font-mono tracking-wide">{product.itemCode}</p>
+            <p className="text-white/30 text-[11px] font-mono tracking-widest mt-0.5">{product.itemCode}</p>
           )}
+
           {product.stoneType && product.caratWeight != null && (
-            <p className="text-white/50 text-xs mt-1">
+            <p className="text-white/50 text-xs mt-1.5 flex items-center gap-1.5">
+              <span className="w-1 h-1 rounded-full bg-brand-gold/50 inline-block" />
               {product.caratWeight}ctw · {product.stoneType}
             </p>
           )}
-          <p
-            className={`text-white/45 text-xs leading-relaxed mt-2 max-w-[92%] transition-all ${
-              showCommentInput ? 'line-clamp-1' : 'line-clamp-2 max-w-[85%]'
-            }`}
-          >
-            {product.description}
-          </p>
+
+          {product.description && !showCommentInput && (
+            <p className="text-white/40 text-xs leading-relaxed mt-2 line-clamp-2">
+              {product.description}
+            </p>
+          )}
         </div>
 
-        <InlineComment
-          productId={product.productId}
-          guestUsername={guestUsername}
-          onPosted={() => onCommentPosted(product.productId)}
-          onComplete={() => onEngagementComplete(product.productId)}
-          visible={showCommentInput}
-          isActive={isActive}
-        />
+        {/* Comment input (dislike only) */}
+        <div className="px-3">
+          <InlineComment
+            productId={product.productId}
+            guestUsername={guestUsername}
+            onPosted={() => onCommentPosted(product.productId)}
+            onComplete={() => onEngagementComplete(product.productId)}
+            visible={showCommentInput}
+            isActive={isActive}
+          />
+        </div>
       </div>
 
+      {/* Action buttons */}
       <div
-        className="absolute right-3 z-20 flex flex-col items-center gap-3 transition-all pointer-events-auto"
+        className="absolute right-3 z-20 flex flex-col items-center gap-4 pointer-events-auto"
         style={{
           bottom: showCommentInput
-            ? 'max(9.5rem, calc(9.5rem + env(safe-area-inset-bottom, 0px)))'
-            : 'max(7rem, calc(7rem + env(safe-area-inset-bottom, 0px)))',
+            ? 'max(9rem, calc(9rem + env(safe-area-inset-bottom, 0px)))'
+            : 'max(6.5rem, calc(6.5rem + env(safe-area-inset-bottom, 0px)))',
         }}
       >
         <ActionButton
           label="Like"
           count={likes}
           active={myReaction === 'like'}
-          activeClass="bg-brand-gold/90 text-brand-dark"
+          activeClass="bg-brand-gold/95 text-brand-dark"
           onClick={() => onReact(product.productId, 'like')}
         >
           <IconHeart filled={myReaction === 'like'} className="w-6 h-6" />
@@ -558,31 +592,32 @@ function ProductSlide({
           label="Dislike"
           count={dislikes}
           active={myReaction === 'dislike'}
-          activeClass="bg-red-500/90 text-white"
+          activeClass="bg-red-500/95 text-white"
           onClick={() => onReact(product.productId, 'dislike')}
         >
           <IconDislike filled={myReaction === 'dislike'} className="w-6 h-6" />
         </ActionButton>
 
-        <a
-          href={`/shop/product/${product.productId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="View product"
-          className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform"
-        >
-          <span className="w-12 h-12 rounded-full flex items-center justify-center bg-black/35 backdrop-blur-md border border-white/15 text-white group-hover:border-brand-gold/40 group-hover:text-brand-gold transition-all">
-            <IconExternalLink className="w-5 h-5" />
-          </span>
-          <span className="text-[10px] text-white/45 group-hover:text-brand-gold/80 transition">Shop</span>
-        </a>
+        {product.isActive && (
+          <a
+            href={`/shop/product/${product.productId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View product"
+            className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform touch-manipulation"
+          >
+            <span className="flex items-center justify-center backdrop-blur-xl border-2 border-white/10 bg-black/40 text-white/90 group-hover:border-brand-gold/40 group-hover:text-brand-gold transition-all rounded-full shadow-lg" style={{ width: 52, height: 52 }}>
+              <IconExternalLink className="w-5 h-5" />
+            </span>
+            <span className="text-[11px] font-semibold text-white/50 tracking-wide group-hover:text-brand-gold/80 transition">Shop</span>
+          </a>
+        )}
 
         {commentCount > 0 && (
-          <span className="text-[10px] text-white/40 tabular-nums text-center leading-tight">
-            {formatCount(commentCount)}
-            <br />
-            <span className="text-white/25">comments</span>
-          </span>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[12px] font-semibold text-white/50 tabular-nums">{formatCount(commentCount)}</span>
+            <span className="text-[9px] text-white/25 tracking-wide uppercase">notes</span>
+          </div>
         )}
       </div>
     </div>
