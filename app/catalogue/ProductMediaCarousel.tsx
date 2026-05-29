@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CatalogueMedia } from '@/lib/catalogue-feed'
 import { prefetchCatalogueMedia } from '@/lib/catalogue-prefetch'
-import { IconChevronLeft, IconChevronRight } from '@/components/catalogue/CatalogueIcons'
 
 type Props = {
   media: CatalogueMedia[]
@@ -152,66 +151,42 @@ export default function ProductMediaCarousel({
 
       {hasMultiple && isActive && allowPhotoNav && (
         <>
-          {/* Side zones stop above bottom UI — avoids stealing Continue / comment taps */}
+          {/* Invisible tap zones — no visual arrows, just interaction targets */}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              goTo(mediaIndex - 1)
-            }}
+            onClick={(e) => { e.stopPropagation(); goTo(mediaIndex - 1) }}
             disabled={!canPrev}
             aria-label="Previous photo"
-            className="absolute left-0 top-0 bottom-44 w-[28%] z-20 flex items-center justify-center disabled:pointer-events-none touch-manipulation"
-          >
-            <span
-              className={`w-10 h-10 rounded-full flex items-center justify-center bg-black/45 backdrop-blur-md text-white transition-opacity ${
-                canPrev ? 'opacity-70 active:opacity-100' : 'opacity-0'
-              }`}
-            >
-              <IconChevronLeft />
-            </span>
-          </button>
-
+            className="absolute left-0 top-0 bottom-52 w-[30%] z-20 disabled:pointer-events-none touch-manipulation"
+          />
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              goTo(mediaIndex + 1)
-            }}
+            onClick={(e) => { e.stopPropagation(); goTo(mediaIndex + 1) }}
             disabled={!canNext}
             aria-label="Next photo"
-            className="absolute right-14 top-0 bottom-44 w-[28%] z-20 flex items-center justify-center disabled:pointer-events-none touch-manipulation"
-          >
-            <span
-              className={`w-10 h-10 rounded-full flex items-center justify-center bg-black/45 backdrop-blur-md text-white transition-opacity ${
-                canNext ? 'opacity-70 active:opacity-100' : 'opacity-0'
-              }`}
-            >
-              <IconChevronRight />
-            </span>
-          </button>
+            className="absolute right-16 top-0 bottom-52 w-[30%] z-20 disabled:pointer-events-none touch-manipulation"
+          />
 
-          {/* Dot indicators */}
-          <div className="absolute top-[72px] left-0 right-0 z-20 flex justify-center gap-1.5 px-6 pointer-events-none">
+          {/* Dot indicators below navbar */}
+          <div className="absolute top-[68px] left-0 right-0 z-20 flex justify-center gap-1.5 pointer-events-none">
             {media.map((m, i) => (
               <span
                 key={i}
-                className={`h-1 rounded-full transition-all duration-300 ${
+                className={`h-[3px] rounded-full transition-all duration-300 ${
                   i === mediaIndex
-                    ? m.isVideo
-                      ? 'w-6 bg-white'
-                      : 'w-6 bg-brand-gold'
-                    : 'w-1.5 bg-white/35'
+                    ? m.isVideo ? 'w-5 bg-white' : 'w-5 bg-brand-gold'
+                    : 'w-[5px] bg-white/30'
                 }`}
               />
             ))}
           </div>
 
-          <div className="absolute top-[92px] left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-            <span className="text-[10px] text-white/50 tracking-widest uppercase">
-              {item.isVideo ? 'Video' : 'Photo'} {mediaIndex + 1}/{media.length}
-            </span>
-          </div>
+          {/* Tap hint — only on first photo, fades after first interaction */}
+          {mediaIndex === 0 && (
+            <div className="absolute top-[80px] left-0 right-0 z-20 flex justify-center pointer-events-none">
+              <span className="text-[9px] text-white/35 tracking-widest uppercase">tap sides to switch</span>
+            </div>
+          )}
         </>
       )}
     </>
