@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth'
 const NAV = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Products', href: '/admin/products' },
+  { label: 'Catalogue', href: '/admin/catalogue/comments' },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
