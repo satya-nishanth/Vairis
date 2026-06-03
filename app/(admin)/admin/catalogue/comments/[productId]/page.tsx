@@ -20,10 +20,6 @@ function formatWhen(d: Date) {
   })
 }
 
-function normReaction(value: string) {
-  return value.trim().toLowerCase()
-}
-
 type Props = { params: Promise<{ productId: string }> }
 
 export default async function CatalogueProductFeedbackPage({ params }: Props) {
