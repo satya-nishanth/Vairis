@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import { prisma } from '@/lib/prisma'
 import { loadCatalogueFeedbackMaps } from '@/lib/catalogue-admin-stats'
 
@@ -89,7 +88,8 @@ export default async function CatalogueCommentsPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-brand-cream rounded flex-shrink-0 overflow-hidden relative">
                           {p.images[0] ? (
-                            <Image src={p.images[0]} alt={p.name} fill className="object-cover" />
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-lg">
                               V
