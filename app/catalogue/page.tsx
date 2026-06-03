@@ -4,6 +4,7 @@ import { sortProductMedia, totalMediaCount, positionFromFlatIndex } from '@/lib/
 import { getResumeFlatIndex } from '@/lib/catalogue-progress'
 import CatalogueReel from './CatalogueReel'
 import { redirect } from 'next/navigation'
+import { loadReactionCountMaps } from '@/lib/catalogue-admin-stats'
 import type { CatalogueProduct } from '@/lib/catalogue-feed'
 
 export const dynamic = 'force-dynamic'
@@ -53,22 +54,7 @@ async function getReactions(guestId: string) {
 }
 
 async function getReactionCounts() {
-  const [likes, dislikes] = await Promise.all([
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: 'like' },
-      _count: { _all: true },
-    }),
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: 'dislike' },
-      _count: { _all: true },
-    }),
-  ])
-  return {
-    likeMap: Object.fromEntries(likes.map((r) => [r.productId, r._count._all])),
-    dislikeMap: Object.fromEntries(dislikes.map((r) => [r.productId, r._count._all])),
-  }
+  return loadReactionCountMaps()
 }
 
 async function getCommentCounts() {

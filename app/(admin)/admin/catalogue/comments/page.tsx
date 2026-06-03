@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { prisma } from '@/lib/prisma'
+import { loadCatalogueFeedbackMaps } from '@/lib/catalogue-admin-stats'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,34 +13,15 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default async function CatalogueCommentsPage() {
-  const [products, commentGroups, likeGroups, dislikeGroups] = await Promise.all([
-    prisma.product.findMany({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, itemCode: true, category: true, images: true, isActive: true },
-    }),
-    prisma.catalogueComment.groupBy({
-      by: ['productId'],
-      _count: { _all: true },
-    }),
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: { equals: 'like', mode: 'insensitive' } },
-      _count: { _all: true },
-    }),
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: { equals: 'dislike', mode: 'insensitive' } },
-      _count: { _all: true },
-    }),
-  ])
+  const [products, { commentMap, likeMap, dislikeMap, totalComments, totalLikes, totalDislikes }] =
+    await Promise.all([
+      prisma.product.findMany({
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true, itemCode: true, category: true, images: true, isActive: true },
+      }),
+      loadCatalogueFeedbackMaps(),
+    ])
 
-  const commentMap = Object.fromEntries(commentGroups.map((r) => [r.productId, r._count._all]))
-  const likeMap = Object.fromEntries(likeGroups.map((r) => [r.productId, r._count._all]))
-  const dislikeMap = Object.fromEntries(dislikeGroups.map((r) => [r.productId, r._count._all]))
-
-  const totalComments = commentGroups.reduce((n, r) => n + r._count._all, 0)
-  const totalLikes = likeGroups.reduce((n, r) => n + r._count._all, 0)
-  const totalDislikes = dislikeGroups.reduce((n, r) => n + r._count._all, 0)
   const withFeedback = products.filter(
     (p) => (commentMap[p.id] ?? 0) + (likeMap[p.id] ?? 0) + (dislikeMap[p.id] ?? 0) > 0
   )

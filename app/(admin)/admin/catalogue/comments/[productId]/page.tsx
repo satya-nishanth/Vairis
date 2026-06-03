@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { guestFromMap, loadGuestMap } from '@/lib/catalogue-admin-guests'
+import { normReaction } from '@/lib/catalogue-admin-stats'
 
 export const dynamic = 'force-dynamic'
 
