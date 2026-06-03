@@ -16,7 +16,7 @@ const UNKNOWN_GUEST: GuestContact = {
 
 /** Load guest rows by id; missing ids (orphaned FKs) map to a safe placeholder. */
 export async function loadGuestMap(guestUserIds: string[]) {
-  const ids = [...new Set(guestUserIds)].filter(Boolean)
+  const ids = Array.from(new Set(guestUserIds)).filter(Boolean)
   if (!ids.length) return new Map<string, GuestContact>()
 
   const guests = await prisma.guestUser.findMany({
