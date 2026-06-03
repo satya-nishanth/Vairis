@@ -23,12 +23,12 @@ export default async function CatalogueCommentsPage() {
     }),
     prisma.catalogueReaction.groupBy({
       by: ['productId'],
-      where: { reaction: 'like' },
+      where: { reaction: { equals: 'like', mode: 'insensitive' } },
       _count: { _all: true },
     }),
     prisma.catalogueReaction.groupBy({
       by: ['productId'],
-      where: { reaction: 'dislike' },
+      where: { reaction: { equals: 'dislike', mode: 'insensitive' } },
       _count: { _all: true },
     }),
   ])

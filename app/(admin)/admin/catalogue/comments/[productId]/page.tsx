@@ -1,7 +1,7 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { guestFromMap, loadGuestMap } from '@/lib/catalogue-admin-guests'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +17,10 @@ function formatWhen(d: Date) {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
+}
+
+function normReaction(value: string) {
+  return value.trim().toLowerCase()
 }
 
 type Props = { params: Promise<{ productId: string }> }
@@ -45,25 +49,21 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
     prisma.catalogueComment.findMany({
       where: { productId },
       orderBy: { createdAt: 'desc' },
-      include: {
-        guestUser: {
-          select: { username: true, email: true, phone: true, createdAt: true },
-        },
-      },
     }),
     prisma.catalogueReaction.findMany({
       where: { productId },
       orderBy: { updatedAt: 'desc' },
-      include: {
-        guestUser: {
-          select: { username: true, email: true, phone: true },
-        },
-      },
+      take: 500,
     }),
   ])
 
-  const likes = reactions.filter((r) => r.reaction === 'like')
-  const dislikes = reactions.filter((r) => r.reaction === 'dislike')
+  const guestMap = await loadGuestMap([
+    ...comments.map((c) => c.guestUserId),
+    ...reactions.map((r) => r.guestUserId),
+  ])
+
+  const likes = reactions.filter((r) => normReaction(r.reaction) === 'like')
+  const dislikes = reactions.filter((r) => normReaction(r.reaction) === 'dislike')
 
   return (
     <div className="p-4 md:p-8">
@@ -77,7 +77,8 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         <div className="w-full md:w-40 h-40 bg-brand-cream rounded-lg overflow-hidden relative shrink-0">
           {product.images[0] ? (
-            <Image src={product.images[0]} alt={product.name} fill className="object-cover" />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-4xl">
               V
@@ -145,30 +146,41 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {comments.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50/50 align-top">
-                    <td className="px-6 py-4">
-                      <span className="font-medium text-sm text-gray-900">@{c.guestUser.username}</span>
-                      <span className="text-xs text-gray-400 block">
-                        Joined {formatWhen(c.guestUser.createdAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <a href={`mailto:${c.guestUser.email}`} className="hover:text-brand-gold block">
-                        {c.guestUser.email}
-                      </a>
-                      <a href={`tel:${c.guestUser.phone}`} className="hover:text-brand-gold block mt-1">
-                        {c.guestUser.phone}
-                      </a>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-800 max-w-md whitespace-pre-wrap">
-                      {c.body}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                      {formatWhen(c.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                {comments.map((c) => {
+                  const guest = guestFromMap(guestMap, c.guestUserId)
+                  return (
+                    <tr key={c.id} className="hover:bg-gray-50/50 align-top">
+                      <td className="px-6 py-4">
+                        <span className="font-medium text-sm text-gray-900">@{guest.username}</span>
+                        {guest.createdAt.getTime() > 0 && (
+                          <span className="text-xs text-gray-400 block">
+                            Joined {formatWhen(guest.createdAt)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {guest.email !== '—' ? (
+                          <a href={`mailto:${guest.email}`} className="hover:text-brand-gold block">
+                            {guest.email}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                        {guest.phone !== '—' && (
+                          <a href={`tel:${guest.phone}`} className="hover:text-brand-gold block mt-1">
+                            {guest.phone}
+                          </a>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-800 max-w-md whitespace-pre-wrap">
+                        {c.body}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                        {formatWhen(c.createdAt)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -177,7 +189,8 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
 
       <section>
         <h2 className="text-sm font-medium text-gray-600 tracking-widest uppercase mb-4">
-          Reactions ({reactions.length})
+          Reactions ({reactions.length}
+          {reactions.length >= 500 ? ', showing latest 500' : ''})
         </h2>
         {reactions.length === 0 ? (
           <p className="text-sm text-gray-400 bg-white border border-gray-100 rounded-lg px-6 py-8">
@@ -203,31 +216,33 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {reactions.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      @{r.guestUser.username}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <span className="block">{r.guestUser.email}</span>
-                      <span className="block text-gray-400">{r.guestUser.phone}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          r.reaction === 'like'
-                            ? 'bg-amber-50 text-amber-800'
-                            : 'bg-red-50 text-red-700'
-                        }`}
-                      >
-                        {r.reaction === 'like' ? 'Like' : 'Dislike'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                      {formatWhen(r.updatedAt)}
-                    </td>
-                  </tr>
-                ))}
+                {reactions.map((r) => {
+                  const guest = guestFromMap(guestMap, r.guestUserId)
+                  const isLike = normReaction(r.reaction) === 'like'
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50/50">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        @{guest.username}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <span className="block">{guest.email}</span>
+                        <span className="block text-gray-400">{guest.phone}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            isLike ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {isLike ? 'Like' : 'Dislike'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                        {formatWhen(r.updatedAt)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
