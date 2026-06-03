@@ -11,9 +11,6 @@
     "e2e:ui": "playwright test --ui",
     "sync:prod": "node scripts/sync-prod-to-local.mjs",
     "sync:prod:media": "node scripts/sync-prod-to-local.mjs --mirror-media",
-    "sync:prod:full": "bash scripts/sync-prod-full.sh",
-    "sync:prod:full:storage": "bash scripts/sync-prod-full.sh --storage",
-    "sync:prod:api": "node scripts/sync-prod-full-api.mjs",
     "create:cloud-admin": "node scripts/create-cloud-admin.mjs"
   },
   "prisma": {
