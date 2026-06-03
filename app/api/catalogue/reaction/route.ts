@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getGuestUser } from '@/lib/catalogue-auth'
+import { fetchGuestProductReaction } from '@/lib/catalogue-reactions'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,10 +13,8 @@ export async function GET(req: NextRequest) {
   const productId = new URL(req.url).searchParams.get('productId')
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 })
 
-  const r = await prisma.catalogueReaction.findUnique({
-    where: { guestUserId_productId: { guestUserId: guest.id, productId } },
-  })
-  return NextResponse.json({ reaction: r?.reaction ?? null })
+  const reaction = await fetchGuestProductReaction(guest.id, productId)
+  return NextResponse.json({ reaction })
 }
 
 // POST /api/catalogue/reaction  { productId, reaction: "like"|"dislike"|null }
@@ -37,11 +36,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'reaction must be like or dislike' }, { status: 400 })
   }
 
-  const r = await prisma.catalogueReaction.upsert({
+  await prisma.catalogueReaction.upsert({
     where: { guestUserId_productId: { guestUserId: guest.id, productId } },
     create: { guestUserId: guest.id, productId, reaction },
     update: { reaction },
   })
 
-  return NextResponse.json({ reaction: r.reaction })
+  return NextResponse.json({ reaction })
 }

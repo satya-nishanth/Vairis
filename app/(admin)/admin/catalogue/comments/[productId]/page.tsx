@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { guestFromMap, loadGuestMap } from '@/lib/catalogue-admin-guests'
 import { normReaction } from '@/lib/catalogue-admin-stats'
+import { fetchProductReactionDetails } from '@/lib/catalogue-reactions'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,11 +48,7 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
       where: { productId },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.catalogueReaction.findMany({
-      where: { productId },
-      orderBy: { updatedAt: 'desc' },
-      take: 500,
-    }),
+    fetchProductReactionDetails(productId),
   ])
 
   const guestMap = await loadGuestMap([

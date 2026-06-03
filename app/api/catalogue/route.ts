@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getGuestUser } from '@/lib/catalogue-auth'
+import { fetchAllReactionRows, fetchGuestReactionRows } from '@/lib/catalogue-reactions'
+import { normReaction } from '@/lib/catalogue-admin-stats'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,37 +37,28 @@ export async function GET() {
     }))
   )
 
-  // per-product reaction counts (no auth needed)
-  const [likes, dislikes, commentCounts] = await Promise.all([
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: 'like' },
-      _count: { _all: true },
-    }),
-    prisma.catalogueReaction.groupBy({
-      by: ['productId'],
-      where: { reaction: 'dislike' },
-      _count: { _all: true },
-    }),
+  const [reactions, commentCounts] = await Promise.all([
+    fetchAllReactionRows(),
     prisma.catalogueComment.groupBy({
       by: ['productId'],
       _count: { _all: true },
     }),
   ])
 
-  const likeMap = Object.fromEntries(likes.map((r) => [r.productId, r._count._all]))
-  const dislikeMap = Object.fromEntries(dislikes.map((r) => [r.productId, r._count._all]))
+  const likeMap: Record<string, number> = {}
+  const dislikeMap: Record<string, number> = {}
+  for (const row of reactions) {
+    const kind = normReaction(row.reaction)
+    if (kind === 'like') likeMap[row.productId] = (likeMap[row.productId] ?? 0) + 1
+    else if (kind === 'dislike') dislikeMap[row.productId] = (dislikeMap[row.productId] ?? 0) + 1
+  }
   const commentMap = Object.fromEntries(commentCounts.map((r) => [r.productId, r._count._all]))
 
-  // guest's own reactions
   const guest = await getGuestUser()
   let myReactions: Record<string, string> = {}
   if (guest) {
-    const reactions = await prisma.catalogueReaction.findMany({
-      where: { guestUserId: guest.id },
-      select: { productId: true, reaction: true },
-    })
-    myReactions = Object.fromEntries(reactions.map((r) => [r.productId, r.reaction]))
+    const guestRows = await fetchGuestReactionRows(guest.id)
+    myReactions = Object.fromEntries(guestRows.map((r) => [r.productId, r.reaction]))
   }
 
   const framesWithMeta = frames.map((f) => ({

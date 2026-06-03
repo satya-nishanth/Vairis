@@ -5,6 +5,7 @@ import { getResumeFlatIndex } from '@/lib/catalogue-progress'
 import CatalogueReel from './CatalogueReel'
 import { redirect } from 'next/navigation'
 import { loadReactionCountMaps } from '@/lib/catalogue-admin-stats'
+import { fetchGuestReactionRows } from '@/lib/catalogue-reactions'
 import type { CatalogueProduct } from '@/lib/catalogue-feed'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,7 @@ async function getProgress(guestId: string) {
 }
 
 async function getReactions(guestId: string) {
-  const rows = await prisma.catalogueReaction.findMany({ where: { guestUserId: guestId } })
+  const rows = await fetchGuestReactionRows(guestId)
   return Object.fromEntries(rows.map((r) => [r.productId, r.reaction]))
 }
 
