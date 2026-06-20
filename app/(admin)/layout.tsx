@@ -4,15 +4,17 @@ import { requireAdmin } from '@/lib/auth'
 const NAV = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Products', href: '/admin/products' },
+  { label: 'Landing Page', href: '/admin/hero-images' },
+  { label: 'Catalogue', href: '/admin/catalogue/comments' },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin()
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
+    <div className="h-dvh flex flex-col md:flex-row overflow-hidden bg-gray-50">
       {/* Mobile top bar */}
-      <div className="flex md:hidden items-center justify-between h-14 bg-brand-dark px-4 shadow-md">
+      <div className="flex md:hidden items-center justify-between h-14 shrink-0 bg-brand-dark px-4 shadow-md">
         <Link href="/" className="flex items-center">
           <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '28px', width: 'auto' }} />
         </Link>
@@ -29,8 +31,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </div>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 bg-brand-dark flex-shrink-0 flex-col">
+      {/* Desktop sidebar — fixed height, no scroll */}
+      <aside className="hidden md:flex w-56 bg-brand-dark shrink-0 h-full flex-col">
         <Link href="/" className="h-16 flex items-center justify-center px-6 border-b border-white/10">
           <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '32px', width: 'auto' }} />
         </Link>
@@ -51,7 +53,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </aside>
 
       {/* Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         {children}
       </main>
     </div>

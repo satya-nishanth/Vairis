@@ -195,3 +195,16 @@ model Wishlist {
 
   @@unique([userId, productId])
 }
+
+// ── Landing page hero banner ─────────────────────────────────────────────────
+
+model HeroImage {
+  id        String   @id @default(cuid())
+  url       String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hero_images")
+}
