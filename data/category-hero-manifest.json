@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-06-06T06:32:49.669Z",
+  "images": {
+    "necklaces": [
+      "/images/category_hero/necklace/1.png"
+    ],
+    "earrings": [
+      "/images/category_hero/ear_rings/1.png"
+    ],
+    "rings": [
+      "/images/category_hero/rings/rings.png"
+    ],
+    "bracelets": [
+      "/images/category_hero/bracelet/1.png"
+    ],
+    "pendants": [
+      "/images/category_hero/pendants/pendants.png"
+    ],
+    "cufflinks": [],
+    "sets": [
+      "/images/category_hero/sets/1.png",
+      "/images/category_hero/sets/why_vairis_landing_2.png",
+      "/images/category_hero/sets/why_vairis_landing.png"
+    ],
+    "nose-pins": [
+      "/images/category_hero/nosepin/1.png"
+    ]
+  }
+}
