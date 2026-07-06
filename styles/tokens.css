@@ -1,0 +1,45 @@
+/* Shared brand primitives (theme-agnostic reference) */
+:root {
+  --emerald-deep: #032b24;
+  --emerald-forest: #0a3a31;
+  --emerald-matte: #11352e;
+  --emerald-charcoal: #10241f;
+  --gold-luxury: #d4af6a;
+  --gold-champagne: #e7c98a;
+  --gold-antique: #b88a4a;
+  --gold-sage: #c7a46a;
+  --gold-brand: #c5a059;
+  --gold-highlight: #e8d092;
+  --charcoal: #1a1a1a;
+  --cream: #ffffff;
+  --brand-olive: #5e684e;
+
+  --font-serif: var(--font-serif-loaded), "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  --font-sans: var(--font-sans-loaded), "Inter", system-ui, sans-serif;
+
+  /* Fluid page width - ~same fill ratio on laptop and large desktop */
+  --layout-gutter: clamp(16px, 2vw, 40px);
+  --layout-nudge-right: clamp(12px, 1.25vw, 28px);
+  --layout-gutter-left: calc(var(--layout-gutter) + var(--layout-nudge-right));
+  --layout-gutter-right: var(--layout-gutter);
+  --max-width: min(2200px, calc(100vw - var(--layout-gutter-left) - var(--layout-gutter-right)));
+  --content-width: var(--max-width);
+  --section-gap: 88px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --transition: 0.2s ease;
+
+  /* Header spacing */
+  --header-pad-left: var(--layout-gutter-left);
+  --header-pad-right: var(--layout-gutter-right);
+  --header-top-pad-y: clamp(8px, 0.8vw, 12px);
+  --header-nav-pad-y: clamp(10px, 1vw, 14px);
+  --header-nav-gap: clamp(12px, 1.8vw, 36px);
+  --header-nav-font: clamp(0.6875rem, 0.55rem + 0.2vw, 0.8125rem);
+  --header-logo-height: clamp(48px, 4.2vw, 64px);
+
+  /* Mobile sticky bars + safe area */
+  --mobile-sticky-bar-height: 56px;
+  --mobile-sticky-offset: calc(var(--mobile-sticky-bar-height) + env(safe-area-inset-bottom, 0px));
+  --contact-us-fab-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}

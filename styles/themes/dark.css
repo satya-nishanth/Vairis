@@ -1,0 +1,38 @@
+/* Dark theme - emerald & gold from vairis_primary_logo_generated_hd.png */
+[data-theme="dark"] {
+  --bg-page: #0a1210;
+  --bg-card: #0f1a17;
+  --bg-category: #142420;
+  --bg-muted: #121e1b;
+  --bg-dark: #051614;
+
+  --color-primary: #c5a059;
+  --color-primary-hover: #e8d092;
+  --color-primary-active: #8b6b32;
+  --color-accent: #d4af6a;
+  --color-accent-light: #e8d092;
+  --color-text: #f5f0e6;
+  --color-text-muted: #a8b5b0;
+  --color-text-inverse: #051614;
+  --color-border: rgba(197, 160, 89, 0.45);
+  --color-border-light: rgba(245, 240, 230, 0.12);
+  --color-star: #e8d092;
+  --color-success: #6fcf97;
+
+  --header-bg: var(--bg-card);
+  --header-border: var(--color-border-light);
+  --header-nav-bg: var(--bg-card);
+  --header-nav-text: var(--color-text);
+  --header-nav-text-hover: var(--color-primary-hover);
+  --header-nav-border: transparent;
+  --header-badge-bg: var(--bg-card);
+  --header-badge-border: var(--color-border);
+  --header-badge-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --header-action-color: var(--color-text);
+  --header-utility-bg: var(--bg-dark);
+  --header-utility-text: var(--color-text-muted);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --hero-fade-mid: rgba(10, 18, 16, 0.45);
+  --hero-fade-strong: rgba(10, 18, 16, 0.88);
+}

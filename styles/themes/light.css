@@ -1,0 +1,39 @@
+/* Light theme - white surfaces & charcoal text */
+:root,
+[data-theme="light"] {
+  --bg-page: #ffffff;
+  --bg-card: #ffffff;
+  --bg-category: #f5f5f5;
+  --bg-muted: #ffffff;
+  --bg-dark: #5e684e;
+
+  --color-primary: #5e684e;
+  --color-primary-hover: #023528;
+  --color-primary-active: #001a12;
+  --color-accent: #c5a059;
+  --color-accent-light: #e8d092;
+  --color-text: #1a1a1a;
+  --color-text-muted: #5c5c5c;
+  --color-text-inverse: #ffffff;
+  --color-border: #c5a059;
+  --color-border-light: #e8e8e8;
+  --color-star: #c5a059;
+  --color-success: #0a3a31;
+
+  --header-bg: #ffffff;
+  --header-border: #e8e8e8;
+  --header-nav-bg: #ffffff;
+  --header-nav-text: #1a1a1a;
+  --header-nav-text-hover: #e8d092;
+  --header-nav-border: transparent;
+  --header-badge-bg: #ffffff;
+  --header-badge-border: #e8e8e8;
+  --header-badge-shadow: 0 8px 32px rgba(1, 26, 20, 0.12);
+  --header-action-color: #1a1a1a;
+  --header-utility-bg: #ffffff;
+  --header-utility-text: #5c5c5c;
+
+  --shadow-sm: 0 1px 3px rgba(1, 26, 20, 0.08);
+  --hero-fade-mid: rgba(255, 255, 255, 0.4);
+  --hero-fade-strong: rgba(255, 255, 255, 0.82);
+}

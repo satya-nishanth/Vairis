@@ -62,76 +62,44 @@ Add these records (Vercel shows exact values):
 
 ---
 
-## 3. Live Gold Rate — GitHub Actions
+## 3. Live Gold Rate — GitHub Actions (no DB credentials exposed)
 
-**Time:** ~1-2 hrs
+**Time:** ~30 min
 
-**Step 1 — API**
-Sign up at [metalpriceapi.com](https://metalpriceapi.com) — free tier, 100 req/month.
-Get API key.
+**How it works:**
+GitHub Actions calls a protected API endpoint on the app. The app fetches the gold rate and updates the DB. No DB credentials leave Vercel.
 
-**Step 2 — Script** `scripts/sync-gold-rate.mjs`
-```js
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
-const KEY = process.env.METAL_PRICE_API_KEY
-
-const res = await fetch(
-  `https://api.metalpriceapi.com/v1/latest?api_key=${KEY}&base=XAU&currencies=INR`
-)
-const { rates } = await res.json()
-
-// 1 troy oz = 31.1035g. XAU is pure gold (24K).
-const per24kGram = rates.INR / 31.1035
-
-await prisma.goldRate.upsert({
-  where: { metalType: 'GOLD_22K' },
-  update: { ratePerGram: per24kGram * (22 / 24) },
-  create: { metalType: 'GOLD_22K', ratePerGram: per24kGram * (22 / 24) },
-})
-await prisma.goldRate.upsert({
-  where: { metalType: 'GOLD_18K' },
-  update: { ratePerGram: per24kGram * (18 / 24) },
-  create: { metalType: 'GOLD_18K', ratePerGram: per24kGram * (18 / 24) },
-})
-
-console.log(`Gold rates updated — 24K: ₹${per24kGram.toFixed(2)}/g`)
-await prisma.$disconnect()
+```
+GitHub Actions → POST /api/admin/sync-gold-rate (Bearer token)
+  → route fetches metalpriceapi.com
+  → updates GoldRate table
+  → returns { rates, fetchedAt }
 ```
 
-**Step 3 — GitHub Actions** `.github/workflows/gold-rate.yml`
-```yaml
-name: Sync Gold Rate
+**Step 1 — API key**
+Sign up at [metalpriceapi.com](https://metalpriceapi.com) — free tier, 100 req/month. Get API key.
 
-on:
-  schedule:
-    - cron: '0 2 * * *'   # 7:30 AM IST daily (UTC+5:30)
-  workflow_dispatch:        # manual trigger from GitHub UI
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npx prisma generate
-      - run: node scripts/sync-gold-rate.mjs
-        env:
-          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
-          METAL_PRICE_API_KEY: ${{ secrets.METAL_PRICE_API_KEY }}
-```
-
-**Step 4 — GitHub Secrets**
-Repo → Settings → Secrets → Actions → add:
-- `PROD_DATABASE_URL` — Transaction Pooler URL (port 6543 + `?pgbouncer=true`)
+**Step 2 — Vercel env vars** (add these)
 - `METAL_PRICE_API_KEY` — from metalpriceapi.com
+- `GOLD_SYNC_SECRET` — any random string (e.g. `openssl rand -hex 32`), used to protect the endpoint
+
+**Step 3 — GitHub repo settings**
+Repo → Settings → Secrets and variables → Actions:
+- Secrets → `GOLD_SYNC_SECRET` (same value as Vercel)
+- Variables → `APP_URL` = `https://vairis-ten.vercel.app` (or custom domain)
+
+**Step 4 — Already built:**
+- `app/api/admin/sync-gold-rate/route.ts` — the endpoint
+- `.github/workflows/gold-rate.yml` — the workflow (runs 7:30 AM IST daily)
 
 **Step 5 — Test**
-Actions tab → `Sync Gold Rate` → Run workflow manually → verify `GoldRate` table in Supabase updates.
+GitHub → Actions tab → `Sync Gold Rate` → Run workflow → confirm 200 response.
+
+Also callable manually:
+```bash
+curl -X POST https://vairis-ten.vercel.app/api/admin/sync-gold-rate \
+  -H "Authorization: Bearer YOUR_SECRET"
+```
 
 ---
 
