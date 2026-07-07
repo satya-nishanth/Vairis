@@ -28,6 +28,7 @@ import {
 type CategoryPageViewProps = {
   category: ShopCategory;
   story: CategoryStory;
+  prismaProducts?: Product[];
 };
 
 function usePlpPageSize() {
@@ -61,10 +62,10 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   return result;
 }
 
-export function CategoryPageView({ category, story }: CategoryPageViewProps) {
+export function CategoryPageView({ category, story, prismaProducts }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const meta = CATEGORY_LABELS[category];
-  const allProducts = getCategoryProducts(category);
+  const allProducts = prismaProducts ?? getCategoryProducts(category);
   const filterGroups = PLP_FILTER_GROUPS[category];
   const heroImages = getCategoryHeroImages(category);
 
