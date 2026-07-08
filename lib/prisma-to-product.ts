@@ -8,6 +8,7 @@ const PRISMA_TO_CATALOGUE_CATEGORY: Record<string, ProductCategory> = {
   EARRINGS: "earrings",
   PENDANTS: "pendants",
   BRACELETS: "bracelets",
+  NECKLACES: "necklaces",
 };
 
 type PrismaProductWithVariants = PrismaProduct & {

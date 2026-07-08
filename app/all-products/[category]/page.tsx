@@ -16,6 +16,7 @@ const CATALOGUE_TO_PRISMA: Record<string, string> = {
   earrings: "EARRINGS",
   pendants: "PENDANTS",
   bracelets: "BRACELETS",
+  necklaces: "NECKLACES",
 };
 
 type PageProps = { params: Promise<{ category: string }> };
