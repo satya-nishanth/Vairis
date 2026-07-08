@@ -48,7 +48,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script src="/scripts/vairis-theme-init.js" />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <ThemeProvider defaultTheme={DEFAULT_SITE_THEME}>
           <AuthProvider>
             <WishlistProvider>
