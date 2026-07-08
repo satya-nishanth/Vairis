@@ -15,7 +15,16 @@ export default function SignOutButton() {
   return (
     <button
       onClick={signOut}
-      className="text-xs text-gray-400 hover:text-red-400 transition-colors tracking-widest uppercase"
+      style={{
+        fontSize: '0.75rem',
+        color: 'var(--color-text-muted)',
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 0,
+      }}
     >
       Sign Out
     </button>
