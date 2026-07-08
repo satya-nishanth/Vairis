@@ -3,12 +3,12 @@ import ProductForm from '@/components/admin/ProductForm'
 
 export default function NewProductPage() {
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <Link href="/admin/products" className="text-xs text-gray-400 hover:text-brand-gold">
+    <div style={{ padding: '2rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
           ← Products
         </Link>
-        <h1 className="font-display text-3xl text-gray-900 mt-2">New Product</h1>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>New Product</h1>
       </div>
       <ProductForm mode="create" />
     </div>

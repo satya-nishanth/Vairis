@@ -10,50 +10,43 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireAdmin()
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
-      {/* Mobile top bar */}
-      <div className="flex md:hidden items-center justify-between h-14 bg-brand-dark px-4 shadow-md">
-        <Link href="/" className="flex items-center">
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f9fafb' }}>
+      {/* Top bar */}
+      <header
+        style={{
+          background: '#032b24',
+          padding: '0 1.5rem',
+          height: '56px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}
+      >
+        <Link href="/" style={{ display: 'flex', alignItems: 'center' }}>
           <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '28px', width: 'auto' }} />
         </Link>
-        <div className="flex items-center gap-4">
+        <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
           {NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-xs text-white/70 hover:text-brand-gold transition-colors tracking-wide uppercase"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 bg-brand-dark flex-shrink-0 flex-col">
-        <Link href="/" className="h-16 flex items-center justify-center px-6 border-b border-white/10">
-          <img src="/images/vairius_logo.png" alt="VAIRIS" style={{ height: '32px', width: 'auto' }} />
-        </Link>
-        <nav className="flex-1 py-6 space-y-1 px-3">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center px-3 py-2.5 rounded text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors tracking-wide"
+              style={{
+                color: 'rgba(255,255,255,0.7)',
+                fontSize: '0.75rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                textDecoration: 'none',
+              }}
             >
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="px-6 py-4 border-t border-white/10">
-          <p className="text-xs text-white/30">Admin Panel</p>
-        </div>
-      </aside>
+      </header>
 
       {/* Content */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
+      <main style={{ flex: 1, overflow: 'auto' }}>{children}</main>
     </div>
   )
 }

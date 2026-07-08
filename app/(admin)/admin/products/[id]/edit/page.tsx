@@ -17,13 +17,13 @@ export default async function EditProductPage({
   if (!product) notFound()
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <Link href="/admin/products" className="text-xs text-gray-400 hover:text-brand-gold">
+    <div style={{ padding: '2rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
           ← Products
         </Link>
-        <h1 className="font-display text-3xl text-gray-900 mt-2">Edit Product</h1>
-        <p className="text-sm text-gray-400 mt-0.5">{product.name}</p>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>Edit Product</h1>
+        <p style={{ fontSize: '0.875rem', color: '#9ca3af', marginTop: '0.125rem' }}>{product.name}</p>
       </div>
       <ProductForm
         mode="edit"
