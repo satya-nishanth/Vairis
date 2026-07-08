@@ -9,7 +9,7 @@ import {
 } from "@/lib/catalogue-ui";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const CATALOGUE_TO_PRISMA: Record<string, string> = {
   rings: "RINGS",
@@ -17,10 +17,6 @@ const CATALOGUE_TO_PRISMA: Record<string, string> = {
   pendants: "PENDANTS",
   bracelets: "BRACELETS",
 };
-
-export function generateStaticParams() {
-  return SHOP_CATEGORIES.map((category) => ({ category }));
-}
 
 type PageProps = { params: Promise<{ category: string }> };
 
