@@ -157,7 +157,7 @@ function PdpContent({ product, goldRates }: Props) {
               <button
                 key={`${media.src}-${i}`}
                 type="button"
-                className={activeThumb === i ? "is-active" : ""}
+                className={[activeThumb === i ? "is-active" : "", media.isVideo ? "pdp-thumb--video" : ""].filter(Boolean).join(" ")}
                 onClick={() => scrollToSlide(i)}
                 aria-label={media.isVideo ? "Play video" : `Image ${i + 1}`}
               >

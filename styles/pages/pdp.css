@@ -56,6 +56,42 @@
   border: none;
 }
 
+/* Desktop 3-col layout: pin gallery while long info column scrolls,
+   and stop grid-stretch painting a bare background slab below the image */
+@media (min-width: 1024px) {
+  .pdp-gallery__thumbs,
+  .pdp-gallery__main {
+    align-self: start;
+    position: sticky;
+    top: 105px;
+  }
+}
+
+/* Thumb for a video slide: dark tile + play badge (first frame is often black) */
+.pdp-thumb--video {
+  position: relative;
+}
+
+.pdp-thumb--video::after {
+  content: "▶";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+/* CommerceTrustHelpPanel reuses .plp-bottom (a full-bleed PLP section with
+   56px vertical padding) — collapse that inside the narrow PDP info column */
+.pdp-section--trust-help .plp-bottom {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .pdp-gallery__360 {
   position: absolute;
   top: 16px;
@@ -251,8 +287,8 @@
 }
 
 .pdp-section--trust-help {
-  padding-top: clamp(40px, 5vw, 64px);
-  padding-bottom: clamp(32px, 4vw, 48px);
+  padding-top: 0;
+  padding-bottom: 0;
   border-bottom: none;
 }
 
