@@ -27,6 +27,7 @@ const PRISMA_TO_CATEGORY: Record<string, string> = {
   EARRINGS: "earrings",
   PENDANTS: "pendants",
   BRACELETS: "bracelets",
+  NECKLACES: "necklaces",
 };
 
 export function WishlistPageView() {

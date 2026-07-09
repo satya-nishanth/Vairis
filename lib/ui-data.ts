@@ -23,6 +23,8 @@ export type Product = {
   meta?: string;
   catalogueId: string;
   video?: string | null;
+  /** Prisma ProductVariant id for real add-to-cart; absent on mock catalogue data */
+  variantId?: string;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

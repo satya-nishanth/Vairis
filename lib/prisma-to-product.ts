@@ -21,15 +21,16 @@ export function prismaToProduct(
   index = 0,
 ): Product {
   let price: number | undefined;
-  if (p.variants.length > 0 && goldRates.length > 0) {
+  let variantId: string | undefined;
+  if (!p.comingSoon && p.variants.length > 0 && goldRates.length > 0) {
     const rateMap = Object.fromEntries(
       goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]),
     );
-    const prices = p.variants
+    const priced = p.variants
       .map((v) => {
         const rate = rateMap[v.metalType];
         if (!rate) return null;
-        return calculatePrice(
+        const total = calculatePrice(
           {
             weightGrams: Number(v.weightGrams),
             makingChargePerGram: Number(v.makingChargePerGram),
@@ -39,9 +40,14 @@ export function prismaToProduct(
           },
           rate,
         ).total;
+        return { id: v.id, total };
       })
-      .filter((n): n is number => n !== null);
-    if (prices.length > 0) price = Math.round(Math.min(...prices));
+      .filter((x): x is { id: string; total: number } => x !== null);
+    if (priced.length > 0) {
+      const cheapest = priced.reduce((a, b) => (b.total < a.total ? b : a));
+      price = Math.round(cheapest.total);
+      variantId = cheapest.id;
+    }
   }
 
   const category: ProductCategory =
@@ -58,7 +64,8 @@ export function prismaToProduct(
     category,
     catalogueId: p.id,
     video: null,
-    badge: index === 0 ? "Best Seller" : undefined,
+    variantId,
+    badge: p.comingSoon ? "Coming Soon" : index === 0 ? "Best Seller" : undefined,
     meta: "Insured Delivery",
   };
 }

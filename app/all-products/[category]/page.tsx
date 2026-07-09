@@ -38,7 +38,9 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   if (!isShopCategory(category)) notFound();
 
   const prismaCategory = CATALOGUE_TO_PRISMA[category];
-  let prismaProducts: ReturnType<typeof prismaToProduct>[] | undefined;
+  // Always real DB products — categories without DB rows show the empty state,
+  // never the wireframe mock catalogue (its slugs 404 on the PDP).
+  let prismaProducts: ReturnType<typeof prismaToProduct>[] = [];
 
   if (prismaCategory) {
     const [dbProducts, goldRates] = await Promise.all([
@@ -49,8 +51,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
       }),
       prisma.goldRate.findMany(),
     ]);
-    const mapped = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
-    if (mapped.length > 0) prismaProducts = mapped;
+    prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
   }
 
   return (

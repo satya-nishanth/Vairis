@@ -16,7 +16,8 @@ import { CategoryPagination } from "@/components/commerce/CategoryPagination";
 import type { CategoryStory } from "@/lib/category-stories";
 import { getCategoryHeroImages } from "@/lib/category-hero-images";
 import { pageLayouts } from "@/lib/layout-config";
-import { getCategoryProducts, type Product } from "@/lib/ui-data";
+import { useCart } from "@/components/commerce/CartProvider";
+import type { Product } from "@/lib/ui-data";
 import {
   CATEGORY_LABELS,
   PLP_FILTER_GROUPS,
@@ -65,7 +66,9 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
 export function CategoryPageView({ category, story, prismaProducts }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const meta = CATEGORY_LABELS[category];
-  const allProducts = prismaProducts ?? getCategoryProducts(category);
+  const { count: bagCount } = useCart();
+  // Only real DB products — never fall back to mock catalogue (broken PDP links)
+  const allProducts = useMemo(() => prismaProducts ?? [], [prismaProducts]);
   const filterGroups = PLP_FILTER_GROUPS[category];
   const heroImages = getCategoryHeroImages(category);
 
@@ -110,7 +113,7 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
   };
 
   return (
-    <CartModalProvider bagCount={1}>
+    <CartModalProvider bagCount={bagCount}>
       <PageShell {...layout}>
         <section className="plp-hero plp-hero--landing">
           <div className="plp-hero__content">
@@ -131,20 +134,36 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
         <main className="container page-main plp-main">
           <div className="plp-layout">
             <div className="plp-products">
-              <div className="plp-products__toolbar">
-                <p>
-                  Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProducts.length)} of{" "}
-                  {filteredProducts.length} {meta.title.toLowerCase()}
-                </p>
-              </div>
+              {filteredProducts.length === 0 ? (
+                <div style={{ padding: "64px 0", textAlign: "center" }}>
+                  <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "1.5rem", marginBottom: 12 }}>
+                    New {meta.title.toLowerCase()} are on their way
+                  </h2>
+                  <p style={{ marginBottom: 24 }}>
+                    This collection is being curated. Explore our other pieces meanwhile.
+                  </p>
+                  <a href="/all-products/rings" className="btn btn-primary">
+                    Shop Rings
+                  </a>
+                </div>
+              ) : (
+                <>
+                  <div className="plp-products__toolbar">
+                    <p>
+                      Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProducts.length)} of{" "}
+                      {filteredProducts.length} {meta.title.toLowerCase()}
+                    </p>
+                  </div>
 
-              <div className="plp-grid">
-                {pageProducts.map((product, i) => (
-                  <ProductCard key={product.catalogueId} product={product} showActions={i < 4} />
-                ))}
-              </div>
+                  <div className="plp-grid">
+                    {pageProducts.map((product, i) => (
+                      <ProductCard key={product.catalogueId} product={product} showActions={i < 4} />
+                    ))}
+                  </div>
 
-              <CategoryPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                  <CategoryPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                </>
+              )}
             </div>
 
             <CategoryFilterSidebar

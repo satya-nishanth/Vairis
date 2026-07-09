@@ -1,17 +1,53 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/ui-data";
 import { formatPrice } from "@/lib/ui-data";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
-import { OpenCartModalButton } from "./CartModal";
+import { useCart } from "@/components/commerce/CartProvider";
+import { useCartModal } from "./CartModal";
 
 type ProductCardProps = {
   product: Product;
   showActions?: boolean;
   linkPrefix?: string;
 };
+
+function QuickAddButton({ product }: { product: Product }) {
+  const { addItem, isLoggedIn, hydrated } = useCart();
+  const { openCartModal } = useCartModal();
+  const router = useRouter();
+  const [adding, setAdding] = useState(false);
+
+  const handleQuickAdd = async () => {
+    if (!product.variantId) return;
+    if (hydrated && !isLoggedIn) {
+      router.push(`/auth/login?next=/product/${product.slug}`);
+      return;
+    }
+    setAdding(true);
+    try {
+      await addItem(product.variantId, 1);
+      openCartModal();
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      className="btn btn-secondary btn--sm product-card__quick-add"
+      onClick={handleQuickAdd}
+      disabled={adding}
+    >
+      {adding ? "Adding…" : "Quick Add"}
+    </button>
+  );
+}
 
 export function ProductCard({ product, showActions = true, linkPrefix = "/product" }: ProductCardProps) {
   const href = `${linkPrefix}/${product.slug}`;
@@ -31,11 +67,9 @@ export function ProductCard({ product, showActions = true, linkPrefix = "/produc
         {product.description && <p className="product-card__desc">{product.description}</p>}
         {product.price != null && <p className="product-card__price">{formatPrice(product.price)}</p>}
         {product.meta && <p className="product-card__meta">{product.meta}</p>}
-        {showActions && (
+        {showActions && product.variantId && (
           <div className="product-card__actions">
-            <OpenCartModalButton className="btn btn-secondary btn--sm product-card__quick-add">
-              Quick Add
-            </OpenCartModalButton>
+            <QuickAddButton product={product} />
           </div>
         )}
       </div>
