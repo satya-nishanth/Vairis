@@ -18,7 +18,6 @@ export function PageShell({
   trustBar,
   footer,
   whatsapp,
-  cartCount,
   breadcrumbs,
   children,
 }: PageShellProps) {
@@ -28,7 +27,7 @@ export function PageShell({
       {header === "checkout" ? (
         <CheckoutHeader />
       ) : (
-        <SiteHeader variant={header} cartCount={cartCount} />
+        <SiteHeader variant={header} />
       )}
       {breadcrumbs && breadcrumbs.length > 0 && <Breadcrumbs items={breadcrumbs} />}
       {trustBar !== "none" && <TrustBar variant={trustBar} />}

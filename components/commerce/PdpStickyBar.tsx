@@ -8,10 +8,11 @@ import { WHATSAPP_URL } from "@/lib/ui-data";
 type PdpStickyBarProps = {
   price: number | null | undefined;
   onAddToCart: () => void;
+  addingToCart?: boolean;
   expertLabel?: string;
 };
 
-export function PdpStickyBar({ price, onAddToCart, expertLabel = "Talk to Expert" }: PdpStickyBarProps) {
+export function PdpStickyBar({ price, onAddToCart, addingToCart, expertLabel = "Talk to Expert" }: PdpStickyBarProps) {
   useEffect(() => {
     document.body.classList.add("has-mobile-sticky-bar");
     return () => document.body.classList.remove("has-mobile-sticky-bar");
@@ -29,8 +30,8 @@ export function PdpStickyBar({ price, onAddToCart, expertLabel = "Talk to Expert
         </Link>
       </div>
       <div className="pdp-sticky-bar__actions">
-        <button type="button" className="btn btn-primary" onClick={onAddToCart}>
-          Add to Cart
+        <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
+          {addingToCart ? "Adding…" : "Add to Cart"}
         </button>
         <Link href="/checkout" className="btn btn-secondary">
           Buy Now

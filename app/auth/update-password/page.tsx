@@ -3,11 +3,13 @@ import UpdatePasswordForm from './UpdatePasswordForm'
 
 export default function UpdatePasswordPage() {
   return (
-    <Suspense fallback={
-      <main className="min-h-screen bg-brand-dark flex items-center justify-center">
-        <p className="text-white/40 text-sm animate-pulse">Verifying reset link…</p>
-      </main>
-    }>
+    <Suspense
+      fallback={
+        <main className="auth-screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <p className="auth-lead">Verifying reset link…</p>
+        </main>
+      }
+    >
       <UpdatePasswordForm />
     </Suspense>
   )

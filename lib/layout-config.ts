@@ -9,7 +9,6 @@ export type PageLayoutConfig = {
   trustBar: TrustBarVariant;
   footer: FooterVariant;
   whatsapp?: string | false;
-  cartCount?: number;
 };
 
 export const pageLayouts = {
@@ -26,7 +25,6 @@ export const pageLayouts = {
     trustBar: "none",
     footer: "full",
     whatsapp: "Contact us",
-    cartCount: 2,
   },
   pdp: {
     promoBar: "announcement",
@@ -34,7 +32,6 @@ export const pageLayouts = {
     trustBar: "none",
     footer: "full",
     whatsapp: "Contact us",
-    cartCount: 2,
   },
   cart: {
     promoBar: "utility",
@@ -42,7 +39,6 @@ export const pageLayouts = {
     trustBar: "none",
     footer: "full",
     whatsapp: "Contact us",
-    cartCount: 2,
   },
   checkout: {
     promoBar: "none",
@@ -55,7 +51,6 @@ export const pageLayouts = {
     header: "minimal",
     trustBar: "none",
     footer: "minimal",
-    cartCount: 1,
   },
   contact: {
     promoBar: "utility",
@@ -63,14 +58,12 @@ export const pageLayouts = {
     trustBar: "none",
     footer: "full",
     whatsapp: "Contact us",
-    cartCount: 2,
   },
   returns: {
     promoBar: "utility",
     header: "minimal",
     trustBar: "none",
     footer: "minimal",
-    cartCount: 2,
   },
   wishlist: {
     promoBar: "utility",
@@ -78,6 +71,5 @@ export const pageLayouts = {
     trustBar: "none",
     footer: "full",
     whatsapp: "Contact us",
-    cartCount: 2,
   },
 } satisfies Record<string, PageLayoutConfig>;

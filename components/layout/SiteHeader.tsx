@@ -8,11 +8,10 @@ import { HeaderAccountButton } from "./HeaderAccountButton";
 import { HeaderWishlistLink } from "./HeaderWishlistLink";
 import { HeaderSearchButton } from "./HeaderSearchButton";
 import { SiteHeaderMobileToggle } from "./SiteHeaderMobileToggle";
-import { IconCart } from "@/components/icons";
+import { HeaderCartLink } from "./HeaderCartLink";
 
 type SiteHeaderProps = {
   variant: Exclude<HeaderVariant, "checkout">;
-  cartCount?: number;
 };
 
 const categoryNavLinks = HEADER_NAV_CATEGORIES.map((slug) => ({
@@ -31,7 +30,7 @@ const minimalNavLinks = [
   { href: "/contact", label: "About Us" },
 ];
 
-export function SiteHeader({ variant, cartCount }: SiteHeaderProps) {
+export function SiteHeader({ variant }: SiteHeaderProps) {
   const links = variant === "minimal" ? minimalNavLinks : navLinks;
   const showAccount = variant === "full" || variant === "standard";
   const showPincode = variant === "full" || variant === "standard";
@@ -63,12 +62,7 @@ export function SiteHeader({ variant, cartCount }: SiteHeaderProps) {
           <div className="header-actions">
             {showAccount && <HeaderAccountButton />}
             <HeaderWishlistLink />
-            <Link href="/cart" className="cart-badge" aria-label="Cart">
-              <IconCart />
-              {cartCount !== undefined && cartCount > 0 && (
-                <span className="cart-badge__count">{cartCount}</span>
-              )}
-            </Link>
+            <HeaderCartLink />
           </div>
         </div>
       </div>

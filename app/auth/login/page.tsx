@@ -66,77 +66,48 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; msg?: string; next?: string; mode?: string; email?: string }>
 }) {
   const { error, msg, next, mode = 'signin', email } = await searchParams
-
-  const inputCls =
-    'w-full border border-white/20 bg-white/10 text-white placeholder-white/40 px-4 py-3 text-sm focus:outline-none focus:border-brand-gold focus:bg-white/20 transition-all'
-  const labelCls = 'block text-xs text-white/60 mb-1.5 tracking-[0.2em] uppercase'
-  const tabBase = 'text-xs tracking-[0.2em] uppercase pb-2 border-b-2 transition-colors'
-  const tabActive = `${tabBase} text-white border-brand-gold`
-  const tabInactive = `${tabBase} text-white/40 border-transparent hover:text-white/70`
+  const nextQ = next ? `?next=${encodeURIComponent(next)}` : ''
+  const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
 
   return (
-    <main className="min-h-screen bg-brand-dark flex">
+    <main className="auth-screen">
       {/* Left — brand visual */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center px-16 relative">
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `radial-gradient(circle at 30% 40%, #c9a84c 0%, transparent 55%), radial-gradient(circle at 70% 70%, #c9a84c 0%, transparent 40%)`,
-          }}
-        />
-        <div className="relative text-center space-y-6">
-          <Link href="/">
-            <img
-              src="/images/vairis_main.jpeg"
-              alt="VAIRIS Fine Jewellery"
-              style={{ width: 'min(280px, 40vw)', height: 'auto', borderRadius: '4px' }}
-              className="drop-shadow-[0_8px_40px_rgba(201,168,76,0.25)]"
-            />
-          </Link>
-          <p className="font-display text-white/70 italic" style={{ fontSize: '18px', fontWeight: 300 }}>
-            Where heritage meets the extraordinary.
-          </p>
-        </div>
+      <div className="auth-screen__visual">
+        <Link href="/">
+          <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" />
+        </Link>
+        <p className="auth-screen__tagline">Where heritage meets the extraordinary.</p>
       </div>
 
       {/* Right — form */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center px-8 py-12">
-        {/* Mobile logo */}
-        <div className="lg:hidden text-center mb-8">
+      <div className="auth-screen__panel">
+        <div className="auth-screen__mobile-logo">
           <Link href="/">
-            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery"
-              style={{ height: '100px', width: 'auto', margin: '0 auto', borderRadius: '4px' }} />
+            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" style={{ height: 100, width: 'auto', borderRadius: 4 }} />
           </Link>
         </div>
 
-        <Link href="/" className="self-start mb-2 flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <Link href="/" className="auth-back-link">
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
           </svg>
           Back to store
         </Link>
-        <div className="w-full max-w-sm space-y-6">
 
+        <div className="auth-card">
           {/* ── Confirm Email ── */}
           {mode === 'confirm' && (
-            <div className="text-center space-y-5 py-4">
-              <div className="text-4xl">✉️</div>
-              <div className="space-y-2">
-                <h2 className="font-display text-2xl text-white" style={{ fontWeight: 400 }}>Check your inbox</h2>
-                <p className="text-sm text-white/60">
-                  We sent a confirmation link to
-                </p>
-                {email && (
-                  <p className="text-sm text-brand-gold font-medium">{email}</p>
-                )}
-                <p className="text-xs text-white/40 pt-1">
+            <div className="auth-confirm">
+              <div className="auth-confirm__icon" aria-hidden>✉️</div>
+              <div>
+                <h2 className="auth-heading">Check your inbox</h2>
+                <p className="auth-lead">We sent a confirmation link to</p>
+                {email && <p className="auth-confirm__email">{email}</p>}
+                <p className="auth-lead">
                   Click the link in the email to activate your account, then click below to sign in.
                 </p>
               </div>
-              <Link
-                href={`/auth/login${next ? `?next=${encodeURIComponent(next)}` : ''}`}
-                className="inline-block text-xs text-white/40 hover:text-brand-gold transition-colors border-b border-white/20 pb-0.5"
-              >
+              <Link href={`/auth/login${nextQ}`} className="auth-link auth-link--gold">
                 Back to Sign In
               </Link>
             </div>
@@ -144,50 +115,45 @@ export default async function LoginPage({
 
           {/* Tabs */}
           {mode !== 'forgot' && mode !== 'confirm' && (
-            <div className="flex items-center gap-6">
-              <Link href={`/auth/login${next ? `?next=${encodeURIComponent(next)}` : ''}`} className={mode === 'signin' ? tabActive : tabInactive}>
+            <div className="auth-tabs">
+              <Link href={`/auth/login${nextQ}`} className={mode === 'signin' ? 'auth-tab is-active' : 'auth-tab'}>
                 Sign In
               </Link>
-              <Link href={`/auth/login?mode=signup${next ? `&next=${encodeURIComponent(next)}` : ''}`} className={mode === 'signup' ? tabActive : tabInactive}>
+              <Link
+                href={`/auth/login?mode=signup${nextAmp}`}
+                className={mode === 'signup' ? 'auth-tab is-active' : 'auth-tab'}
+              >
                 Create Account
               </Link>
             </div>
           )}
 
           {mode === 'forgot' && (
-            <div className="space-y-1">
-              <h2 className="font-display text-xl text-white">Reset Password</h2>
-              <p className="text-xs text-white/40">Enter your email and we'll send a reset link.</p>
+            <div>
+              <h2 className="auth-heading">Reset Password</h2>
+              <p className="auth-lead">Enter your email and we&apos;ll send a reset link.</p>
             </div>
           )}
 
           {/* Messages */}
-          {mode !== 'confirm' && msg && (
-            <p className="text-xs bg-green-900/40 text-green-300 border border-green-700/40 px-3 py-2 rounded">
-              {msg}
-            </p>
-          )}
-          {mode !== 'confirm' && error && (
-            <p className="text-xs bg-red-900/40 text-red-300 border border-red-700/40 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
+          {mode !== 'confirm' && msg && <p className="auth-msg auth-msg--success">{msg}</p>}
+          {mode !== 'confirm' && error && <p className="auth-msg auth-msg--error">{error}</p>}
 
           {/* ── Sign In ── */}
           {mode === 'signin' && (
-            <form action={signIn} className="space-y-4">
+            <form action={signIn} className="auth-form">
               {next && <input type="hidden" name="next" value={next} />}
-              <div>
-                <label className={labelCls}>Email</label>
-                <input name="email" type="email" required className={inputCls} placeholder="you@example.com" autoComplete="email" />
+              <div className="auth-field">
+                <label htmlFor="signin-email">Email</label>
+                <input id="signin-email" name="email" type="email" required className="auth-input" placeholder="you@example.com" autoComplete="email" />
               </div>
-              <div>
-                <label className={labelCls}>Password</label>
-                <input name="password" type="password" required minLength={6} className={inputCls} placeholder="••••••••" autoComplete="current-password" />
+              <div className="auth-field">
+                <label htmlFor="signin-password">Password</label>
+                <input id="signin-password" name="password" type="password" required minLength={6} className="auth-input" placeholder="••••••••" autoComplete="current-password" />
               </div>
               <SubmitButton label="Sign In" loadingLabel="Signing in…" variant="gold" />
-              <div className="text-right">
-                <Link href={`/auth/login?mode=forgot${next ? `&next=${encodeURIComponent(next)}` : ''}`} className="text-xs text-white/40 hover:text-brand-gold transition-colors">
+              <div className="auth-form__meta">
+                <Link href={`/auth/login?mode=forgot${nextAmp}`} className="auth-link">
                   Forgot password?
                 </Link>
               </div>
@@ -196,15 +162,15 @@ export default async function LoginPage({
 
           {/* ── Sign Up ── */}
           {mode === 'signup' && (
-            <form action={signUp} className="space-y-4">
+            <form action={signUp} className="auth-form">
               {next && <input type="hidden" name="next" value={next} />}
-              <div>
-                <label className={labelCls}>Email</label>
-                <input name="email" type="email" required className={inputCls} placeholder="you@example.com" autoComplete="email" />
+              <div className="auth-field">
+                <label htmlFor="signup-email">Email</label>
+                <input id="signup-email" name="email" type="email" required className="auth-input" placeholder="you@example.com" autoComplete="email" />
               </div>
-              <div>
-                <label className={labelCls}>Password</label>
-                <input name="password" type="password" required minLength={6} className={inputCls} placeholder="Min 6 characters" autoComplete="new-password" />
+              <div className="auth-field">
+                <label htmlFor="signup-password">Password</label>
+                <input id="signup-password" name="password" type="password" required minLength={6} className="auth-input" placeholder="Min 6 characters" autoComplete="new-password" />
               </div>
               <SubmitButton label="Create Account" loadingLabel="Creating account…" variant="outline" />
             </form>
@@ -212,13 +178,13 @@ export default async function LoginPage({
 
           {/* ── Forgot Password ── */}
           {mode === 'forgot' && (
-            <form action={forgotPassword} className="space-y-4">
-              <div>
-                <label className={labelCls}>Email</label>
-                <input name="email" type="email" required className={inputCls} placeholder="you@example.com" autoComplete="email" />
+            <form action={forgotPassword} className="auth-form">
+              <div className="auth-field">
+                <label htmlFor="forgot-email">Email</label>
+                <input id="forgot-email" name="email" type="email" required className="auth-input" placeholder="you@example.com" autoComplete="email" />
               </div>
               <SubmitButton label="Send Reset Link" loadingLabel="Sending…" variant="gold" />
-              <Link href="/auth/login" className="block text-center text-xs text-white/40 hover:text-brand-gold transition-colors">
+              <Link href="/auth/login" className="auth-link" style={{ textAlign: 'center' }}>
                 ← Back to Sign In
               </Link>
             </form>
@@ -227,21 +193,16 @@ export default async function LoginPage({
           {/* Google OAuth (sign-in and sign-up) */}
           {mode !== 'forgot' && mode !== 'confirm' && (
             <>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10" />
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="px-3 bg-brand-dark text-xs text-white/30">or</span>
-                </div>
+              <div className="auth-divider">
+                <span>or</span>
               </div>
-              <GoogleButton next={next} darkMode />
+              <GoogleButton next={next} />
             </>
           )}
 
-          <p className="text-center text-xs text-white/40">
+          <p className="auth-footnote">
             Admin?{' '}
-            <a href="/auth/admin" className="text-brand-gold hover:text-brand-gold/80 underline transition-colors">
+            <a href="/auth/admin" className="auth-link auth-link--gold">
               Sign in here
             </a>
           </p>

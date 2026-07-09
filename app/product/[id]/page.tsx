@@ -40,9 +40,18 @@ export default async function ProductPage({ params }: Props) {
   return (
     <ProductPageClient
       product={{
-        ...product,
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        images: product.images,
+        itemCode: product.itemCode,
+        comingSoon: product.comingSoon,
         variants: product.variants.map((v) => ({
-          ...v,
+          id: v.id,
+          metalType: v.metalType,
+          sku: v.sku,
+          size: v.size,
           weightGrams: v.weightGrams.toString(),
           makingChargePerGram: v.makingChargePerGram.toString(),
           flatMakingCharge: v.flatMakingCharge.toString(),

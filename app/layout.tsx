@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { WishlistProvider } from "@/components/commerce/WishlistProvider";
+import { CartProvider } from "@/components/commerce/CartProvider";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { DEFAULT_SITE_THEME } from "@/lib/theme";
 import "./globals.css";
@@ -52,8 +53,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ThemeProvider defaultTheme={DEFAULT_SITE_THEME}>
           <AuthProvider>
             <WishlistProvider>
-              {children}
-              <Analytics />
+              <CartProvider>
+                {children}
+                <Analytics />
+              </CartProvider>
             </WishlistProvider>
           </AuthProvider>
         </ThemeProvider>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { CartModalProvider, useCartModal } from "@/components/commerce/CartModal";
 import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpPanel";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { PdpStickyBar } from "@/components/commerce/PdpStickyBar";
+import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
@@ -56,13 +58,23 @@ type Props = {
 
 function PdpContent({ product, goldRates }: Props) {
   const { openCartModal } = useCartModal();
+  const { addItem, isLoggedIn, hydrated } = useCart();
+  const router = useRouter();
+  const [addingToCart, setAddingToCart] = useState(false);
   const [activeThumb, setActiveThumb] = useState(0);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     product.variants[0]?.id ?? null,
   );
   const swipeRef = useRef<HTMLDivElement>(null);
 
-  const gallery = product.images.length > 0 ? product.images : [];
+  const gallery = useMemo(
+    () =>
+      product.images.map((src) => ({
+        src,
+        isVideo: /\.(mp4|webm|mov)(\?|$)/i.test(src),
+      })),
+    [product.images],
+  );
   const categorySlug = PRISMA_TO_CATEGORY[product.category] ?? "rings";
   const categoryLabel =
     CATEGORY_LABELS[categorySlug as keyof typeof CATEGORY_LABELS]?.title ??
@@ -80,7 +92,7 @@ function PdpContent({ product, goldRates }: Props) {
     (v) => v.id === selectedVariantId,
   );
   const price = selectedVariant
-    ? calculatePrice(
+    ? Math.round(calculatePrice(
         {
           weightGrams: Number(selectedVariant.weightGrams),
           makingChargePerGram: Number(selectedVariant.makingChargePerGram),
@@ -89,7 +101,7 @@ function PdpContent({ product, goldRates }: Props) {
           miscCharges: Number(selectedVariant.miscCharges),
         },
         rateMap[selectedVariant.metalType] ?? 0,
-      ).total
+      ).total)
     : undefined;
 
   useEffect(() => {
@@ -114,6 +126,21 @@ function PdpContent({ product, goldRates }: Props) {
     `Hi! I'm interested in *${product.name}*${product.itemCode ? ` (Code: ${product.itemCode})` : ""} from VAIRIS.`,
   );
 
+  const handleAddToCart = async () => {
+    if (!selectedVariant) return;
+    if (hydrated && !isLoggedIn) {
+      router.push(`/auth/login?next=/product/${product.id}`);
+      return;
+    }
+    setAddingToCart(true);
+    try {
+      await addItem(selectedVariant.id, 1);
+      openCartModal();
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
   return (
     <PageShell
       {...pageLayouts.pdp}
@@ -126,14 +153,19 @@ function PdpContent({ product, goldRates }: Props) {
       <main className="container page-main pdp-page">
         <div className="pdp-layout">
           <div className="pdp-gallery__thumbs">
-            {gallery.map((src, i) => (
+            {gallery.map((media, i) => (
               <button
-                key={`${src}-${i}`}
+                key={`${media.src}-${i}`}
                 type="button"
                 className={activeThumb === i ? "is-active" : ""}
                 onClick={() => scrollToSlide(i)}
+                aria-label={media.isVideo ? "Play video" : `Image ${i + 1}`}
               >
-                <ProductImage src={src} alt="" width={72} height={72} />
+                {media.isVideo ? (
+                  <video src={media.src} muted playsInline preload="metadata" style={{ width: 72, height: 72, objectFit: "cover" }} />
+                ) : (
+                  <ProductImage src={media.src} alt="" width={72} height={72} />
+                )}
               </button>
             ))}
           </div>
@@ -144,26 +176,43 @@ function PdpContent({ product, goldRates }: Props) {
               ref={swipeRef}
               aria-label="Product images"
             >
-              {gallery.map((src, i) => (
-                <div key={`${src}-${i}`} className="pdp-gallery__slide">
-                  <ProductImage
-                    src={src}
-                    alt={i === 0 ? product.name : ""}
-                    width={1200}
-                    height={1200}
-                    priority={i === 0}
-                  />
+              {gallery.map((media, i) => (
+                <div key={`${media.src}-${i}`} className="pdp-gallery__slide">
+                  {media.isVideo ? (
+                    <video src={media.src} muted loop playsInline autoPlay controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <ProductImage
+                      src={media.src}
+                      alt={i === 0 ? product.name : ""}
+                      width={1200}
+                      height={1200}
+                      priority={i === 0}
+                    />
+                  )}
                 </div>
               ))}
             </div>
             <div className="pdp-gallery__desktop-only">
-              <ProductImage
-                src={gallery[activeThumb] ?? ""}
-                alt={product.name}
-                width={1200}
-                height={1200}
-                priority
-              />
+              {gallery[activeThumb]?.isVideo ? (
+                <video
+                  key={gallery[activeThumb].src}
+                  src={gallery[activeThumb].src}
+                  muted
+                  loop
+                  playsInline
+                  autoPlay
+                  controls
+                  style={{ width: "100%", height: "auto" }}
+                />
+              ) : (
+                <ProductImage
+                  src={gallery[activeThumb]?.src ?? ""}
+                  alt={product.name}
+                  width={1200}
+                  height={1200}
+                  priority
+                />
+              )}
             </div>
             {gallery.length > 1 && (
               <div
@@ -225,14 +274,31 @@ function PdpContent({ product, goldRates }: Props) {
             )}
 
             {product.comingSoon ? (
-              <p style={{ margin: "16px 0", fontWeight: 600 }}>Coming Soon</p>
+              <div style={{ margin: "16px 0" }}>
+                <p style={{ fontWeight: 600, marginBottom: 8 }}>Coming Soon</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <WishlistButton
+                    productId={product.id}
+                    productName={product.name}
+                  />
+                  <span>Notify me when it&apos;s back</span>
+                </div>
+              </div>
             ) : (
               <div className="pdp-actions pdp-actions--inline" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAddToCart}
+                  disabled={addingToCart || !selectedVariant}
+                >
+                  {addingToCart ? "Adding…" : "Add to Cart"}
+                </button>
                 <a
                   href={`https://wa.me/917075486464?text=${whatsappText}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                 >
                   Enquire on WhatsApp
                 </a>
@@ -258,18 +324,22 @@ function PdpContent({ product, goldRates }: Props) {
         </div>
       </main>
 
-      <PdpStickyBar
-        price={price}
-        onAddToCart={openCartModal}
-        expertLabel="Enquire on WhatsApp"
-      />
+      {!product.comingSoon && (
+        <PdpStickyBar
+          price={price}
+          onAddToCart={handleAddToCart}
+          addingToCart={addingToCart}
+          expertLabel="Enquire on WhatsApp"
+        />
+      )}
     </PageShell>
   );
 }
 
 export default function ProductPageClient({ product, goldRates }: Props) {
+  const { count } = useCart();
   return (
-    <CartModalProvider bagCount={0}>
+    <CartModalProvider bagCount={count}>
       <PdpContent product={product} goldRates={goldRates} />
     </CartModalProvider>
   );

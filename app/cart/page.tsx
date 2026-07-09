@@ -1,86 +1,114 @@
+"use client";
+
+import Link from "next/link";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
-import { CartItem, FoundersBanner, UpsellCard } from "@/components/commerce/CartItem";
+import { CartItem } from "@/components/commerce/CartItem";
 import { OrderSummary, SecureCheckoutButton } from "@/components/commerce/OrderSummary";
 import { MobileCheckoutBar } from "@/components/commerce/MobileCheckoutBar";
+import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
-import { getCategoryProducts, getProduct, FEATURED_PRODUCT_SLUG } from "@/lib/ui-data";
-import { marketingImages } from "@/lib/images";
+import { formatPrice } from "@/lib/ui-data";
+
+const METAL_LABELS: Record<string, string> = {
+  GOLD_18K: "18kt Yellow Gold",
+  GOLD_14K: "14kt Yellow Gold",
+  ROSE_GOLD: "Rose Gold 18kt",
+};
+
+const breadcrumbs = [{ label: "Home", href: "/" }, { label: "Your Cart" }];
 
 export default function CartPage() {
   const layout = pageLayouts.cart;
-  const featured = getProduct(FEATURED_PRODUCT_SLUG);
-  const earring = getCategoryProducts("earrings")[0]!;
-  const upsellRing = getCategoryProducts("rings")[0]!;
-  const upsellBracelet = getCategoryProducts("bracelets")[0]!;
-  const upsellEarring = getCategoryProducts("earrings")[1] ?? getCategoryProducts("earrings")[0]!;
-  const upsellEarring2 = getCategoryProducts("earrings")[2] ?? getCategoryProducts("earrings")[0]!;
+  const { items, count, isLoggedIn, hydrated, updateQuantity, removeItem } = useCart();
 
-  if (!featured) {
-    return null;
+  if (!hydrated) {
+    return (
+      <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <Container>
+          <p style={{ padding: "48px 0" }}>Loading your cart…</p>
+        </Container>
+      </PageShell>
+    );
   }
 
+  if (!isLoggedIn) {
+    return (
+      <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <Container>
+          <div style={{ padding: "48px 0", textAlign: "center" }}>
+            <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>Your Cart</h1>
+            <p style={{ marginBottom: 24 }}>Sign in to view your cart.</p>
+            <Link href="/auth/login?next=/cart" className="btn btn-primary">
+              Sign In
+            </Link>
+          </div>
+        </Container>
+      </PageShell>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <Container>
+          <div style={{ padding: "48px 0", textAlign: "center" }}>
+            <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>Your Cart is Empty</h1>
+            <p style={{ marginBottom: 24 }}>Browse our collections and add something you love.</p>
+            <Link href="/all-products/rings" className="btn btn-primary">
+              Shop Now
+            </Link>
+          </div>
+        </Container>
+      </PageShell>
+    );
+  }
+
+  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+
   return (
-    <PageShell
-      {...layout}
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Your Cart" },
-      ]}
-    >
+    <PageShell {...layout} breadcrumbs={breadcrumbs}>
       <Container>
-        <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>Your Cart (2 Items)</h1>
+        <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>
+          Your Cart ({count} {count === 1 ? "Item" : "Items"})
+        </h1>
         <p style={{ marginBottom: 32 }}>Insured delivery on every order.</p>
 
         <div className="cart-layout">
           <div>
-            <CartItem
-              item={{
-                slug: featured.slug,
-                name: featured.name,
-                image: featured.image,
-                meta: `${featured.sku} · Natural Diamonds`,
-                tags: ["Everyday Wear", "IGI Certified"],
-                price: featured.price ?? 0,
-                showOptions: true,
-              }}
-            />
-            <CartItem
-              item={{
-                slug: earring.slug,
-                name: earring.name,
-                image: earring.image,
-                meta: `${earring.sku} · Natural Diamonds`,
-                tags: ["IGI Certified"],
-                price: earring.price ?? 0,
-              }}
-            />
-
-            <h3 style={{ margin: "40px 0 20px", fontSize: "1.125rem" }}>Pairs beautifully with</h3>
-            <div className="upsell-row">
-              <UpsellCard name={upsellRing.name} image={upsellRing.image} price={upsellRing.price ?? 12499} />
-              <UpsellCard name={upsellBracelet.name} image={upsellBracelet.image} price={upsellBracelet.price ?? 19999} />
-              <UpsellCard name={upsellEarring.name} image={upsellEarring.image} price={upsellEarring.price ?? 8999} />
-              <UpsellCard name={upsellEarring2.name} image={upsellEarring2.image} price={upsellEarring2.price ?? 9499} />
-            </div>
-
-            <FoundersBanner
-              image={marketingImages.cart.founders}
-              quote="We built Vairis to make diamond jewellery wearable daily - without showroom markups."
-              subtext="No Showroom Markups · Transparent Pricing · Certified & Authentic"
-            />
+            {items.map((item) => (
+              <CartItem
+                key={item.id}
+                item={{
+                  id: item.id,
+                  slug: item.variant.product.id,
+                  name: item.variant.product.name,
+                  image: item.variant.product.images[0] ?? "",
+                  meta: `${item.variant.product.itemCode ?? item.variant.sku} · ${
+                    METAL_LABELS[item.variant.metalType] ?? item.variant.metalType
+                  }${item.variant.size ? ` · ${item.variant.size}` : ""}`,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                }}
+                onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
+                onDecrement={() => {
+                  if (item.quantity <= 1) removeItem(item.id);
+                  else updateQuantity(item.id, item.quantity - 1);
+                }}
+                onRemove={() => removeItem(item.id)}
+              />
+            ))}
           </div>
 
           <OrderSummary
             lines={[
-              { label: "Subtotal", value: "-" },
+              { label: "Subtotal", value: formatPrice(subtotal) },
               { label: "Making Charges", value: "Included" },
               { label: "Shipping", value: "FREE" },
-              { label: "GST (3%)", value: "Included" },
+              { label: "GST", value: "Included" },
             ]}
-            total={0}
+            total={subtotal}
             showEmi
-            showPromo
             footer={
               <>
                 <details style={{ margin: "16px 0", fontSize: "0.8125rem" }}>
@@ -88,13 +116,15 @@ export default function CartPage() {
                   <p style={{ marginTop: 8 }}>We sell direct without showroom overheads.</p>
                 </details>
                 <SecureCheckoutButton />
-                <p style={{ fontSize: "0.75rem", textAlign: "center", marginTop: 16 }}>IGI · BIS Hallmarked · Insured · Secure</p>
+                <p style={{ fontSize: "0.75rem", textAlign: "center", marginTop: 16 }}>
+                  IGI · BIS Hallmarked · Insured · Secure
+                </p>
               </>
             }
           />
         </div>
       </Container>
-      <MobileCheckoutBar total={26998} href="/checkout" label="Proceed to Checkout" />
+      <MobileCheckoutBar total={subtotal} href="/checkout" label="Proceed to Checkout" />
     </PageShell>
   );
 }

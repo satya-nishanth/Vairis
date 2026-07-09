@@ -41,7 +41,7 @@ export function prismaToProduct(
         ).total;
       })
       .filter((n): n is number => n !== null);
-    if (prices.length > 0) price = Math.min(...prices);
+    if (prices.length > 0) price = Math.round(Math.min(...prices));
   }
 
   const category: ProductCategory =
