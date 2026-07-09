@@ -43,52 +43,41 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-5 gap-3">
+    <div className="uploader">
+      <div className="uploader__grid">
         {SLOTS.map((slot) => {
           const url = images[slot.index] ?? ''
           const filled = !!url
 
           return (
-            <div key={slot.label} className="space-y-1">
-              <p className="text-[10px] text-gray-500 tracking-widest uppercase text-center">
-                {slot.label}
-              </p>
+            <div key={slot.label}>
+              <p className="uploader__slot-label">{slot.label}</p>
 
-              <div className="relative aspect-square group">
+              <div className="uploader__tile">
                 {filled ? (
                   <>
                     {isVideo(url) ? (
-                      <video
-                        src={url}
-                        className="w-full h-full object-cover rounded border border-gray-200"
-                        muted
-                        playsInline
-                      />
+                      <video src={url} className="uploader__media" muted playsInline />
                     ) : (
-                      <Image
-                        src={url}
-                        alt={slot.label}
-                        fill
-                        className="object-cover rounded border border-gray-200"
-                      />
+                      <Image src={url} alt={slot.label} fill className="uploader__media" />
                     )}
                     {isVideo(url) && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center text-[10px]">▶</span>
+                      <div className="uploader__play">
+                        <span>▶</span>
                       </div>
                     )}
                     <button
                       type="button"
                       onClick={() => inputRefs.current[slot.index]?.click()}
-                      className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-black/30 transition-opacity rounded flex items-center justify-center"
+                      className="uploader__replace"
                     >
-                      <span className="text-white text-xs font-medium">Replace</span>
+                      Replace
                     </button>
                     <button
                       type="button"
                       onClick={() => clearSlot(slot.index)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10"
+                      className="uploader__clear"
+                      aria-label={`Clear ${slot.label}`}
                     >
                       ×
                     </button>
@@ -97,10 +86,10 @@ export default function ImageUploader({ images, onChange }: Props) {
                   <button
                     type="button"
                     onClick={() => inputRefs.current[slot.index]?.click()}
-                    className="w-full h-full border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center text-gray-400 hover:border-brand-gold hover:text-brand-gold transition-colors"
+                    className="uploader__empty"
                   >
-                    <span className="text-xl leading-none">+</span>
-                    <span className="text-[9px] mt-1 text-center leading-tight px-1">{slot.hint}</span>
+                    <span className="uploader__empty-plus">+</span>
+                    <span className="uploader__empty-hint">{slot.hint}</span>
                   </button>
                 )}
 
@@ -108,7 +97,7 @@ export default function ImageUploader({ images, onChange }: Props) {
                   ref={(el) => { inputRefs.current[slot.index] = el }}
                   type="file"
                   accept={slot.accept}
-                  className="hidden"
+                  className="uploader__input"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) uploadFile(file, slot.index)
@@ -121,7 +110,7 @@ export default function ImageUploader({ images, onChange }: Props) {
         })}
       </div>
 
-      <p className="text-[10px] text-gray-400">
+      <p className="uploader__note">
         Images: jpg · png · webp — auto-resized to 1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB · 720p · 15s
       </p>
     </div>
