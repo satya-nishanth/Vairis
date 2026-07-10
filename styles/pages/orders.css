@@ -1,0 +1,239 @@
+/* Order journey pages: /account/orders, /account/orders/[id], /track-order */
+
+.orders-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 0 var(--section-gap);
+}
+
+.orders-page--narrow {
+  max-width: 560px;
+}
+
+.orders-page__title {
+  font-size: 2rem;
+  margin-bottom: 16px;
+}
+
+.orders-page__back {
+  margin-bottom: 12px;
+  font-size: 0.8125rem;
+}
+
+.orders-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.orders-list__card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition);
+}
+
+.orders-list__card:hover {
+  border-color: var(--color-primary);
+}
+
+.orders-list__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.orders-list__main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orders-list__meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.orders-list__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.orders-list__amount {
+  font-weight: 600;
+}
+
+/* Status chip */
+.order-chip {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.order-chip--pending {
+  background: var(--bg-muted);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.order-chip--active {
+  background: rgba(94, 104, 78, 0.12);
+  color: var(--color-primary);
+  border-color: rgba(94, 104, 78, 0.3);
+}
+
+.order-chip--done {
+  background: rgba(21, 128, 61, 0.1);
+  color: #15803d;
+  border-color: rgba(21, 128, 61, 0.3);
+}
+
+.order-chip--bad {
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.25);
+}
+
+/* Detail layout */
+.order-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.order-detail__head .orders-page__title {
+  margin-bottom: 0;
+  font-size: 1.375rem;
+  word-break: break-all;
+}
+
+.order-detail__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.order-detail__layout .confirm-card {
+  margin-bottom: 16px;
+}
+
+/* Timeline */
+.order-timeline {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.order-timeline__step {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 0 0 24px 0;
+}
+
+.order-timeline__step:last-child {
+  padding-bottom: 0;
+}
+
+/* connector line */
+.order-timeline__step::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 24px;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border-light);
+}
+
+.order-timeline__step:last-child::before {
+  display: none;
+}
+
+.order-timeline__step.is-done::before {
+  background: var(--color-primary);
+}
+
+.order-timeline__dot {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  color: var(--color-text-inverse);
+}
+
+.order-timeline__step.is-done .order-timeline__dot {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.order-timeline__step.is-active .order-timeline__dot {
+  box-shadow: 0 0 0 4px rgba(94, 104, 78, 0.15);
+}
+
+.order-timeline__step strong {
+  display: block;
+  font-size: 0.875rem;
+}
+
+.order-timeline__step p {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.order-timeline__step time {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+/* Track order form */
+.track-form {
+  margin: 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.track-result {
+  margin-top: 8px;
+}
+
+@media (max-width: 767px) {
+  .order-detail__layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -6,16 +6,19 @@ import type { Product } from "@/lib/ui-data";
 type CategoryPageProps = {
   category: ShopCategory;
   prismaProducts?: Product[];
+  /** Admin banner override (slot plp-hero-<category>) — falls back to built-in hero set. */
+  heroImageOverride?: string;
 };
 
 /** Server wrapper: picks hero story once so client hydration matches. */
-export function CategoryPage({ category, prismaProducts }: CategoryPageProps) {
+export function CategoryPage({ category, prismaProducts, heroImageOverride }: CategoryPageProps) {
   const story = pickRandomCategoryStory(category);
   return (
     <CategoryPageView
       category={category}
       story={story}
       prismaProducts={prismaProducts}
+      heroImageOverride={heroImageOverride}
     />
   );
 }

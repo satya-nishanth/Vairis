@@ -32,7 +32,7 @@ export const footerHelpLinks = [
   { label: "Shipping & Delivery", href: "/contact" },
   { label: "Returns", href: "/returns" },
   { label: "Care Guide", href: "/contact" },
-  { label: "Track Order", href: "/contact" },
+  { label: "Track Order", href: "/track-order" },
   { label: "Contact Us", href: "/contact" },
 ] as const;
 

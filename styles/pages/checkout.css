@@ -5,6 +5,11 @@
   background: var(--bg-page);
 }
 
+.checkout-header .logo img {
+  height: 72px;
+  width: auto;
+}
+
 .checkout-header__secure {
   display: flex;
   align-items: center;
@@ -164,4 +169,57 @@
     align-items: flex-start;
     gap: 8px;
   }
+}
+
+/* Real checkout additions (order flow) */
+.checkout-note {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.payment-option__badge {
+  font-size: 0.75rem;
+  background: var(--bg-category);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* 105% / 5% security-deposit explainer (money model: lib/orders.ts) */
+.deposit-explainer {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+}
+
+.deposit-explainer p {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.checkout-alert {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  border: 1px solid transparent;
+}
+
+.checkout-alert--info {
+  background: var(--bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.checkout-alert--info a {
+  text-decoration: underline;
+}
+
+.checkout-alert--error {
+  background: rgba(185, 28, 28, 0.08);
+  border-color: rgba(185, 28, 28, 0.3);
+  color: #b91c1c;
 }

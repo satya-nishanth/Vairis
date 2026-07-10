@@ -29,6 +29,7 @@ enum OrderStatus {
   PROCESSING
   SHIPPED
   DELIVERED
+  DEPOSIT_REFUNDED
   CANCELLED
   REFUNDED
 }
@@ -38,6 +39,7 @@ enum PaymentStatus {
   AUTHORIZED
   CAPTURED
   FAILED
+  PARTIALLY_REFUNDED
   REFUNDED
 }
 
@@ -135,21 +137,39 @@ model CartItem {
 }
 
 model Order {
-  id           String      @id @default(cuid())
-  userId       String
-  user         User        @relation(fields: [userId], references: [id])
-  items        OrderItem[]
-  status       OrderStatus @default(PENDING)
-  totalAmount  Decimal
-  addressLine1 String
-  addressLine2 String?
-  city         String
-  state        String
-  pincode      String
-  payment      Payment?
-  shipment     Shipment?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  status        OrderStatus  @default(PENDING)
+  totalAmount   Decimal
+  // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
+  // depositAmount (5%) is refunded after delivery
+  depositAmount Decimal      @default(0)
+  grandTotal    Decimal      @default(0)
+  contactName   String       @default("")
+  contactPhone  String       @default("")
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  state         String
+  pincode       String
+  payment       Payment?
+  shipment      Shipment?
+  events        OrderEvent[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model OrderEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {
@@ -169,6 +189,8 @@ model Payment {
   order             Order         @relation(fields: [orderId], references: [id])
   razorpayOrderId   String        @unique
   razorpayPaymentId String?
+  razorpayRefundId  String?
+  refundedAmount    Decimal       @default(0)
   status            PaymentStatus @default(CREATED)
   amount            Decimal
   createdAt         DateTime      @default(now())
@@ -184,6 +206,18 @@ model Shipment {
   trackingUrl  String?
   status       String?
   updatedAt    DateTime @updatedAt
+}
+
+model SiteBanner {
+  id        String   @id @default(cuid())
+  slot      String   @unique
+  title     String?
+  subtitle  String?
+  imageUrl  String?
+  linkUrl   String?
+  ctaLabel  String?
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
 }
 
 model Wishlist {

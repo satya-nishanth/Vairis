@@ -215,3 +215,30 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Real order confirmation additions */
+.confirm-success__title {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.confirm-card__heading {
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.confirm-copy-btn {
+  font-size: 0.75rem;
+  margin-left: 8px;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}

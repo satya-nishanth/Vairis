@@ -6,6 +6,7 @@ import { CategoryPage } from "@/components/commerce/CategoryPage";
 import { CATEGORY_LABELS, isShopCategory } from "@/lib/catalogue-ui";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 import { SLUG_TO_PRISMA } from "@/lib/categories";
+import { getBanner } from "@/lib/site-content";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,14 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
     prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
   }
 
+  // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
+  const heroBanner = await getBanner(`plp-hero-${category}`);
+
   return (
     <CategoryPage
       category={category}
       prismaProducts={prismaProducts}
+      heroImageOverride={heroBanner?.imageUrl ?? undefined}
     />
   );
 }

@@ -18,9 +18,15 @@ import { categories, getHeroSlides, testimonials } from "@/lib/ui-data";
 import { founderVideos, howItWorksSteps, whyVairisFeatures } from "@/lib/home-content";
 import { categoryHref } from "@/lib/catalogue-ui";
 import { marketingImages } from "@/lib/images";
+import { getBanner } from "@/lib/site-content";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
   const layout = pageLayouts.home;
+  // Admin-customizable hero (slot "home-hero", /admin/content) — every
+  // field falls back to the built-in copy below when unset.
+  const hero = await getBanner("home-hero");
 
   return (
     <PageShell {...layout}>
@@ -32,13 +38,14 @@ export default function HomePage() {
         <section className="hero">
           <div className="hero__content">
             <p className="hero__eyebrow">Everyday Diamond Wear</p>
-            <h1 className="hero__title">Diamonds You&apos;ll Actually Wear.</h1>
+            <h1 className="hero__title">{hero?.title ?? "Diamonds You'll Actually Wear."}</h1>
             <p className="hero__desc">
-              Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.
+              {hero?.subtitle ??
+                "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence."}
             </p>
             <div className="hero__ctas">
-              <Button href={categoryHref("necklaces")} variant="primary">
-                Shop Now
+              <Button href={hero?.linkUrl ?? categoryHref("necklaces")} variant="primary">
+                {hero?.ctaLabel ?? "Shop Now"}
               </Button>
             </div>
             <div className="hero__social">
@@ -51,7 +58,10 @@ export default function HomePage() {
               <Rating score="4.9" reviews="2,300+ reviews" />
             </div>
           </div>
-          <HeroCarousel slides={getHeroSlides()} alt="Woman wearing minimal diamond jewellery" />
+          <HeroCarousel
+            slides={hero?.imageUrl ? [hero.imageUrl] : getHeroSlides()}
+            alt="Woman wearing minimal diamond jewellery"
+          />
         </section>
 
         <div className="home-main__body">

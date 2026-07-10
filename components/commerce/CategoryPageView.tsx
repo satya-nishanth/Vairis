@@ -31,6 +31,7 @@ type CategoryPageViewProps = {
   category: ShopCategory;
   story: CategoryStory;
   prismaProducts?: Product[];
+  heroImageOverride?: string;
 };
 
 function usePlpPageSize() {
@@ -64,14 +65,15 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   return result;
 }
 
-export function CategoryPageView({ category, story, prismaProducts }: CategoryPageViewProps) {
+export function CategoryPageView({ category, story, prismaProducts, heroImageOverride }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const meta = CATEGORY_LABELS[category];
   const { count: bagCount } = useCart();
   // Only real DB products — never fall back to mock catalogue (broken PDP links)
   const allProducts = useMemo(() => prismaProducts ?? [], [prismaProducts]);
   const filterGroups = PLP_FILTER_GROUPS[category];
-  const heroImages = getCategoryHeroImages(category);
+  // Admin banner override (SiteBanner slot plp-hero-<category>) wins over the built-in set
+  const heroImages = heroImageOverride ? [heroImageOverride] : getCategoryHeroImages(category);
 
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
   const [draftFilters, setDraftFilters] = useState<FilterState>(defaultFilterState());
