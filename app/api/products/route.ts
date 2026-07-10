@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import type { Category } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
-      ...(category ? { category: category as any } : {}),
+      ...(category ? { category: category as Category } : {}),
       ...(search
         ? {
             OR: [

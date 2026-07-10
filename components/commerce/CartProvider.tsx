@@ -62,10 +62,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/cart");
-    if (res.ok) {
-      const json = (await res.json()) as CartLine[];
-      setItems(json);
+    try {
+      const res = await fetch("/api/cart");
+      if (res.ok) {
+        const json = (await res.json()) as CartLine[];
+        setItems(json);
+      }
+    } catch {
+      // network hiccup — keep whatever state we have; next mutation refreshes
     }
   }, []);
 
@@ -93,29 +97,48 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(
     async (variantId: string, quantity = 1) => {
-      await fetch("/api/cart", {
+      const res = await fetch("/api/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ variantId, quantity }),
       });
+      if (!res.ok) throw new Error(`Could not add to cart (${res.status})`);
       await refresh();
     },
     [refresh],
   );
 
-  const updateQuantity = useCallback(async (itemId: string, quantity: number) => {
-    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, quantity } : i)));
-    await fetch(`/api/cart/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantity }),
-    });
-  }, []);
+  // Optimistic update; reconcile with the server on failure instead of
+  // leaving the UI claiming a change that never persisted.
+  const updateQuantity = useCallback(
+    async (itemId: string, quantity: number) => {
+      setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, quantity } : i)));
+      try {
+        const res = await fetch(`/api/cart/${itemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity }),
+        });
+        if (!res.ok) await refresh();
+      } catch {
+        await refresh();
+      }
+    },
+    [refresh],
+  );
 
-  const removeItem = useCallback(async (itemId: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    await fetch(`/api/cart/${itemId}`, { method: "DELETE" });
-  }, []);
+  const removeItem = useCallback(
+    async (itemId: string) => {
+      setItems((prev) => prev.filter((i) => i.id !== itemId));
+      try {
+        const res = await fetch(`/api/cart/${itemId}`, { method: "DELETE" });
+        if (!res.ok) await refresh();
+      } catch {
+        await refresh();
+      }
+    },
+    [refresh],
+  );
 
   const count = useMemo(
     () => items.reduce((sum, i) => sum + i.quantity, 0),

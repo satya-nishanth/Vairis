@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 async function adminSignIn(formData: FormData) {
@@ -37,7 +38,7 @@ export default async function AdminLoginPage({
         <div className="admin-auth__warning">
           <strong>Authorised personnel only.</strong> This login is restricted to Vairis
           administrators. Unauthorised access attempts are logged.{' '}
-          <a href="/">Return to store →</a>
+          <Link href="/">Return to store →</Link>
         </div>
 
         {error && <p className="admin-auth__error">{error}</p>}

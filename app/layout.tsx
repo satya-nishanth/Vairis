@@ -4,7 +4,6 @@ import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { WishlistProvider } from "@/components/commerce/WishlistProvider";
 import { CartProvider } from "@/components/commerce/CartProvider";
-import { AuthProvider } from "@/components/auth/AuthProvider";
 import { DEFAULT_SITE_THEME } from "@/lib/theme";
 import "./globals.css";
 
@@ -47,18 +46,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       suppressHydrationWarning
     >
       <head>
+        {/* Sets data-theme before first paint — must block to avoid theme flash */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/scripts/vairis-theme-init.js" />
       </head>
       <body suppressHydrationWarning>
         <ThemeProvider defaultTheme={DEFAULT_SITE_THEME}>
-          <AuthProvider>
-            <WishlistProvider>
-              <CartProvider>
-                {children}
-                <Analytics />
-              </CartProvider>
-            </WishlistProvider>
-          </AuthProvider>
+          <WishlistProvider>
+            <CartProvider>
+              {children}
+              <Analytics />
+            </CartProvider>
+          </WishlistProvider>
         </ThemeProvider>
       </body>
     </html>

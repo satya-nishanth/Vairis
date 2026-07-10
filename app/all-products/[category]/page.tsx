@@ -1,23 +1,13 @@
 import type { Metadata } from "next";
+import type { Category } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { CategoryPage } from "@/components/commerce/CategoryPage";
-import {
-  CATEGORY_LABELS,
-  SHOP_CATEGORIES,
-  isShopCategory,
-} from "@/lib/catalogue-ui";
+import { CATEGORY_LABELS, isShopCategory } from "@/lib/catalogue-ui";
 import { prismaToProduct } from "@/lib/prisma-to-product";
+import { SLUG_TO_PRISMA } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
-
-const CATALOGUE_TO_PRISMA: Record<string, string> = {
-  rings: "RINGS",
-  earrings: "EARRINGS",
-  pendants: "PENDANTS",
-  bracelets: "BRACELETS",
-  necklaces: "NECKLACES",
-};
 
 type PageProps = { params: Promise<{ category: string }> };
 
@@ -37,7 +27,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   const { category } = await params;
   if (!isShopCategory(category)) notFound();
 
-  const prismaCategory = CATALOGUE_TO_PRISMA[category];
+  const prismaCategory = SLUG_TO_PRISMA[category];
   // Always real DB products — categories without DB rows show the empty state,
   // never the wireframe mock catalogue (its slugs 404 on the PDP).
   let prismaProducts: ReturnType<typeof prismaToProduct>[] = [];
@@ -45,7 +35,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   if (prismaCategory) {
     const [dbProducts, goldRates] = await Promise.all([
       prisma.product.findMany({
-        where: { category: prismaCategory as any, isActive: true },
+        where: { category: prismaCategory as Category, isActive: true },
         include: { variants: true },
         orderBy: { createdAt: "asc" },
       }),

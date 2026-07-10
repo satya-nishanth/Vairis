@@ -14,9 +14,8 @@ export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCa
   const [index, setIndex] = useState(0);
   const slides = images.length > 0 ? images : [];
 
-  useEffect(() => {
-    setIndex(0);
-  }, [slides.join("|")]);
+  // Clamp rather than resetting state in an effect when the slide set changes
+  const activeIndex = slides.length > 0 ? index % slides.length : 0;
 
   useEffect(() => {
     if (slides.length <= 1) return;
@@ -47,7 +46,7 @@ export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCa
             width={1200}
             height={900}
             fill
-            className={`plp-hero__carousel-slide-img${i === index ? " is-active" : ""}`}
+            className={`plp-hero__carousel-slide-img${i === activeIndex ? " is-active" : ""}`}
             priority={i === 0}
           />
         ))}
@@ -58,7 +57,7 @@ export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCa
             <button
               key={src}
               type="button"
-              className={i === index ? "is-active" : ""}
+              className={i === activeIndex ? "is-active" : ""}
               aria-label={`Show image ${i + 1} of ${slides.length}`}
               onClick={() => setIndex(i)}
             />

@@ -1,24 +1,15 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { useAuth } from "@/components/auth/AuthProvider";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { isValidIdentifier, type AuthUser } from "@/lib/ui-auth";
+import { isValidIdentifier } from "@/lib/ui-auth";
 
 type ContactUsFabProps = {
   label?: string;
 };
 
-function contactDefaults(user: AuthUser | null) {
-  return {
-    email: user?.channel === "email" ? user.identifier : "",
-    mobile: user?.channel === "mobile" ? user.identifier : "",
-  };
-}
-
 export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
   const titleId = useId();
-  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [title, setTitle] = useState("");
@@ -26,13 +17,6 @@ export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    const defaults = contactDefaults(user);
-    setEmail(defaults.email);
-    setMobile(defaults.mobile);
-  }, [open, user]);
 
   const close = () => {
     setOpen(false);
@@ -43,6 +27,8 @@ export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
   const openForm = () => {
     setTitle("");
     setDescription("");
+    setEmail("");
+    setMobile("");
     setError("");
     setSubmitted(false);
     setOpen(true);

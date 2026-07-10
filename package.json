@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint app components lib",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui"
   },
@@ -32,8 +32,8 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.6",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
     "prisma": "^5.22.0",
     "tsx": "^4.21.0",
     "typescript": "^5"

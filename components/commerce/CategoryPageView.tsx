@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
@@ -81,15 +82,15 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
 
   const filteredProducts = useMemo(() => filterProducts(allProducts, filters), [allProducts, filters]);
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
-  const pageProducts = filteredProducts.slice((page - 1) * pageSize, page * pageSize);
+  // Clamp instead of syncing state in an effect — filters/pageSize changes
+  // can shrink totalPages below the stored page
+  const currentPage = Math.min(page, totalPages);
+  const pageProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  useEffect(() => {
+  const applyFilters = (next: FilterState) => {
+    setFilters(next);
     setPage(1);
-  }, [filters, category, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  };
 
   useEffect(() => {
     document.body.classList.add("has-mobile-sticky-bar");
@@ -109,7 +110,7 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
   };
 
   const commitFilters = () => {
-    setFilters(draftFilters);
+    applyFilters(draftFilters);
   };
 
   return (
@@ -135,22 +136,18 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
           <div className="plp-layout">
             <div className="plp-products">
               {filteredProducts.length === 0 ? (
-                <div style={{ padding: "64px 0", textAlign: "center" }}>
-                  <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "1.5rem", marginBottom: 12 }}>
-                    New {meta.title.toLowerCase()} are on their way
-                  </h2>
-                  <p style={{ marginBottom: 24 }}>
-                    This collection is being curated. Explore our other pieces meanwhile.
-                  </p>
-                  <a href="/all-products/rings" className="btn btn-primary">
+                <div className="plp-empty">
+                  <h2>New {meta.title.toLowerCase()} are on their way</h2>
+                  <p>This collection is being curated. Explore our other pieces meanwhile.</p>
+                  <Link href="/all-products/rings" className="btn btn-primary">
                     Shop Rings
-                  </a>
+                  </Link>
                 </div>
               ) : (
                 <>
                   <div className="plp-products__toolbar">
                     <p>
-                      Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProducts.length)} of{" "}
+                      Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredProducts.length)} of{" "}
                       {filteredProducts.length} {meta.title.toLowerCase()}
                     </p>
                   </div>
@@ -161,14 +158,14 @@ export function CategoryPageView({ category, story, prismaProducts }: CategoryPa
                     ))}
                   </div>
 
-                  <CategoryPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                  <CategoryPagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
                 </>
               )}
             </div>
 
             <CategoryFilterSidebar
               filters={filters}
-              onChange={setFilters}
+              onChange={applyFilters}
               productCount={filteredProducts.length}
               groups={filterGroups}
             />

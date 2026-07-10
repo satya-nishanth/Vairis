@@ -121,6 +121,43 @@
   margin-bottom: 12px;
 }
 
+.pdp-info__description {
+  margin: 12px 0;
+}
+
+.pdp-info__error {
+  margin-top: 12px;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+}
+
+.pdp-info__coming-soon {
+  margin: 16px 0;
+}
+
+.pdp-info__coming-soon-label {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.pdp-info__notify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdp-variants {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.pdp-variants .btn {
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+}
+
 .pdp-info__badges {
   display: flex;
   flex-wrap: wrap;
@@ -154,7 +191,7 @@
 
 .pdp-info__trust {
   list-style: none;
-  margin: 0 0 24px;
+  margin: 24px 0;
   padding: 16px 0;
   border-top: 1px solid var(--color-border-light);
   border-bottom: 1px solid var(--color-border-light);
@@ -287,6 +324,7 @@
 }
 
 .pdp-section--trust-help {
+  margin-top: 24px;
   padding-top: 0;
   padding-bottom: 0;
   border-bottom: none;
@@ -709,4 +747,13 @@
     padding-top: 0;
     padding-bottom: 0;
   }
+}
+
+/* Trust cards live in the narrow info column here — let columns adapt
+   instead of forcing 4-up (titles clip below ~1700px viewports) */
+.pdp-section--trust-help .plp-trust-cards__row--four,
+.pdp-section--trust-help .plp-trust-cards__row--three {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  width: auto;
+  margin-inline: 0;
 }

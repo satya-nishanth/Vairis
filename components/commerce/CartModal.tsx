@@ -51,18 +51,3 @@ export function useCartModal() {
   if (!ctx) throw new Error("useCartModal must be used within CartModalProvider");
   return ctx;
 }
-
-export function OpenCartModalButton({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const { openCartModal } = useCartModal();
-  return (
-    <button type="button" className={className} onClick={openCartModal}>
-      {children}
-    </button>
-  );
-}

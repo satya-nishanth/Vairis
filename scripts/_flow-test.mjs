@@ -108,14 +108,14 @@ await step("header badge shows count", async () => {
 await step("increment quantity updates line", async () => {
   await page.click('button[aria-label="Increase quantity"]');
   await page.waitForTimeout(800);
-  const qty = await page.locator(".qty span").first().textContent();
+  const qty = await page.locator(".cart-item__qty span").first().textContent();
   if (qty.trim() !== "2") throw new Error(`qty after +: ${qty}`);
 });
 
 await step("decrement quantity back to 1", async () => {
   await page.click('button[aria-label="Decrease quantity"]');
   await page.waitForTimeout(800);
-  const qty = await page.locator(".qty span").first().textContent();
+  const qty = await page.locator(".cart-item__qty span").first().textContent();
   if (qty.trim() !== "1") throw new Error(`qty after -: ${qty}`);
 });
 

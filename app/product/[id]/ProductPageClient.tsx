@@ -12,15 +12,8 @@ import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
+import { prismaCategoryToSlug } from "@/lib/categories";
 import { calculatePrice } from "@/lib/pricing";
-
-const PRISMA_TO_CATEGORY: Record<string, string> = {
-  RINGS: "rings",
-  EARRINGS: "earrings",
-  PENDANTS: "pendants",
-  BRACELETS: "bracelets",
-  NECKLACES: "necklaces",
-};
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: "18kt Yellow Gold",
@@ -61,6 +54,7 @@ function PdpContent({ product, goldRates }: Props) {
   const { addItem, isLoggedIn, hydrated } = useCart();
   const router = useRouter();
   const [addingToCart, setAddingToCart] = useState(false);
+  const [cartError, setCartError] = useState<string | null>(null);
   const [activeThumb, setActiveThumb] = useState(0);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     product.variants[0]?.id ?? null,
@@ -75,7 +69,7 @@ function PdpContent({ product, goldRates }: Props) {
       })),
     [product.images],
   );
-  const categorySlug = PRISMA_TO_CATEGORY[product.category] ?? "rings";
+  const categorySlug = prismaCategoryToSlug(product.category);
   const categoryLabel =
     CATEGORY_LABELS[categorySlug as keyof typeof CATEGORY_LABELS]?.title ??
     product.category;
@@ -133,9 +127,12 @@ function PdpContent({ product, goldRates }: Props) {
       return;
     }
     setAddingToCart(true);
+    setCartError(null);
     try {
       await addItem(selectedVariant.id, 1);
       openCartModal();
+    } catch {
+      setCartError("Couldn't add to cart. Please try again.");
     } finally {
       setAddingToCart(false);
     }
@@ -250,23 +247,23 @@ function PdpContent({ product, goldRates }: Props) {
             )}
 
             {product.description && (
-              <p style={{ margin: "12px 0" }}>{product.description}</p>
+              <p className="pdp-info__description">{product.description}</p>
             )}
 
             {product.variants.length > 0 && (
               <div className="pdp-options">
                 <label>Metal</label>
-                <div className="pdp-variants-list" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+                <div className="pdp-variants">
                   {product.variants.map((v) => (
                     <button
                       key={v.id}
                       type="button"
                       className={`btn ${v.id === selectedVariantId ? "btn-primary" : "btn-secondary"}`}
-                      style={{ fontSize: "0.8125rem", padding: "6px 12px" }}
+                      aria-pressed={v.id === selectedVariantId}
                       onClick={() => setSelectedVariantId(v.id)}
                     >
                       {METAL_LABELS[v.metalType] ?? v.metalType}
-                      {v.size ? ` — ${v.size}` : ""}
+                      {v.size ? ` — Size ${v.size}` : ""}
                     </button>
                   ))}
                 </div>
@@ -274,9 +271,9 @@ function PdpContent({ product, goldRates }: Props) {
             )}
 
             {product.comingSoon ? (
-              <div style={{ margin: "16px 0" }}>
-                <p style={{ fontWeight: 600, marginBottom: 8 }}>Coming Soon</p>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="pdp-info__coming-soon">
+                <p className="pdp-info__coming-soon-label">Coming Soon</p>
+                <div className="pdp-info__notify">
                   <WishlistButton
                     productId={product.id}
                     productName={product.name}
@@ -285,7 +282,7 @@ function PdpContent({ product, goldRates }: Props) {
                 </div>
               </div>
             ) : (
-              <div className="pdp-actions pdp-actions--inline" style={{ marginTop: 16 }}>
+              <div className="pdp-actions pdp-actions--inline">
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -308,8 +305,13 @@ function PdpContent({ product, goldRates }: Props) {
                 />
               </div>
             )}
+            {cartError && (
+              <p role="alert" className="pdp-info__error">
+                {cartError}
+              </p>
+            )}
 
-            <ul className="pdp-info__trust" aria-label="Product guarantees" style={{ marginTop: 24 }}>
+            <ul className="pdp-info__trust" aria-label="Product guarantees">
               {compareTrustItems.map(({ label }) => (
                 <li key={label} className="pdp-info__trust-label">
                   {label}
@@ -317,7 +319,7 @@ function PdpContent({ product, goldRates }: Props) {
               ))}
             </ul>
 
-            <div className="pdp-section pdp-section--trust-help" style={{ marginTop: 24 }}>
+            <div className="pdp-section pdp-section--trust-help">
               <CommerceTrustHelpPanel className="plp-bottom--flush" />
             </div>
           </div>

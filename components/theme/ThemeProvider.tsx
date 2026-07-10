@@ -40,6 +40,9 @@ export function ThemeProvider({ defaultTheme = DEFAULT_SITE_THEME, children }: T
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     const resolved = stored && isSiteTheme(stored) ? stored : defaultTheme;
+    // SSR renders defaultTheme; syncing from localStorage post-mount is the
+    // hydration-safe pattern (a lazy initializer would mismatch the server HTML)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeState(resolved);
     applyTheme(resolved);
   }, [defaultTheme]);

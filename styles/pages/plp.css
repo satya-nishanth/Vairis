@@ -1165,3 +1165,39 @@
     font-size: 0.875rem;
   }
 }
+
+/* Category with no live products yet */
+.plp-empty {
+  padding: 64px 0;
+  text-align: center;
+}
+
+.plp-empty h2 {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  margin-bottom: 12px;
+}
+
+.plp-empty p {
+  margin-bottom: 24px;
+  color: var(--color-text-muted);
+}
+
+/* Dark theme: help panel bg is gold — hardcoded whites above are unreadable */
+[data-theme="dark"] .help-panel__lead {
+  color: rgba(5, 22, 20, 0.85);
+}
+
+[data-theme="dark"] .help-panel__divider {
+  border-top-color: rgba(5, 22, 20, 0.25);
+}
+
+[data-theme="dark"] .help-panel__link-sub,
+[data-theme="dark"] .help-panel__link:hover .help-panel__link-sub {
+  color: rgba(5, 22, 20, 0.7);
+}
+
+[data-theme="dark"] .help-panel__link:hover {
+  color: var(--color-text-inverse);
+  text-decoration: underline;
+}

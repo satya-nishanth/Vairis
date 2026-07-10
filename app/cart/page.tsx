@@ -26,7 +26,9 @@ export default function CartPage() {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
         <Container>
-          <p style={{ padding: "48px 0" }}>Loading your cart…</p>
+          <div className="cart-state">
+            <p>Loading your cart…</p>
+          </div>
         </Container>
       </PageShell>
     );
@@ -36,9 +38,9 @@ export default function CartPage() {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
         <Container>
-          <div style={{ padding: "48px 0", textAlign: "center" }}>
-            <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>Your Cart</h1>
-            <p style={{ marginBottom: 24 }}>Sign in to view your cart.</p>
+          <div className="cart-state">
+            <h1>Your Cart</h1>
+            <p>Sign in to view your cart.</p>
             <Link href="/auth/login?next=/cart" className="btn btn-primary">
               Sign In
             </Link>
@@ -52,9 +54,9 @@ export default function CartPage() {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
         <Container>
-          <div style={{ padding: "48px 0", textAlign: "center" }}>
-            <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>Your Cart is Empty</h1>
-            <p style={{ marginBottom: 24 }}>Browse our collections and add something you love.</p>
+          <div className="cart-state">
+            <h1>Your Cart is Empty</h1>
+            <p>Browse our collections and add something you love.</p>
             <Link href="/all-products/rings" className="btn btn-primary">
               Shop Now
             </Link>
@@ -69,10 +71,10 @@ export default function CartPage() {
   return (
     <PageShell {...layout} breadcrumbs={breadcrumbs}>
       <Container>
-        <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>
+        <h1 className="cart-page__title">
           Your Cart ({count} {count === 1 ? "Item" : "Items"})
         </h1>
-        <p style={{ marginBottom: 32 }}>Insured delivery on every order.</p>
+        <p className="cart-page__lead">Insured delivery on every order.</p>
 
         <div className="cart-layout">
           <div>
@@ -111,14 +113,12 @@ export default function CartPage() {
             showEmi
             footer={
               <>
-                <details style={{ margin: "16px 0", fontSize: "0.8125rem" }}>
+                <details className="summary-why">
                   <summary>Why are Vairis prices lower?</summary>
-                  <p style={{ marginTop: 8 }}>We sell direct without showroom overheads.</p>
+                  <p>We sell direct without showroom overheads.</p>
                 </details>
                 <SecureCheckoutButton />
-                <p style={{ fontSize: "0.75rem", textAlign: "center", marginTop: 16 }}>
-                  IGI · BIS Hallmarked · Insured · Secure
-                </p>
+                <p className="summary-badges">IGI · BIS Hallmarked · Insured · Secure</p>
               </>
             }
           />

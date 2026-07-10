@@ -1,15 +1,8 @@
 import type { Product as PrismaProduct, ProductVariant, GoldRate } from "@prisma/client";
 import { calculatePrice } from "@/lib/pricing";
+import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 import type { ProductCategory } from "@/lib/catalogue-ui";
-
-const PRISMA_TO_CATALOGUE_CATEGORY: Record<string, ProductCategory> = {
-  RINGS: "rings",
-  EARRINGS: "earrings",
-  PENDANTS: "pendants",
-  BRACELETS: "bracelets",
-  NECKLACES: "necklaces",
-};
 
 type PrismaProductWithVariants = PrismaProduct & {
   variants: ProductVariant[];
@@ -50,8 +43,7 @@ export function prismaToProduct(
     }
   }
 
-  const category: ProductCategory =
-    PRISMA_TO_CATALOGUE_CATEGORY[p.category] ?? "other";
+  const category: ProductCategory = prismaCategoryToSlug(p.category);
 
   return {
     slug: p.id,

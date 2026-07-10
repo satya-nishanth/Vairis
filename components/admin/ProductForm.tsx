@@ -102,7 +102,7 @@ function initialForm(data?: Partial<FormData>): FormData {
     images: data?.images ?? [],
     variants: data?.variants?.length ? data.variants as Variant[] : [emptyVariant()],
     isActive: data?.isActive ?? true,
-    comingSoon: (data as any)?.comingSoon ?? false,
+    comingSoon: data?.comingSoon ?? false,
   }
 }
 
@@ -112,7 +112,7 @@ export default function ProductForm({ initialData, mode }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  function set(field: keyof FormData, value: any) {
+  function set<K extends keyof FormData>(field: K, value: FormData[K]) {
     setForm((f) => {
       const next = { ...f, [field]: value }
       if (field === 'itemCode') {

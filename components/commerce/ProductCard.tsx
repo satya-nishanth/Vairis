@@ -21,6 +21,7 @@ function QuickAddButton({ product }: { product: Product }) {
   const { openCartModal } = useCartModal();
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const handleQuickAdd = async () => {
     if (!product.variantId) return;
@@ -32,6 +33,9 @@ function QuickAddButton({ product }: { product: Product }) {
     try {
       await addItem(product.variantId, 1);
       openCartModal();
+    } catch {
+      setFailed(true);
+      window.setTimeout(() => setFailed(false), 2500);
     } finally {
       setAdding(false);
     }
@@ -44,7 +48,7 @@ function QuickAddButton({ product }: { product: Product }) {
       onClick={handleQuickAdd}
       disabled={adding}
     >
-      {adding ? "Adding…" : "Quick Add"}
+      {adding ? "Adding…" : failed ? "Try again" : "Quick Add"}
     </button>
   );
 }

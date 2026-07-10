@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/commerce/ProductCard";
 import { useWishlist } from "@/components/commerce/WishlistProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { catalogueProducts, categoryHref } from "@/lib/catalogue-ui";
+import { prismaCategoryToSlug } from "@/lib/categories";
 import { catalogueToProduct } from "@/lib/ui-data";
 import type { Product } from "@/lib/ui-data";
 
@@ -20,14 +21,6 @@ type WishlistApiItem = {
     category: string;
     images: string[];
   };
-};
-
-const PRISMA_TO_CATEGORY: Record<string, string> = {
-  RINGS: "rings",
-  EARRINGS: "earrings",
-  PENDANTS: "pendants",
-  BRACELETS: "bracelets",
-  NECKLACES: "necklaces",
 };
 
 export function WishlistPageView() {
@@ -51,9 +44,7 @@ export function WishlistPageView() {
           name: item.product.name,
           image: item.product.images[0] ?? "",
           images: item.product.images,
-          category:
-            (PRISMA_TO_CATEGORY[item.product.category] as Product["category"]) ??
-            "other",
+          category: prismaCategoryToSlug(item.product.category),
           catalogueId: item.product.id,
           video: null,
           badge: i === 0 ? "Best Seller" : undefined,

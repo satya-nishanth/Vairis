@@ -31,16 +31,14 @@ export function CartItem({ item, onIncrement, onDecrement, onRemove }: CartItemP
         </h2>
         <p className="cart-item__meta">{item.meta}</p>
 
-        <div className="form-row" style={{ maxWidth: 280, marginTop: 12 }}>
-          <div className="qty" style={{ display: "inline-flex", border: "1px solid var(--color-border)", borderRadius: 4 }}>
-            <button type="button" aria-label="Decrease quantity" onClick={onDecrement}>
-              −
-            </button>
-            <span style={{ padding: "8px 12px" }}>{item.quantity}</span>
-            <button type="button" aria-label="Increase quantity" onClick={onIncrement}>
-              +
-            </button>
-          </div>
+        <div className="cart-item__qty">
+          <button type="button" aria-label="Decrease quantity" onClick={onDecrement}>
+            −
+          </button>
+          <span>{item.quantity}</span>
+          <button type="button" aria-label="Increase quantity" onClick={onIncrement}>
+            +
+          </button>
         </div>
 
         <div className="cart-item__actions">
@@ -49,7 +47,7 @@ export function CartItem({ item, onIncrement, onDecrement, onRemove }: CartItemP
           </button>
         </div>
 
-        <p style={{ fontSize: "0.75rem", marginTop: 12 }}>Insured Delivery · Easy Returns · Secure Packaging</p>
+        <p className="cart-item__note">Insured Delivery · Easy Returns · Secure Packaging</p>
       </div>
       <p className="cart-item__price">{formatPrice(item.unitPrice * item.quantity)}</p>
     </article>
