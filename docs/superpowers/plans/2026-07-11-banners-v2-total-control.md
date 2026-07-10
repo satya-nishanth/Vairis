@@ -112,6 +112,31 @@ APIs:
   transaction (simplest correct ordering semantics; no per-item PATCH races)
 - Public `GET /api/content/[group]` → active + ordered only, 60s edge cache
 
+## 3b. Preview & publish workflow
+
+Edits are **never live immediately**. Draft → preview on the real site → publish.
+
+**Model:** add `draft Boolean @default(false)` to `SiteBanner`. Admin saves always write
+DRAFT rows (copy-on-write per group). The live site reads `draft: false` only.
+
+**Preview = the actual storefront, not a mock.** Uses Next.js Draft Mode:
+- `GET /api/admin/content/preview/enable?next=/` — `requireAdmin`, sets the draft-mode
+  cookie, redirects to the target page (`next` defaults to the page the edited group
+  appears on — the registry records a `previewPath` per group)
+- With the cookie set, `getBannerGroup()` and `/api/content/[group]` prefer draft rows
+  where they exist, else live rows — so the admin browses the whole site exactly as it
+  will look after publish, while normal visitors keep seeing live content
+- Persistent "PREVIEW — viewing unpublished content" ribbon on the storefront while the
+  cookie is active, with Exit (disable endpoint) + Publish shortcuts
+
+**Admin UI per group:**
+- Status chip: `live` / `draft pending` / `defaults`
+- **Inline mini-preview** in the editor: rendered thumbnail strip of the group's items in
+  their current order (image + title), updates as you edit/reorder — the cheap instant check
+- **Preview on site** button → draft-mode redirect to `previewPath` — the real check
+- **Publish** = transaction: delete group's live rows, flip drafts to live (+ revalidate)
+- **Discard draft** = delete draft rows, keep live untouched
+
 ## 4. Renderer wiring (fallback-first, one pattern)
 
 Each surface: `const items = await getBannerGroup("x"); const list = items.length ? items : BUILT_INS;`
@@ -121,9 +146,12 @@ they render whatever list they're given, so count/order control is automatic.
 
 ## 5. Phases
 
-1. **P1 — Model + read path**: migration (slot→group+sortOrder), `getBannerGroup`, group
-   registry with field metadata, public API returns lists. v1 rows keep working.
-2. **P2 — Admin v2**: grouped UI, add/remove/reorder/active, replace-group PUT.
+1. **P1 — Model + read path**: migration (slot→group+sortOrder+draft), `getBannerGroup`
+   (draft-aware), group registry with field metadata + previewPath, public API returns
+   lists. v1 rows keep working.
+2. **P2 — Admin v2 + preview/publish**: grouped UI, add/remove/reorder/active,
+   replace-group PUT (drafts), inline mini-preview, Draft Mode preview-on-site with
+   ribbon, Publish/Discard.
 3. **P3 — Home**: hero slides, social proof, category cards (count+order), why-vairis,
    videos, testimonials, how-it-works.
 4. **P4 — Global + PLP**: promo bar list, trust bar, PLP hero carousels, stories, trust
@@ -135,8 +163,9 @@ they render whatever list they're given, so count/order control is automatic.
 
 Acceptance (the "total control" bar): from `/admin/content` alone — reorder home hero
 slides, cut founder videos from 3 to 2, add a 6th promo message, hide a category card,
-change every image on the site — with zero deploys, and deleting everything restores the
-original design.
+change every image on the site — **previewing each change on the real storefront before
+customers see it** — with zero deploys, and deleting everything restores the original
+design. Publish is atomic per group; visitors never see a half-edited state.
 
 ## 6. Out of scope (this plan)
 
