@@ -12,6 +12,7 @@ import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 import { DEPOSIT_RATE } from "@/lib/orders";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
 
 /**
  * Checkout — real order + gateway payment.
@@ -161,6 +162,28 @@ export default function CheckoutPage() {
     } finally {
       setPaying(false);
     }
+  }
+
+  // WhatsApp-enquiry mode: checkout disabled until Razorpay is live
+  if (!CHECKOUT_ENABLED) {
+    return (
+      <PageShell {...layout}>
+        <Container>
+          <div className="cart-state">
+            <h1>Ordering via WhatsApp</h1>
+            <p>Online checkout is launching soon — message us to place your order.</p>
+            <a
+              href="https://wa.me/917075486464"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+            >
+              Order on WhatsApp
+            </a>
+          </div>
+        </Container>
+      </PageShell>
+    );
   }
 
   if (!hydrated) {

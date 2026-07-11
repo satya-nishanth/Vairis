@@ -69,6 +69,7 @@ export default async function AdminOrderDetailPage({
           order.payment?.status === 'PARTIALLY_REFUNDED' ||
           order.payment?.status === 'REFUNDED'
         }
+        offline={!order.payment}
         shippingSupportsBooking={provider.supportsBooking}
       />
 
@@ -146,7 +147,9 @@ export default async function AdminOrderDetailPage({
               {order.payment.status}
             </p>
           ) : (
-            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>No payment record.</p>
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              Offline sale — settled manually (UPI/bank), no gateway payment record.
+            </p>
           )}
         </div>
       </div>

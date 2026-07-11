@@ -84,6 +84,19 @@ export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   SHIPPED: ["DELIVERED"],
 };
 
+/**
+ * EXTRA transitions allowed only for OFFLINE orders (manual/WhatsApp sales,
+ * no gateway payment): money moves by hand (UPI/bank transfer), so the admin
+ * marks the settlement instead of a refund webhook doing it.
+ * Gateway-paid orders never use these — their refunds go through
+ * /api/admin/orders/[id]/refund and the refund.processed webhook.
+ */
+export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  PENDING: ["PAYMENT_CONFIRMED", "CANCELLED"], // payment arrived offline / deal fell through
+  DELIVERED: ["DEPOSIT_REFUNDED"], // deposit returned via UPI/bank
+  CANCELLED: ["REFUNDED"], // money returned via UPI/bank
+};
+
 /** Ordered steps for the customer timeline (happy path). */
 export const TIMELINE_STEPS: OrderStatus[] = [
   "PAYMENT_CONFIRMED",

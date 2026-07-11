@@ -41,9 +41,23 @@ export default async function AdminOrdersPage({
 
   return (
     <div style={{ padding: '1rem 2rem' }}>
-      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '1rem' }}>
-        Orders
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827' }}>Orders</h1>
+        <Link
+          href="/admin/orders/new"
+          style={{
+            padding: '0.625rem 1.5rem',
+            background: '#032b24',
+            color: '#fff',
+            fontSize: '0.75rem',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            textDecoration: 'none',
+          }}
+        >
+          + Manual Order
+        </Link>
+      </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         {FILTERS.map((f) => {

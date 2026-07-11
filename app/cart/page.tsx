@@ -9,6 +9,7 @@ import { MobileCheckoutBar } from "@/components/commerce/MobileCheckoutBar";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: "18kt Yellow Gold",
@@ -21,6 +22,31 @@ const breadcrumbs = [{ label: "Home", href: "/" }, { label: "Your Cart" }];
 export default function CartPage() {
   const layout = pageLayouts.cart;
   const { items, count, isLoggedIn, hydrated, updateQuantity, removeItem } = useCart();
+
+  // WhatsApp-enquiry mode: cart is disabled until Razorpay is live
+  if (!CHECKOUT_ENABLED) {
+    return (
+      <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <Container>
+          <div className="cart-state">
+            <h1>Ordering via WhatsApp</h1>
+            <p>
+              Online checkout is launching soon. Message us on WhatsApp to order any piece —
+              we&apos;ll confirm your order and you can track it right here under My Orders.
+            </p>
+            <a
+              href="https://wa.me/917075486464"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+            >
+              Order on WhatsApp
+            </a>
+          </div>
+        </Container>
+      </PageShell>
+    );
+  }
 
   if (!hydrated) {
     return (

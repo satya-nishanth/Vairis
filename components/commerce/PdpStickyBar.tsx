@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { WHATSAPP_URL } from "@/lib/ui-data";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
 
 type PdpStickyBarProps = {
   price: number | null | undefined;
@@ -29,14 +30,18 @@ export function PdpStickyBar({ price, onAddToCart, addingToCart, expertLabel = "
           {expertLabel}
         </Link>
       </div>
-      <div className="pdp-sticky-bar__actions">
-        <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
-          {addingToCart ? "Adding…" : "Add to Cart"}
-        </button>
-        <Link href="/checkout" className="btn btn-secondary">
-          Buy Now
-        </Link>
-      </div>
+      {/* Cart/Buy hidden until CHECKOUT_ENABLED (Razorpay go-live) — the
+          expert WhatsApp link above stays as the purchase path */}
+      {CHECKOUT_ENABLED && (
+        <div className="pdp-sticky-bar__actions">
+          <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
+            {addingToCart ? "Adding…" : "Add to Cart"}
+          </button>
+          <Link href="/checkout" className="btn btn-secondary">
+            Buy Now
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,13 +13,13 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Light/dark theme | ✅ | Token CSS system, audited both themes |
 | Search | ⏳ | Header button is UI-only |
 | Wishlist (guest localStorage + synced server-side when logged in) | ✅ | |
-| Cart (add/qty/remove, live badge, PLP Quick Add, login-gated) | ✅ | Server-priced, optimistic UI with rollback |
+| Cart (add/qty/remove, live badge, PLP Quick Add, login-gated) | ✅ | Behind `NEXT_PUBLIC_CHECKOUT_ENABLED` (off until Razorpay live — storefront runs WhatsApp-enquiry mode) |
 
 ## Checkout & Orders
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Checkout (address form, order summary) | ✅ | |
+| Checkout (address form, order summary) | ✅ | Behind `NEXT_PUBLIC_CHECKOUT_ENABLED`; disabled pages show WhatsApp ordering notice |
 | **105% payment / 5% refundable security deposit model** | ✅ | `lib/orders.ts`; explained at checkout, confirmation, order page, email |
 | Razorpay payment (UPI/cards/netbanking) | 🟡 | Code complete + webhook-tested; needs API keys (`docs/LAUNCH.md` §1) |
 | Payment webhooks (captured/failed/refunded — idempotent, HMAC-verified) | ✅ | Simulated-webhook test suite green |
@@ -47,6 +47,7 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 |---------|--------|-------|
 | Product CRUD (variants, pricing helper with live estimate, image/video slots) | ✅ | |
 | Order management (filterable list, guarded status transitions, manual shipping entry) | ✅ | |
+| Manual order entry for WhatsApp/offline sales (customer search, negotiated prices, optional deposit, offline settlement marks) | ✅ | /admin/orders/new |
 | Refund buttons (5% deposit / full) | 🟡 | Needs Razorpay keys |
 | Site content editor (promo bar, home hero, category heroes) with image upload | ✅ | Fallback-safe; extend via `lib/site-content.ts` KNOWN_SLOTS |
 | Gold rate sync endpoint (Bearer-secret, rate-limited) | 🟡 | Needs GitHub Actions cron + `METAL_PRICE_API_KEY` |

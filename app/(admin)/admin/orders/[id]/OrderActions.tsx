@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OrderStatus } from '@prisma/client'
-import { ADMIN_TRANSITIONS, ORDER_STATUS_META } from '@/lib/orders'
+import { ADMIN_TRANSITIONS, OFFLINE_SETTLEMENT_TRANSITIONS, ORDER_STATUS_META } from '@/lib/orders'
 
 type OrderActionsProps = {
   orderId: string
@@ -11,6 +11,9 @@ type OrderActionsProps = {
   depositAmount: number
   refundedAmount: number
   paymentCaptured: boolean
+  /** True when the order has no gateway payment (manual/WhatsApp sale) —
+      settlement happens via UPI/bank and is marked here, not refunded via API. */
+  offline: boolean
   /**
    * From lib/shipping — false while the delivery partner is undecided
    * (manual provider), which makes the SHIPPED transition show
@@ -27,6 +30,7 @@ export function OrderActions({
   depositAmount,
   refundedAmount,
   paymentCaptured,
+  offline,
   shippingSupportsBooking,
 }: OrderActionsProps) {
   const router = useRouter()
@@ -35,10 +39,18 @@ export function OrderActions({
   const [shipForm, setShipForm] = useState({ courierName: '', awbCode: '', trackingUrl: '' })
   const [showShipForm, setShowShipForm] = useState(false)
 
-  const nextStatuses = ADMIN_TRANSITIONS[status] ?? []
-  const canRefundDeposit = status === 'DELIVERED' && refundedAmount === 0 && paymentCaptured
+  // Offline orders get manual settlement marks; gateway orders get refund
+  // API buttons instead (see OFFLINE_SETTLEMENT_TRANSITIONS in lib/orders.ts).
+  const offlineExtra = offline
+    ? (OFFLINE_SETTLEMENT_TRANSITIONS[status] ?? []).filter(
+        (s2) => !(s2 === 'DEPOSIT_REFUNDED' && depositAmount === 0),
+      )
+    : []
+  const nextStatuses = [...(ADMIN_TRANSITIONS[status] ?? []), ...offlineExtra]
+  const canRefundDeposit =
+    !offline && status === 'DELIVERED' && refundedAmount === 0 && paymentCaptured && depositAmount > 0
   const canRefundFull =
-    ['PAYMENT_CONFIRMED', 'PROCESSING', 'CANCELLED'].includes(status) && paymentCaptured
+    !offline && ['PAYMENT_CONFIRMED', 'PROCESSING', 'CANCELLED'].includes(status) && paymentCaptured
 
   async function transition(next: OrderStatus) {
     if (next === 'SHIPPED' && !shippingSupportsBooking && !showShipForm) {

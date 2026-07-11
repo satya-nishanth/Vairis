@@ -8,6 +8,7 @@ import { formatPrice } from "@/lib/ui-data";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { useCart } from "@/components/commerce/CartProvider";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { useCartModal } from "./CartModal";
 
 type ProductCardProps = {
@@ -71,7 +72,7 @@ export function ProductCard({ product, showActions = true, linkPrefix = "/produc
         {product.description && <p className="product-card__desc">{product.description}</p>}
         {product.price != null && <p className="product-card__price">{formatPrice(product.price)}</p>}
         {product.meta && <p className="product-card__meta">{product.meta}</p>}
-        {showActions && product.variantId && (
+        {CHECKOUT_ENABLED && showActions && product.variantId && (
           <div className="product-card__actions">
             <QuickAddButton product={product} />
           </div>

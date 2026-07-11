@@ -31,6 +31,7 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
 | `NEXT_PUBLIC_RAZORPAY_KEY_ID` | same as `RAZORPAY_KEY_ID` | browser SDK needs it |
 | `RAZORPAY_WEBHOOK_SECRET` | your chosen webhook secret | must match dashboard webhook config |
 | `PAYMENT_GATEWAY` | *(optional)* `razorpay` | default; only set when swapping gateways |
+| `NEXT_PUBLIC_CHECKOUT_ENABLED` | `true` at launch | **off by default** — storefront runs WhatsApp-enquiry mode (no cart/checkout); admin records offline sales at /admin/orders/new |
 
 ### Shipping
 | Key | Value | Notes |

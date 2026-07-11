@@ -3,13 +3,22 @@ import { z } from 'zod'
 import type { OrderStatus } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ADMIN_TRANSITIONS } from '@/lib/orders'
+import { ADMIN_TRANSITIONS, OFFLINE_SETTLEMENT_TRANSITIONS } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 
 export const dynamic = 'force-dynamic'
 
 const patchSchema = z.object({
-  status: z.enum(['PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']),
+  status: z.enum([
+    'PROCESSING',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLED',
+    // offline-only settlement marks (see OFFLINE_SETTLEMENT_TRANSITIONS)
+    'PAYMENT_CONFIRMED',
+    'DEPOSIT_REFUNDED',
+    'REFUNDED',
+  ]),
   note: z.string().trim().max(500).optional(),
   // Shipping details — required when marking SHIPPED with the manual
   // provider (delivery partner not integrated yet; see lib/shipping).
@@ -37,10 +46,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const { status: nextStatus, note, courierName, awbCode, trackingUrl } = parsed.data
 
-  const order = await prisma.order.findUnique({ where: { id }, include: { shipment: true } })
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { shipment: true, payment: true },
+  })
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-  const allowed = ADMIN_TRANSITIONS[order.status] ?? []
+  // Offline orders (no gateway payment) additionally get manual settlement
+  // marks — gateway-paid orders must use the refund endpoint instead.
+  const isOffline = !order.payment
+  const allowed = [
+    ...(ADMIN_TRANSITIONS[order.status] ?? []),
+    ...(isOffline ? (OFFLINE_SETTLEMENT_TRANSITIONS[order.status] ?? []) : []),
+  ]
   if (!allowed.includes(nextStatus as OrderStatus)) {
     return NextResponse.json(
       { error: `Cannot move ${order.status} → ${nextStatus}. Allowed: ${allowed.join(', ') || 'none'}` },
@@ -66,8 +84,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     (nextStatus === 'SHIPPED'
       ? `Shipped via ${courierName}${awbCode ? ` (AWB ${awbCode})` : ''}`
       : nextStatus === 'DELIVERED'
-        ? 'Delivered — security deposit refund due'
-        : undefined)
+        ? Number(order.depositAmount) > 0
+          ? 'Delivered — security deposit refund due'
+          : 'Delivered'
+        : nextStatus === 'DEPOSIT_REFUNDED'
+          ? 'Security deposit returned (offline settlement)'
+          : nextStatus === 'REFUNDED'
+            ? 'Amount refunded (offline settlement)'
+            : nextStatus === 'PAYMENT_CONFIRMED'
+              ? 'Payment received offline'
+              : undefined)
 
   await prisma.$transaction(async (tx) => {
     await tx.order.update({

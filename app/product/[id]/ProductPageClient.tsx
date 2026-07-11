@@ -13,6 +13,7 @@ import { pageLayouts } from "@/lib/layout-config";
 import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { calculatePrice } from "@/lib/pricing";
 
 const METAL_LABELS: Record<string, string> = {
@@ -283,19 +284,23 @@ function PdpContent({ product, goldRates }: Props) {
               </div>
             ) : (
               <div className="pdp-actions pdp-actions--inline">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleAddToCart}
-                  disabled={addingToCart || !selectedVariant}
-                >
-                  {addingToCart ? "Adding…" : "Add to Cart"}
-                </button>
+                {/* Self-serve checkout is behind CHECKOUT_ENABLED until
+                    Razorpay is fully live — WhatsApp is the purchase CTA */}
+                {CHECKOUT_ENABLED && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleAddToCart}
+                    disabled={addingToCart || !selectedVariant}
+                  >
+                    {addingToCart ? "Adding…" : "Add to Cart"}
+                  </button>
+                )}
                 <a
                   href={`https://wa.me/917075486464?text=${whatsappText}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-secondary"
+                  className={CHECKOUT_ENABLED ? "btn btn-secondary" : "btn btn-primary"}
                 >
                   Enquire on WhatsApp
                 </a>
