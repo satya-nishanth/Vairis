@@ -13,7 +13,7 @@
  *   5. bad webhook signature → 400
  *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED
  *   7. refund: 503 not-configured (no keys) OR 502 gateway-refused (keys + simulated payment id)
- *   8. webhook refund.processed (5%) → DEPOSIT_REFUNDED, PARTIALLY_REFUNDED
+ *   8. ledger-matched refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED; duplicate delivery idempotent
  *   9. customer surfaces: /account/orders, order detail, /track-order API
  */
 import crypto from "node:crypto";
@@ -236,7 +236,7 @@ console.log(`      seeded order ${order.id}`);
   const res = await api(`/api/admin/orders/${order.id}/refund`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "deposit" }),
+    body: JSON.stringify({ kind: "deposit", reason: "test deposit refund" }),
   });
   if (GATEWAY_CONFIGURED) {
     // pay_SIM… doesn't exist at the gateway → our API surfaces 502 (gateway refused)
@@ -246,20 +246,26 @@ console.log(`      seeded order ${order.id}`);
   }
 }
 
-// ── 8. refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED ──
+// ── 8. ledger-matched refund webhook ──
 {
+  const refundId = `rfnd_LEDGER${Date.now()}`;
+  await prisma.orderRefund.create({
+    data: { orderId: order.id, amount: grandTotal - total, kind: "DEPOSIT", method: "GATEWAY", gatewayRefundId: refundId, reason: "test deposit", status: "INITIATED" },
+  });
   const res = await postWebhook({
     event: "refund.processed",
-    payload: {
-      refund: { entity: { id: `rfnd_SIM${Date.now()}`, payment_id: gwPaymentId, amount: (grandTotal - total) * 100 } },
-    },
+    payload: { refund: { entity: { id: refundId, payment_id: gwPaymentId, amount: (grandTotal - total) * 100 } } },
   });
-  const after = await prisma.order.findUnique({ where: { id: order.id }, include: { payment: true } });
-  step(
-    "refund.processed (deposit) → DEPOSIT_REFUNDED + PARTIALLY_REFUNDED",
-    res.status === 200 && after.status === "DEPOSIT_REFUNDED" && after.payment.status === "PARTIALLY_REFUNDED",
-    `order=${after.status} payment=${after.payment.status} refunded=${after.payment.refundedAmount}`,
-  );
+  const after = await prisma.order.findUnique({ where: { id: order.id } });
+  const row = await prisma.orderRefund.findUnique({ where: { gatewayRefundId: refundId } });
+  step("refund.processed matches ledger intent", res.status === 200 && after.status === "DEPOSIT_REFUNDED" && row.status === "COMPLETED");
+  // duplicate delivery is a no-op
+  await postWebhook({
+    event: "refund.processed",
+    payload: { refund: { entity: { id: refundId, payment_id: gwPaymentId, amount: (grandTotal - total) * 100 } } },
+  });
+  const events = await prisma.orderEvent.count({ where: { orderId: order.id, status: "DEPOSIT_REFUNDED" } });
+  step("duplicate refund webhook idempotent", events === 1);
 }
 
 // ── 9. customer surfaces ──
@@ -296,6 +302,7 @@ console.log(`      seeded order ${order.id}`);
 
 // ── cleanup ──
 await prisma.orderEvent.deleteMany({ where: { orderId: order.id } });
+await prisma.orderRefund.deleteMany({ where: { orderId: order.id } });
 await prisma.shipment.deleteMany({ where: { orderId: order.id } });
 await prisma.payment.deleteMany({ where: { orderId: order.id } });
 await prisma.orderItem.deleteMany({ where: { orderId: order.id } });

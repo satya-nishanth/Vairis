@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { initiateRefund, statusAfterRefund } from "@/lib/refunds";
+import type { Prisma } from "@prisma/client";
 import type { PaymentWebhookEvent } from "./types";
 
 /**
@@ -35,6 +37,29 @@ export async function confirmPayment(
     include: { order: true },
   });
   if (!payment) return null;
+
+  // Late capture on a dead order: never resurrect — refund in full instead.
+  if (payment.order.status === "PAYMENT_EXPIRED" || payment.order.status === "CANCELLED") {
+    if (payment.status !== "CAPTURED") {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: "CAPTURED", razorpayPaymentId: gatewayPaymentId },
+      });
+      await prisma.orderEvent.create({
+        data: {
+          orderId: payment.orderId,
+          status: payment.order.status,
+          note: "⚠ Payment received after order expiry/cancellation — auto-refund initiated",
+        },
+      });
+      await initiateRefund({
+        orderId: payment.orderId,
+        kind: "FULL",
+        reason: "Automatic: payment captured after order expired/cancelled",
+      });
+    }
+    return { orderId: payment.orderId, userId: payment.order.userId };
+  }
 
   // Idempotent: the other trigger may have confirmed this already.
   if (payment.status !== "CAPTURED") {
@@ -83,43 +108,59 @@ async function handleFailed(gatewayOrderId: string, reason: string | null) {
   ]);
 }
 
-/**
- * refund.processed fires for both refund types we issue:
- *  - 5% security deposit after delivery → order DEPOSIT_REFUNDED
- *  - full refund on cancellation        → order REFUNDED
- * Distinguished by cumulative refunded amount vs the payment amount.
- */
 async function handleRefundProcessed(
   gatewayPaymentId: string,
   gatewayRefundId: string,
   amount: number,
 ) {
-  const payment = await prisma.payment.findFirst({
-    where: { razorpayPaymentId: gatewayPaymentId },
-  });
-  if (!payment) return;
-  if (payment.razorpayRefundId === gatewayRefundId) return; // duplicate delivery
+  // Ledger-matched: the initiation declared the intent; apply it verbatim.
+  const ledger = await prisma.orderRefund.findUnique({ where: { gatewayRefundId } });
+  if (!ledger) {
+    console.error(`refund.processed for unknown refund ${gatewayRefundId} — record manually`);
+    return;
+  }
+  if (ledger.status === "COMPLETED") return; // duplicate delivery
 
-  const cumulative = Number(payment.refundedAmount) + amount;
-  const isFullRefund = cumulative >= Number(payment.amount) - 0.01;
+  const order = await prisma.order.findUnique({ where: { id: ledger.orderId } });
+  if (!order) return;
+  const next = statusAfterRefund(ledger.kind, order.status);
 
-  const orderStatus = isFullRefund ? "REFUNDED" : "DEPOSIT_REFUNDED";
-  const note = isFullRefund
-    ? `Full refund of ₹${cumulative.toLocaleString("en-IN")} processed`
-    : `Security deposit of ₹${amount.toLocaleString("en-IN")} refunded`;
+  const payment = await prisma.payment.findFirst({ where: { razorpayPaymentId: gatewayPaymentId } });
 
-  await prisma.$transaction([
-    prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        razorpayRefundId: gatewayRefundId,
-        refundedAmount: cumulative,
-        status: isFullRefund ? "REFUNDED" : "PARTIALLY_REFUNDED",
-      },
-    }),
-    prisma.order.update({
-      where: { id: payment.orderId },
-      data: { status: orderStatus, events: { create: { status: orderStatus, note } } },
-    }),
-  ]);
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.orderRefund.update({ where: { id: ledger.id }, data: { status: "COMPLETED" } }),
+    ...(payment
+      ? [
+          prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              razorpayRefundId: gatewayRefundId,
+              refundedAmount: Number(payment.refundedAmount) + amount,
+              status:
+                Number(payment.refundedAmount) + amount >= Number(payment.amount) - 0.01
+                  ? "REFUNDED"
+                  : "PARTIALLY_REFUNDED",
+            },
+          }),
+        ]
+      : []),
+    ...(next
+      ? [
+          prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: next,
+              events: {
+                create: { status: next, note: `₹${amount.toLocaleString("en-IN")} refund completed` },
+              },
+            },
+          }),
+        ]
+      : [
+          prisma.orderEvent.create({
+            data: { orderId: order.id, status: order.status, note: `₹${amount.toLocaleString("en-IN")} refund completed` },
+          }),
+        ]),
+  ];
+  await prisma.$transaction(ops);
 }

@@ -11,7 +11,7 @@
       "id": 1,
       "nativeId": 30,
       "subject": "Task 1: lib/orders.ts v2 \u2014 complete state machine",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         0
       ]
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-12T00:40:26.171011"
+  "lastUpdated": "2026-07-12T00:47:40.699052"
 }
