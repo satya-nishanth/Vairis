@@ -97,12 +97,12 @@ export async function POST(req: NextRequest) {
   const total = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
-  // Create our Order first (PENDING), then the gateway intent with our id
+  // Create our Order first (PAYMENT_PENDING), then the gateway intent with our id
   // as reference so dashboard entries reconcile 1:1.
   const order = await prisma.order.create({
     data: {
       userId: user.id,
-      status: 'PENDING',
+      status: 'PAYMENT_PENDING',
       totalAmount,
       depositAmount,
       grandTotal,
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
           productName: l.productName,
         })),
       },
-      events: { create: { status: 'PENDING', note: 'Order created' } },
+      events: { create: { status: 'PAYMENT_PENDING', note: 'Order created' } },
     },
   })
 

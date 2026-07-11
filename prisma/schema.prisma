@@ -24,14 +24,40 @@ enum MetalType {
 }
 
 enum OrderStatus {
-  PENDING
+  PAYMENT_PENDING
+  PAYMENT_EXPIRED
   PAYMENT_CONFIRMED
-  PROCESSING
+  PREPARING
   SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERY_FAILED
+  RETURNING_TO_ORIGIN
+  RTO_RECEIVED
   DELIVERED
   DEPOSIT_REFUNDED
+  RETURN_REQUESTED
+  RETURN_IN_TRANSIT
+  RETURN_RECEIVED
   CANCELLED
   REFUNDED
+  SPLIT_INTO_DELIVERIES
+  FAILED_OTHER
+}
+
+enum RefundKind {
+  DEPOSIT
+  FULL
+  PARTIAL
+}
+
+enum RefundMethod {
+  GATEWAY
+  OFFLINE
+}
+
+enum RefundStatus {
+  INITIATED
+  COMPLETED
 }
 
 enum PaymentStatus {
@@ -141,7 +167,7 @@ model Order {
   userId        String
   user          User         @relation(fields: [userId], references: [id])
   items         OrderItem[]
-  status        OrderStatus  @default(PENDING)
+  status        OrderStatus  @default(PAYMENT_PENDING)
   totalAmount   Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
@@ -155,8 +181,13 @@ model Order {
   state         String
   pincode       String
   payment       Payment?
-  shipment      Shipment?
   events        OrderEvent[]
+  parentOrderId String?
+  parent        Order?       @relation("OrderSplit", fields: [parentOrderId], references: [id])
+  children      Order[]      @relation("OrderSplit")
+  refunds       OrderRefund[]
+  notes         OrderNote[]
+  shipments     Shipment[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 }
@@ -197,15 +228,47 @@ model Payment {
 }
 
 model Shipment {
-  id           String   @id @default(cuid())
-  orderId      String   @unique
-  order        Order    @relation(fields: [orderId], references: [id])
+  id           String    @id @default(cuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id])
   shiprocketId String?
   awbCode      String?
   courierName  String?
   trackingUrl  String?
   status       String?
-  updatedAt    DateTime @updatedAt
+  attempts     Int       @default(0)
+  outcome      String?   // DELIVERED | FAILED | RTO — null while in flight
+  dispatchedAt DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([orderId, dispatchedAt])
+}
+
+model OrderRefund {
+  id              String       @id @default(cuid())
+  orderId         String
+  order           Order        @relation(fields: [orderId], references: [id])
+  amount          Decimal
+  kind            RefundKind
+  method          RefundMethod
+  gatewayRefundId String?      @unique
+  reason          String
+  status          RefundStatus @default(INITIATED)
+  createdAt       DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+model OrderNote {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author    String
+  body      String
+  internal  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
 }
 
 model SiteBanner {

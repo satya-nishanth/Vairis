@@ -50,7 +50,7 @@ export function OrderActions({
   const canRefundDeposit =
     !offline && status === 'DELIVERED' && refundedAmount === 0 && paymentCaptured && depositAmount > 0
   const canRefundFull =
-    !offline && ['PAYMENT_CONFIRMED', 'PROCESSING', 'CANCELLED'].includes(status) && paymentCaptured
+    !offline && ['PAYMENT_CONFIRMED', 'PREPARING', 'CANCELLED'].includes(status) && paymentCaptured
 
   async function transition(next: OrderStatus) {
     if (next === 'SHIPPED' && !shippingSupportsBooking && !showShipForm) {

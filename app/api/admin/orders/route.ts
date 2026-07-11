@@ -37,8 +37,8 @@ const manualOrderSchema = z.object({
   pincode: z.string().trim().regex(/^\d{6}$/, '6-digit pincode required'),
   /** Apply the 105%/5% security-deposit model — off for flat WhatsApp deals. */
   applyDeposit: z.boolean(),
-  /** PENDING = money not received yet; PAYMENT_CONFIRMED = paid via UPI/bank. */
-  initialStatus: z.enum(['PENDING', 'PAYMENT_CONFIRMED']),
+  /** PAYMENT_PENDING = money not received yet; PAYMENT_CONFIRMED = paid via UPI/bank. */
+  initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
   /** e.g. "Paid via GPay ref 12345" — lands in the order timeline. */
   paymentNote: z.string().trim().max(300).optional(),
   items: z
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       },
       events: {
         create: [
-          { status: 'PENDING' as const, note: 'Manual order created by admin (offline sale)' },
+          { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
           ...(d.initialStatus === 'PAYMENT_CONFIRMED'
             ? [
                 {

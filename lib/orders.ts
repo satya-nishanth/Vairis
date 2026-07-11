@@ -31,7 +31,7 @@ export const ORDER_STATUS_META: Record<
   OrderStatus,
   { label: string; description: string; tone: "pending" | "active" | "done" | "bad" }
 > = {
-  PENDING: {
+  PAYMENT_PENDING: {
     label: "Payment Pending",
     description: "Order created — awaiting payment.",
     tone: "pending",
@@ -41,7 +41,7 @@ export const ORDER_STATUS_META: Record<
     description: "Payment received. We're preparing your order.",
     tone: "active",
   },
-  PROCESSING: {
+  PREPARING: {
     label: "Being Crafted",
     description: "Your piece is being prepared and quality-checked.",
     tone: "active",
@@ -71,16 +71,67 @@ export const ORDER_STATUS_META: Record<
     description: "Full amount refunded to your payment method.",
     tone: "bad",
   },
+  // New v2 states — labels per spec; behavior/transitions land in later tasks.
+  PAYMENT_EXPIRED: {
+    label: "Payment Expired",
+    description: "Payment window closed. Place the order again anytime.",
+    tone: "bad",
+  },
+  OUT_FOR_DELIVERY: {
+    label: "Out for Delivery",
+    description: "Arriving today — keep your phone handy for the courier.",
+    tone: "active",
+  },
+  DELIVERY_FAILED: {
+    label: "Delivery Attempt Failed",
+    description: "The courier couldn't deliver. We'll retry or reach out.",
+    tone: "pending",
+  },
+  RETURNING_TO_ORIGIN: {
+    label: "Returning to Us",
+    description: "The package is on its way back to us.",
+    tone: "pending",
+  },
+  RTO_RECEIVED: {
+    label: "Back With Us",
+    description: "We've received the package back and will be in touch.",
+    tone: "pending",
+  },
+  RETURN_REQUESTED: {
+    label: "Return Requested",
+    description: "We've received your return request and will confirm pickup.",
+    tone: "pending",
+  },
+  RETURN_IN_TRANSIT: {
+    label: "Return Pickup",
+    description: "Your return is on its way back to us.",
+    tone: "active",
+  },
+  RETURN_RECEIVED: {
+    label: "Return Received",
+    description: "We've received your return and it's being inspected.",
+    tone: "active",
+  },
+  SPLIT_INTO_DELIVERIES: {
+    label: "Multiple Deliveries",
+    description: "Your order ships as separate deliveries — track each below.",
+    tone: "active",
+  },
+  FAILED_OTHER: {
+    label: "Order Failed",
+    description: "Something went wrong with this order — see the timeline. Any refund due is being processed.",
+    tone: "bad",
+  },
 };
 
 /**
  * Valid admin-driven transitions. Webhook-driven transitions
- * (PENDING→PAYMENT_CONFIRMED, DELIVERED→DEPOSIT_REFUNDED, →REFUNDED)
+ * (PAYMENT_PENDING→PAYMENT_CONFIRMED, DELIVERED→DEPOSIT_REFUNDED, →REFUNDED)
  * are handled by their endpoints, not this map.
  */
 export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  PAYMENT_CONFIRMED: ["PROCESSING", "CANCELLED"],
-  PROCESSING: ["SHIPPED", "CANCELLED"],
+  PAYMENT_CONFIRMED: ["PREPARING", "CANCELLED"],
+  PREPARING: ["SHIPPED", "CANCELLED"],
   SHIPPED: ["DELIVERED"],
 };
 
@@ -92,7 +143,7 @@ export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
  * /api/admin/orders/[id]/refund and the refund.processed webhook.
  */
 export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  PENDING: ["PAYMENT_CONFIRMED", "CANCELLED"], // payment arrived offline / deal fell through
+  PAYMENT_PENDING: ["PAYMENT_CONFIRMED", "CANCELLED"], // payment arrived offline / deal fell through
   DELIVERED: ["DEPOSIT_REFUNDED"], // deposit returned via UPI/bank
   CANCELLED: ["REFUNDED"], // money returned via UPI/bank
 };
@@ -100,7 +151,7 @@ export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderSt
 /** Ordered steps for the customer timeline (happy path). */
 export const TIMELINE_STEPS: OrderStatus[] = [
   "PAYMENT_CONFIRMED",
-  "PROCESSING",
+  "PREPARING",
   "SHIPPED",
   "DELIVERED",
   "DEPOSIT_REFUNDED",

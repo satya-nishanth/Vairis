@@ -76,7 +76,7 @@ async function handleFailed(gatewayOrderId: string, reason: string | null) {
     prisma.orderEvent.create({
       data: {
         orderId: payment.orderId,
-        status: "PENDING",
+        status: "PAYMENT_PENDING",
         note: `Payment attempt failed${reason ? `: ${reason}` : ""}`,
       },
     }),

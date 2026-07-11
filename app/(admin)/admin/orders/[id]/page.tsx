@@ -19,7 +19,7 @@ export default async function AdminOrderDetailPage({
     include: {
       items: { include: { variant: true } },
       payment: true,
-      shipment: true,
+      shipments: { orderBy: { dispatchedAt: 'desc' } },
       events: { orderBy: { createdAt: 'asc' } },
       user: { select: { email: true, name: true } },
     },
@@ -28,6 +28,8 @@ export default async function AdminOrderDetailPage({
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
   const provider = getShippingProvider()
+  // Latest dispatch only for now — full shipment history list lands in a later task.
+  const shipment = order.shipments[0] ?? null
 
   const card: React.CSSProperties = {
     background: '#fff',
@@ -105,15 +107,15 @@ export default async function AdminOrderDetailPage({
             <br />
             {order.city}, {order.state} — {order.pincode}
           </p>
-          {order.shipment && (
+          {shipment && (
             <>
               <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
               <p style={{ fontSize: '0.875rem' }}>
-                {order.shipment.courierName} · AWB {order.shipment.awbCode}
-                {order.shipment.trackingUrl && (
+                {shipment.courierName} · AWB {shipment.awbCode}
+                {shipment.trackingUrl && (
                   <>
                     {' · '}
-                    <a href={order.shipment.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
+                    <a href={shipment.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
                       tracking ↗
                     </a>
                   </>

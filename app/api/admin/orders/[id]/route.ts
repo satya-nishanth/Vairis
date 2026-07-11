@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 const patchSchema = z.object({
   status: z.enum([
-    'PROCESSING',
+    'PREPARING',
     'SHIPPED',
     'DELIVERED',
     'CANCELLED',
@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { shipment: true, payment: true },
+    include: { shipments: { orderBy: { dispatchedAt: 'desc' } }, payment: true },
   })
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
@@ -105,16 +105,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
 
     if (nextStatus === 'SHIPPED') {
-      await tx.shipment.upsert({
-        where: { orderId: id },
-        create: {
+      await tx.shipment.create({
+        data: {
           orderId: id,
-          courierName: courierName ?? null,
-          awbCode: awbCode ?? null,
-          trackingUrl: trackingUrl || null,
-          status: 'IN_TRANSIT',
-        },
-        update: {
           courierName: courierName ?? null,
           awbCode: awbCode ?? null,
           trackingUrl: trackingUrl || null,
@@ -123,8 +116,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
     }
 
-    if (nextStatus === 'DELIVERED' && order.shipment) {
-      await tx.shipment.update({ where: { orderId: id }, data: { status: 'DELIVERED' } })
+    if (nextStatus === 'DELIVERED') {
+      const latest = order.shipments[0]
+      if (latest) {
+        await tx.shipment.update({
+          where: { id: latest.id },
+          data: { status: 'DELIVERED', outcome: 'DELIVERED' },
+        })
+      }
     }
   })
 

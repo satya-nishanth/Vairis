@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     where: { id: parsed.data.orderId },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
-      shipment: true,
+      shipments: { orderBy: { dispatchedAt: 'desc' } },
       user: { select: { email: true } },
     },
   })
@@ -43,11 +43,11 @@ export async function POST(req: NextRequest) {
     status: order.status,
     placedAt: order.createdAt,
     events: order.events.map((e) => ({ status: e.status, note: e.note, createdAt: e.createdAt })),
-    shipment: order.shipment
+    shipment: order.shipments[0]
       ? {
-          courierName: order.shipment.courierName,
-          awbCode: order.shipment.awbCode,
-          trackingUrl: order.shipment.trackingUrl,
+          courierName: order.shipments[0].courierName,
+          awbCode: order.shipments[0].awbCode,
+          trackingUrl: order.shipments[0].trackingUrl,
         }
       : null,
   })

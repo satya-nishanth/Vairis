@@ -32,7 +32,7 @@ export default async function OrderDetailPage({
     where: { id },
     include: {
       items: true,
-      shipment: true,
+      shipments: { orderBy: { dispatchedAt: "desc" } },
       payment: true,
       events: { orderBy: { createdAt: "asc" } },
       user: { select: { email: true } },
@@ -41,6 +41,7 @@ export default async function OrderDetailPage({
   if (!order || order.user.email !== session.user.email) notFound();
 
   const deposit = Number(order.depositAmount);
+  const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
 
   return (
@@ -62,20 +63,20 @@ export default async function OrderDetailPage({
                 <OrderTimeline status={order.status} events={order.events} />
               </section>
 
-              {order.shipment && (
+              {shipment && (
                 <section className="confirm-card">
                   <h3 className="confirm-card__heading">Shipment</h3>
                   <dl>
                     <dt>Courier</dt>
-                    <dd>{order.shipment.courierName ?? "—"}</dd>
+                    <dd>{shipment.courierName ?? "—"}</dd>
                     <dt>AWB / Tracking No.</dt>
-                    <dd>{order.shipment.awbCode ?? "—"}</dd>
-                    {order.shipment.trackingUrl && (
+                    <dd>{shipment.awbCode ?? "—"}</dd>
+                    {shipment.trackingUrl && (
                       <>
                         <dt>Live Tracking</dt>
                         <dd>
                           <a
-                            href={order.shipment.trackingUrl}
+                            href={shipment.trackingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                           >

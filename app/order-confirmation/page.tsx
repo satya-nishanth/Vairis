@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * Reached from the checkout success handler; safe to refresh/revisit
  * (server fetch by id + ownership check, no client state).
  *
- * A PENDING order renders the "payment pending" variant — the customer paid
+ * A PAYMENT_PENDING order renders the "payment pending" variant — the customer paid
  * but the capture webhook/verify hasn't landed yet (usually seconds).
  */
 export default async function OrderConfirmationPage({
@@ -37,7 +37,7 @@ export default async function OrderConfirmationPage({
   });
   if (!order || order.user.email !== session.user.email) redirect("/account/orders");
 
-  const paymentPending = order.status === "PENDING";
+  const paymentPending = order.status === "PAYMENT_PENDING";
   const deposit = Number(order.depositAmount);
 
   return (

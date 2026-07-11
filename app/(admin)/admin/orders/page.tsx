@@ -8,11 +8,11 @@ export const dynamic = 'force-dynamic'
 const FILTERS: (OrderStatus | 'ALL')[] = [
   'ALL',
   'PAYMENT_CONFIRMED',
-  'PROCESSING',
+  'PREPARING',
   'SHIPPED',
   'DELIVERED',
   'DEPOSIT_REFUNDED',
-  'PENDING',
+  'PAYMENT_PENDING',
   'CANCELLED',
   'REFUNDED',
 ]

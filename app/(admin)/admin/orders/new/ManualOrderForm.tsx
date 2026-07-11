@@ -161,7 +161,7 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
           userId: customer.id,
           ...address,
           applyDeposit,
-          initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PENDING',
+          initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
           paymentNote: paymentNote || undefined,
           items: lines,
         }),

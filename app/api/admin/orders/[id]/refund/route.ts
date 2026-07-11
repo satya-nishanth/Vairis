@@ -59,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     amount = Number(order.depositAmount)
   } else {
-    if (!['PAYMENT_CONFIRMED', 'PROCESSING', 'CANCELLED'].includes(order.status)) {
+    if (!['PAYMENT_CONFIRMED', 'PREPARING', 'CANCELLED'].includes(order.status)) {
       return NextResponse.json(
         { error: 'Full refunds are for cancelled / pre-shipment orders only' },
         { status: 409 },

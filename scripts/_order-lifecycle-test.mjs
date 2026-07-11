@@ -7,11 +7,11 @@
  * customer pages — is exercised through the real HTTP surface:
  *
  *   1. checkout API without keys → 503 PAYMENTS_NOT_CONFIGURED
- *   2. seed PENDING order + CREATED payment (as /api/checkout would)
+ *   2. seed PAYMENT_PENDING order + CREATED payment (as /api/checkout would)
  *   3. webhook payment.captured (HMAC-signed) → PAYMENT_CONFIRMED, cart cleared
  *   4. duplicate webhook delivery → idempotent no-op
  *   5. bad webhook signature → 400
- *   6. admin: PROCESSING → SHIPPED (courier+AWB required) → DELIVERED
+ *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED
  *   7. refund API without keys → 503 (documented "not configured" path)
  *   8. webhook refund.processed (5%) → DEPOSIT_REFUNDED, PARTIALLY_REFUNDED
  *   9. customer surfaces: /account/orders, order detail, /track-order API
@@ -113,7 +113,7 @@ const gwPaymentId = `pay_SIM${Date.now()}`;
 const order = await prisma.order.create({
   data: {
     userId: user.id,
-    status: "PENDING",
+    status: "PAYMENT_PENDING",
     totalAmount: total,
     depositAmount: grandTotal - total,
     grandTotal,
@@ -124,7 +124,7 @@ const order = await prisma.order.create({
     state: "Karnataka",
     pincode: "560001",
     items: { create: { variantId: variant.id, quantity: 1, price: total, productName: variant.product.name } },
-    events: { create: { status: "PENDING", note: "Order created" } },
+    events: { create: { status: "PAYMENT_PENDING", note: "Order created" } },
   },
 });
 await prisma.payment.create({
@@ -178,9 +178,9 @@ console.log(`      seeded order ${order.id}`);
   res = await api(`/api/admin/orders/${order.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "PROCESSING" }),
+    body: JSON.stringify({ status: "PREPARING" }),
   });
-  step("→ PROCESSING", res.status === 200, `status ${res.status}`);
+  step("→ PREPARING", res.status === 200, `status ${res.status}`);
 
   res = await api(`/api/admin/orders/${order.id}`, {
     method: "PATCH",
@@ -199,7 +199,10 @@ console.log(`      seeded order ${order.id}`);
       trackingUrl: "https://bluedart.com/track/BD123456789",
     }),
   });
-  const shipment = await prisma.shipment.findUnique({ where: { orderId: order.id } });
+  const shipment = await prisma.shipment.findFirst({
+    where: { orderId: order.id },
+    orderBy: { dispatchedAt: "desc" },
+  });
   step("→ SHIPPED with manual courier details", res.status === 200 && shipment?.awbCode === "BD123456789");
 
   res = await api(`/api/admin/orders/${order.id}`, {
