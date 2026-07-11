@@ -157,6 +157,7 @@ ALTER TYPE "OrderStatus" ADD VALUE 'RETURN_REQUESTED';
 ALTER TYPE "OrderStatus" ADD VALUE 'RETURN_IN_TRANSIT';
 ALTER TYPE "OrderStatus" ADD VALUE 'RETURN_RECEIVED';
 ALTER TYPE "OrderStatus" ADD VALUE 'SPLIT_INTO_DELIVERIES';
+ALTER TYPE "OrderStatus" ADD VALUE 'FAILED_OTHER';
 
 -- Refund ledger enums
 CREATE TYPE "RefundKind" AS ENUM ('DEPOSIT', 'FULL', 'PARTIAL');
@@ -268,23 +269,24 @@ export const ORDER_STATUS_META: Record<
   CANCELLED: { label: "Cancelled", description: "Order cancelled.", tone: "bad" },
   REFUNDED: { label: "Refunded", description: "Refund processed to your payment method.", tone: "bad" },
   SPLIT_INTO_DELIVERIES: { label: "Multiple Deliveries", description: "Your order ships as separate deliveries — track each below.", tone: "active" },
+  FAILED_OTHER: { label: "Order Failed", description: "Something went wrong with this order — see the timeline. Any refund due is being processed.", tone: "bad" },
 };
 
 /** Admin-driven transitions (webhook/system transitions have their own endpoints). */
 export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   PAYMENT_PENDING: ["CANCELLED"],
-  PAYMENT_CONFIRMED: ["PREPARING", "CANCELLED"],
-  PREPARING: ["SHIPPED", "CANCELLED"],
-  SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED"],
-  OUT_FOR_DELIVERY: ["DELIVERED", "DELIVERY_FAILED"],
-  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNING_TO_ORIGIN"],
-  RETURNING_TO_ORIGIN: ["RTO_RECEIVED"],
-  RTO_RECEIVED: ["PREPARING", "CANCELLED"],
-  DELIVERED: ["RETURN_REQUESTED"],
-  DEPOSIT_REFUNDED: ["RETURN_REQUESTED"],
-  RETURN_REQUESTED: ["RETURN_IN_TRANSIT", "DELIVERED", "DEPOSIT_REFUNDED"], // last two = reject/revert (server validates revert target)
-  RETURN_IN_TRANSIT: ["RETURN_RECEIVED"],
-  RETURN_RECEIVED: ["PREPARING"], // QC fail → re-dispatch; QC pass goes through the refund endpoint
+  PAYMENT_CONFIRMED: ["PREPARING", "CANCELLED", "FAILED_OTHER"],
+  PREPARING: ["SHIPPED", "CANCELLED", "FAILED_OTHER"],
+  SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED", "FAILED_OTHER"],
+  OUT_FOR_DELIVERY: ["DELIVERED", "DELIVERY_FAILED", "FAILED_OTHER"],
+  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNING_TO_ORIGIN", "FAILED_OTHER"],
+  RETURNING_TO_ORIGIN: ["RTO_RECEIVED", "FAILED_OTHER"],
+  RTO_RECEIVED: ["PREPARING", "CANCELLED", "FAILED_OTHER"],
+  DELIVERED: ["RETURN_REQUESTED", "FAILED_OTHER"],
+  DEPOSIT_REFUNDED: ["RETURN_REQUESTED", "FAILED_OTHER"],
+  RETURN_REQUESTED: ["RETURN_IN_TRANSIT", "DELIVERED", "DEPOSIT_REFUNDED", "FAILED_OTHER"], // DELIVERED/DEPOSIT_REFUNDED = reject/revert (server validates revert target)
+  RETURN_IN_TRANSIT: ["RETURN_RECEIVED", "FAILED_OTHER"],
+  RETURN_RECEIVED: ["PREPARING", "FAILED_OTHER"], // QC fail → re-dispatch; QC pass goes through the refund endpoint
 };
 
 /** Extra manual marks for OFFLINE orders only (no gateway payment). */
@@ -293,6 +295,7 @@ export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderSt
   DELIVERED: ["DEPOSIT_REFUNDED"],
   CANCELLED: ["REFUNDED"],
   RETURN_RECEIVED: ["REFUNDED"],
+  FAILED_OTHER: ["REFUNDED"],
 };
 
 /** from→to pairs whose PATCH requires a non-empty note. */
@@ -301,6 +304,9 @@ export const REASON_REQUIRED: [OrderStatus, OrderStatus][] = [
   ["OUT_FOR_DELIVERY", "DELIVERY_FAILED"],
   ["RETURN_RECEIVED", "PREPARING"],
 ];
+
+/** Statuses that ALWAYS require a reason note when transitioned into. */
+export const REASON_REQUIRED_TARGETS: OrderStatus[] = ["FAILED_OTHER"];
 
 export const TIMELINE_STEPS: OrderStatus[] = [
   "PAYMENT_CONFIRMED",
@@ -386,7 +392,9 @@ export function statusAfterRefund(kind: RefundKind, current: OrderStatus): Order
   if (kind === "DEPOSIT") return "DEPOSIT_REFUNDED";
   if (kind === "FULL") return "REFUNDED";
   // PARTIAL settles the order only where a refund is the resolution step
-  return current === "CANCELLED" || current === "RETURN_RECEIVED" ? "REFUNDED" : null;
+  return current === "CANCELLED" || current === "RETURN_RECEIVED" || current === "FAILED_OTHER"
+    ? "REFUNDED"
+    : null;
 }
 
 export async function initiateRefund(params: {
@@ -736,7 +744,7 @@ git add -A && git commit -m "feat(orders): shipment attempts/outcomes + full dis
     'PAYMENT_CONFIRMED', 'PREPARING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED',
     'DELIVERY_FAILED', 'RETURNING_TO_ORIGIN', 'RTO_RECEIVED',
     'RETURN_REQUESTED', 'RETURN_IN_TRANSIT',
-    'DEPOSIT_REFUNDED', 'CANCELLED', 'REFUNDED',
+    'DEPOSIT_REFUNDED', 'CANCELLED', 'REFUNDED', 'FAILED_OTHER',
   ]),
 ```
 
@@ -744,7 +752,10 @@ After the allowed-move check add:
 
 ```typescript
   // Reason enforcement (lib/orders REASON_REQUIRED)
-  if (REASON_REQUIRED.some(([f, t]) => f === order.status && t === nextStatus) && !note?.trim()) {
+  const reasonRequired =
+    REASON_REQUIRED.some(([f, t]) => f === order.status && t === nextStatus) ||
+    REASON_REQUIRED_TARGETS.includes(nextStatus)
+  if (reasonRequired && !note?.trim()) {
     return NextResponse.json({ error: 'A reason note is required for this transition' }, { status: 400 })
   }
 
@@ -773,7 +784,7 @@ const refundedTotal = Number(
 
 pass `refundedTotal={refundedTotal}` to `OrderActions` (new prop, used for the "full" prefill = `Number(order.grandTotal) - refundedTotal`); also render a "Refunds" card listing `order.refunds` (amount, kind, method, status, reason, date) — add `refunds: { orderBy: { createdAt: 'desc' } }` to the page's include.
 
-- [ ] **Step 4: Orders list FILTERS** — extend array with `'DELIVERY_FAILED', 'RETURNING_TO_ORIGIN', 'RTO_RECEIVED', 'RETURN_REQUESTED', 'RETURN_IN_TRANSIT', 'RETURN_RECEIVED', 'PAYMENT_EXPIRED', 'SPLIT_INTO_DELIVERIES'`.
+- [ ] **Step 4: Orders list FILTERS** — extend array with `'DELIVERY_FAILED', 'RETURNING_TO_ORIGIN', 'RTO_RECEIVED', 'RETURN_REQUESTED', 'RETURN_IN_TRANSIT', 'RETURN_RECEIVED', 'PAYMENT_EXPIRED', 'SPLIT_INTO_DELIVERIES', 'FAILED_OTHER'`.
 
 - [ ] **Step 5: Verify + commit**
 
@@ -1302,7 +1313,7 @@ git add -A && git commit -m "feat(orders): admin order notes with per-note custo
 }
 ```
 
-Also add: single-item manual order asserts `childOrderIds` absent/empty and no parent created; return-request outside window (seed DELIVERED event 10 days old) → 409; return reject revert mismatch → 409, correct revert → 200.
+Also add: FAILED_OTHER — mark an active order FAILED_OTHER without note → 400; with note → 200; then offline refund mark → REFUNDED with ledger row. Also add: single-item manual order asserts `childOrderIds` absent/empty and no parent created; return-request outside window (seed DELIVERED event 10 days old) → 409; return reject revert mismatch → 409, correct revert → 200.
 
 - [ ] **Step 2: Docs.** `docs/API.md`: add the four new endpoints (auth levels 👤/🔐/🤖), update refund body, note parent/child track-order response. `docs/LAUNCH.md` env table: `ORDER_SWEEP_SECRET` (random secret, sweep auth), `ORDER_EXPIRY_HOURS` (optional, default 24), `RETURN_WINDOW_DAYS` (optional, default 7); §2 cron list gains "order expiry sweep — hourly POST /api/admin/sweep-orders". `docs/FEATURES.md`: mark failed-delivery/RTO, customer returns, payment retry + expiry, order notes, auto-split as ✅.
 

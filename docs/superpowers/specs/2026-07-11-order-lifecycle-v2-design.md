@@ -20,19 +20,19 @@ Decisions locked with Nishi:
 
 ## 1. State machine (single flat enum)
 
-### Status set (17)
+### Status set (18)
 
 Renames of existing values via `ALTER TYPE "OrderStatus" RENAME VALUE` (safe, atomic):
 `PENDING → PAYMENT_PENDING` · `PROCESSING → PREPARING`.
 New values: `PAYMENT_EXPIRED`, `OUT_FOR_DELIVERY`, `DELIVERY_FAILED`,
 `RETURNING_TO_ORIGIN`, `RTO_RECEIVED`, `RETURN_REQUESTED`, `RETURN_IN_TRANSIT`,
-`RETURN_RECEIVED`, `SPLIT_INTO_DELIVERIES`.
+`RETURN_RECEIVED`, `SPLIT_INTO_DELIVERIES`, `FAILED_OTHER`.
 
 Full set:
 `PAYMENT_PENDING · PAYMENT_EXPIRED · PAYMENT_CONFIRMED · PREPARING · SHIPPED ·
 OUT_FOR_DELIVERY · DELIVERY_FAILED · RETURNING_TO_ORIGIN · RTO_RECEIVED · DELIVERED ·
 DEPOSIT_REFUNDED · RETURN_REQUESTED · RETURN_IN_TRANSIT · RETURN_RECEIVED · CANCELLED ·
-REFUNDED · SPLIT_INTO_DELIVERIES`
+REFUNDED · SPLIT_INTO_DELIVERIES · FAILED_OTHER`
 
 **Two return families — never intersect:**
 - *Courier bounce* (customer never received): `DELIVERY_FAILED → RETURNING_TO_ORIGIN →
@@ -70,6 +70,8 @@ Legend: ⚡ webhook/system · 🔧 admin · ⏱ scheduled sweep · 👤 customer
 | RETURN_RECEIVED | REFUNDED | 🔧 QC pass → refund (configurable) | prefill = remaining captured |
 | RETURN_RECEIVED | PREPARING | 🔧 QC fail → re-dispatch to customer | mandatory reason note |
 | CANCELLED | REFUNDED | ⚡ refund.processed / 🔧 offline mark | |
+| *any active state* | FAILED_OTHER | 🔧 catch-all failure | mandatory reason note; for situations the graph doesn't cover (lost package, fraud, damage in QC, force majeure) |
+| FAILED_OTHER | REFUNDED | ⚡ refund.processed / 🔧 offline mark | configurable amount via ledger |
 
 **Late-payment race:** ⚡ capture on PAYMENT_EXPIRED/CANCELLED **never confirms** — records
 the capture, auto-initiates a full gateway refund, writes an admin-alert event
