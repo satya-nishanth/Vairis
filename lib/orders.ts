@@ -68,7 +68,7 @@ export const ORDER_STATUS_META: Record<
   },
   REFUNDED: {
     label: "Refunded",
-    description: "Full amount refunded to your payment method.",
+    description: "Refund processed to your payment method.",
     tone: "bad",
   },
   // New v2 states — labels per spec; behavior/transitions land in later tasks.
@@ -124,31 +124,42 @@ export const ORDER_STATUS_META: Record<
   },
 };
 
-/**
- * Valid admin-driven transitions. Webhook-driven transitions
- * (PAYMENT_PENDING→PAYMENT_CONFIRMED, DELIVERED→DEPOSIT_REFUNDED, →REFUNDED)
- * are handled by their endpoints, not this map.
- */
+/** Admin-driven transitions (webhook/system transitions have their own endpoints). */
 export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  PAYMENT_CONFIRMED: ["PREPARING", "CANCELLED"],
-  PREPARING: ["SHIPPED", "CANCELLED"],
-  SHIPPED: ["DELIVERED"],
+  PAYMENT_PENDING: ["CANCELLED"],
+  PAYMENT_CONFIRMED: ["PREPARING", "CANCELLED", "FAILED_OTHER"],
+  PREPARING: ["SHIPPED", "CANCELLED", "FAILED_OTHER"],
+  SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED", "FAILED_OTHER"],
+  OUT_FOR_DELIVERY: ["DELIVERED", "DELIVERY_FAILED", "FAILED_OTHER"],
+  DELIVERY_FAILED: ["OUT_FOR_DELIVERY", "RETURNING_TO_ORIGIN", "FAILED_OTHER"],
+  RETURNING_TO_ORIGIN: ["RTO_RECEIVED", "FAILED_OTHER"],
+  RTO_RECEIVED: ["PREPARING", "CANCELLED", "FAILED_OTHER"],
+  DELIVERED: ["RETURN_REQUESTED", "FAILED_OTHER"],
+  DEPOSIT_REFUNDED: ["RETURN_REQUESTED", "FAILED_OTHER"],
+  RETURN_REQUESTED: ["RETURN_IN_TRANSIT", "DELIVERED", "DEPOSIT_REFUNDED", "FAILED_OTHER"], // DELIVERED/DEPOSIT_REFUNDED = reject/revert (server validates revert target)
+  RETURN_IN_TRANSIT: ["RETURN_RECEIVED", "FAILED_OTHER"],
+  RETURN_RECEIVED: ["PREPARING", "FAILED_OTHER"], // QC fail → re-dispatch; QC pass goes through the refund endpoint
 };
 
-/**
- * EXTRA transitions allowed only for OFFLINE orders (manual/WhatsApp sales,
- * no gateway payment): money moves by hand (UPI/bank transfer), so the admin
- * marks the settlement instead of a refund webhook doing it.
- * Gateway-paid orders never use these — their refunds go through
- * /api/admin/orders/[id]/refund and the refund.processed webhook.
- */
+/** Extra manual marks for OFFLINE orders only (no gateway payment). */
 export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  PAYMENT_PENDING: ["PAYMENT_CONFIRMED", "CANCELLED"], // payment arrived offline / deal fell through
-  DELIVERED: ["DEPOSIT_REFUNDED"], // deposit returned via UPI/bank
-  CANCELLED: ["REFUNDED"], // money returned via UPI/bank
+  PAYMENT_PENDING: ["PAYMENT_CONFIRMED"],
+  DELIVERED: ["DEPOSIT_REFUNDED"],
+  CANCELLED: ["REFUNDED"],
+  RETURN_RECEIVED: ["REFUNDED"],
+  FAILED_OTHER: ["REFUNDED"],
 };
 
-/** Ordered steps for the customer timeline (happy path). */
+/** from→to pairs whose PATCH requires a non-empty note. */
+export const REASON_REQUIRED: [OrderStatus, OrderStatus][] = [
+  ["SHIPPED", "DELIVERY_FAILED"],
+  ["OUT_FOR_DELIVERY", "DELIVERY_FAILED"],
+  ["RETURN_RECEIVED", "PREPARING"],
+];
+
+/** Statuses that ALWAYS require a reason note when transitioned into. */
+export const REASON_REQUIRED_TARGETS: OrderStatus[] = ["FAILED_OTHER"];
+
 export const TIMELINE_STEPS: OrderStatus[] = [
   "PAYMENT_CONFIRMED",
   "PREPARING",
@@ -156,3 +167,8 @@ export const TIMELINE_STEPS: OrderStatus[] = [
   "DELIVERED",
   "DEPOSIT_REFUNDED",
 ];
+
+/** Orders in these states render the event-log timeline instead of happy-path steps. */
+export function isHappyPath(status: OrderStatus): boolean {
+  return (TIMELINE_STEPS as string[]).includes(status) || status === "PAYMENT_PENDING";
+}

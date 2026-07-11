@@ -1,5 +1,5 @@
 import type { OrderStatus } from "@prisma/client";
-import { ORDER_STATUS_META, TIMELINE_STEPS } from "@/lib/orders";
+import { ORDER_STATUS_META, TIMELINE_STEPS, isHappyPath } from "@/lib/orders";
 
 type OrderTimelineProps = {
   /** Current order status. */
@@ -15,7 +15,7 @@ type OrderTimelineProps = {
  * since the step metaphor no longer applies.
  */
 export function OrderTimeline({ status, events }: OrderTimelineProps) {
-  const terminal = status === "CANCELLED" || status === "REFUNDED";
+  const terminal = !isHappyPath(status);
   const reachedIndex = TIMELINE_STEPS.indexOf(status);
 
   const eventFor = (step: OrderStatus) => events.findLast((e) => e.status === step);
