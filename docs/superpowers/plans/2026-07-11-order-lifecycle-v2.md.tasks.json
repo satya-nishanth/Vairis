@@ -5,7 +5,7 @@
       "id": 0,
       "nativeId": 29,
       "subject": "Task 0: Schema v2 migration + status renames across codebase",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "id": 1,
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-11T18:29:06.216160"
+  "lastUpdated": "2026-07-12T00:40:26.171011"
 }

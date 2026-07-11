@@ -6,13 +6,13 @@
  * capture, admin transitions, shipping entry, deposit refund webhook,
  * customer pages — is exercised through the real HTTP surface:
  *
- *   1. checkout API without keys → 503 PAYMENTS_NOT_CONFIGURED
+ *   1. checkout: 503 not-configured (no keys) OR 200 + intent (keys present)
  *   2. seed PAYMENT_PENDING order + CREATED payment (as /api/checkout would)
  *   3. webhook payment.captured (HMAC-signed) → PAYMENT_CONFIRMED, cart cleared
  *   4. duplicate webhook delivery → idempotent no-op
  *   5. bad webhook signature → 400
  *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED
- *   7. refund API without keys → 503 (documented "not configured" path)
+ *   7. refund: 503 not-configured (no keys) OR 502 gateway-refused (keys + simulated payment id)
  *   8. webhook refund.processed (5%) → DEPOSIT_REFUNDED, PARTIALLY_REFUNDED
  *   9. customer surfaces: /account/orders, order detail, /track-order API
  */
@@ -28,6 +28,9 @@ const prisma = new PrismaClient();
 
 const envFile = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
 const WEBHOOK_SECRET = envFile.match(/^RAZORPAY_WEBHOOK_SECRET=(.+)$/m)?.[1]?.trim();
+// Gateway-aware: with real test keys in .env.local the "not configured" 503
+// paths don't exist — those steps assert the configured behavior instead.
+const GATEWAY_CONFIGURED = Boolean(envFile.match(/^RAZORPAY_KEY_ID=(.+)$/m)?.[1]?.trim());
 if (!WEBHOOK_SECRET) throw new Error("RAZORPAY_WEBHOOK_SECRET missing from .env.local");
 
 let pass = 0;
@@ -95,11 +98,26 @@ const api = (path, init) => page.evaluate(
       pincode: "560001",
     }),
   });
-  step(
-    "checkout without keys → 503 PAYMENTS_NOT_CONFIGURED",
-    res.status === 503 && res.body?.error === "PAYMENTS_NOT_CONFIGURED",
-    `status ${res.status}`,
-  );
+  if (GATEWAY_CONFIGURED) {
+    step(
+      "checkout with keys → 200 + gateway intent",
+      res.status === 200 && !!res.body?.clientParams && !!res.body?.orderId,
+      `status ${res.status}`,
+    );
+    // clean up the real PAYMENT_PENDING order this created
+    if (res.body?.orderId) {
+      await prisma.payment.deleteMany({ where: { orderId: res.body.orderId } });
+      await prisma.orderEvent.deleteMany({ where: { orderId: res.body.orderId } });
+      await prisma.orderItem.deleteMany({ where: { orderId: res.body.orderId } });
+      await prisma.order.delete({ where: { id: res.body.orderId } }).catch(() => {});
+    }
+  } else {
+    step(
+      "checkout without keys → 503 PAYMENTS_NOT_CONFIGURED",
+      res.status === 503 && res.body?.error === "PAYMENTS_NOT_CONFIGURED",
+      `status ${res.status}`,
+    );
+  }
 }
 
 // ── 2. seed order + payment exactly as /api/checkout would ──
@@ -220,7 +238,12 @@ console.log(`      seeded order ${order.id}`);
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "deposit" }),
   });
-  step("refund initiation without keys → 503 (not-configured path)", res.status === 503, `status ${res.status}`);
+  if (GATEWAY_CONFIGURED) {
+    // pay_SIM… doesn't exist at the gateway → our API surfaces 502 (gateway refused)
+    step("refund on simulated payment → 502 (gateway refused)", res.status === 502, `status ${res.status}`);
+  } else {
+    step("refund initiation without keys → 503 (not-configured path)", res.status === 503, `status ${res.status}`);
+  }
 }
 
 // ── 8. refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED ──
