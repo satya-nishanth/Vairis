@@ -1,12 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DEPOSIT_RATE } from '@/lib/orders'
 
-type VariantOption = { variantId: string; label: string; suggestedPrice: number }
+type VariantOption = {
+  variantId: string
+  productId: string
+  category: string
+  productName: string
+  itemCode: string
+  sku: string
+  label: string
+  suggestedPrice: number
+}
 type Customer = { id: string; email: string; name: string; mobile: string | null }
 type Line = { variantId: string; quantity: number; unitPrice: number }
+
+const CATEGORIES = [
+  { key: 'ALL', label: 'All' },
+  { key: 'RINGS', label: 'Rings' },
+  { key: 'EARRINGS', label: 'Earrings' },
+  { key: 'PENDANTS', label: 'Pendants' },
+  { key: 'BRACELETS', label: 'Bracelets' },
+  { key: 'NECKLACES', label: 'Necklaces' },
+] as const
 
 const input: React.CSSProperties = {
   width: '100%',
@@ -48,6 +66,10 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
     pincode: '',
   })
 
+  // Item picker
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]['key']>('ALL')
+  const [itemSearch, setItemSearch] = useState('')
+
   // Lines + settlement
   const [lines, setLines] = useState<Line[]>([])
   const [applyDeposit, setApplyDeposit] = useState(false)
@@ -55,6 +77,36 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
   const [paymentNote, setPaymentNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const filteredVariants = useMemo(() => {
+    const q = itemSearch.trim().toLowerCase()
+    return variantOptions
+      .filter((v) => (category === 'ALL' ? true : v.category === category))
+      .filter((v) => {
+        if (!q) return true
+        return (
+          v.productName.toLowerCase().includes(q) ||
+          v.sku.toLowerCase().includes(q) ||
+          v.itemCode.toLowerCase().includes(q) ||
+          v.label.toLowerCase().includes(q)
+        )
+      })
+      .slice(0, 80)
+  }, [variantOptions, category, itemSearch])
+
+  const categoryCounts = useMemo(() => {
+    // Count unique products per category (not variant rows)
+    const byCat = new Map<string, Set<string>>()
+    const all = new Set<string>()
+    for (const v of variantOptions) {
+      all.add(v.productId)
+      if (!byCat.has(v.category)) byCat.set(v.category, new Set())
+      byCat.get(v.category)!.add(v.productId)
+    }
+    const counts: Record<string, number> = { ALL: all.size }
+    for (const [cat, set] of byCat) counts[cat] = set.size
+    return counts
+  }, [variantOptions])
 
   async function search(q: string) {
     setQuery(q)
@@ -81,6 +133,7 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
     const opt = variantOptions.find((v) => v.variantId === variantId)
     if (!opt) return
     setLines((ls) => [...ls, { variantId, quantity: 1, unitPrice: opt.suggestedPrice }])
+    setItemSearch('')
   }
 
   const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))
@@ -168,15 +221,93 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
 
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>2 · Items</strong>
-        <label style={label}>Add product variant</label>
-        <select style={input} value="" onChange={(e) => e.target.value && addLine(e.target.value)}>
-          <option value="">— pick a variant —</option>
-          {variantOptions.map((v) => (
-            <option key={v.variantId} value={v.variantId}>
-              {v.label} · {inr(v.suggestedPrice)}
-            </option>
-          ))}
-        </select>
+
+        <label style={label}>Category</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {CATEGORIES.map((c) => {
+            const active = category === c.key
+            const count = categoryCounts[c.key] ?? 0
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCategory(c.key)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '0.6875rem',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  border: active ? '1px solid #032b24' : '1px solid #e5e7eb',
+                  background: active ? '#032b24' : '#fff',
+                  color: active ? '#fff' : '#4b5563',
+                }}
+              >
+                {c.label}
+                <span style={{ marginLeft: 4, opacity: 0.75 }}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <label style={label}>Search product / SKU / item code</label>
+        <input
+          style={input}
+          value={itemSearch}
+          onChange={(e) => setItemSearch(e.target.value)}
+          placeholder="e.g. solitaire, VR-R-012, SKU…"
+        />
+
+        <div
+          style={{
+            marginTop: 8,
+            border: '1px solid #e5e7eb',
+            maxHeight: 260,
+            overflowY: 'auto',
+            background: '#fafafa',
+          }}
+        >
+          {filteredVariants.length === 0 ? (
+            <p style={{ padding: '12px 10px', fontSize: '0.8125rem', color: '#9ca3af', margin: 0 }}>
+              No variants match — try another category or search.
+            </p>
+          ) : (
+            filteredVariants.map((v) => (
+              <button
+                key={v.variantId}
+                type="button"
+                onClick={() => addLine(v.variantId)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '9px 10px',
+                  fontSize: '0.8125rem',
+                  background: '#fff',
+                  border: 'none',
+                  borderBottom: '1px solid #f3f4f6',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: '#9ca3af', fontSize: '0.6875rem', marginRight: 6 }}>
+                    {v.category.charAt(0) + v.category.slice(1).toLowerCase()}
+                  </span>
+                  {v.label}
+                </span>
+                <span style={{ flexShrink: 0, color: '#032b24', fontWeight: 500 }}>{inr(v.suggestedPrice)}</span>
+              </button>
+            ))
+          )}
+        </div>
+        {itemSearch.trim() === '' && filteredVariants.length === 80 && (
+          <p style={{ margin: '6px 0 0', fontSize: '0.6875rem', color: '#9ca3af' }}>
+            Showing first 80 — pick a category or type to narrow further.
+          </p>
+        )}
 
         {lines.map((line, idx) => {
           const opt = variantOptions.find((v) => v.variantId === line.variantId)!
