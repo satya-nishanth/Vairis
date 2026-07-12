@@ -48,7 +48,7 @@
       "id": 5,
       "nativeId": 34,
       "subject": "Task 5: Payment retry + expiry sweep",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         2
       ]
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-12T13:16:49.187556"
+  "lastUpdated": "2026-07-13T00:18:30.984704"
 }
