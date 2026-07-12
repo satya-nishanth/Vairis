@@ -664,10 +664,15 @@ console.log(`      seeded order ${order.id}`);
     data: { refundedAmount: { increment: Number(b0.depositAmount) } },
   });
   await page.goto(`${BASE}/admin/orders/${b1.id}`, { waitUntil: "networkidle" });
-  let adminBody = await page.textContent("body");
+  // Deposit-specific: open the refund mini-form and check for the "Deposit"
+  // <option>, which only renders when canRefundDeposit is true. The generic
+  // "Refund…" button alone doesn't distinguish this — it also shows for
+  // canRefund (full/partial), which stays true regardless of this bug.
+  await page.locator("button", { hasText: "Refund…" }).click();
+  const depositOptionVisible = await page.locator('option[value="deposit"]').count();
   step(
-    "sibling's deposit refund doesn't block this delivery's own refund button",
-    adminBody.includes("Refund…"),
+    "sibling's deposit refund doesn't block this delivery's own deposit-refund option",
+    depositOptionVisible === 1,
   );
 
   // Customer surfaces.
