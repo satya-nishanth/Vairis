@@ -5,12 +5,36 @@ import { Container } from "@/components/ui/Container";
 import { OrderSummary } from "@/components/commerce/OrderSummary";
 import { OrderStatusChip, OrderTimeline } from "@/components/commerce/OrderTimeline";
 import { RetryPaymentButton } from "./RetryPaymentButton";
+import { ReturnRequestButton } from "./ReturnRequestButton";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Return eligibility (customer-facing "Easy Returns"): standalone orders and
+ * split children each have their own delivery/deposit, so this is computed
+ * per-order — a split parent's own status is SPLIT_INTO_DELIVERIES, never
+ * DELIVERED/DEPOSIT_REFUNDED, so it naturally never qualifies. Kept as a
+ * plain helper (not inline in the component body) since it reads the clock.
+ */
+function computeReturnEligibility(
+  status: string,
+  events: { status: string; createdAt: Date }[],
+): { returnEligibleUntil: Date | null; canRequestReturn: boolean } {
+  const returnWindowDays = Number(process.env.RETURN_WINDOW_DAYS ?? 7);
+  const deliveredEvent = [...events].reverse().find((e) => e.status === "DELIVERED");
+  const returnEligibleUntil = deliveredEvent
+    ? new Date(deliveredEvent.createdAt.getTime() + returnWindowDays * 86400_000)
+    : null;
+  const canRequestReturn =
+    (status === "DELIVERED" || status === "DEPOSIT_REFUNDED") &&
+    !!returnEligibleUntil &&
+    Date.now() <= returnEligibleUntil.getTime();
+  return { returnEligibleUntil, canRequestReturn };
+}
 
 /**
  * Order detail — items, 105%/5% money breakdown, status timeline, shipment.
@@ -53,6 +77,7 @@ export default async function OrderDetailPage({
   const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
   const isSplitParent = order.status === "SPLIT_INTO_DELIVERIES" && order.children.length > 0;
+  const { returnEligibleUntil, canRequestReturn } = computeReturnEligibility(order.status, order.events);
 
   return (
     <PageShell {...pageLayouts.contact}>
@@ -69,6 +94,12 @@ export default async function OrderDetailPage({
           <div className="order-detail__layout">
             <div>
               {order.status === "PAYMENT_PENDING" && <RetryPaymentButton orderId={order.id} />}
+              {canRequestReturn && returnEligibleUntil && (
+                <ReturnRequestButton
+                  orderId={order.id}
+                  eligibleUntil={returnEligibleUntil.toISOString()}
+                />
+              )}
 
               <section className="confirm-card">
                 <h3 className="confirm-card__heading">Order Journey</h3>
