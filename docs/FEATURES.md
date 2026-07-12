@@ -28,6 +28,12 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Public order tracking (order ID + email, no login) | ✅ | Enumeration-safe |
 | Deposit refund after delivery (partial gateway refund) | 🟡 | One admin click; needs Razorpay keys |
 | Full refund on cancellation | 🟡 | Same |
+| Refund ledger (`OrderRefund`) — declared intent, gateway + offline, webhook-matched completion | ✅ | `lib/refunds.ts`; every rupee returned is a row |
+| Payment retry (same order, same locked price) + expiry sweep | ✅ | `/api/orders/[id]/retry-payment`, `/api/admin/sweep-orders` — race-safe against late webhook capture |
+| Failed-delivery handling (retry attempt, RTO, RTO re-dispatch) | ✅ | `DELIVERY_FAILED → OUT_FOR_DELIVERY` retry or `→ RETURNING_TO_ORIGIN → RTO_RECEIVED → PREPARING` re-dispatch; re-dispatch creates a fresh `Shipment` row |
+| Customer returns (self-serve request within window, admin approve/reject, QC pass/fail) | ✅ | `/api/orders/[id]/return-request`; window = `RETURN_WINDOW_DAYS`; reject reverts to exact prior status; QC-fail requires a reason note |
+| Order notes (internal admin notes vs customer-visible) | ✅ | `/api/admin/orders/[id]/notes`; internal notes never reach customer surfaces |
+| Auto-split multi-item orders into per-item deliveries, payment-anchored to the parent | ✅ | `lib/split.ts`; proration exact, refunds resolve from the individual delivery |
 | Shipping partner integration | ⏳ | Partner undecided; manual courier/AWB entry works today (`lib/shipping` port ready) |
 | EMI / offers / promo codes | ⏳ | Promo field UI exists on cart, no backend |
 
@@ -60,7 +66,7 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Swappable payment gateway port (`lib/payments`) | ✅ | Razorpay adapter today; add adapter + env to swap |
 | Swappable shipping provider port (`lib/shipping`) | ✅ | Manual today; Shiprocket-ready interface |
 | ESLint (zero findings) + TypeScript strict passes | ✅ | `npm run lint` |
-| Test suites: storefront flow (14), order lifecycle (15), route crawler | ✅ | `scripts/_flow-test.mjs`, `_order-lifecycle-test.mjs`, `_crawl.mjs` |
+| Test suites: storefront flow (14), order lifecycle v2 (70 scenarios), route crawler | ✅ | `scripts/_flow-test.mjs`, `_order-lifecycle-test.mjs`, `_crawl.mjs` |
 | Transactional email infra | 🟡 | Resend; needs domain verification |
 | SEO (sitemap, robots, JSON-LD) | ⏳ | Roadmap P7 |
 | Error tracking / monitoring | ⏳ | Vercel Analytics only |

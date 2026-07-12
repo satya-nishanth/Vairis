@@ -20,6 +20,15 @@
  *       proration exact (traced 10001/20003/30007 by hand); single-item manual order stays unsplit
  *   12. auto-split: online checkout multi-item order → payment.captured splits atomically with
  *       confirmation; child refund resolves the parent's payment; customer/admin/track-order rendering
+ *   13. delivery-fail → retry (OUT_FOR_DELIVERY) → deliver
+ *   14. delivery-fail → RTO → RTO_RECEIVED → re-dispatch (new Shipment row) → deliver
+ *   15. RTO_RECEIVED → CANCELLED → offline partial refund → REFUNDED with ledger row
+ *   16. customer return: window enforcement (accept/reject), second request on an already-requested
+ *       order rejected, request → approve → received → QC-pass offline refund → REFUNDED
+ *   17. return reject: wrong revert target → 409; correct revert → exact prior status
+ *   18. QC-fail: RETURN_RECEIVED → PREPARING requires a reason note → re-dispatch
+ *   19. FAILED_OTHER requires a reason note → offline refund mark → REFUNDED with ledger row
+ *   20. order notes: internal vs customer-visible on track-order; PATCH visibility toggle
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -713,6 +722,301 @@ console.log(`      seeded order ${order.id}`);
   await prisma.payment.deleteMany({ where: { orderId: parentB.id } });
   await prisma.order.deleteMany({ where: { parentOrderId: parentB.id } });
   await prisma.order.delete({ where: { id: parentB.id } });
+}
+
+// ── shared seed for the delivery/return scenarios below: an offline
+// (no gateway Payment) order in an arbitrary starting status, optionally
+// with a Shipment row already attached (as PATCH SHIPPED would create). ──
+async function seedOrder(status, { shipment = false, events = undefined, label = "Lifecycle Buyer" } = {}) {
+  const o = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status,
+      totalAmount: 10000,
+      depositAmount: 500,
+      grandTotal: 10500,
+      contactName: label,
+      contactPhone: "9876543210",
+      addressLine1: "5 Test Colony",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      events: { create: events ?? [{ status, note: "seed" }] },
+    },
+  });
+  if (shipment) {
+    await prisma.shipment.create({
+      data: { orderId: o.id, courierName: "DTDC", awbCode: "SEED-AWB-1", status: "IN_TRANSIT" },
+    });
+  }
+  return o;
+}
+
+async function cleanupOrder(id) {
+  await prisma.orderNote.deleteMany({ where: { orderId: id } });
+  await prisma.orderRefund.deleteMany({ where: { orderId: id } });
+  await prisma.orderEvent.deleteMany({ where: { orderId: id } });
+  await prisma.shipment.deleteMany({ where: { orderId: id } });
+  await prisma.orderItem.deleteMany({ where: { orderId: id } });
+  await prisma.order.delete({ where: { id } });
+}
+
+// ── 13. delivery-fail → retry (OUT_FOR_DELIVERY) → deliver ──
+{
+  const o = await seedOrder("SHIPPED", { shipment: true });
+  const patch = (status, extra = {}) => api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, ...extra }),
+  });
+
+  let res = await patch("DELIVERY_FAILED");
+  step("delivery-fail without reason rejected", res.status === 400, `status ${res.status}`);
+
+  res = await patch("DELIVERY_FAILED", { note: "Customer not home" });
+  step("delivery-fail with reason ok", res.status === 200, `status ${res.status}`);
+  let ship = await prisma.shipment.findFirst({ where: { orderId: o.id } });
+  step("shipment attempt recorded, still one shipment row", ship.attempts === 1 && ship.status === "ATTEMPT_FAILED");
+
+  res = await patch("OUT_FOR_DELIVERY");
+  step("delivery-fail → retry OUT_FOR_DELIVERY", res.status === 200, `status ${res.status}`);
+
+  res = await patch("DELIVERED");
+  const after = await prisma.order.findUnique({ where: { id: o.id } });
+  ship = await prisma.shipment.findFirst({ where: { orderId: o.id } });
+  const count = await prisma.shipment.count({ where: { orderId: o.id } });
+  step(
+    "retry succeeds → DELIVERED, shipment count unchanged",
+    res.status === 200 && after.status === "DELIVERED" && ship.outcome === "DELIVERED" && count === 1,
+  );
+
+  await cleanupOrder(o.id);
+}
+
+// ── 14. delivery-fail → RTO → RTO_RECEIVED → re-dispatch (new Shipment row) → deliver ──
+{
+  const o = await seedOrder("SHIPPED", { shipment: true });
+  const patch = (status, extra = {}) => api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, ...extra }),
+  });
+
+  await patch("DELIVERY_FAILED", { note: "Wrong address" });
+  let res = await patch("RETURNING_TO_ORIGIN");
+  step("→ RETURNING_TO_ORIGIN", res.status === 200, `status ${res.status}`);
+  let ship = await prisma.shipment.findFirst({ where: { orderId: o.id } });
+  step("shipment marked RTO outcome", ship.outcome === "RTO" && ship.status === "RETURNING_TO_ORIGIN");
+
+  res = await patch("RTO_RECEIVED");
+  step("→ RTO_RECEIVED", res.status === 200, `status ${res.status}`);
+
+  res = await patch("PREPARING", { note: "Address corrected on WhatsApp" });
+  step("RTO re-dispatch → PREPARING", res.status === 200, `status ${res.status}`);
+
+  res = await patch("SHIPPED", { courierName: "BlueDart", awbCode: "SEED-AWB-2" });
+  const shipCount = await prisma.shipment.count({ where: { orderId: o.id } });
+  step("re-dispatch creates a SECOND shipment row (count=2)", res.status === 200 && shipCount === 2, `count ${shipCount}`);
+
+  res = await patch("DELIVERED");
+  const after = await prisma.order.findUnique({ where: { id: o.id } });
+  step("re-dispatched delivery → DELIVERED", res.status === 200 && after.status === "DELIVERED");
+
+  await cleanupOrder(o.id);
+}
+
+// ── 15. RTO_RECEIVED → CANCELLED → offline partial refund → REFUNDED with ledger row ──
+{
+  const o = await seedOrder("RTO_RECEIVED");
+  let res = await api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "CANCELLED" }),
+  });
+  step("RTO_RECEIVED → CANCELLED", res.status === 200, `status ${res.status}`);
+
+  res = await api(`/api/admin/orders/${o.id}/refund`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "partial", amount: 5000, reason: "RTO cancellation — partial refund" }),
+  });
+  const after = await prisma.order.findUnique({ where: { id: o.id }, include: { refunds: true } });
+  step(
+    "offline partial refund on cancelled RTO → REFUNDED with ledger row",
+    res.status === 200 && after.status === "REFUNDED" && after.refunds.length === 1 &&
+      after.refunds[0].method === "OFFLINE" && Number(after.refunds[0].amount) === 5000,
+    JSON.stringify({ status: after.status, refunds: after.refunds.length }),
+  );
+
+  await cleanupOrder(o.id);
+}
+
+// ── 16. customer return: window enforcement + second-request rejection +
+//         full request → approve → received → QC-pass refund → REFUNDED ──
+{
+  // within window: DELIVERED event is "now"
+  const r1 = await seedOrder("DELIVERED", { events: [{ status: "DELIVERED", note: "seed" }] });
+  let res = await api(`/api/orders/${r1.id}/return-request`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Item does not match description" }),
+  });
+  step("return request within window accepted", res.status === 200, `status ${res.status}`);
+
+  // second attempt on an already-RETURN_REQUESTED order is rejected by the
+  // return-request route's own status check (only DELIVERED/DEPOSIT_REFUNDED
+  // are eligible starting states) — NOT by ADMIN_TRANSITIONS.
+  res = await api(`/api/orders/${r1.id}/return-request`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Trying again, second time" }),
+  });
+  step("second return-request on already-requested order rejected", res.status === 409, `status ${res.status}`);
+
+  const patch1 = (status, extra = {}) => api(`/api/admin/orders/${r1.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, ...extra }),
+  });
+  res = await patch1("RETURN_IN_TRANSIT");
+  step("admin approves → RETURN_IN_TRANSIT", res.status === 200, `status ${res.status}`);
+  res = await patch1("RETURN_RECEIVED");
+  step("→ RETURN_RECEIVED", res.status === 200, `status ${res.status}`);
+
+  res = await api(`/api/admin/orders/${r1.id}/refund`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "partial", amount: 4000, reason: "QC passed — refund minus handling" }),
+  });
+  const r1After = await prisma.order.findUnique({ where: { id: r1.id }, include: { refunds: true } });
+  step(
+    "QC-pass offline refund → REFUNDED with ledger row",
+    res.status === 200 && r1After.status === "REFUNDED" && r1After.refunds.length === 1,
+    JSON.stringify({ status: r1After.status, refunds: r1After.refunds.length }),
+  );
+  await cleanupOrder(r1.id);
+
+  // outside window: DELIVERED event backdated 10 days (default RETURN_WINDOW_DAYS=7)
+  const deliveredOld = new Date(Date.now() - 10 * 86400_000);
+  const r2 = await seedOrder("DELIVERED", { events: [{ status: "DELIVERED", note: "seed", createdAt: deliveredOld }] });
+  res = await api(`/api/orders/${r2.id}/return-request`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Too late, testing window enforcement" }),
+  });
+  step("return request outside window rejected", res.status === 409, `status ${res.status}`);
+  await cleanupOrder(r2.id);
+}
+
+// ── 17. return reject: wrong revert target → 409; correct revert → 200 ──
+{
+  const r3 = await seedOrder("DELIVERED", { events: [{ status: "DELIVERED", note: "seed" }] });
+  await api(`/api/orders/${r3.id}/return-request`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Changed my mind, testing reject flow" }),
+  });
+  const patch3 = (status) => api(`/api/admin/orders/${r3.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+  });
+
+  let res = await patch3("DEPOSIT_REFUNDED");
+  step("reject with wrong revert target → 409", res.status === 409, `status ${res.status} — ${res.body?.error}`);
+
+  res = await patch3("DELIVERED");
+  const r3After = await prisma.order.findUnique({ where: { id: r3.id } });
+  step(
+    "reject reverts to exact prior status → 200",
+    res.status === 200 && r3After.status === "DELIVERED",
+    `status ${res.status}, order now ${r3After.status}`,
+  );
+
+  await cleanupOrder(r3.id);
+}
+
+// ── 18. QC-fail: RETURN_RECEIVED → PREPARING requires a reason note → re-dispatch ──
+{
+  const o = await seedOrder("RETURN_RECEIVED");
+  const patch = (status, extra = {}) => api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, ...extra }),
+  });
+
+  let res = await patch("PREPARING");
+  step("QC-fail → PREPARING without reason rejected", res.status === 400, `status ${res.status}`);
+
+  res = await patch("PREPARING", { note: "QC failed — stone chipped, redo setting" });
+  step("QC-fail → PREPARING with reason ok", res.status === 200, `status ${res.status}`);
+
+  res = await patch("SHIPPED", { courierName: "DTDC", awbCode: "SEED-AWB-QC" });
+  step("re-dispatch → SHIPPED", res.status === 200, `status ${res.status}`);
+
+  await cleanupOrder(o.id);
+}
+
+// ── 19. FAILED_OTHER requires a reason note → offline refund mark → REFUNDED with ledger row ──
+{
+  const o = await seedOrder("PAYMENT_CONFIRMED");
+  let res = await api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "FAILED_OTHER" }),
+  });
+  step("FAILED_OTHER without note rejected", res.status === 400, `status ${res.status}`);
+
+  res = await api(`/api/admin/orders/${o.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "FAILED_OTHER", note: "Item lost in transit before dispatch" }),
+  });
+  step("FAILED_OTHER with note ok", res.status === 200, `status ${res.status}`);
+
+  res = await api(`/api/admin/orders/${o.id}/refund`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "full", reason: "Order failed — full offline refund" }),
+  });
+  const after = await prisma.order.findUnique({ where: { id: o.id }, include: { refunds: true } });
+  step(
+    "offline refund on FAILED_OTHER → REFUNDED with ledger row",
+    res.status === 200 && after.status === "REFUNDED" && after.refunds.length === 1 &&
+      after.refunds[0].method === "OFFLINE" && Number(after.refunds[0].amount) === 10500,
+    JSON.stringify({ status: after.status, refunds: after.refunds.length }),
+  );
+
+  await cleanupOrder(o.id);
+}
+
+// ── 20. order notes: internal vs customer-visible on track-order; PATCH toggle ──
+{
+  const o = await seedOrder("PAYMENT_CONFIRMED");
+
+  let res = await api(`/api/admin/orders/${o.id}/notes`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body: "INTERNAL-ONLY-negotiated-discount-Zx91", internal: true }),
+  });
+  step("internal note created", res.status === 201, `status ${res.status}`);
+  const internalNoteId = res.body?.id;
+
+  res = await api(`/api/admin/orders/${o.id}/notes`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body: "Your ring is being polished", internal: false }),
+  });
+  step("customer-visible note created", res.status === 201, `status ${res.status}`);
+  const publicNoteId = res.body?.id;
+
+  let track = await api("/api/track-order", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: o.id, email: EMAIL }),
+  });
+  let bodies = JSON.stringify(track.body);
+  step(
+    "track-order shows customer note, never the internal one",
+    bodies.includes("being polished") && !bodies.includes("negotiated-discount-Zx91"),
+  );
+
+  res = await api(`/api/admin/orders/${o.id}/notes/${internalNoteId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ internal: false }),
+  });
+  step("PATCH toggles internal note visible", res.status === 200, `status ${res.status}`);
+  track = await api("/api/track-order", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: o.id, email: EMAIL }),
+  });
+  step("toggled note now visible on track-order", JSON.stringify(track.body).includes("negotiated-discount-Zx91"));
+
+  res = await api(`/api/admin/orders/${o.id}/notes/${publicNoteId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ internal: true }),
+  });
+  step("PATCH toggles public note internal", res.status === 200, `status ${res.status}`);
+  track = await api("/api/track-order", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: o.id, email: EMAIL }),
+  });
+  step("toggled note now hidden from track-order", !JSON.stringify(track.body).includes("being polished"));
+
+  await cleanupOrder(o.id);
 }
 
 // ── cleanup ──

@@ -82,10 +82,41 @@ Handlers are idempotent; refunds distinguish 5%-deposit vs full by cumulative am
 
 ## Orders
 
+Full v2 lifecycle — 18 `OrderStatus` values (`lib/orders.ts`):
+`PAYMENT_PENDING, PAYMENT_EXPIRED, PAYMENT_CONFIRMED, PREPARING, SHIPPED, OUT_FOR_DELIVERY,
+DELIVERY_FAILED, RETURNING_TO_ORIGIN, RTO_RECEIVED, DELIVERED, DEPOSIT_REFUNDED,
+RETURN_REQUESTED, RETURN_IN_TRANSIT, RETURN_RECEIVED, CANCELLED, REFUNDED,
+SPLIT_INTO_DELIVERIES, FAILED_OTHER`.
+Valid admin transitions live in `ADMIN_TRANSITIONS` (+ `OFFLINE_SETTLEMENT_TRANSITIONS` for
+orders with no gateway `Payment`); transitions requiring a reason `note` are listed in
+`REASON_REQUIRED` / `REASON_REQUIRED_TARGETS` (e.g. any transition into `FAILED_OTHER`, or
+`SHIPPED|OUT_FOR_DELIVERY → DELIVERY_FAILED`).
+
+Multi-item orders auto-split atomically into one child `Order` per line item (`SPLIT_INTO_DELIVERIES`
+on the parent) — see `lib/split.ts`. The parent's gateway `Payment` is shared by all children
+(payment anchoring); refunds are always initiated from an individual child, never the parent.
+
 ### `POST /api/track-order` 🌐
 Public tracking: requires order id AND purchase email (identical 404 for wrong id or wrong email — no enumeration). Response intentionally excludes amounts/address.
 - Body: `{ orderId, email }`
-- 200 → `{ orderId, status, placedAt, events[], shipment: { courierName, awbCode, trackingUrl } | null }`
+- 200 → `{ orderId, status, placedAt, events[], notes: { body, createdAt }[], shipment: { courierName, awbCode, trackingUrl } | null, children?: [...] }`
+  - `notes` only ever includes customer-visible (`internal: false`) notes — internal notes never serialize into this response
+  - `children` is present only when the order is a split parent (`SPLIT_INTO_DELIVERIES`) — one summary object per delivery, same shape (`orderId, status, events, notes, shipment`)
+
+### `POST /api/orders/[id]/retry-payment` 👤
+Relaunch the gateway checkout for the caller's own `PAYMENT_PENDING` order — reuses the original
+gateway order id (price stays locked), bounded by the expiry sweep.
+- 200 → `{ orderId, gateway, clientParams, contact }` (same `clientParams` shape as `/api/checkout`)
+- 404 not caller's order · 409 order not awaiting payment · 503 `PAYMENTS_NOT_CONFIGURED`
+
+### `POST /api/orders/[id]/return-request` 👤
+Customer-initiated return ("Easy Returns"). Order must be `DELIVERED` or `DEPOSIT_REFUNDED` and
+within `RETURN_WINDOW_DAYS` (default 7) of the `DELIVERED` event → moves to `RETURN_REQUESTED`.
+Admin approves (`RETURN_IN_TRANSIT`) or rejects (reverts to the exact prior status) via the admin
+PATCH endpoint below.
+- Body: `{ reason }` (min 5 chars)
+- 200 `{ ok: true }` · 400 missing/short reason · 404 not caller's order · 409 not eligible
+  (wrong status — including a second request on an already-`RETURN_REQUESTED` order — or outside the return window)
 
 *(Customer order list/detail are server-rendered pages — `/account/orders[/id]` — not JSON APIs.)*
 
@@ -95,18 +126,35 @@ Public tracking: requires order id AND purchase email (identical 404 for wrong i
 - Query: `status` (OrderStatus) — omit for all. 200 → orders with items, payment, user. Max 200 rows.
 
 ### `PATCH /api/admin/orders/[id]`
-Guarded status transition (valid moves: `lib/orders.ts` `ADMIN_TRANSITIONS`; webhook-owned transitions rejected here).
-- Body: `{ status: PROCESSING|SHIPPED|DELIVERED|CANCELLED, note?, courierName?, awbCode?, trackingUrl? }`
-- `SHIPPED` requires `courierName` + `awbCode` while the manual shipping provider is active
+Guarded status transition (valid moves: `lib/orders.ts` `ADMIN_TRANSITIONS` + `OFFLINE_SETTLEMENT_TRANSITIONS`; webhook-owned transitions rejected here).
+- Body: `{ status: OrderStatus, note?, courierName?, awbCode?, trackingUrl? }`
+- `SHIPPED` requires `courierName` + `awbCode` while the manual shipping provider is active — creates a new `Shipment` row every time (re-dispatch after RTO/QC-fail shows up as a second row)
+- `note` is required (400 without) for transitions in `REASON_REQUIRED` / any transition into `FAILED_OTHER`
+- Rejecting a `RETURN_REQUESTED` order (→ `DELIVERED` or `DEPOSIT_REFUNDED`) must target the exact status the order held before the return request — 409 otherwise
 - Every transition appends an `OrderEvent` (customer timeline)
-- 200 · 400 missing shipping fields · 409 illegal transition
+- 200 · 400 missing shipping fields / missing reason note · 409 illegal transition or wrong revert target
 
 ### `POST /api/admin/orders/[id]/refund`
-Initiate a gateway refund. Status flips only when `refund.processed` webhook lands.
-- Body: `{ type: "deposit" | "full" }`
-  - `deposit` — 5% security deposit; order must be `DELIVERED`, not already refunded
-  - `full` — remaining captured amount; only `PAYMENT_CONFIRMED|PROCESSING|CANCELLED`
-- 200 `{ ok, amount }` · 409 wrong state · 503 gateway not configured · 502 gateway refused
+Initiate a refund via the ledger (`lib/refunds.ts`). Gateway refunds complete when the
+`refund.processed` webhook lands; orders with no gateway `Payment` (offline/manual orders) are
+marked `COMPLETED` immediately and the order status flips synchronously.
+- Body: `{ kind: "deposit" | "full" | "partial", amount?, reason }`
+  - `deposit` — 5% security deposit; order must be `DELIVERED`, not already refunded → `DEPOSIT_REFUNDED`
+  - `full` — remaining captured amount → `REFUNDED`
+  - `partial` — `amount` required; only settles the order (→ `REFUNDED`) when current status is `CANCELLED`, `RETURN_RECEIVED`, or `FAILED_OTHER`
+  - `amount` required for `partial`, ignored otherwise; `reason` always required (min 3 chars)
+- Every refund creates an `OrderRefund` ledger row (`amount, kind, method: GATEWAY|OFFLINE, status`)
+- 200 `{ ok, amount }` · 400 invalid body · 409 wrong state / exceeds remaining / split parent (refund from the child delivery instead) · 503 gateway not configured · 502 gateway refused
+
+### `POST /api/admin/orders/[id]/notes`
+Add a note to an order (author = admin session email).
+- Body: `{ body (1-2000 chars), internal?: boolean }` — `internal` defaults `true`; only `internal: false` notes ever appear on customer surfaces (order page, track-order)
+- 201 → created `OrderNote` · 400 missing/empty body · 404 order not found
+
+### `PATCH /api/admin/orders/[id]/notes/[noteId]`
+Toggle a note's visibility.
+- Body: `{ internal: boolean }`
+- 200 → updated `OrderNote` · 400 missing field · 404 note not found (or belongs to a different order)
 
 ## Admin — Products 🔐
 
@@ -139,6 +187,14 @@ Public read for client components (PromoBar). 200 → `{ banner: Banner | null }
 Fetch live gold price → update `GoldRate` rows. Called by the GitHub Actions cron (never Vercel cron).
 - Header: `Authorization: Bearer $GOLD_SYNC_SECRET`
 - 200 rates updated · 401 bad/missing secret · 429 if synced < 30 min ago
+
+### `POST /api/admin/sweep-orders` 🤖
+Expire stale unpaid orders — `PAYMENT_PENDING` older than `ORDER_EXPIRY_HOURS` (default 24) with no
+`CAPTURED` payment → `PAYMENT_EXPIRED`. Race-safe by construction: the update re-checks status +
+payment state at write time, so an order whose payment lands `CAPTURED` between the scan and the
+write is skipped, never clobbered. Called by the GitHub Actions hourly cron (never Vercel cron).
+- Header: `Authorization: Bearer $ORDER_SWEEP_SECRET`
+- 200 → `{ ok: true, checked, expired }` · 401 bad/missing secret
 
 ### `GET /api/auth/callback` 🌐
 Supabase OAuth/PKCE redirect handler (Google sign-in, email links). Redirects to `?next=` or `/`.

@@ -57,6 +57,13 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
 | `GOLD_SYNC_SECRET` | random secret | Bearer token for `/api/admin/sync-gold-rate` |
 | `METAL_PRICE_API_KEY` | metals-api key | live gold price source |
 
+### Order lifecycle
+| Key | Value | Notes |
+|-----|-------|-------|
+| `ORDER_SWEEP_SECRET` | random secret | Bearer token for `/api/admin/sweep-orders` (expiry sweep) |
+| `ORDER_EXPIRY_HOURS` | *(optional)* number, default `24` | age (hours) after which an unpaid `PAYMENT_PENDING` order is swept to `PAYMENT_EXPIRED` |
+| `RETURN_WINDOW_DAYS` | *(optional)* number, default `7` | days after delivery a customer can self-serve a return request |
+
 ---
 
 ## 2. Third-party configuration (outside the repo)
@@ -77,6 +84,8 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
    - [ ] Buy/point domain → Vercel; update `NEXT_PUBLIC_APP_URL` everywhere
 6. **Gold-rate cron** (roadmap P2 — GitHub Actions, NOT Vercel cron)
    - [ ] Scheduled workflow POSTing to `/api/admin/sync-gold-rate` with `Authorization: Bearer $GOLD_SYNC_SECRET` every ~1h market hours
+7. **Order expiry sweep** (GitHub Actions, NOT Vercel cron)
+   - [ ] Scheduled workflow POSTing to `/api/admin/sweep-orders` with `Authorization: Bearer $ORDER_SWEEP_SECRET` hourly — expires stale unpaid orders past `ORDER_EXPIRY_HOURS`
 
 ## 3. Database — production migrations (⚠ not yet applied)
 
@@ -105,7 +114,8 @@ Run all of these green on the production build:
 ```bash
 npm run lint && npx tsc --noEmit && npm run build
 node scripts/_flow-test.mjs            # 14-step storefront regression
-node scripts/_order-lifecycle-test.mjs # 15-step order lifecycle
+node scripts/_order-lifecycle-test.mjs # 70-scenario order lifecycle v2 (checkout, admin transitions,
+                                        # refund ledger, sweep, returns, notes, auto-split)
 node scripts/_crawl.mjs                # route/console/404 crawl
 ```
 Manual: one REAL test-mode payment end-to-end (checkout → Razorpay modal → confirmation → admin ship → deliver → deposit refund from admin → verify refund lands in Razorpay dashboard + status flips via webhook).
