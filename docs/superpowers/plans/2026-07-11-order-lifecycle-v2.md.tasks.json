@@ -84,7 +84,7 @@
       "id": 9,
       "nativeId": 38,
       "subject": "Task 9: Lifecycle test suite v2 + docs + full verification",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         4,
         5,
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-13T01:06:22.606703"
+  "lastUpdated": "2026-07-12T20:03:29.491318Z"
 }
