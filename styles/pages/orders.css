@@ -220,6 +220,30 @@
   margin-top: 4px;
 }
 
+/* Happy-path "Updates" list — customer-visible notes, shown below the steps */
+.order-timeline__updates {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.order-timeline__updates li {
+  padding: 6px 0;
+}
+
+.order-timeline__updates p {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.order-timeline__updates time {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
 /* Split orders: parent lists each child delivery */
 .order-deliveries {
   display: flex;

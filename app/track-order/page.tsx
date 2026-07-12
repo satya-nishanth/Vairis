@@ -16,10 +16,14 @@ import { pageLayouts } from "@/lib/layout-config";
 
 type TrackShipment = { courierName: string | null; awbCode: string | null; trackingUrl: string | null } | null;
 
+type TrackNote = { body: string; createdAt: string };
+
 type TrackChild = {
   orderId: string;
   status: OrderStatus;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
+  /** Customer-visible notes only — server already filtered internal:true. */
+  notes: TrackNote[];
   shipment: TrackShipment;
 };
 
@@ -27,6 +31,8 @@ type TrackResult = {
   orderId: string;
   status: OrderStatus;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
+  /** Customer-visible notes only — server already filtered internal:true. */
+  notes: TrackNote[];
   shipment: TrackShipment;
   /** Present when this order is a split parent (lib/split.ts) — one summary per delivery. */
   children?: TrackChild[];
@@ -116,6 +122,7 @@ export default function TrackOrderPage() {
               <OrderTimeline
                 status={result.status}
                 events={result.events.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }))}
+                notes={result.notes.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }))}
               />
               {result.shipment?.trackingUrl && (
                 <p className="checkout-note">
@@ -138,6 +145,7 @@ export default function TrackOrderPage() {
                       <OrderTimeline
                         status={child.status}
                         events={child.events.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }))}
+                        notes={child.notes.map((n) => ({ ...n, createdAt: new Date(n.createdAt) }))}
                       />
                       {child.shipment?.trackingUrl && (
                         <p className="checkout-note">

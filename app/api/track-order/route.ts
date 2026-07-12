@@ -26,11 +26,13 @@ export async function POST(req: NextRequest) {
     include: {
       events: { orderBy: { createdAt: 'asc' } },
       shipments: { orderBy: { dispatchedAt: 'desc' } },
+      notes: { orderBy: { createdAt: 'asc' } },
       user: { select: { email: true } },
       children: {
         include: {
           events: { orderBy: { createdAt: 'asc' } },
           shipments: { orderBy: { dispatchedAt: 'desc' } },
+          notes: { orderBy: { createdAt: 'asc' } },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -52,6 +54,9 @@ export async function POST(req: NextRequest) {
     status: order.status,
     placedAt: order.createdAt,
     events: order.events.map((e) => ({ status: e.status, note: e.note, createdAt: e.createdAt })),
+    notes: order.notes
+      .filter((n) => !n.internal)
+      .map((n) => ({ body: n.body, createdAt: n.createdAt })),
     shipment: order.shipments[0]
       ? {
           courierName: order.shipments[0].courierName,
@@ -65,6 +70,9 @@ export async function POST(req: NextRequest) {
             orderId: c.id,
             status: c.status,
             events: c.events.map((e) => ({ status: e.status, note: e.note, createdAt: e.createdAt })),
+            notes: c.notes
+              .filter((n) => !n.internal)
+              .map((n) => ({ body: n.body, createdAt: n.createdAt })),
             shipment: c.shipments[0]
               ? {
                   courierName: c.shipments[0].courierName,

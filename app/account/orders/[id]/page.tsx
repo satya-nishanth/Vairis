@@ -60,12 +60,14 @@ export default async function OrderDetailPage({
       shipments: { orderBy: { dispatchedAt: "desc" } },
       payment: true,
       events: { orderBy: { createdAt: "asc" } },
+      notes: { orderBy: { createdAt: "asc" } },
       user: { select: { email: true } },
       parent: { select: { id: true } },
       children: {
         include: {
           items: true,
           events: { orderBy: { createdAt: "asc" } },
+          notes: { orderBy: { createdAt: "asc" } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -103,7 +105,11 @@ export default async function OrderDetailPage({
 
               <section className="confirm-card">
                 <h3 className="confirm-card__heading">Order Journey</h3>
-                <OrderTimeline status={order.status} events={order.events} />
+                <OrderTimeline
+                  status={order.status}
+                  events={order.events}
+                  notes={order.notes.filter((n) => !n.internal)}
+                />
               </section>
 
               {isSplitParent && (
@@ -121,7 +127,11 @@ export default async function OrderDetailPage({
                         <p className="checkout-note">
                           {child.items.map((item) => item.productName).join(", ")}
                         </p>
-                        <OrderTimeline status={child.status} events={child.events} />
+                        <OrderTimeline
+                          status={child.status}
+                          events={child.events}
+                          notes={child.notes.filter((n) => !n.internal)}
+                        />
                         <p>
                           <Link href={`/account/orders/${child.id}`}>
                             View delivery {i + 1} →

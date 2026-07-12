@@ -5,6 +5,7 @@ import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
 import { OrderActions } from './OrderActions'
+import { OrderNotes } from './OrderNotes'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,7 @@ export default async function AdminOrderDetailPage({
       shipments: { orderBy: { dispatchedAt: 'desc' } },
       events: { orderBy: { createdAt: 'asc' } },
       refunds: { orderBy: { createdAt: 'desc' } },
+      notes: { orderBy: { createdAt: 'desc' } },
       user: { select: { email: true, name: true } },
       children: {
         include: { refunds: true },
@@ -248,6 +250,8 @@ export default async function AdminOrderDetailPage({
             </p>
           ))}
         </div>
+
+        <OrderNotes orderId={order.id} notes={order.notes} />
 
         <div style={{ ...card, gridColumn: '1 / -1' }}>
           <h3 style={heading}>Payment</h3>
