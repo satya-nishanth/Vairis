@@ -14,7 +14,8 @@
  *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED
  *   7. refund: 503 not-configured (no keys) OR 502 gateway-refused (keys + simulated payment id)
  *   8. ledger-matched refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED; duplicate delivery idempotent
- *   9. customer surfaces: /account/orders, order detail, /track-order API
+ *   9. sweep expires a stale PAYMENT_PENDING order; late capture on it never resurrects (auto-refund alert)
+ *   10. customer surfaces: /account/orders, order detail, /track-order API
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -268,7 +269,53 @@ console.log(`      seeded order ${order.id}`);
   step("duplicate refund webhook idempotent", events === 1);
 }
 
-// ── 9. customer surfaces ──
+// ── 9. sweep + late capture ──
+{
+  const old = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: "PAYMENT_PENDING",
+      totalAmount: 1000,
+      depositAmount: 50,
+      grandTotal: 1050,
+      contactName: "x",
+      contactPhone: "9999999999",
+      addressLine1: "a street 1",
+      city: "B",
+      state: "K",
+      pincode: "560001",
+      createdAt: new Date(Date.now() - 30 * 3600_000),
+      events: { create: { status: "PAYMENT_PENDING", note: "seed" } },
+    },
+  });
+  const oldGw = `order_SWEEP${Date.now()}`;
+  await prisma.payment.create({ data: { orderId: old.id, razorpayOrderId: oldGw, status: "CREATED", amount: 1050 } });
+  const res = await fetch(`${BASE}/api/admin/sweep-orders`, {
+    method: "POST",
+    headers: { Authorization: "Bearer dev-local-sweep-secret" },
+  });
+  const after = await prisma.order.findUnique({ where: { id: old.id } });
+  step("sweep expires stale unpaid order", res.status === 200 && after.status === "PAYMENT_EXPIRED");
+
+  // late capture on the expired order → auto-refund intent (asserts the
+  // late-capture guard never resurrects the order, regardless of whether
+  // the gateway refund call itself succeeds against a fake payment id)
+  await postWebhook({
+    event: "payment.captured",
+    payload: { payment: { entity: { id: `pay_LATE${Date.now()}`, order_id: oldGw } } },
+  });
+  const alert = await prisma.orderEvent.findFirst({ where: { orderId: old.id, note: { contains: "after order expiry" } } });
+  const stillDead = await prisma.order.findUnique({ where: { id: old.id } });
+  step("late capture never resurrects the order", !!alert && stillDead.status === "PAYMENT_EXPIRED");
+
+  // cleanup
+  await prisma.orderEvent.deleteMany({ where: { orderId: old.id } });
+  await prisma.orderRefund.deleteMany({ where: { orderId: old.id } });
+  await prisma.payment.deleteMany({ where: { orderId: old.id } });
+  await prisma.order.delete({ where: { id: old.id } });
+}
+
+// ── 10. customer surfaces ──
 {
   await page.goto(`${BASE}/account/orders`, { waitUntil: "networkidle" });
   const listed = await page.locator(`a[href="/account/orders/${order.id}"]`).count();

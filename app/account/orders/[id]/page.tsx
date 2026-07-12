@@ -4,6 +4,7 @@ import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
 import { OrderSummary } from "@/components/commerce/OrderSummary";
 import { OrderStatusChip, OrderTimeline } from "@/components/commerce/OrderTimeline";
+import { RetryPaymentButton } from "./RetryPaymentButton";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
@@ -58,6 +59,8 @@ export default async function OrderDetailPage({
 
           <div className="order-detail__layout">
             <div>
+              {order.status === "PAYMENT_PENDING" && <RetryPaymentButton orderId={order.id} />}
+
               <section className="confirm-card">
                 <h3 className="confirm-card__heading">Order Journey</h3>
                 <OrderTimeline status={order.status} events={order.events} />
