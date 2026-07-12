@@ -220,6 +220,31 @@
   margin-top: 4px;
 }
 
+/* Split orders: parent lists each child delivery */
+.order-deliveries {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.order-deliveries__item {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.order-deliveries__item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.order-deliveries__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
 /* Track order form */
 .track-form {
   margin: 24px 0;

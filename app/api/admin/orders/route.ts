@@ -4,6 +4,7 @@ import type { OrderStatus } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
+import { autoSplitOrder } from '@/lib/split'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,43 +98,54 @@ export async function POST(req: NextRequest) {
     ? computeOrderAmounts(total)
     : { totalAmount: total, grandTotal: total, depositAmount: 0 }
 
-  const order = await prisma.order.create({
-    data: {
-      userId: user.id,
-      status: d.initialStatus,
-      totalAmount,
-      depositAmount,
-      grandTotal,
-      contactName: d.contactName,
-      contactPhone: d.contactPhone,
-      addressLine1: d.addressLine1,
-      addressLine2: d.addressLine2 || null,
-      city: d.city,
-      state: d.state,
-      pincode: d.pincode,
-      items: {
-        create: d.items.map((i) => ({
-          variantId: i.variantId,
-          quantity: i.quantity,
-          price: Math.round(i.unitPrice),
-          productName: variantMap.get(i.variantId)!.product.name,
-        })),
+  const { order, childOrderIds } = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
+      data: {
+        userId: user.id,
+        status: d.initialStatus,
+        totalAmount,
+        depositAmount,
+        grandTotal,
+        contactName: d.contactName,
+        contactPhone: d.contactPhone,
+        addressLine1: d.addressLine1,
+        addressLine2: d.addressLine2 || null,
+        city: d.city,
+        state: d.state,
+        pincode: d.pincode,
+        items: {
+          create: d.items.map((i) => ({
+            variantId: i.variantId,
+            quantity: i.quantity,
+            price: Math.round(i.unitPrice),
+            productName: variantMap.get(i.variantId)!.product.name,
+          })),
+        },
+        events: {
+          create: [
+            { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
+            ...(d.initialStatus === 'PAYMENT_CONFIRMED'
+              ? [
+                  {
+                    status: 'PAYMENT_CONFIRMED' as const,
+                    note: d.paymentNote || 'Payment received offline',
+                  },
+                ]
+              : []),
+          ],
+        },
       },
-      events: {
-        create: [
-          { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
-          ...(d.initialStatus === 'PAYMENT_CONFIRMED'
-            ? [
-                {
-                  status: 'PAYMENT_CONFIRMED' as const,
-                  note: d.paymentNote || 'Payment received offline',
-                },
-              ]
-            : []),
-        ],
-      },
-    },
+    })
+
+    // Multi-item manual orders auto-split into one child per line item too
+    // (same rule as online checkout, just triggered at creation instead of
+    // at payment confirmation — see lib/split.ts).
+    const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
+    return { order: created, childOrderIds }
   })
 
-  return NextResponse.json({ orderId: order.id }, { status: 201 })
+  return NextResponse.json(
+    { orderId: order.id, ...(childOrderIds.length ? { childOrderIds } : {}) },
+    { status: 201 },
+  )
 }

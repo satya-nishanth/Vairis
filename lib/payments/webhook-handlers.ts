@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { initiateRefund, statusAfterRefund } from "@/lib/refunds";
+import { autoSplitOrder } from "@/lib/split";
 import type { Prisma } from "@prisma/client";
 import type { PaymentWebhookEvent } from "./types";
 
@@ -63,22 +64,25 @@ export async function confirmPayment(
 
   // Idempotent: the other trigger may have confirmed this already.
   if (payment.status !== "CAPTURED") {
-    await prisma.$transaction([
-      prisma.payment.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.payment.update({
         where: { id: payment.id },
         data: { status: "CAPTURED", razorpayPaymentId: gatewayPaymentId },
-      }),
-      prisma.order.update({
+      });
+      await tx.order.update({
         where: { id: payment.orderId },
         data: {
           status: "PAYMENT_CONFIRMED",
           events: { create: { status: "PAYMENT_CONFIRMED", note } },
         },
-      }),
+      });
       // Clear the cart on confirmation — covers the customer who paid but
       // closed the tab before the browser verify call fired.
-      prisma.cartItem.deleteMany({ where: { userId: payment.order.userId } }),
-    ]);
+      await tx.cartItem.deleteMany({ where: { userId: payment.order.userId } });
+      // Multi-item orders split into one child order per line item,
+      // atomically with confirmation (lib/split.ts).
+      await autoSplitOrder(tx, payment.orderId);
+    });
     // Fire-and-forget — the idempotency guard above means exactly one send
     // even when verify and the webhook race.
     void sendOrderConfirmationEmail(payment.orderId);

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
+import { resolvePayment } from '@/lib/refunds'
 import { OrderActions } from './OrderActions'
 
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,10 @@ export default async function AdminOrderDetailPage({
       events: { orderBy: { createdAt: 'asc' } },
       refunds: { orderBy: { createdAt: 'desc' } },
       user: { select: { email: true, name: true } },
+      children: {
+        include: { refunds: true },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   })
   if (!order) notFound()
@@ -30,6 +35,14 @@ export default async function AdminOrderDetailPage({
   const refundedTotal = Number(
     (await prisma.orderRefund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0,
   )
+
+  // Children have no Payment row of their own — the gateway payment lives
+  // permanently on the parent (payment anchoring, lib/split.ts). Resolve it
+  // the same way lib/refunds.ts does so the refund UI reflects reality for
+  // child orders too, instead of reading the always-null order.payment.
+  const resolved = await resolvePayment(order.id)
+  const resolvedPayment = resolved?.payment ?? null
+  const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
   const provider = getShippingProvider()
@@ -64,21 +77,83 @@ export default async function AdminOrderDetailPage({
         </span>
       </div>
 
-      <OrderActions
-        orderId={order.id}
-        status={order.status}
-        depositAmount={Number(order.depositAmount)}
-        refundedAmount={Number(order.payment?.refundedAmount ?? 0)}
-        refundedTotal={refundedTotal}
-        grandTotal={Number(order.grandTotal)}
-        paymentCaptured={
-          order.payment?.status === 'CAPTURED' ||
-          order.payment?.status === 'PARTIALLY_REFUNDED' ||
-          order.payment?.status === 'REFUNDED'
-        }
-        offline={!order.payment}
-        shippingSupportsBooking={provider.supportsBooking}
-      />
+      {order.parentOrderId && (
+        <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.8125rem', color: '#3730a3' }}>
+          Payment via parent{' '}
+          <Link href={`/admin/orders/${order.parentOrderId}`} style={{ color: '#3730a3', fontWeight: 600 }}>
+            {order.parentOrderId} →
+          </Link>
+          {resolvedPayment && <> · {inr(order.grandTotal)} of this delivery drawn from that payment</>}
+        </div>
+      )}
+
+      {/* Split parents manage actions per-delivery (each child has its own
+          status + refund); the parent itself only shows the rollup below. */}
+      {!isSplitParent && (
+        <OrderActions
+          orderId={order.id}
+          status={order.status}
+          depositAmount={Number(order.depositAmount)}
+          refundedAmount={Number(resolvedPayment?.refundedAmount ?? 0)}
+          refundedTotal={refundedTotal}
+          grandTotal={Number(order.grandTotal)}
+          paymentCaptured={
+            resolvedPayment?.status === 'CAPTURED' ||
+            resolvedPayment?.status === 'PARTIALLY_REFUNDED' ||
+            resolvedPayment?.status === 'REFUNDED'
+          }
+          offline={!resolvedPayment}
+          shippingSupportsBooking={provider.supportsBooking}
+        />
+      )}
+
+      {isSplitParent && (
+        <div style={{ ...card, marginBottom: '1rem' }}>
+          <h3 style={heading}>{order.children.length} Deliveries</h3>
+          <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+                <th style={{ padding: '4px 8px 4px 0' }}>Order</th>
+                <th style={{ padding: '4px 8px' }}>Status</th>
+                <th style={{ padding: '4px 8px' }}>Goods</th>
+                <th style={{ padding: '4px 8px' }}>Deposit</th>
+                <th style={{ padding: '4px 8px' }}>Refunded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.children.map((child) => {
+                const childRefunded = child.refunds.reduce((s, r) => s + Number(r.amount), 0)
+                return (
+                  <tr key={child.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: '6px 8px 6px 0' }}>
+                      <Link href={`/admin/orders/${child.id}`} style={{ color: '#032b24' }}>
+                        {child.id}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>{ORDER_STATUS_META[child.status].label}</td>
+                    <td style={{ padding: '6px 8px' }}>{inr(child.totalAmount)}</td>
+                    <td style={{ padding: '6px 8px' }}>{inr(child.depositAmount)}</td>
+                    <td style={{ padding: '6px 8px' }}>{childRefunded > 0 ? inr(childRefunded) : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {(() => {
+            const captured = Number(order.grandTotal)
+            const refundedAcrossChildren = order.children.reduce(
+              (s, c) => s + c.refunds.reduce((s2, r) => s2 + Number(r.amount), 0),
+              0,
+            )
+            const remaining = captured - refundedAcrossChildren
+            return (
+              <p style={{ marginTop: 12, fontSize: '0.875rem', fontWeight: 600 }}>
+                captured {inr(captured)} · refunded {inr(refundedAcrossChildren)} · remaining {inr(remaining)}
+              </p>
+            )
+          })()}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
         <div style={card}>
@@ -178,6 +253,18 @@ export default async function AdminOrderDetailPage({
               {order.payment.razorpayRefundId && <> · refund: {order.payment.razorpayRefundId}</>}
               {' · status: '}
               {order.payment.status}
+            </p>
+          ) : order.parentOrderId && resolvedPayment ? (
+            <p style={{ fontSize: '0.8125rem' }}>
+              Via parent{' '}
+              <Link href={`/admin/orders/${order.parentOrderId}`} style={{ color: '#032b24' }}>
+                {order.parentOrderId}
+              </Link>
+              {' — gateway order: '}
+              {resolvedPayment.razorpayOrderId}
+              {resolvedPayment.razorpayPaymentId && <> · payment: {resolvedPayment.razorpayPaymentId}</>}
+              {' · status: '}
+              {resolvedPayment.status}
             </p>
           ) : (
             <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>

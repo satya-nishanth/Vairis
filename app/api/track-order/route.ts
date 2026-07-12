@@ -27,6 +27,13 @@ export async function POST(req: NextRequest) {
       events: { orderBy: { createdAt: 'asc' } },
       shipments: { orderBy: { dispatchedAt: 'desc' } },
       user: { select: { email: true } },
+      children: {
+        include: {
+          events: { orderBy: { createdAt: 'asc' } },
+          shipments: { orderBy: { dispatchedAt: 'desc' } },
+        },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   })
 
@@ -37,6 +44,8 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     )
   }
+
+  const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   return NextResponse.json({
     orderId: order.id,
@@ -50,5 +59,21 @@ export async function POST(req: NextRequest) {
           trackingUrl: order.shipments[0].trackingUrl,
         }
       : null,
+    ...(isSplitParent
+      ? {
+          children: order.children.map((c) => ({
+            orderId: c.id,
+            status: c.status,
+            events: c.events.map((e) => ({ status: e.status, note: e.note, createdAt: e.createdAt })),
+            shipment: c.shipments[0]
+              ? {
+                  courierName: c.shipments[0].courierName,
+                  awbCode: c.shipments[0].awbCode,
+                  trackingUrl: c.shipments[0].trackingUrl,
+                }
+              : null,
+          })),
+        }
+      : {}),
   })
 }

@@ -14,11 +14,22 @@ import { pageLayouts } from "@/lib/layout-config";
  * shared devices, and "where's my ring" moments.
  */
 
+type TrackShipment = { courierName: string | null; awbCode: string | null; trackingUrl: string | null } | null;
+
+type TrackChild = {
+  orderId: string;
+  status: OrderStatus;
+  events: { status: OrderStatus; note: string | null; createdAt: string }[];
+  shipment: TrackShipment;
+};
+
 type TrackResult = {
   orderId: string;
   status: OrderStatus;
   events: { status: OrderStatus; note: string | null; createdAt: string }[];
-  shipment: { courierName: string | null; awbCode: string | null; trackingUrl: string | null } | null;
+  shipment: TrackShipment;
+  /** Present when this order is a split parent (lib/split.ts) — one summary per delivery. */
+  children?: TrackChild[];
 };
 
 export default function TrackOrderPage() {
@@ -113,6 +124,32 @@ export default function TrackOrderPage() {
                     Track with courier ↗
                   </a>
                 </p>
+              )}
+
+              {result.children && result.children.length > 0 && (
+                <div className="order-deliveries" style={{ marginTop: 16 }}>
+                  <h3 className="confirm-card__heading">{result.children.length} Deliveries</h3>
+                  {result.children.map((child, i) => (
+                    <div key={child.orderId} className="order-deliveries__item">
+                      <div className="order-deliveries__head">
+                        <strong>Delivery {i + 1} of {result.children!.length} — {child.orderId}</strong>
+                        <OrderStatusChip status={child.status} />
+                      </div>
+                      <OrderTimeline
+                        status={child.status}
+                        events={child.events.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }))}
+                      />
+                      {child.shipment?.trackingUrl && (
+                        <p className="checkout-note">
+                          {child.shipment.courierName} · AWB {child.shipment.awbCode} ·{" "}
+                          <a href={child.shipment.trackingUrl} target="_blank" rel="noopener noreferrer">
+                            Track with courier ↗
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
           )}

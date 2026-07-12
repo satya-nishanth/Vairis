@@ -37,6 +37,14 @@ export default async function OrderDetailPage({
       payment: true,
       events: { orderBy: { createdAt: "asc" } },
       user: { select: { email: true } },
+      parent: { select: { id: true } },
+      children: {
+        include: {
+          items: true,
+          events: { orderBy: { createdAt: "asc" } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
   if (!order || order.user.email !== session.user.email) notFound();
@@ -44,6 +52,7 @@ export default async function OrderDetailPage({
   const deposit = Number(order.depositAmount);
   const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
+  const isSplitParent = order.status === "SPLIT_INTO_DELIVERIES" && order.children.length > 0;
 
   return (
     <PageShell {...pageLayouts.contact}>
@@ -65,6 +74,33 @@ export default async function OrderDetailPage({
                 <h3 className="confirm-card__heading">Order Journey</h3>
                 <OrderTimeline status={order.status} events={order.events} />
               </section>
+
+              {isSplitParent && (
+                <section className="confirm-card">
+                  <h3 className="confirm-card__heading">
+                    {order.children.length} Deliveries
+                  </h3>
+                  <div className="order-deliveries">
+                    {order.children.map((child, i) => (
+                      <div key={child.id} className="order-deliveries__item">
+                        <div className="order-deliveries__head">
+                          <strong>Delivery {i + 1} of {order.children.length}</strong>
+                          <OrderStatusChip status={child.status} />
+                        </div>
+                        <p className="checkout-note">
+                          {child.items.map((item) => item.productName).join(", ")}
+                        </p>
+                        <OrderTimeline status={child.status} events={child.events} />
+                        <p>
+                          <Link href={`/account/orders/${child.id}`}>
+                            View delivery {i + 1} →
+                          </Link>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {shipment && (
                 <section className="confirm-card">
@@ -116,10 +152,14 @@ export default async function OrderDetailPage({
             <OrderSummary
               title="Payment Summary"
               lines={[
-                ...order.items.map((item) => ({
-                  label: `${item.productName} × ${item.quantity}`,
-                  value: formatPrice(Number(item.price) * item.quantity),
-                })),
+                // Split parents moved their items to children — the combined
+                // receipt lists every child's items (see lib/split.ts).
+                ...(isSplitParent ? order.children.flatMap((c) => c.items) : order.items).map(
+                  (item) => ({
+                    label: `${item.productName} × ${item.quantity}`,
+                    value: formatPrice(Number(item.price) * item.quantity),
+                  }),
+                ),
                 { label: "Refundable deposit (5%)", value: formatPrice(deposit) },
                 { label: "Shipping", value: "FREE" },
                 ...(refunded > 0

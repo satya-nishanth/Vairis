@@ -16,6 +16,10 @@
  *   8. ledger-matched refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED; duplicate delivery idempotent
  *   9. sweep expires a stale PAYMENT_PENDING order; late capture on it never resurrects (auto-refund alert)
  *   10. customer surfaces: /account/orders, order detail, /track-order API
+ *   11. auto-split: manual multi-item order (POST /api/admin/orders) → children created atomically,
+ *       proration exact (traced 10001/20003/30007 by hand); single-item manual order stays unsplit
+ *   12. auto-split: online checkout multi-item order → payment.captured splits atomically with
+ *       confirmation; child refund resolves the parent's payment; customer/admin/track-order rendering
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -381,6 +385,273 @@ console.log(`      seeded order ${order.id}`);
     body: JSON.stringify({ orderId: order.id, email: "wrong@example.com" }),
   });
   step("track-order with wrong email → 404", trackBad.status === 404, `status ${trackBad.status}`);
+}
+
+// ── 11. auto-split: manual multi-item order ──
+{
+  const variants = await prisma.productVariant.findMany({
+    take: 3,
+    where: { product: { isActive: true } },
+    include: { product: true },
+  });
+
+  // Odd, non-round prices — chosen to prove the proration math has no
+  // rounding drift (manually traced: goods 10001/20003/30007 → parent
+  // totalAmount 60011, depositAmount 3001, grandTotal 63012; per-child
+  // deposit 500/1000/1501, grand 10501/21003/31508 — sums exact).
+  const res = await api("/api/admin/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      contactName: "Split Buyer",
+      contactPhone: "9876543210",
+      addressLine1: "9 Residency Road",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      applyDeposit: true,
+      initialStatus: "PAYMENT_CONFIRMED",
+      paymentNote: "UPI ref SPLIT1",
+      items: [10001, 20003, 30007].map((unitPrice, i) => ({
+        variantId: variants[i].id,
+        quantity: 1,
+        unitPrice,
+      })),
+    }),
+  });
+  step(
+    "manual multi-item order creates 3 children",
+    res.status === 201 && res.body?.childOrderIds?.length === 3,
+    JSON.stringify(res.body),
+  );
+
+  const parentA = await prisma.order.findUnique({
+    where: { id: res.body.orderId },
+    include: { children: { orderBy: { createdAt: "asc" } }, items: true },
+  });
+  const sum = (f) => parentA.children.reduce((s, c) => s + Number(c[f]), 0);
+  step(
+    "parent → SPLIT_INTO_DELIVERIES, items moved off parent",
+    parentA.status === "SPLIT_INTO_DELIVERIES" && parentA.items.length === 0,
+  );
+  step(
+    "proration sums exact (no rounding drift)",
+    sum("totalAmount") === Number(parentA.totalAmount) &&
+      sum("depositAmount") === Number(parentA.depositAmount) &&
+      sum("grandTotal") === Number(parentA.grandTotal),
+    `totalAmount ${sum("totalAmount")}/${parentA.totalAmount} deposit ${sum("depositAmount")}/${parentA.depositAmount} grand ${sum("grandTotal")}/${parentA.grandTotal}`,
+  );
+  const [c0, c1, c2] = parentA.children;
+  step(
+    "per-child proration matches hand-traced values",
+    Number(c0.totalAmount) === 10001 &&
+      Number(c0.depositAmount) === 500 &&
+      Number(c0.grandTotal) === 10501 &&
+      Number(c1.totalAmount) === 20003 &&
+      Number(c1.depositAmount) === 1000 &&
+      Number(c1.grandTotal) === 21003 &&
+      Number(c2.totalAmount) === 30007 &&
+      Number(c2.depositAmount) === 1501 &&
+      Number(c2.grandTotal) === 31508,
+    parentA.children.map((c) => `${c.totalAmount}/${c.depositAmount}/${c.grandTotal}`).join(" | "),
+  );
+  step(
+    "children all inherit PAYMENT_CONFIRMED (parent's status at split time)",
+    parentA.children.every((c) => c.status === "PAYMENT_CONFIRMED" && c.parentOrderId === parentA.id),
+  );
+
+  // Admin child page: "Payment via parent" banner (offline order → no
+  // gateway payment, banner still renders since it's keyed on parentOrderId).
+  await page.goto(`${BASE}/admin/orders/${c0.id}`, { waitUntil: "networkidle" });
+  let body = await page.textContent("body");
+  step("admin child page shows Payment via parent banner", body.includes("Payment via parent") && body.includes(parentA.id));
+
+  // Admin parent page: children table + money rollup.
+  await page.goto(`${BASE}/admin/orders/${parentA.id}`, { waitUntil: "networkidle" });
+  body = await page.textContent("body");
+  step(
+    "admin parent page lists children + rollup",
+    body.includes("3 Deliveries") && body.includes(c0.id) && body.includes("captured") && body.includes("remaining"),
+  );
+
+  // Single-item manual order must NOT split.
+  const singleRes = await api("/api/admin/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      contactName: "Single Buyer",
+      contactPhone: "9876543210",
+      addressLine1: "1 Single Street",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      applyDeposit: true,
+      initialStatus: "PAYMENT_CONFIRMED",
+      items: [{ variantId: variants[0].id, quantity: 1, unitPrice: 5000 }],
+    }),
+  });
+  const singleOrder = await prisma.order.findUnique({ where: { id: singleRes.body.orderId } });
+  step(
+    "single-item manual order stays unsplit (no-op)",
+    singleRes.status === 201 && !singleRes.body.childOrderIds && singleOrder.status === "PAYMENT_CONFIRMED" && !singleOrder.parentOrderId,
+  );
+
+  // cleanup
+  const allIds = [...parentA.children.map((c) => c.id), parentA.id, singleOrder.id];
+  for (const oid of allIds) {
+    await prisma.orderEvent.deleteMany({ where: { orderId: oid } });
+    await prisma.orderRefund.deleteMany({ where: { orderId: oid } });
+    await prisma.shipment.deleteMany({ where: { orderId: oid } });
+    await prisma.orderItem.deleteMany({ where: { orderId: oid } });
+  }
+  await prisma.order.deleteMany({ where: { parentOrderId: parentA.id } });
+  await prisma.order.delete({ where: { id: parentA.id } });
+  await prisma.order.delete({ where: { id: singleOrder.id } });
+}
+
+// ── 12. auto-split: online checkout multi-item order ──
+{
+  const variants = await prisma.productVariant.findMany({
+    take: 2,
+    where: { product: { isActive: true } },
+    include: { product: true },
+  });
+  // goods 15000 + 9999 = 24999 → grandTotal 26249, deposit 1250; children:
+  // 15000/750/15750 and 9999/500/10499 (hand-traced, sums exact).
+  const lineItems = [
+    { variantId: variants[0].id, price: 15000 },
+    { variantId: variants[1].id, price: 9999 },
+  ];
+  const totalB = lineItems.reduce((s, i) => s + i.price, 0);
+  const grandB = Math.round(totalB * 1.05);
+  const gwOrderB = `order_SPLIT${Date.now()}`;
+  const gwPaymentB = `pay_SPLIT${Date.now()}`;
+
+  const parentSeed = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: "PAYMENT_PENDING",
+      totalAmount: totalB,
+      depositAmount: grandB - totalB,
+      grandTotal: grandB,
+      contactName: "Split Online Buyer",
+      contactPhone: "9876543210",
+      addressLine1: "2 Brigade Road",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      items: {
+        create: lineItems.map((i) => ({
+          variantId: i.variantId,
+          quantity: 1,
+          price: i.price,
+          productName: variants.find((v) => v.id === i.variantId).product.name,
+        })),
+      },
+      events: { create: { status: "PAYMENT_PENDING", note: "Order created" } },
+    },
+  });
+  await prisma.payment.create({
+    data: { orderId: parentSeed.id, razorpayOrderId: gwOrderB, status: "CREATED", amount: grandB },
+  });
+
+  const capRes = await postWebhook({
+    event: "payment.captured",
+    payload: { payment: { entity: { id: gwPaymentB, order_id: gwOrderB } } },
+  });
+  const parentB = await prisma.order.findUnique({
+    where: { id: parentSeed.id },
+    include: { children: { orderBy: { createdAt: "asc" } }, payment: true, items: true },
+  });
+  step(
+    "payment.captured on multi-item order splits atomically",
+    capRes.status === 200 && parentB.status === "SPLIT_INTO_DELIVERIES" && parentB.children.length === 2,
+  );
+  const sumB = (f) => parentB.children.reduce((s, c) => s + Number(c[f]), 0);
+  step(
+    "online split proration sums exact",
+    sumB("totalAmount") === Number(parentB.totalAmount) &&
+      sumB("depositAmount") === Number(parentB.depositAmount) &&
+      sumB("grandTotal") === Number(parentB.grandTotal),
+  );
+  step(
+    "children of online split reuse the parent's Payment row (no own payment)",
+    parentB.payment?.status === "CAPTURED" && parentB.payment.razorpayPaymentId === gwPaymentB,
+  );
+
+  const [b0, b1] = parentB.children;
+
+  // Drive one child to DELIVERED, then attempt a deposit refund — proves
+  // the child's refund resolves the PARENT's gateway payment (lib/refunds.ts
+  // resolvePayment), not an (always-absent) payment of its own.
+  await api(`/api/admin/orders/${b0.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "PREPARING" }),
+  });
+  await api(`/api/admin/orders/${b0.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "SHIPPED", courierName: "DTDC", awbCode: "SPLIT-AWB-1" }),
+  });
+  await api(`/api/admin/orders/${b0.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "DELIVERED" }),
+  });
+  const refundRes = await api(`/api/admin/orders/${b0.id}/refund`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "deposit", reason: "test child deposit refund" }),
+  });
+  step(
+    GATEWAY_CONFIGURED
+      ? "child deposit refund resolves parent payment → 502 (gateway refused simulated payment)"
+      : "child deposit refund resolves parent payment → 503 (gateway not configured, not 'offline' path)",
+    GATEWAY_CONFIGURED ? refundRes.status === 502 : refundRes.status === 503,
+    `status ${refundRes.status}`,
+  );
+
+  // Customer surfaces.
+  await page.goto(`${BASE}/account/orders`, { waitUntil: "networkidle" });
+  let body = await page.textContent("body");
+  step("customer orders list shows 'N deliveries' for split parent", body.includes("2 deliveries"));
+
+  await page.goto(`${BASE}/account/orders/${parentB.id}`, { waitUntil: "networkidle" });
+  body = await page.textContent("body");
+  step(
+    "customer parent page renders delivery cards",
+    body.includes("2 Deliveries") && body.includes("Delivery 1 of 2") && body.includes("Delivery 2 of 2"),
+  );
+
+  // track-order on the parent id returns children summaries.
+  const track = await api("/api/track-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: parentB.id, email: EMAIL }),
+  });
+  step(
+    "track-order on parent id includes children summaries",
+    track.status === 200 &&
+      Array.isArray(track.body?.children) &&
+      track.body.children.length === 2 &&
+      track.body.children.some((c) => c.orderId === b0.id) &&
+      track.body.children.some((c) => c.orderId === b1.id),
+  );
+
+  // cleanup
+  const allIdsB = [...parentB.children.map((c) => c.id), parentB.id];
+  for (const oid of allIdsB) {
+    await prisma.orderEvent.deleteMany({ where: { orderId: oid } });
+    await prisma.orderRefund.deleteMany({ where: { orderId: oid } });
+    await prisma.shipment.deleteMany({ where: { orderId: oid } });
+    await prisma.orderItem.deleteMany({ where: { orderId: oid } });
+  }
+  await prisma.payment.deleteMany({ where: { orderId: parentB.id } });
+  await prisma.order.deleteMany({ where: { parentOrderId: parentB.id } });
+  await prisma.order.delete({ where: { id: parentB.id } });
 }
 
 // ── cleanup ──

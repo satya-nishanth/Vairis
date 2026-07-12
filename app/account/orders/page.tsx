@@ -17,7 +17,7 @@ export default async function OrdersPage() {
 
   const orders = await prisma.order.findMany({
     where: { user: { email: session.user.email! } },
-    include: { items: true },
+    include: { items: true, children: { include: { items: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -36,31 +36,46 @@ export default async function OrdersPage() {
             </div>
           ) : (
             <ul className="orders-list">
-              {orders.map((order) => (
-                <li key={order.id}>
-                  <Link href={`/account/orders/${order.id}`} className="orders-list__card">
-                    <div className="orders-list__main">
-                      <strong>
-                        {order.items.map((i) => i.productName).join(", ") || "Order"}
-                      </strong>
-                      <span className="orders-list__meta">
-                        {order.id} ·{" "}
-                        {order.createdAt.toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
-                    </div>
-                    <div className="orders-list__side">
-                      <OrderStatusChip status={order.status} />
-                      <span className="orders-list__amount">
-                        {formatPrice(Number(order.grandTotal))}
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
+              {orders.map((order) => {
+                // Split parents move their line items to children, so the
+                // parent's own item list is empty — show the deliveries
+                // instead of an amount (see lib/split.ts).
+                const isSplitParent = order.status === "SPLIT_INTO_DELIVERIES" && order.children.length > 0;
+                const displayItems = isSplitParent
+                  ? order.children.flatMap((c) => c.items)
+                  : order.items;
+                return (
+                  <li key={order.id}>
+                    <Link href={`/account/orders/${order.id}`} className="orders-list__card">
+                      <div className="orders-list__main">
+                        <strong>
+                          {displayItems.map((i) => i.productName).join(", ") || "Order"}
+                        </strong>
+                        <span className="orders-list__meta">
+                          {order.id} ·{" "}
+                          {order.createdAt.toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                      <div className="orders-list__side">
+                        <OrderStatusChip status={order.status} />
+                        {isSplitParent ? (
+                          <span className="orders-list__amount">
+                            {order.children.length} deliveries
+                          </span>
+                        ) : (
+                          <span className="orders-list__amount">
+                            {formatPrice(Number(order.grandTotal))}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
