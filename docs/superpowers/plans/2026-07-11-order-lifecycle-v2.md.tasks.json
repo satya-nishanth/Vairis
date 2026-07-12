@@ -66,7 +66,7 @@
       "id": 7,
       "nativeId": 36,
       "subject": "Task 7: Customer returns",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         4
       ]
@@ -75,7 +75,7 @@
       "id": 8,
       "nativeId": 37,
       "subject": "Task 8: Order notes (WhatsApp context)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         4
       ]
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-13T00:45:38.734243"
+  "lastUpdated": "2026-07-13T01:06:22.606703"
 }
