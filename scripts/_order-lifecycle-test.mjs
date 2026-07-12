@@ -297,6 +297,42 @@ console.log(`      seeded order ${order.id}`);
   const after = await prisma.order.findUnique({ where: { id: old.id } });
   step("sweep expires stale unpaid order", res.status === 200 && after.status === "PAYMENT_EXPIRED");
 
+  // a stale order whose payment already CAPTURED must survive the sweep —
+  // this is what the race fix in sweep-orders/route.ts protects
+  const paid = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: "PAYMENT_PENDING",
+      totalAmount: 1000,
+      depositAmount: 50,
+      grandTotal: 1050,
+      contactName: "x",
+      contactPhone: "9999999999",
+      addressLine1: "a street 1",
+      city: "B",
+      state: "K",
+      pincode: "560001",
+      createdAt: new Date(Date.now() - 30 * 3600_000),
+      events: { create: { status: "PAYMENT_PENDING", note: "seed" } },
+    },
+  });
+  await prisma.payment.create({
+    data: { orderId: paid.id, razorpayOrderId: `order_SWEEPCAP${Date.now()}`, status: "CAPTURED", amount: 1050 },
+  });
+  const sweepRes2 = await fetch(`${BASE}/api/admin/sweep-orders`, {
+    method: "POST",
+    headers: { Authorization: "Bearer dev-local-sweep-secret" },
+  });
+  const paidAfter = await prisma.order.findUnique({ where: { id: paid.id } });
+  const paidExpiredEvent = await prisma.orderEvent.findFirst({ where: { orderId: paid.id, status: "PAYMENT_EXPIRED" } });
+  step(
+    "sweep skips a stale order whose payment is CAPTURED",
+    sweepRes2.status === 200 && paidAfter.status === "PAYMENT_PENDING" && !paidExpiredEvent,
+  );
+  await prisma.orderEvent.deleteMany({ where: { orderId: paid.id } });
+  await prisma.payment.deleteMany({ where: { orderId: paid.id } });
+  await prisma.order.delete({ where: { id: paid.id } });
+
   // late capture on the expired order → auto-refund intent (asserts the
   // late-capture guard never resurrects the order, regardless of whether
   // the gateway refund call itself succeeds against a fake payment id)
