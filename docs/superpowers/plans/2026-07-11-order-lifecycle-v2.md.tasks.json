@@ -38,7 +38,7 @@
       "id": 4,
       "nativeId": 33,
       "subject": "Task 4: Transition API expansion + OrderActions v2",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         2,
         3
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-12T12:24:25.943437"
+  "lastUpdated": "2026-07-12T13:16:49.187556"
 }
