@@ -28,8 +28,6 @@ export default async function AdminOrderDetailPage({
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
   const provider = getShippingProvider()
-  // Latest dispatch only for now — full shipment history list lands in a later task.
-  const shipment = order.shipments[0] ?? null
 
   const card: React.CSSProperties = {
     background: '#fff',
@@ -107,21 +105,30 @@ export default async function AdminOrderDetailPage({
             <br />
             {order.city}, {order.state} — {order.pincode}
           </p>
-          {shipment && (
-            <>
-              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
-              <p style={{ fontSize: '0.875rem' }}>
-                {shipment.courierName} · AWB {shipment.awbCode}
-                {shipment.trackingUrl && (
+        </div>
+
+        <div style={{ ...card, gridColumn: '1 / -1' }}>
+          <h3 style={heading}>Shipments</h3>
+          {order.shipments.length === 0 ? (
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>No dispatch yet.</p>
+          ) : (
+            order.shipments.map((s) => (
+              <p key={s.id} style={{ fontSize: '0.875rem', marginBottom: 6 }}>
+                {s.courierName ?? 'Courier —'} · AWB {s.awbCode ?? '—'} · attempts {s.attempts} · outcome{' '}
+                {s.outcome ?? 'in flight'} ·{' '}
+                <span style={{ color: '#9ca3af' }}>
+                  {s.dispatchedAt.toLocaleDateString('en-IN')}
+                </span>
+                {s.trackingUrl && (
                   <>
                     {' · '}
-                    <a href={shipment.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
+                    <a href={s.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
                       tracking ↗
                     </a>
                   </>
                 )}
               </p>
-            </>
+            ))
           )}
         </div>
 

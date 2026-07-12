@@ -125,6 +125,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         })
       }
     }
+
+    // DELIVERY_FAILED / RETURNING_TO_ORIGIN aren't reachable via the zod
+    // enum yet (Task 4 expands it) — these blocks are ready for when it does.
+    const latest = order.shipments[0] ?? null
+
+    if ((nextStatus as OrderStatus) === 'DELIVERY_FAILED' && latest) {
+      await tx.shipment.update({
+        where: { id: latest.id },
+        data: { attempts: { increment: 1 }, status: 'ATTEMPT_FAILED' },
+      })
+    }
+
+    if ((nextStatus as OrderStatus) === 'RETURNING_TO_ORIGIN' && latest) {
+      await tx.shipment.update({
+        where: { id: latest.id },
+        data: { outcome: 'RTO', status: 'RETURNING_TO_ORIGIN' },
+      })
+    }
   })
 
   return NextResponse.json({ ok: true })

@@ -20,7 +20,7 @@
       "id": 2,
       "nativeId": 31,
       "subject": "Task 2: Refund ledger + webhook intent matching + late-capture guard",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         1
       ]
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-12T00:47:40.699052"
+  "lastUpdated": "2026-07-12T12:19:24.245892"
 }
