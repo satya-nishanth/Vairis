@@ -14,6 +14,12 @@ export const dynamic = 'force-dynamic'
  * candidate scan and this order's turn in the loop can never be clobbered
  * back to PAYMENT_EXPIRED — the WHERE simply matches zero rows and we skip
  * writing the event.
+ *
+ * Scoped to orders that have a Payment row at all — i.e. only ones created
+ * via the online gateway checkout path. Manual/WhatsApp admin-order-entry
+ * orders (POST /api/admin/orders) never get a Payment row and sit
+ * PAYMENT_PENDING while awaiting bank transfer/WhatsApp confirmation; the
+ * sweep must never auto-expire those.
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.ORDER_SWEEP_SECRET
@@ -25,7 +31,7 @@ export async function POST(req: NextRequest) {
   const cutoff = new Date(Date.now() - hours * 3600_000)
 
   const stale = await prisma.order.findMany({
-    where: { status: 'PAYMENT_PENDING', createdAt: { lt: cutoff } },
+    where: { status: 'PAYMENT_PENDING', createdAt: { lt: cutoff }, payment: { isNot: null } },
     select: { id: true },
   })
 

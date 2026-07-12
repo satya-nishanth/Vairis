@@ -63,13 +63,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { shipments: { orderBy: { dispatchedAt: 'desc' } }, payment: true },
+    include: {
+      shipments: { orderBy: { dispatchedAt: 'desc' } },
+      payment: true,
+      parent: { include: { payment: true } },
+    },
   })
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
   // Offline orders (no gateway payment) additionally get manual settlement
   // marks — gateway-paid orders must use the refund endpoint instead.
-  const isOffline = !order.payment
+  // Split children never carry their own Payment row (it lives on the
+  // parent — see lib/refunds.ts resolvePayment); walk up the same way so a
+  // gateway-paid child isn't misclassified as offline.
+  const isOffline = !(order.payment ?? order.parent?.payment ?? null)
   const allowed = [
     ...(ADMIN_TRANSITIONS[order.status] ?? []),
     ...(isOffline ? (OFFLINE_SETTLEMENT_TRANSITIONS[order.status] ?? []) : []),

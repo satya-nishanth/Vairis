@@ -346,6 +346,43 @@ console.log(`      seeded order ${order.id}`);
   await prisma.payment.deleteMany({ where: { orderId: paid.id } });
   await prisma.order.delete({ where: { id: paid.id } });
 
+  // Bug 2 regression: a manual/WhatsApp admin-order-entry order has NO
+  // Payment row at all (offline order awaiting bank transfer/WhatsApp
+  // confirmation, not an abandoned online checkout). Stale though it looks
+  // by createdAt, the sweep must never touch it — only orders that came
+  // through the online gateway checkout path (i.e. have a Payment row) are
+  // sweep candidates.
+  const manualStale = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: "PAYMENT_PENDING",
+      totalAmount: 1000,
+      depositAmount: 50,
+      grandTotal: 1050,
+      contactName: "Manual Offline Buyer",
+      contactPhone: "9999999999",
+      addressLine1: "a street 1",
+      city: "B",
+      state: "K",
+      pincode: "560001",
+      createdAt: new Date(Date.now() - 30 * 3600_000),
+      events: { create: { status: "PAYMENT_PENDING", note: "manual order — awaiting bank transfer" } },
+    },
+  });
+  const sweepRes3 = await fetch(`${BASE}/api/admin/sweep-orders`, {
+    method: "POST",
+    headers: { Authorization: "Bearer dev-local-sweep-secret" },
+  });
+  const manualAfter = await prisma.order.findUnique({ where: { id: manualStale.id } });
+  const manualExpiredEvent = await prisma.orderEvent.findFirst({
+    where: { orderId: manualStale.id, status: "PAYMENT_EXPIRED" },
+  });
+  step(
+    "sweep never expires a manual/offline order with no Payment row",
+    sweepRes3.status === 200 && manualAfter.status === "PAYMENT_PENDING" && !manualExpiredEvent,
+  );
+  await cleanupOrder(manualStale.id);
+
   // late capture on the expired order → auto-refund intent (asserts the
   // late-capture guard never resurrects the order, regardless of whether
   // the gateway refund call itself succeeds against a fake payment id)
@@ -657,6 +694,26 @@ console.log(`      seeded order ${order.id}`);
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status: "DELIVERED" }),
   });
+
+  // Bug 1 regression: a SPLIT child's own order.payment is always null (the
+  // Payment row lives on the parent — payment anchoring, lib/refunds.ts
+  // resolvePayment). A direct admin PATCH to an OFFLINE_SETTLEMENT_TRANSITIONS
+  // target (DEPOSIT_REFUNDED) — bypassing /refund entirely, so no ledger row
+  // and no real gateway refund — must be rejected. If the route misclassifies
+  // the child as "offline" (isOffline = !order.payment without walking to the
+  // parent), this PATCH would wrongly succeed with 200.
+  const offlineBypassRes = await api(`/api/admin/orders/${b1.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "DEPOSIT_REFUNDED" }),
+  });
+  const b1AfterBypass = await prisma.order.findUnique({ where: { id: b1.id } });
+  step(
+    "split child rejects direct offline-settlement PATCH (DEPOSIT_REFUNDED) — must use /refund",
+    (offlineBypassRes.status === 400 || offlineBypassRes.status === 409) && b1AfterBypass.status === "DELIVERED",
+    `status ${offlineBypassRes.status}, order now ${b1AfterBypass.status}`,
+  );
+
   await prisma.orderRefund.create({
     data: {
       orderId: b0.id,
