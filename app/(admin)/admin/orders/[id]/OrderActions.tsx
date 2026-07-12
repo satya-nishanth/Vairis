@@ -3,13 +3,23 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { OrderStatus } from '@prisma/client'
-import { ADMIN_TRANSITIONS, OFFLINE_SETTLEMENT_TRANSITIONS, ORDER_STATUS_META } from '@/lib/orders'
+import {
+  ADMIN_TRANSITIONS,
+  OFFLINE_SETTLEMENT_TRANSITIONS,
+  ORDER_STATUS_META,
+  REASON_REQUIRED,
+  REASON_REQUIRED_TARGETS,
+} from '@/lib/orders'
 
 type OrderActionsProps = {
   orderId: string
   status: OrderStatus
   depositAmount: number
   refundedAmount: number
+  /** Sum of order.refunds ledger rows (lib/refunds.ts) — used for the
+      "full" refund prefill (remaining = grandTotal − refundedTotal). */
+  refundedTotal: number
+  grandTotal: number
   paymentCaptured: boolean
   /** True when the order has no gateway payment (manual/WhatsApp sale) —
       settlement happens via UPI/bank and is marked here, not refunded via API. */
@@ -23,12 +33,22 @@ type OrderActionsProps = {
   shippingSupportsBooking: boolean
 }
 
+/** True when a from→to move (or the target alone) requires a reason note. */
+function needsReason(from: OrderStatus, to: OrderStatus): boolean {
+  return (
+    REASON_REQUIRED.some(([f, t]) => f === from && t === to) ||
+    REASON_REQUIRED_TARGETS.includes(to)
+  )
+}
+
 /** Admin controls: status transitions, manual shipping details, refunds. */
 export function OrderActions({
   orderId,
   status,
   depositAmount,
   refundedAmount,
+  refundedTotal,
+  grandTotal,
   paymentCaptured,
   offline,
   shippingSupportsBooking,
@@ -38,6 +58,12 @@ export function OrderActions({
   const [error, setError] = useState<string | null>(null)
   const [shipForm, setShipForm] = useState({ courierName: '', awbCode: '', trackingUrl: '' })
   const [showShipForm, setShowShipForm] = useState(false)
+  const [pendingTransition, setPendingTransition] = useState<OrderStatus | null>(null)
+  const [reason, setReason] = useState('')
+  const [showRefundForm, setShowRefundForm] = useState(false)
+  const [refundKind, setRefundKind] = useState<'deposit' | 'full' | 'partial'>('full')
+  const [refundAmount, setRefundAmount] = useState('')
+  const [refundReason, setRefundReason] = useState('')
 
   // Offline orders get manual settlement marks; gateway orders get refund
   // API buttons instead (see OFFLINE_SETTLEMENT_TRANSITIONS in lib/orders.ts).
@@ -47,14 +73,19 @@ export function OrderActions({
       )
     : []
   const nextStatuses = [...(ADMIN_TRANSITIONS[status] ?? []), ...offlineExtra]
-  const canRefundDeposit =
-    !offline && status === 'DELIVERED' && refundedAmount === 0 && paymentCaptured && depositAmount > 0
-  const canRefundFull =
-    !offline && ['PAYMENT_CONFIRMED', 'PREPARING', 'CANCELLED'].includes(status) && paymentCaptured
+
+  const remaining = grandTotal - refundedTotal
+  const canRefundDeposit = status === 'DELIVERED' && refundedAmount === 0 && paymentCaptured && depositAmount > 0
+  const canRefund = paymentCaptured && remaining > 0
 
   async function transition(next: OrderStatus) {
     if (next === 'SHIPPED' && !shippingSupportsBooking && !showShipForm) {
       setShowShipForm(true)
+      return
+    }
+    if (needsReason(status, next) && pendingTransition !== next) {
+      setPendingTransition(next)
+      setReason('')
       return
     }
     setBusy(true)
@@ -65,6 +96,7 @@ export function OrderActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: next,
+          note: reason.trim() || undefined,
           ...(next === 'SHIPPED' ? shipForm : {}),
         }),
       })
@@ -74,18 +106,22 @@ export function OrderActions({
         return
       }
       setShowShipForm(false)
+      setPendingTransition(null)
+      setReason('')
       router.refresh()
     } finally {
       setBusy(false)
     }
   }
 
-  async function refund(type: 'deposit' | 'full') {
-    const label =
-      type === 'deposit'
-        ? `Refund the ₹${depositAmount.toLocaleString('en-IN')} security deposit?`
-        : 'Issue a FULL refund for this order?'
-    if (!window.confirm(label)) return
+  async function submitRefund() {
+    if (!refundReason.trim()) {
+      setError('A reason is required for the refund')
+      return
+    }
+    const amount =
+      refundKind === 'deposit' ? depositAmount : refundKind === 'full' ? remaining : Number(refundAmount)
+    if (!window.confirm(`Issue a ${refundKind} refund of ₹${amount.toLocaleString('en-IN')}?`)) return
 
     setBusy(true)
     setError(null)
@@ -93,13 +129,20 @@ export function OrderActions({
       const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({
+          kind: refundKind,
+          amount: refundKind === 'partial' ? Number(refundAmount) : undefined,
+          reason: refundReason,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Refund failed')
         return
       }
+      setShowRefundForm(false)
+      setRefundAmount('')
+      setRefundReason('')
       router.refresh()
     } finally {
       setBusy(false)
@@ -124,6 +167,10 @@ export function OrderActions({
     fontSize: '0.8125rem',
     marginBottom: 8,
   }
+  const textarea: React.CSSProperties = { ...input, minHeight: 64, resize: 'vertical' as const }
+
+  const refundAmountValue =
+    refundKind === 'deposit' ? depositAmount : refundKind === 'full' ? remaining : Number(refundAmount) || 0
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1.25rem', marginBottom: '1rem' }}>
@@ -155,6 +202,18 @@ export function OrderActions({
         </div>
       )}
 
+      {pendingTransition && (
+        <div style={{ marginBottom: 12 }}>
+          {/* Reason note — required for REASON_REQUIRED / REASON_REQUIRED_TARGETS moves (lib/orders.ts) */}
+          <textarea
+            style={textarea}
+            placeholder={`Reason for marking ${ORDER_STATUS_META[pendingTransition].label}…`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {nextStatuses.map((next) => (
           <button
@@ -165,27 +224,77 @@ export function OrderActions({
           >
             {next === 'SHIPPED' && showShipForm
               ? 'Confirm Shipment'
-              : `Mark ${ORDER_STATUS_META[next].label}`}
+              : pendingTransition === next
+                ? 'Confirm'
+                : `Mark ${ORDER_STATUS_META[next].label}`}
           </button>
         ))}
 
-        {canRefundDeposit && (
-          <button style={btn} disabled={busy} onClick={() => refund('deposit')}>
-            Refund 5% Deposit (₹{depositAmount.toLocaleString('en-IN')})
-          </button>
-        )}
-        {canRefundFull && (
-          <button style={btnGhost} disabled={busy} onClick={() => refund('full')}>
-            Full Refund
+        {(canRefundDeposit || canRefund) && (
+          <button
+            style={btnGhost}
+            disabled={busy}
+            onClick={() => {
+              setShowRefundForm((v) => !v)
+              setRefundKind(canRefundDeposit ? 'deposit' : 'full')
+              setRefundAmount('')
+              setRefundReason('')
+              setError(null)
+            }}
+          >
+            {showRefundForm ? 'Cancel Refund' : 'Refund…'}
           </button>
         )}
 
-        {nextStatuses.length === 0 && !canRefundDeposit && !canRefundFull && (
+        {nextStatuses.length === 0 && !canRefundDeposit && !canRefund && (
           <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
             No actions available in this state.
           </p>
         )}
       </div>
+
+      {showRefundForm && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f3f4f6' }}>
+          <select
+            style={input}
+            value={refundKind}
+            onChange={(e) => setRefundKind(e.target.value as 'deposit' | 'full' | 'partial')}
+          >
+            {canRefundDeposit && (
+              <option value="deposit">Deposit — ₹{depositAmount.toLocaleString('en-IN')}</option>
+            )}
+            <option value="full">Full remaining — ₹{remaining.toLocaleString('en-IN')}</option>
+            <option value="partial">Partial…</option>
+          </select>
+          {refundKind === 'partial' ? (
+            <input
+              style={input}
+              type="number"
+              min={1}
+              max={remaining}
+              placeholder="Amount (₹)"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+            />
+          ) : (
+            <input
+              style={{ ...input, color: '#6b7280', background: '#f9fafb' }}
+              disabled
+              readOnly
+              value={`₹${refundAmountValue.toLocaleString('en-IN')}`}
+            />
+          )}
+          <input
+            style={input}
+            placeholder="Reason (required)"
+            value={refundReason}
+            onChange={(e) => setRefundReason(e.target.value)}
+          />
+          <button style={btn} disabled={busy} onClick={submitRefund}>
+            Submit Refund
+          </button>
+        </div>
+      )}
 
       {error && (
         <p style={{ marginTop: 12, fontSize: '0.8125rem', color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', border: '1px solid #fecaca' }}>

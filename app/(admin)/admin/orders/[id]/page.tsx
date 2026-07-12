@@ -21,10 +21,15 @@ export default async function AdminOrderDetailPage({
       payment: true,
       shipments: { orderBy: { dispatchedAt: 'desc' } },
       events: { orderBy: { createdAt: 'asc' } },
+      refunds: { orderBy: { createdAt: 'desc' } },
       user: { select: { email: true, name: true } },
     },
   })
   if (!order) notFound()
+
+  const refundedTotal = Number(
+    (await prisma.orderRefund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0,
+  )
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
   const provider = getShippingProvider()
@@ -64,6 +69,8 @@ export default async function AdminOrderDetailPage({
         status={order.status}
         depositAmount={Number(order.depositAmount)}
         refundedAmount={Number(order.payment?.refundedAmount ?? 0)}
+        refundedTotal={refundedTotal}
+        grandTotal={Number(order.grandTotal)}
         paymentCaptured={
           order.payment?.status === 'CAPTURED' ||
           order.payment?.status === 'PARTIALLY_REFUNDED' ||
@@ -127,6 +134,23 @@ export default async function AdminOrderDetailPage({
                     </a>
                   </>
                 )}
+              </p>
+            ))
+          )}
+        </div>
+
+        <div style={{ ...card, gridColumn: '1 / -1' }}>
+          <h3 style={heading}>Refunds</h3>
+          {order.refunds.length === 0 ? (
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>No refunds issued.</p>
+          ) : (
+            order.refunds.map((r) => (
+              <p key={r.id} style={{ fontSize: '0.875rem', marginBottom: 6 }}>
+                {inr(r.amount)} · {r.kind.toLowerCase()} · {r.method.toLowerCase()} · {r.status.toLowerCase()}
+                {r.reason ? ` · ${r.reason}` : ''}{' '}
+                <span style={{ color: '#9ca3af' }}>
+                  {r.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                </span>
               </p>
             ))
           )}

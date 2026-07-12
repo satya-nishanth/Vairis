@@ -29,7 +29,7 @@
       "id": 3,
       "nativeId": 32,
       "subject": "Task 3: Shipments per dispatch \u2014 attempts, outcomes, history",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         1
       ]
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "lastUpdated": "2026-07-12T12:19:24.245892"
+  "lastUpdated": "2026-07-12T12:24:25.943437"
 }

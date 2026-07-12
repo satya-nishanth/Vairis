@@ -3,21 +3,36 @@ import { z } from 'zod'
 import type { OrderStatus } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ADMIN_TRANSITIONS, OFFLINE_SETTLEMENT_TRANSITIONS } from '@/lib/orders'
+import {
+  ADMIN_TRANSITIONS,
+  OFFLINE_SETTLEMENT_TRANSITIONS,
+  REASON_REQUIRED,
+  REASON_REQUIRED_TARGETS,
+} from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 
 export const dynamic = 'force-dynamic'
 
+// Union of every "to" value across ADMIN_TRANSITIONS and
+// OFFLINE_SETTLEMENT_TRANSITIONS (lib/orders.ts) — every status the admin
+// can ever PATCH an order into.
 const patchSchema = z.object({
   status: z.enum([
+    'PAYMENT_CONFIRMED',
     'PREPARING',
     'SHIPPED',
+    'OUT_FOR_DELIVERY',
     'DELIVERED',
-    'CANCELLED',
-    // offline-only settlement marks (see OFFLINE_SETTLEMENT_TRANSITIONS)
-    'PAYMENT_CONFIRMED',
+    'DELIVERY_FAILED',
+    'RETURNING_TO_ORIGIN',
+    'RTO_RECEIVED',
+    'RETURN_REQUESTED',
+    'RETURN_IN_TRANSIT',
+    'RETURN_RECEIVED',
     'DEPOSIT_REFUNDED',
+    'CANCELLED',
     'REFUNDED',
+    'FAILED_OTHER',
   ]),
   note: z.string().trim().max(500).optional(),
   // Shipping details — required when marking SHIPPED with the manual
@@ -66,6 +81,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     )
   }
 
+  // Reason enforcement (lib/orders REASON_REQUIRED / REASON_REQUIRED_TARGETS)
+  const reasonRequired =
+    REASON_REQUIRED.some(([f, t]) => f === order.status && t === nextStatus) ||
+    REASON_REQUIRED_TARGETS.includes(nextStatus as OrderStatus)
+  if (reasonRequired && !note?.trim()) {
+    return NextResponse.json({ error: 'A reason note is required for this transition' }, { status: 400 })
+  }
+
+  // Return-request reject must revert to the exact pre-request status
+  if (order.status === 'RETURN_REQUESTED' && (nextStatus === 'DELIVERED' || nextStatus === 'DEPOSIT_REFUNDED')) {
+    const events = await prisma.orderEvent.findMany({ where: { orderId: id }, orderBy: { createdAt: 'desc' } })
+    const requestIdx = events.findIndex((e) => e.status === 'RETURN_REQUESTED')
+    const prior = events.slice(requestIdx + 1).find((e) => e.status !== 'RETURN_REQUESTED')?.status
+    if (prior !== nextStatus) {
+      return NextResponse.json({ error: `Reject must revert to ${prior ?? 'the previous status'}` }, { status: 409 })
+    }
+  }
+
   // SHIPPED requires shipping details. Manual provider = admin types them;
   // a future partner adapter (supportsBooking=true) will book via API and
   // fill these itself.
@@ -93,7 +126,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             ? 'Amount refunded (offline settlement)'
             : nextStatus === 'PAYMENT_CONFIRMED'
               ? 'Payment received offline'
-              : undefined)
+              : nextStatus === 'RETURN_REQUESTED'
+                ? 'Return requested (admin)'
+                : nextStatus === 'RETURN_IN_TRANSIT'
+                  ? 'Return pickup arranged'
+                  : nextStatus === 'RTO_RECEIVED'
+                    ? 'Package received back at origin'
+                    : nextStatus === 'RETURNING_TO_ORIGIN'
+                      ? 'Package returning to origin'
+                      : nextStatus === 'OUT_FOR_DELIVERY'
+                        ? 'Out for delivery'
+                        : undefined)
 
   await prisma.$transaction(async (tx) => {
     await tx.order.update({
@@ -126,18 +169,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // DELIVERY_FAILED / RETURNING_TO_ORIGIN aren't reachable via the zod
-    // enum yet (Task 4 expands it) — these blocks are ready for when it does.
     const latest = order.shipments[0] ?? null
 
-    if ((nextStatus as OrderStatus) === 'DELIVERY_FAILED' && latest) {
+    if (nextStatus === 'DELIVERY_FAILED' && latest) {
       await tx.shipment.update({
         where: { id: latest.id },
         data: { attempts: { increment: 1 }, status: 'ATTEMPT_FAILED' },
       })
     }
 
-    if ((nextStatus as OrderStatus) === 'RETURNING_TO_ORIGIN' && latest) {
+    if (nextStatus === 'RETURNING_TO_ORIGIN' && latest) {
       await tx.shipment.update({
         where: { id: latest.id },
         data: { outcome: 'RTO', status: 'RETURNING_TO_ORIGIN' },
