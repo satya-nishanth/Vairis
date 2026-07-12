@@ -94,7 +94,12 @@ export default async function AdminOrderDetailPage({
           orderId={order.id}
           status={order.status}
           depositAmount={Number(order.depositAmount)}
-          refundedAmount={Number(resolvedPayment?.refundedAmount ?? 0)}
+          // Own-order ledger total (refundedTotal, scoped to order.id below),
+          // NOT resolvedPayment.refundedAmount — that field is the shared
+          // parent Payment's cumulative total across ALL children, so a
+          // sibling's refund would incorrectly hide this order's own
+          // deposit-refund button (lib/split.ts payment anchoring).
+          refundedAmount={refundedTotal}
           refundedTotal={refundedTotal}
           grandTotal={Number(order.grandTotal)}
           paymentCaptured={

@@ -48,6 +48,17 @@ export async function initiateRefund(params: {
   if (!resolved) return { ok: false, error: "Order not found", code: 404 };
   const { order, payment } = resolved;
 
+  // A split parent shares its Payment with every child (lib/split.ts payment
+  // anchoring) — refunding "on" the parent directly would create a ledger
+  // entry disconnected from any actual delivery. Refund from the child.
+  if (order.status === "SPLIT_INTO_DELIVERIES") {
+    return {
+      ok: false,
+      error: "This order was split into deliveries — refund from the individual delivery instead.",
+      code: 409,
+    };
+  }
+
   const already = await refundedSoFar(order.id);
   const remaining = capturedFor(order) - already;
 

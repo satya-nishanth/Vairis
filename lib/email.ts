@@ -23,12 +23,26 @@ export async function sendOrderConfirmationEmail(orderId: string): Promise<void>
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true, user: { select: { email: true, name: true } } },
+      include: {
+        items: true,
+        user: { select: { email: true, name: true } },
+        children: { include: { items: true } },
+      },
     });
     if (!order) return;
 
+    // Split parents move their line items to children in the same
+    // transaction that confirms the order (lib/split.ts) — by the time this
+    // fire-and-forget email fetch runs, order.items is empty. Fall back to
+    // the combined item list across children so the receipt still shows
+    // every piece the customer bought.
+    const receiptItems =
+      order.items.length > 0
+        ? order.items
+        : order.children.flatMap((c) => c.items);
+
     const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-    const rows = order.items
+    const rows = receiptItems
       .map(
         (i) =>
           `<tr><td style="padding:6px 0">${i.productName} × ${i.quantity}</td><td align="right">${inr(Number(i.price) * i.quantity)}</td></tr>`,

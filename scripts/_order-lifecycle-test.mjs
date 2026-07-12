@@ -614,6 +614,62 @@ console.log(`      seeded order ${order.id}`);
     `status ${refundRes.status}`,
   );
 
+  // Review fix #3: refunding directly on the split PARENT is rejected —
+  // money for a split order must move through an individual delivery.
+  const parentRefundRes = await api(`/api/admin/orders/${parentB.id}/refund`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "full", reason: "should be rejected" }),
+  });
+  step(
+    "refund directly on a split parent is rejected (409)",
+    parentRefundRes.status === 409 && /split into deliveries/i.test(parentRefundRes.body?.error ?? ""),
+    `status ${parentRefundRes.status} — ${parentRefundRes.body?.error}`,
+  );
+
+  // Review fix #2: a sibling's completed deposit refund must not block this
+  // delivery's OWN deposit refund. Simulate b0's deposit as fully refunded
+  // (ledger row + the same Payment.refundedAmount bump the webhook would
+  // apply — that field is shared across all children of one parent), then
+  // confirm b1 — delivered, its own deposit untouched — still offers its
+  // own deposit-refund button on the admin page.
+  await api(`/api/admin/orders/${b1.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "PREPARING" }),
+  });
+  await api(`/api/admin/orders/${b1.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "SHIPPED", courierName: "DTDC", awbCode: "SPLIT-AWB-2" }),
+  });
+  await api(`/api/admin/orders/${b1.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "DELIVERED" }),
+  });
+  await prisma.orderRefund.create({
+    data: {
+      orderId: b0.id,
+      amount: Number(b0.depositAmount),
+      kind: "DEPOSIT",
+      method: "GATEWAY",
+      gatewayRefundId: `rfnd_SIBLING${Date.now()}`,
+      reason: "sibling deposit refund (simulated)",
+      status: "COMPLETED",
+    },
+  });
+  await prisma.payment.update({
+    where: { id: parentB.payment.id },
+    data: { refundedAmount: { increment: Number(b0.depositAmount) } },
+  });
+  await page.goto(`${BASE}/admin/orders/${b1.id}`, { waitUntil: "networkidle" });
+  let adminBody = await page.textContent("body");
+  step(
+    "sibling's deposit refund doesn't block this delivery's own refund button",
+    adminBody.includes("Refund…"),
+  );
+
   // Customer surfaces.
   await page.goto(`${BASE}/account/orders`, { waitUntil: "networkidle" });
   let body = await page.textContent("body");
