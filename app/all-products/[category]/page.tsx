@@ -34,15 +34,21 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   let prismaProducts: ReturnType<typeof prismaToProduct>[] = [];
 
   if (prismaCategory) {
-    const [dbProducts, goldRates] = await Promise.all([
-      prisma.product.findMany({
-        where: { category: prismaCategory as Category, isActive: true },
-        include: { variants: true },
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.goldRate.findMany(),
-    ]);
-    prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
+    try {
+      const [dbProducts, goldRates] = await Promise.all([
+        prisma.product.findMany({
+          where: { category: prismaCategory as Category, isActive: true },
+          include: { variants: true },
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.goldRate.findMany(),
+      ]);
+      prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
+    } catch (err) {
+      // e.g. Category enum value missing on DB (NECKLACES migration not applied)
+      console.error(`[plp] failed loading category=${category}`, err);
+      prismaProducts = [];
+    }
   }
 
   // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
