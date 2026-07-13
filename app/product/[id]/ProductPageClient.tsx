@@ -88,18 +88,21 @@ function PdpContent({ product, goldRates }: Props) {
   const selectedVariant = product.variants.find(
     (v) => v.id === selectedVariantId,
   );
-  const price = selectedVariant
-    ? Math.round(calculatePrice(
-        {
-          weightGrams: Number(selectedVariant.weightGrams),
-          makingChargePerGram: Number(selectedVariant.makingChargePerGram),
-          flatMakingCharge: Number(selectedVariant.flatMakingCharge),
-          stoneCharges: Number(selectedVariant.stoneCharges),
-          miscCharges: Number(selectedVariant.miscCharges),
-        },
-        rateMap[selectedVariant.metalType] ?? 0,
-      ).total)
-    : undefined;
+  const price =
+    selectedVariant && Number(selectedVariant.weightGrams) > 0
+      ? Math.round(
+          calculatePrice(
+            {
+              weightGrams: Number(selectedVariant.weightGrams),
+              makingChargePerGram: Number(selectedVariant.makingChargePerGram),
+              flatMakingCharge: Number(selectedVariant.flatMakingCharge),
+              stoneCharges: Number(selectedVariant.stoneCharges),
+              miscCharges: Number(selectedVariant.miscCharges),
+            },
+            rateMap[selectedVariant.metalType] ?? 0,
+          ).total,
+        )
+      : undefined;
 
   useEffect(() => {
     const el = swipeRef.current;
