@@ -22,10 +22,12 @@ export function prismaToProduct(
     const priced = p.variants
       .map((v) => {
         const rate = rateMap[v.metalType];
-        if (!rate) return null;
+        const weight = Number(v.weightGrams);
+        // Skip stub variants (weight 0) — avoid fake ₹misc-only prices
+        if (!rate || !(weight > 0)) return null;
         const total = calculatePrice(
           {
-            weightGrams: Number(v.weightGrams),
+            weightGrams: weight,
             makingChargePerGram: Number(v.makingChargePerGram),
             flatMakingCharge: Number(v.flatMakingCharge),
             stoneCharges: Number(v.stoneCharges),

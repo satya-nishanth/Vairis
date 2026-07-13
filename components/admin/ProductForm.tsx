@@ -150,11 +150,10 @@ export default function ProductForm({ initialData, mode }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    // FE guard: making charge required unless product is Coming Soon
     if (!form.comingSoon) {
       for (const v of form.variants) {
         if (v.makingChargePerGram === '' || v.makingChargePerGram === undefined) {
-          setError('Every variant must have a Making Charge (₹/g). Mark as "Coming Soon" if pricing is not set yet.')
+          setError('Every variant must have a Making Charge (₹/g). Mark as Coming Soon if pricing is not set yet.')
           return
         }
         if (parseFloat(v.makingChargePerGram) < 0) {

@@ -7,16 +7,18 @@ export const dynamic = 'force-dynamic'
 
 type Params = Promise<{ id: string }>
 
+const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES'] as const
+
 const patchVariantSchema = z.object({
   metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD'] as const),
   weightGrams: z
     .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => n > 0, 'Weight must be greater than 0'),
+    .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))
+    .refine((n) => !Number.isNaN(n) && n >= 0, 'Weight cannot be negative'),
   makingChargePerGram: z
     .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => n >= 0, 'Making charge cannot be negative'),
+    .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))
+    .refine((n) => !Number.isNaN(n) && n >= 0, 'Making charge cannot be negative'),
   flatMakingCharge: z.union([z.string(), z.number()]).transform(Number).default(0),
   stoneCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
   miscCharges: z.union([z.string(), z.number()]).transform(Number).default(45),
@@ -28,7 +30,7 @@ const patchVariantSchema = z.object({
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  category: z.enum(['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS'] as const).optional(),
+  category: z.enum(CATEGORIES).optional(),
   itemCode: z.string().nullable().optional(),
   designStyle: z.string().nullable().optional(),
   totalLengthMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
@@ -63,10 +65,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   const body = await req.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
-    const errors = parsed.error.flatten()
+    const flat = parsed.error.flatten()
+    const first =
+      parsed.error.issues[0]?.message ??
+      Object.values(flat.fieldErrors).flat()[0] ??
+      'Validation failed'
     return NextResponse.json(
-      { error: 'Validation failed', fields: errors.fieldErrors },
-      { status: 400 }
+      { error: first, fields: flat.fieldErrors, formErrors: flat.formErrors },
+      { status: 400 },
     )
   }
 
