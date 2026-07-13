@@ -46,10 +46,10 @@ const productSchema = z.object({
   variants: z.array(variantSchema).min(1, 'At least one variant is required'),
 })
 
-function validationError(parsed: z.SafeParseError<unknown>) {
-  const flat = parsed.error.flatten()
+function validationError(error: z.ZodError) {
+  const flat = error.flatten()
   const first =
-    parsed.error.issues[0]?.message ??
+    error.issues[0]?.message ??
     Object.values(flat.fieldErrors).flat()[0] ??
     'Validation failed'
   return NextResponse.json(
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const parsed = productSchema.safeParse(body)
-  if (!parsed.success) return validationError(parsed)
+  if (!parsed.success) return validationError(parsed.error)
 
   const data = parsed.data
   const product = await prisma.product.create({
