@@ -47,14 +47,17 @@ export function prismaToProduct(
 
   const category: ProductCategory = prismaCategoryToSlug(p.category);
 
+  const images = (p.images ?? []).filter(Boolean);
+  const primaryImage = images.find((src) => !/\.(mp4|webm|mov)(\?|$)/i.test(src)) ?? images[0] ?? "";
+
   return {
     slug: p.id,
     sku: p.itemCode ?? p.id,
     name: p.name,
     description: p.description ?? "",
     price,
-    image: p.images[0] ?? "",
-    images: p.images,
+    image: primaryImage,
+    images,
     category,
     catalogueId: p.id,
     video: null,

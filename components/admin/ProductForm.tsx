@@ -166,11 +166,17 @@ export default function ProductForm({ initialData, mode }: Props) {
     setSaving(true)
     setError('')
 
+    // Drop empty Front/Left/Right/Back placeholders so storefront never gets "" src
+    const payload = {
+      ...form,
+      images: form.images.filter(Boolean),
+    }
+
     const url = mode === 'create' ? '/api/admin/products' : `/api/admin/products/${initialData?.id}`
     const res = await fetch(url, {
       method: mode === 'create' ? 'POST' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     })
 
     setSaving(false)

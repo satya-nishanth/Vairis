@@ -44,7 +44,7 @@ export default async function ProductPage({ params }: Props) {
         name: product.name,
         description: product.description,
         category: product.category,
-        images: product.images,
+        images: product.images.filter(Boolean),
         itemCode: product.itemCode,
         comingSoon: product.comingSoon,
         variants: product.variants.map((v) => ({

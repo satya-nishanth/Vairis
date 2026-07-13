@@ -64,10 +64,12 @@ function PdpContent({ product, goldRates }: Props) {
 
   const gallery = useMemo(
     () =>
-      product.images.map((src) => ({
-        src,
-        isVideo: /\.(mp4|webm|mov)(\?|$)/i.test(src),
-      })),
+      product.images
+        .filter((src): src is string => Boolean(src))
+        .map((src) => ({
+          src,
+          isVideo: /\.(mp4|webm|mov)(\?|$)/i.test(src),
+        })),
     [product.images],
   );
   const categorySlug = prismaCategoryToSlug(product.category);

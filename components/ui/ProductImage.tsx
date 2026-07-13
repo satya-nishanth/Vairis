@@ -12,6 +12,21 @@ type ProductImageProps = {
 };
 
 export function ProductImage({ src, alt, width, height, className, fill, priority, style }: ProductImageProps) {
+  // Next/Image throws on empty src during SSR — common with sparse Front/Left/Right/Back slots
+  if (!src) {
+    return (
+      <div
+        className={className}
+        style={{
+          ...style,
+          ...(fill ? { position: "absolute", inset: 0 } : { width, height }),
+          background: "#f3f4f6",
+        }}
+        aria-label={alt || "No image"}
+      />
+    );
+  }
+
   if (fill) {
     return (
       <Image
