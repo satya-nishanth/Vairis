@@ -230,3 +230,47 @@ model Wishlist {
 
   @@unique([userId, productId])
 }
+
+// ── Catalogue reel (Instagram-style) ─────────────────────────────────────────
+
+model GuestUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  phone        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  progress  CatalogueProgress?
+  reactions CatalogueReaction[]
+  comments  CatalogueComment[]
+}
+
+model CatalogueProgress {
+  id             String    @id @default(cuid())
+  guestUserId    String    @unique
+  guestUser      GuestUser @relation(fields: [guestUserId], references: [id], onDelete: Cascade)
+  lastFrameIndex Int       @default(-1)
+  updatedAt      DateTime  @updatedAt
+}
+
+model CatalogueReaction {
+  id          String    @id @default(cuid())
+  guestUserId String
+  guestUser   GuestUser @relation(fields: [guestUserId], references: [id], onDelete: Cascade)
+  productId   String
+  reaction    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([guestUserId, productId])
+}
+
+model CatalogueComment {
+  id          String    @id @default(cuid())
+  guestUserId String
+  guestUser   GuestUser @relation(fields: [guestUserId], references: [id], onDelete: Cascade)
+  productId   String
+  body        String
+  createdAt   DateTime  @default(now())
+}

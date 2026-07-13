@@ -16,8 +16,8 @@ export default async function NewManualOrderPage() {
   const [products, goldRates] = await Promise.all([
     prisma.product.findMany({
       where: { isActive: true },
-      include: { variants: true },
-      orderBy: { name: 'asc' },
+      include: { variants: { orderBy: { metalType: 'asc' } } },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
     }),
     prisma.goldRate.findMany(),
   ])
@@ -43,6 +43,11 @@ export default async function NewManualOrderPage() {
         : 0
       return {
         variantId: v.id,
+        productId: p.id,
+        category: p.category,
+        productName: p.name,
+        itemCode: p.itemCode ?? '',
+        sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
         suggestedPrice: suggested,
       }
