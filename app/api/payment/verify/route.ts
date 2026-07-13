@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getPaymentGateway } from '@/lib/payments'
 import { confirmPayment } from '@/lib/payments/webhook-handlers'
@@ -14,7 +14,9 @@ export const dynamic = 'force-dynamic'
  * before this fires).
  */
 export async function POST(req: NextRequest) {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const gateway = getPaymentGateway()
 
   const body = (await req.json().catch(() => ({}))) as {

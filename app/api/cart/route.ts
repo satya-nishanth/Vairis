@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrice } from '@/lib/pricing'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const [items, goldRates] = await Promise.all([
     prisma.cartItem.findMany({
       where: { userId: user.id },
@@ -34,7 +36,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { variantId, quantity } = await req.json()
 
   const item = await prisma.cartItem.upsert({
