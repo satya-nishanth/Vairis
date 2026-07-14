@@ -17,16 +17,10 @@ const FILTERS: (OrderStatus | 'ALL')[] = [
   'REFUNDED',
 ]
 
-/** Admin order list — filter chips per status, newest first. */
-export default async function AdminOrdersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ status?: string }>
-}) {
-  const { status } = await searchParams
-  const filter = FILTERS.includes(status as OrderStatus) ? (status as OrderStatus) : null
+type OrderRow = Awaited<ReturnType<typeof loadOrders>>[number]
 
-  const orders = await prisma.order.findMany({
+async function loadOrders(filter: OrderStatus | null) {
+  return prisma.order.findMany({
     where: filter ? { status: filter } : undefined,
     include: {
       items: true,
@@ -36,6 +30,27 @@ export default async function AdminOrdersPage({
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
+}
+
+/** Admin order list — filter chips per status, newest first. */
+export default async function AdminOrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>
+}) {
+  const { status } = await searchParams
+  const filter = FILTERS.includes(status as OrderStatus) ? (status as OrderStatus) : null
+
+  let orders: OrderRow[] = []
+  let dbMissing = false
+
+  try {
+    orders = await loadOrders(filter)
+  } catch (err) {
+    // Typical cloud miss: depositAmount / grandTotal / Payment.refundedAmount / OrderEvent
+    console.error('[admin/orders] query failed', err)
+    dbMissing = true
+  }
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
 
@@ -59,9 +74,32 @@ export default async function AdminOrdersPage({
         </Link>
       </div>
 
+      {dbMissing && (
+        <div
+          style={{
+            marginBottom: '1.5rem',
+            padding: '1rem 1.25rem',
+            background: '#fef3c7',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+            fontSize: '0.875rem',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Database migration required.</strong> Order deposit columns (and related
+          tables) are missing on this database. Run{' '}
+          <code>scripts/apply-sitebanner-migration-cloud.sql</code> in the Supabase SQL Editor,
+          then reload. That script adds <code>Order.depositAmount</code>,{' '}
+          <code>Order.grandTotal</code>, <code>Payment.refundedAmount</code>,{' '}
+          <code>OrderEvent</code>, and <code>SiteBanner</code>.
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         {FILTERS.map((f) => {
           const active = (f === 'ALL' && !filter) || f === filter
+          const label =
+            f === 'ALL' ? 'All' : (ORDER_STATUS_META[f as OrderStatus]?.label ?? String(f))
           return (
             <Link
               key={f}
@@ -79,13 +117,13 @@ export default async function AdminOrdersPage({
                 color: active ? '#fff' : '#4b5563',
               }}
             >
-              {f === 'ALL' ? 'All' : ORDER_STATUS_META[f as OrderStatus].label}
+              {label}
             </Link>
           )
         })}
       </div>
 
-      {orders.length === 0 ? (
+      {dbMissing ? null : orders.length === 0 ? (
         <p style={{ color: '#6b7280', padding: '2rem 0' }}>No orders{filter ? ` in ${filter}` : ' yet'}.</p>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
@@ -117,7 +155,9 @@ export default async function AdminOrdersPage({
                   {Number(order.payment?.refundedAmount ?? 0) > 0 ? '↩ ' : ''}
                   {inr(order.depositAmount)}
                 </td>
-                <td style={{ padding: '10px 12px' }}>{ORDER_STATUS_META[order.status].label}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  {ORDER_STATUS_META[order.status]?.label ?? order.status}
+                </td>
                 <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                   {order.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                 </td>

@@ -14,16 +14,33 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      items: { include: { variant: true } },
-      payment: true,
-      shipment: true,
-      events: { orderBy: { createdAt: 'asc' } },
-      user: { select: { email: true, name: true } },
-    },
-  })
+  let order
+  try {
+    order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { variant: true } },
+        payment: true,
+        shipment: true,
+        events: { orderBy: { createdAt: 'asc' } },
+        user: { select: { email: true, name: true } },
+      },
+    })
+  } catch (err) {
+    console.error('[admin/orders/[id]] query failed', err)
+    return (
+      <div style={{ padding: '2rem', color: '#92400e' }}>
+        <p>
+          <strong>Database migration required.</strong> Run{' '}
+          <code>scripts/apply-sitebanner-migration-cloud.sql</code> in Supabase SQL Editor
+          (adds Order deposit columns, OrderEvent, Payment.refundedAmount).
+        </p>
+        <p style={{ marginTop: 12 }}>
+          <Link href="/admin/orders">← Orders</Link>
+        </p>
+      </div>
+    )
+  }
   if (!order) notFound()
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
