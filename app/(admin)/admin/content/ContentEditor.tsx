@@ -90,7 +90,7 @@ export function ContentEditor({
     fontSize: '0.8125rem',
     marginBottom: 10,
   }
-  const label: React.CSSProperties = {
+  const labelStyle: React.CSSProperties = {
     display: 'block',
     fontSize: '0.6875rem',
     letterSpacing: '0.08em',
@@ -128,7 +128,7 @@ export function ContentEditor({
       {open && (
         <form onSubmit={save} style={{ padding: '4px 20px 20px' }}>
           {/* Category PLP heroes are image-first; home/promo still get full copy fields */}
-          <label style={label}>Hero image</label>
+          <label style={labelStyle}>Hero image</label>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
             {form.imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -173,19 +173,48 @@ export function ContentEditor({
             />
           </div>
 
-          {!isCategoryHero && (
+          {!isCategoryHero ? (
             <>
-              <label style={label}>Title</label>
+              <label style={labelStyle}>Title</label>
               <input style={input} value={form.title} onChange={set('title')} placeholder="Leave empty to use the built-in text" />
 
-              <label style={label}>Subtitle</label>
+              <label style={labelStyle}>Subtitle</label>
               <input style={input} value={form.subtitle} onChange={set('subtitle')} />
 
-              <label style={label}>CTA label</label>
+              <label style={labelStyle}>CTA label</label>
               <input style={input} value={form.ctaLabel} onChange={set('ctaLabel')} placeholder="e.g. Shop Now" />
 
-              <label style={label}>Link URL</label>
+              <label style={labelStyle}>Link URL</label>
               <input style={input} value={form.linkUrl} onChange={set('linkUrl')} placeholder="/all-products/rings" />
+            </>
+          ) : (
+            <>
+              <label style={labelStyle}>Headline line 1</label>
+              <input
+                style={input}
+                value={form.title}
+                onChange={set('title')}
+                placeholder="e.g. She bought it after her first solo presentation."
+              />
+
+              <label style={labelStyle}>Headline line 2</label>
+              <input
+                style={input}
+                value={form.subtitle}
+                onChange={set('subtitle')}
+                placeholder="e.g. Still wears it on every big day since."
+              />
+
+              <label style={labelStyle}>Intro (grey text under headline)</label>
+              <input
+                style={input}
+                value={form.ctaLabel}
+                onChange={set('ctaLabel')}
+                placeholder="e.g. Minimal diamonds designed for workdays, dinners and everyday confidence."
+              />
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '-4px 0 12px' }}>
+                Leave headline empty to keep rotating built-in stories. Intro empty = category default.
+              </p>
             </>
           )}
 

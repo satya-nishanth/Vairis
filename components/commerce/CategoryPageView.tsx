@@ -32,6 +32,7 @@ type CategoryPageViewProps = {
   story: CategoryStory;
   prismaProducts?: Product[];
   heroImageOverride?: string;
+  introOverride?: string;
 };
 
 function usePlpPageSize() {
@@ -65,7 +66,13 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   return result;
 }
 
-export function CategoryPageView({ category, story, prismaProducts, heroImageOverride }: CategoryPageViewProps) {
+export function CategoryPageView({
+  category,
+  story,
+  prismaProducts,
+  heroImageOverride,
+  introOverride,
+}: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const meta = CATEGORY_LABELS[category];
   const { count: bagCount } = useCart();
@@ -74,6 +81,7 @@ export function CategoryPageView({ category, story, prismaProducts, heroImageOve
   const filterGroups = PLP_FILTER_GROUPS[category];
   // Admin banner override (SiteBanner slot plp-hero-<category>) wins over the built-in set
   const heroImages = heroImageOverride ? [heroImageOverride] : getCategoryHeroImages(category);
+  const intro = introOverride?.trim() || meta.intro;
 
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
   const [draftFilters, setDraftFilters] = useState<FilterState>(defaultFilterState());
@@ -128,7 +136,7 @@ export function CategoryPageView({ category, story, prismaProducts, heroImageOve
             />
             <div className="plp-hero__hero-main">
               <CategoryHeroStory story={story} />
-              <p className="plp-hero__intro">{meta.intro}</p>
+              <p className="plp-hero__intro">{intro}</p>
             </div>
           </div>
           <CategoryHeroMediaCarousel images={heroImages} label={meta.title} />

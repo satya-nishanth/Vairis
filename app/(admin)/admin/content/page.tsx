@@ -91,7 +91,8 @@ export default async function AdminContentPage() {
 
       <h2 style={sectionTitle}>Category heroes (navbar)</h2>
       <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-        Same order as the header: Necklaces, Earrings, Rings, Bracelets, Pendants.
+        Same order as the header: Necklaces, Earrings, Rings, Bracelets, Pendants. Edit headline,
+        intro copy, and hero image per category — same Content page as home.
       </p>
       {CATEGORY_HERO_SLOTS.map((s) => editor(s.slot, s.description, s.label))}
 

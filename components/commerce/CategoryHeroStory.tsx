@@ -26,14 +26,16 @@ function StoryLine({ text }: { text: string }) {
 }
 
 export function CategoryHeroStory({ story }: CategoryHeroStoryProps) {
+  const lines = [story.line1, story.line2].map((t) => t?.trim()).filter(Boolean) as string[];
+
   return (
     <div className="plp-hero__story" aria-live="polite">
-      <p className="plp-hero__story-row">
-        <StoryLine text={story.line1} />
-      </p>
-      <p className="plp-hero__story-row">
-        <StoryLine text={story.line2} />
-      </p>
+      {lines.map((text) => (
+        <p key={text} className="plp-hero__story-row">
+          <StoryLine text={text} />
+        </p>
+      ))}
     </div>
   );
 }
+

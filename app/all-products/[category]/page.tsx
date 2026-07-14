@@ -52,13 +52,23 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   }
 
   // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
+  // title -> story line 1, subtitle -> story line 2, ctaLabel -> intro, imageUrl -> hero
   const heroBanner = await getBanner(`plp-hero-${category}`);
+  const storyOverride =
+    heroBanner?.title?.trim()
+      ? {
+          line1: heroBanner.title.trim(),
+          line2: (heroBanner.subtitle ?? "").trim(),
+        }
+      : null;
 
   return (
     <CategoryPage
       category={category}
       prismaProducts={prismaProducts}
       heroImageOverride={heroBanner?.imageUrl ?? undefined}
+      storyOverride={storyOverride}
+      introOverride={heroBanner?.ctaLabel ?? undefined}
     />
   );
 }
