@@ -32,6 +32,9 @@ export function ContentEditor({
   initial,
   label,
   defaultIntro,
+  builtInImageUrl,
+  builtInLine1,
+  builtInLine2,
 }: {
   slot: string
   description: string
@@ -39,6 +42,10 @@ export function ContentEditor({
   label?: string
   /** Fallback intro for category preview when ctaLabel empty */
   defaultIntro?: string
+  /** Image currently shown on storefront when no SiteBanner image is set */
+  builtInImageUrl?: string
+  builtInLine1?: string
+  builtInLine2?: string
 }) {
   const isCategoryHero = slot.startsWith('plp-hero-')
   const isHomeHero = slot === 'home-hero'
@@ -61,8 +68,14 @@ export function ContentEditor({
     }
   }, [localPreview])
 
-  const displayImage = localPreview || form.imageUrl
+  const customImage = localPreview || form.imageUrl
+  // What shoppers see / what admin should preview: custom first, else built-in
+  const displayImage = customImage || builtInImageUrl || ''
+  const showingBuiltInImage = Boolean(!customImage && builtInImageUrl)
   const hasUnsavedImage = Boolean(localPreview) || form.imageUrl !== savedImageUrl
+  const hasCustomContent = Boolean(
+    form.imageUrl || form.title.trim() || form.subtitle.trim() || (isCategoryHero ? form.ctaLabel.trim() : false),
+  )
 
   const set =
     (field: keyof BannerForm) =>
@@ -139,20 +152,20 @@ export function ContentEditor({
   const statusLabel =
     !form.active
       ? 'Off'
-      : !initial && !form.imageUrl && !form.title
-        ? 'Defaults'
-        : hasUnsavedImage
-          ? 'Unsaved image'
-          : 'Live'
+      : hasUnsavedImage
+        ? 'Unsaved'
+        : hasCustomContent && form.active
+          ? 'Custom'
+          : 'Built-in'
 
   const statusColor =
-    statusLabel === 'Live'
+    statusLabel === 'Custom'
       ? '#15803d'
-      : statusLabel === 'Unsaved image'
+      : statusLabel === 'Unsaved'
         ? '#b45309'
         : statusLabel === 'Off'
           ? '#9ca3af'
-          : '#6b7280'
+          : '#0369a1'
 
   const fieldLabel: React.CSSProperties = {
     display: 'block',
@@ -242,7 +255,9 @@ export function ContentEditor({
             </span>
           </div>
           <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {description}
+            {showingBuiltInImage
+              ? 'Showing built-in shop image - upload to replace'
+              : description}
           </p>
         </div>
         <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{open ? 'Collapse' : 'Edit'}</span>
@@ -314,24 +329,29 @@ export function ContentEditor({
                           color: '#032b24',
                         }}
                       >
-                        Uploading…
+                        Uploading...
                       </div>
                     )}
                     {localPreview && !uploading && (
                       <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#b45309' }}>
-                        Local preview - finishing upload…
+                        Local preview - finishing upload...
                       </p>
                     )}
                     {form.imageUrl && !localPreview && (
                       <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
-                        Click or drop to replace
+                        Custom upload - click or drop to replace
+                      </p>
+                    )}
+                    {showingBuiltInImage && !uploading && (
+                      <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#0369a1' }}>
+                        Built-in shop image (now live) - drop a file to replace it
                       </p>
                     )}
                   </div>
                 ) : (
                   <div style={{ padding: '28px 8px' }}>
                     <p style={{ margin: 0, fontSize: '0.875rem', color: '#111827', fontWeight: 500 }}>
-                      {uploading ? 'Uploading…' : 'Drop image here or click to upload'}
+                      {uploading ? 'Uploading...' : 'Drop image here or click to upload'}
                     </p>
                     <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>
                       JPG / PNG / WebP - large landscape works best
@@ -350,7 +370,7 @@ export function ContentEditor({
                 />
               </div>
 
-              {displayImage && (
+              {customImage && (
                 <button
                   type="button"
                   onClick={removeImage}
@@ -364,7 +384,7 @@ export function ContentEditor({
                     cursor: 'pointer',
                   }}
                 >
-                  Remove image
+                  Remove custom image (revert to built-in)
                 </button>
               )}
 
@@ -443,7 +463,7 @@ export function ContentEditor({
                     opacity: saving || uploading ? 0.7 : 1,
                   }}
                 >
-                  {saving ? 'Saving…' : 'Save changes'}
+                  {saving ? 'Saving...' : 'Save changes'}
                 </button>
                 {message && (
                   <span style={{ fontSize: '0.8125rem', color: messageOk ? '#15803d' : '#b91c1c' }}>{message}</span>
@@ -481,11 +501,13 @@ export function ContentEditor({
                 {isCategoryHero ? (
                   <CategoryPreview
                     title={heading}
-                    line1={form.title}
-                    line2={form.subtitle}
+                    line1={form.title || builtInLine1 || ''}
+                    line2={form.subtitle || builtInLine2 || ''}
                     intro={form.ctaLabel || defaultIntro || ''}
                     imageUrl={displayImage}
                     active={form.active}
+                    usingBuiltInStory={!form.title.trim()}
+                    usingBuiltInImage={showingBuiltInImage}
                   />
                 ) : isHomeHero ? (
                   <HomePreview
@@ -497,6 +519,7 @@ export function ContentEditor({
                     cta={form.ctaLabel || 'Shop Now'}
                     imageUrl={displayImage}
                     active={form.active}
+                    usingBuiltInImage={showingBuiltInImage}
                   />
                 ) : (
                   <SimplePreview
@@ -533,6 +556,8 @@ function CategoryPreview({
   intro,
   imageUrl,
   active,
+  usingBuiltInStory,
+  usingBuiltInImage,
 }: {
   title: string
   line1: string
@@ -540,8 +565,9 @@ function CategoryPreview({
   intro: string
   imageUrl: string
   active: boolean
+  usingBuiltInStory?: boolean
+  usingBuiltInImage?: boolean
 }) {
-  const showDefaults = !active || (!line1 && !line2)
   return (
     <div
       style={{
@@ -553,28 +579,49 @@ function CategoryPreview({
     >
       <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
         <p style={{ margin: 0, fontSize: '0.625rem', color: '#9ca3af' }}>Home / {title}</p>
-        {showDefaults ? (
+        {usingBuiltInStory && (
+          <p style={{ margin: 0, fontSize: '0.625rem', color: '#0369a1', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Sample built-in story (rotates on site)
+          </p>
+        )}
+        {line1 ? (
+          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line1}</p>
+        ) : (
           <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.45, color: '#9ca3af', fontStyle: 'italic' }}>
             Rotating built-in story will show here
           </p>
-        ) : (
-          <>
-            {line1 && (
-              <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line1}</p>
-            )}
-            {line2 && (
-              <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line2}</p>
-            )}
-          </>
+        )}
+        {line2 && (
+          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line2}</p>
         )}
         <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.45 }}>
-          {intro || 'Category intro text…'}
+          {intro || 'Category intro text...'}
         </p>
       </div>
       <div style={{ background: '#f3f4f6', minHeight: 200, position: 'relative' }}>
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+            {usingBuiltInImage && (
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 8,
+                  bottom: 8,
+                  background: 'rgba(3,105,161,0.92)',
+                  color: '#fff',
+                  fontSize: '0.625rem',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Built-in
+              </span>
+            )}
+          </>
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
             Hero image preview
@@ -591,12 +638,14 @@ function HomePreview({
   cta,
   imageUrl,
   active,
+  usingBuiltInImage,
 }: {
   title: string
   subtitle: string
   cta: string
   imageUrl: string
   active: boolean
+  usingBuiltInImage?: boolean
 }) {
   return (
     <div
@@ -630,8 +679,28 @@ function HomePreview({
       </div>
       <div style={{ background: '#f3f4f6', position: 'relative', minHeight: 200 }}>
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+            {usingBuiltInImage && (
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 8,
+                  bottom: 8,
+                  background: 'rgba(3,105,161,0.92)',
+                  color: '#fff',
+                  fontSize: '0.625rem',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                }}
+              >
+                Built-in
+              </span>
+            )}
+          </>
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
             Hero image preview
