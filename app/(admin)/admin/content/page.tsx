@@ -3,6 +3,7 @@ import {
   CATEGORY_HERO_SLOTS,
   OTHER_SHOP_HERO_SLOTS,
   KNOWN_SLOTS,
+  bannerImageList,
 } from '@/lib/site-content'
 import { CATEGORY_LABELS, type ShopCategory } from '@/lib/catalogue-ui'
 import { getCategoryHeroImages } from '@/lib/category-hero-images'
@@ -12,10 +13,6 @@ import { ContentEditor } from './ContentEditor'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * Admin site content - global banners + per-navbar category heroes.
- * Shows built-in storefront images when SiteBanner has no custom upload yet.
- */
 export default async function AdminContentPage() {
   let rows: Awaited<ReturnType<typeof prisma.siteBanner.findMany>> = []
   let dbMissing = false
@@ -28,7 +25,7 @@ export default async function AdminContentPage() {
   }
 
   const bySlot = Object.fromEntries(rows.map((r) => [r.slot, r]))
-  const homeBuiltIn = getHeroSlides()[0]
+  const homeBuiltIns = [...getHeroSlides()]
 
   const editor = (
     slot: string,
@@ -36,12 +33,13 @@ export default async function AdminContentPage() {
     label?: string,
     extras?: {
       defaultIntro?: string
-      builtInImageUrl?: string
+      builtInImages?: string[]
       builtInLine1?: string
       builtInLine2?: string
     },
   ) => {
     const row = bySlot[slot]
+    const images = bannerImageList(row)
     return (
       <ContentEditor
         key={slot}
@@ -49,7 +47,7 @@ export default async function AdminContentPage() {
         label={label}
         description={description}
         defaultIntro={extras?.defaultIntro}
-        builtInImageUrl={extras?.builtInImageUrl}
+        builtInImages={extras?.builtInImages}
         builtInLine1={extras?.builtInLine1}
         builtInLine2={extras?.builtInLine2}
         initial={
@@ -57,7 +55,7 @@ export default async function AdminContentPage() {
             ? {
                 title: row.title ?? '',
                 subtitle: row.subtitle ?? '',
-                imageUrl: row.imageUrl ?? '',
+                images,
                 linkUrl: row.linkUrl ?? '',
                 ctaLabel: row.ctaLabel ?? '',
                 active: row.active,
@@ -80,7 +78,7 @@ export default async function AdminContentPage() {
     const story = CATEGORY_STORIES[slug]?.[0]
     return {
       defaultIntro: CATEGORY_LABELS[slug]?.intro,
-      builtInImageUrl: getCategoryHeroImages(slug)[0],
+      builtInImages: getCategoryHeroImages(slug),
       builtInLine1: story?.line1,
       builtInLine2: story?.line2,
     }
@@ -92,12 +90,8 @@ export default async function AdminContentPage() {
         Site Content
       </h1>
       <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.35rem', maxWidth: 720 }}>
-        Thumbnails show what is live on the shop. <strong>Built-in</strong> = current default assets.
-        Upload + Save to replace them with your own.
-      </p>
-      <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '1.5rem' }}>
-        New nav category: add it to <code>HEADER_NAV_CATEGORIES</code> - an upload card appears here
-        automatically.
+        Upload <strong>any number</strong> of hero images per category. They play as a carousel on
+        the shop. Built-in thumbnails show what is live until you save your own.
       </p>
 
       {dbMissing && (
@@ -113,16 +107,13 @@ export default async function AdminContentPage() {
             lineHeight: 1.5,
           }}
         >
-          <strong>Database migration required.</strong> Table <code>SiteBanner</code> is missing on
-          cloud. Run <code>scripts/apply-sitebanner-migration-cloud.sql</code> in Supabase SQL
-          Editor, then reload.
+          <strong>Database migration required.</strong> Run{' '}
+          <code>scripts/apply-sitebanner-migration-cloud.sql</code> in Supabase SQL Editor (includes
+          unlimited <code>images</code> column), then reload.
         </div>
       )}
 
       <h2 style={sectionTitle}>Category heroes (navbar)</h2>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-        Necklaces, Earrings, Rings, Bracelets, Pendants - preview matches the shop hero.
-      </p>
       {CATEGORY_HERO_SLOTS.map((s) => {
         const slug = s.slot.replace('plp-hero-', '') as ShopCategory
         return editor(s.slot, s.description, s.label, categoryExtras(slug))
@@ -131,9 +122,6 @@ export default async function AdminContentPage() {
       {OTHER_SHOP_HERO_SLOTS.length > 0 && (
         <>
           <h2 style={sectionTitle}>Other shop categories</h2>
-          <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-            Not in the main nav yet - prepare banners before you add them to the header.
-          </p>
           {OTHER_SHOP_HERO_SLOTS.map((s) => {
             const slug = s.slot.replace('plp-hero-', '') as ShopCategory
             return editor(s.slot, s.description, s.label, categoryExtras(slug))
@@ -147,7 +135,7 @@ export default async function AdminContentPage() {
           s.slot,
           s.description,
           s.label,
-          s.slot === 'home-hero' ? { builtInImageUrl: homeBuiltIn } : undefined,
+          s.slot === 'home-hero' ? { builtInImages: homeBuiltIns } : undefined,
         ),
       )}
     </div>

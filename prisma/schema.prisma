@@ -214,6 +214,8 @@ model SiteBanner {
   title     String?
   subtitle  String?
   imageUrl  String?
+  /// Ordered hero / carousel images — unlimited. Prefer over imageUrl when non-empty.
+  images    String[] @default([])
   linkUrl   String?
   ctaLabel  String?
   active    Boolean  @default(true)

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS "SiteBanner" (
     "title" TEXT,
     "subtitle" TEXT,
     "imageUrl" TEXT,
+    "images" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "linkUrl" TEXT,
     "ctaLabel" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
@@ -56,6 +57,15 @@ CREATE TABLE IF NOT EXISTS "SiteBanner" (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "SiteBanner_slot_key" ON "SiteBanner"("slot");
+
+-- Unlimited carousel images (for tables created before this column existed)
+ALTER TABLE "SiteBanner" ADD COLUMN IF NOT EXISTS "images" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+UPDATE "SiteBanner"
+SET "images" = ARRAY["imageUrl"]
+WHERE "imageUrl" IS NOT NULL
+  AND "imageUrl" <> ''
+  AND cardinality("images") = 0;
 
 -- Category used by stage storefront / admin (harmless if already present)
 DO $$ BEGIN

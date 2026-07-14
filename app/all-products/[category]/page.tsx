@@ -52,7 +52,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   }
 
   // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
-  // title -> story line 1, subtitle -> story line 2, ctaLabel -> intro, imageUrl -> hero
+  // title -> story line 1, subtitle -> story line 2, ctaLabel -> intro, images[] -> carousel
   const heroBanner = await getBanner(`plp-hero-${category}`);
   const storyOverride =
     heroBanner?.title?.trim()
@@ -66,7 +66,9 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
     <CategoryPage
       category={category}
       prismaProducts={prismaProducts}
-      heroImageOverride={heroBanner?.imageUrl ?? undefined}
+      heroImagesOverride={
+        heroBanner?.images?.length ? heroBanner.images : undefined
+      }
       storyOverride={storyOverride}
       introOverride={heroBanner?.ctaLabel ?? undefined}
     />

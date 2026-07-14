@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 type BannerForm = {
   title: string
   subtitle: string
-  imageUrl: string
+  images: string[]
   linkUrl: string
   ctaLabel: string
   active: boolean
@@ -14,7 +14,7 @@ type BannerForm = {
 const EMPTY: BannerForm = {
   title: '',
   subtitle: '',
-  imageUrl: '',
+  images: [],
   linkUrl: '',
   ctaLabel: '',
   active: true,
@@ -23,8 +23,7 @@ const EMPTY: BannerForm = {
 const serif = 'Georgia, "Times New Roman", serif'
 
 /**
- * One collapsible editor per banner slot with live storefront-style preview
- * and upload preview (local file + saved URL).
+ * Collapsible banner editor: unlimited carousel uploads, live storefront preview.
  */
 export function ContentEditor({
   slot,
@@ -32,7 +31,7 @@ export function ContentEditor({
   initial,
   label,
   defaultIntro,
-  builtInImageUrl,
+  builtInImages,
   builtInLine1,
   builtInLine2,
 }: {
@@ -40,82 +39,110 @@ export function ContentEditor({
   description: string
   initial: BannerForm | null
   label?: string
-  /** Fallback intro for category preview when ctaLabel empty */
   defaultIntro?: string
-  /** Image currently shown on storefront when no SiteBanner image is set */
-  builtInImageUrl?: string
+  builtInImages?: string[]
   builtInLine1?: string
   builtInLine2?: string
 }) {
   const isCategoryHero = slot.startsWith('plp-hero-')
   const isHomeHero = slot === 'home-hero'
   const heading = label ?? slot
+  const builtIns = (builtInImages ?? []).filter(Boolean)
 
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<BannerForm>(initial ?? EMPTY)
-  const [savedImageUrl, setSavedImageUrl] = useState(initial?.imageUrl ?? '')
-  const [localPreview, setLocalPreview] = useState<string | null>(null)
+  const [savedImages, setSavedImages] = useState<string[]>(initial?.images ?? [])
+  const [localPreviews, setLocalPreviews] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [previewIndex, setPreviewIndex] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [messageOk, setMessageOk] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     return () => {
-      if (localPreview) URL.revokeObjectURL(localPreview)
+      localPreviews.forEach((u) => URL.revokeObjectURL(u))
     }
-  }, [localPreview])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const customImage = localPreview || form.imageUrl
-  // What shoppers see / what admin should preview: custom first, else built-in
-  const displayImage = customImage || builtInImageUrl || ''
-  const showingBuiltInImage = Boolean(!customImage && builtInImageUrl)
-  const hasUnsavedImage = Boolean(localPreview) || form.imageUrl !== savedImageUrl
+  const customImages = form.images
+  const showingBuiltIn = customImages.length === 0 && builtIns.length > 0
+  const displayImages = customImages.length > 0 ? customImages : builtIns
+  const previewSlides = [...displayImages, ...localPreviews]
+  const activeSlide = previewSlides[previewIndex % Math.max(previewSlides.length, 1)] ?? ''
+
+  const imagesChanged =
+    customImages.length !== savedImages.length ||
+    customImages.some((u, i) => u !== savedImages[i])
   const hasCustomContent = Boolean(
-    form.imageUrl || form.title.trim() || form.subtitle.trim() || (isCategoryHero ? form.ctaLabel.trim() : false),
+    customImages.length || form.title.trim() || form.subtitle.trim() || (isCategoryHero ? form.ctaLabel.trim() : false),
   )
+
+  const statusLabel = !form.active
+    ? 'Off'
+    : imagesChanged || localPreviews.length
+      ? 'Unsaved'
+      : hasCustomContent
+        ? 'Custom'
+        : 'Built-in'
+
+  const statusColor =
+    statusLabel === 'Custom'
+      ? '#15803d'
+      : statusLabel === 'Unsaved'
+        ? '#b45309'
+        : statusLabel === 'Off'
+          ? '#9ca3af'
+          : '#0369a1'
 
   const set =
     (field: keyof BannerForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [field]: e.target.value }))
 
-  function clearLocalPreview() {
-    setLocalPreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
-  }
-
-  async function handleFile(file: File | undefined) {
-    if (!file || !file.type.startsWith('image/')) {
-      setMessage('Please choose an image file')
+  async function uploadFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'))
+    if (files.length === 0) {
+      setMessage('Please choose image files')
       setMessageOk(false)
       return
     }
-    clearLocalPreview()
-    const objectUrl = URL.createObjectURL(file)
-    setLocalPreview(objectUrl)
+
+    const objectUrls = files.map((f) => URL.createObjectURL(f))
+    setLocalPreviews((prev) => [...prev, ...objectUrls])
+    setPreviewIndex((displayImages.length || 0) + localPreviews.length)
     setUploading(true)
     setMessage(null)
+
+    const uploaded: string[] = []
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) {
-        setMessage(json.error ?? 'Upload failed')
-        setMessageOk(false)
-        clearLocalPreview()
-        return
+      for (const file of files) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok) {
+          setMessage(json.error ?? 'Upload failed')
+          setMessageOk(false)
+          break
+        }
+        uploaded.push(json.url as string)
       }
-      setForm((f) => ({ ...f, imageUrl: json.url as string }))
-      clearLocalPreview()
-      setMessage('Image uploaded - click Save to publish')
-      setMessageOk(true)
+      if (uploaded.length) {
+        setForm((f) => ({ ...f, images: [...f.images, ...uploaded] }))
+        setMessage(
+          uploaded.length === 1
+            ? 'Image added - click Save to publish'
+            : `${uploaded.length} images added - click Save to publish`,
+        )
+        setMessageOk(true)
+      }
     } finally {
+      objectUrls.forEach((u) => URL.revokeObjectURL(u))
+      setLocalPreviews([])
       setUploading(false)
     }
   }
@@ -128,11 +155,19 @@ export function ContentEditor({
       const res = await fetch(`/api/admin/content/${slot}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          title: form.title,
+          subtitle: form.subtitle,
+          images: form.images,
+          imageUrl: form.images[0] ?? '',
+          linkUrl: form.linkUrl,
+          ctaLabel: form.ctaLabel,
+          active: form.active,
+        }),
       })
       const json = await res.json()
       if (res.ok) {
-        setSavedImageUrl(form.imageUrl)
+        setSavedImages([...form.images])
         setMessage('Saved - live on the storefront shortly.')
         setMessageOk(true)
       } else {
@@ -144,28 +179,25 @@ export function ContentEditor({
     }
   }
 
-  function removeImage() {
-    clearLocalPreview()
-    setForm((f) => ({ ...f, imageUrl: '' }))
+  function removeAt(index: number) {
+    setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== index) }))
+    setPreviewIndex(0)
   }
 
-  const statusLabel =
-    !form.active
-      ? 'Off'
-      : hasUnsavedImage
-        ? 'Unsaved'
-        : hasCustomContent && form.active
-          ? 'Custom'
-          : 'Built-in'
+  function move(index: number, dir: -1 | 1) {
+    setForm((f) => {
+      const next = [...f.images]
+      const j = index + dir
+      if (j < 0 || j >= next.length) return f
+      ;[next[index], next[j]] = [next[j], next[index]]
+      return { ...f, images: next }
+    })
+  }
 
-  const statusColor =
-    statusLabel === 'Custom'
-      ? '#15803d'
-      : statusLabel === 'Unsaved'
-        ? '#b45309'
-        : statusLabel === 'Off'
-          ? '#9ca3af'
-          : '#0369a1'
+  function clearCustomImages() {
+    setForm((f) => ({ ...f, images: [] }))
+    setPreviewIndex(0)
+  }
 
   const fieldLabel: React.CSSProperties = {
     display: 'block',
@@ -199,7 +231,6 @@ export function ContentEditor({
         boxShadow: open ? '0 8px 24px rgba(0,0,0,0.06)' : 'none',
       }}
     >
-      {/* Header */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -227,13 +258,30 @@ export function ContentEditor({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            position: 'relative',
           }}
         >
-          {displayImage ? (
+          {displayImages[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={displayImage} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={displayImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <span style={{ fontSize: 10, color: '#9ca3af', letterSpacing: '0.06em' }}>NO IMG</span>
+          )}
+          {displayImages.length > 1 && (
+            <span
+              style={{
+                position: 'absolute',
+                right: 3,
+                bottom: 3,
+                background: 'rgba(0,0,0,0.7)',
+                color: '#fff',
+                fontSize: 9,
+                padding: '1px 5px',
+                borderRadius: 4,
+              }}
+            >
+              {displayImages.length}
+            </span>
           )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -253,10 +301,24 @@ export function ContentEditor({
             >
               {statusLabel}
             </span>
+            {displayImages.length > 0 && (
+              <span style={{ fontSize: '0.6875rem', color: '#6b7280' }}>
+                {displayImages.length} image{displayImages.length === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
-          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {showingBuiltInImage
-              ? 'Showing built-in shop image - upload to replace'
+          <p
+            style={{
+              fontSize: '0.75rem',
+              color: '#6b7280',
+              margin: 0,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {showingBuiltIn
+              ? 'Showing built-in shop carousel - upload to replace'
               : description}
           </p>
         </div>
@@ -274,9 +336,8 @@ export function ContentEditor({
             }}
             className="content-editor-grid"
           >
-            {/* Fields */}
             <div>
-              <label style={fieldLabel}>Hero image</label>
+              <label style={fieldLabel}>Hero images (unlimited)</label>
               <div
                 onDragOver={(e) => {
                   e.preventDefault()
@@ -286,7 +347,7 @@ export function ContentEditor({
                 onDrop={(e) => {
                   e.preventDefault()
                   setDragOver(false)
-                  void handleFile(e.dataTransfer.files?.[0])
+                  void uploadFiles(e.dataTransfer.files)
                 }}
                 onClick={() => !uploading && fileRef.current?.click()}
                 style={{
@@ -294,97 +355,84 @@ export function ContentEditor({
                   borderRadius: 10,
                   background: dragOver ? '#f0fdf4' : '#fafafa',
                   padding: 16,
-                  marginBottom: 10,
+                  marginBottom: 12,
                   cursor: uploading ? 'wait' : 'pointer',
                   textAlign: 'center',
-                  transition: 'border-color 120ms, background 120ms',
                 }}
               >
-                {displayImage ? (
-                  <div style={{ position: 'relative' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={displayImage}
-                      alt="Upload preview"
-                      style={{
-                        width: '100%',
-                        maxHeight: 200,
-                        objectFit: 'cover',
-                        borderRadius: 8,
-                        display: 'block',
-                      }}
-                    />
-                    {uploading && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          background: 'rgba(255,255,255,0.72)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 8,
-                          fontSize: '0.8125rem',
-                          fontWeight: 600,
-                          color: '#032b24',
-                        }}
-                      >
-                        Uploading...
-                      </div>
-                    )}
-                    {localPreview && !uploading && (
-                      <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#b45309' }}>
-                        Local preview - finishing upload...
-                      </p>
-                    )}
-                    {form.imageUrl && !localPreview && (
-                      <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
-                        Custom upload - click or drop to replace
-                      </p>
-                    )}
-                    {showingBuiltInImage && !uploading && (
-                      <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#0369a1' }}>
-                        Built-in shop image (now live) - drop a file to replace it
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ padding: '28px 8px' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#111827', fontWeight: 500 }}>
-                      {uploading ? 'Uploading...' : 'Drop image here or click to upload'}
-                    </p>
-                    <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>
-                      JPG / PNG / WebP - large landscape works best
-                    </p>
-                  </div>
-                )}
+                <p style={{ margin: 0, fontSize: '0.875rem', color: '#111827', fontWeight: 500 }}>
+                  {uploading ? 'Uploading…' : 'Drop images here or click to add'}
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>
+                  No limit - add as many as you want. Carousel order = left to right.
+                </p>
                 <input
                   ref={fileRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   style={{ display: 'none' }}
                   onChange={(e) => {
-                    void handleFile(e.target.files?.[0])
+                    if (e.target.files?.length) void uploadFiles(e.target.files)
                     e.target.value = ''
                   }}
                 />
               </div>
 
-              {customImage && (
-                <button
-                  type="button"
-                  onClick={removeImage}
-                  style={{
-                    marginBottom: 16,
-                    padding: 0,
-                    border: 'none',
-                    background: 'none',
-                    color: '#b91c1c',
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Remove custom image (revert to built-in)
+              {customImages.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10, marginBottom: 12 }}>
+                  {customImages.map((url, i) => (
+                    <div
+                      key={`${url}-${i}`}
+                      style={{
+                        border: previewIndex === i ? '2px solid #032b24' : '1px solid #e5e7eb',
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        background: '#f9fafb',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex(i)}
+                        style={{ display: 'block', width: '100%', padding: 0, border: 'none', cursor: 'pointer' }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" style={{ width: '100%', height: 72, objectFit: 'cover', display: 'block' }} />
+                      </button>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', fontSize: 11 }}>
+                        <span style={{ color: '#6b7280' }}>#{i + 1}</span>
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={miniBtn}>
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => move(i, 1)}
+                            disabled={i === customImages.length - 1}
+                            style={miniBtn}
+                          >
+                            ↓
+                          </button>
+                          <button type="button" onClick={() => removeAt(i)} style={{ ...miniBtn, color: '#b91c1c' }}>
+                            ✕
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showingBuiltIn && (
+                <p style={{ fontSize: '0.75rem', color: '#0369a1', margin: '0 0 12px' }}>
+                  Currently using {builtIns.length} built-in image{builtIns.length === 1 ? '' : 's'}. Upload yours to
+                  take over the carousel.
+                </p>
+              )}
+
+              {customImages.length > 0 && (
+                <button type="button" onClick={clearCustomImages} style={{ ...linkBtn, marginBottom: 16 }}>
+                  Clear custom images (revert to built-in)
                 </button>
               )}
 
@@ -411,9 +459,6 @@ export function ContentEditor({
                     onChange={set('ctaLabel')}
                     placeholder={defaultIntro ?? 'Minimal diamonds designed for everyday confidence.'}
                   />
-                  <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '-6px 0 14px' }}>
-                    Empty headline keeps rotating built-in stories. Empty intro uses the category default.
-                  </p>
                 </>
               ) : (
                 <>
@@ -424,7 +469,6 @@ export function ContentEditor({
                     style={{ ...field, minHeight: 56, resize: 'vertical' }}
                     value={form.subtitle}
                     onChange={set('subtitle')}
-                    placeholder="Minimal diamond jewellery designed for everyday confidence."
                   />
                   {(isHomeHero || slot === 'promo-bar') && (
                     <>
@@ -463,7 +507,7 @@ export function ContentEditor({
                     opacity: saving || uploading ? 0.7 : 1,
                   }}
                 >
-                  {saving ? 'Saving...' : 'Save changes'}
+                  {saving ? 'Saving…' : 'Save changes'}
                 </button>
                 {message && (
                   <span style={{ fontSize: '0.8125rem', color: messageOk ? '#15803d' : '#b91c1c' }}>{message}</span>
@@ -471,18 +515,11 @@ export function ContentEditor({
               </div>
             </div>
 
-            {/* Live preview */}
             <div>
-              <div style={{ ...fieldLabel, marginBottom: 8 }}>Live preview</div>
-              <div
-                style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 10,
-                  overflow: 'hidden',
-                  background: '#fff',
-                  minHeight: 220,
-                }}
-              >
+              <div style={{ ...fieldLabel, marginBottom: 8 }}>
+                Live preview{previewSlides.length > 1 ? ` (${(previewIndex % previewSlides.length) + 1}/${previewSlides.length})` : ''}
+              </div>
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff', minHeight: 220 }}>
                 <div
                   style={{
                     fontSize: '0.625rem',
@@ -492,10 +529,25 @@ export function ContentEditor({
                     padding: '8px 12px',
                     borderBottom: '1px solid #f3f4f6',
                     background: '#fafafa',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                   }}
                 >
-                  {isCategoryHero ? `${heading} category page` : isHomeHero ? 'Home hero' : heading}
-                  {!form.active ? ' (inactive - shop uses defaults)' : ''}
+                  <span>
+                    {isCategoryHero ? `${heading} category page` : isHomeHero ? 'Home hero' : heading}
+                    {!form.active ? ' (inactive)' : ''}
+                  </span>
+                  {previewSlides.length > 1 && (
+                    <span style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" style={miniBtn} onClick={() => setPreviewIndex((i) => (i - 1 + previewSlides.length) % previewSlides.length)}>
+                        ‹
+                      </button>
+                      <button type="button" style={miniBtn} onClick={() => setPreviewIndex((i) => (i + 1) % previewSlides.length)}>
+                        ›
+                      </button>
+                    </span>
+                  )}
                 </div>
 
                 {isCategoryHero ? (
@@ -504,10 +556,10 @@ export function ContentEditor({
                     line1={form.title || builtInLine1 || ''}
                     line2={form.subtitle || builtInLine2 || ''}
                     intro={form.ctaLabel || defaultIntro || ''}
-                    imageUrl={displayImage}
+                    imageUrl={activeSlide}
                     active={form.active}
                     usingBuiltInStory={!form.title.trim()}
-                    usingBuiltInImage={showingBuiltInImage}
+                    usingBuiltInImage={showingBuiltIn}
                   />
                 ) : isHomeHero ? (
                   <HomePreview
@@ -517,36 +569,47 @@ export function ContentEditor({
                       'Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.'
                     }
                     cta={form.ctaLabel || 'Shop Now'}
-                    imageUrl={displayImage}
+                    imageUrl={activeSlide}
                     active={form.active}
-                    usingBuiltInImage={showingBuiltInImage}
+                    usingBuiltInImage={showingBuiltIn}
                   />
                 ) : (
-                  <SimplePreview
-                    title={form.title || 'Promo text'}
-                    subtitle={form.subtitle}
-                    imageUrl={displayImage}
-                    active={form.active}
-                  />
+                  <SimplePreview title={form.title || 'Promo text'} subtitle={form.subtitle} imageUrl={activeSlide} active={form.active} />
                 )}
               </div>
               <p style={{ fontSize: '0.6875rem', color: '#9ca3af', margin: '8px 0 0' }}>
-                Preview updates as you type / upload. Save to publish.
+                Preview updates as you add images. Save to publish the full carousel.
               </p>
             </div>
           </div>
 
           <style>{`
             @media (max-width: 860px) {
-              .content-editor-grid {
-                grid-template-columns: 1fr !important;
-              }
+              .content-editor-grid { grid-template-columns: 1fr !important; }
             }
           `}</style>
         </form>
       )}
     </div>
   )
+}
+
+const miniBtn: React.CSSProperties = {
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  padding: '0 2px',
+  fontSize: 11,
+  color: '#374151',
+}
+
+const linkBtn: React.CSSProperties = {
+  padding: 0,
+  border: 'none',
+  background: 'none',
+  color: '#b91c1c',
+  fontSize: '0.75rem',
+  cursor: 'pointer',
 }
 
 function CategoryPreview({
@@ -569,14 +632,7 @@ function CategoryPreview({
   usingBuiltInImage?: boolean
 }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1.1fr 1.2fr',
-        minHeight: 200,
-        opacity: active ? 1 : 0.55,
-      }}
-    >
+    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr', minHeight: 200, opacity: active ? 1 : 0.55 }}>
       <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
         <p style={{ margin: 0, fontSize: '0.625rem', color: '#9ca3af' }}>Home / {title}</p>
         {usingBuiltInStory && (
@@ -587,16 +643,12 @@ function CategoryPreview({
         {line1 ? (
           <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line1}</p>
         ) : (
-          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.45, color: '#9ca3af', fontStyle: 'italic' }}>
+          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', color: '#9ca3af', fontStyle: 'italic' }}>
             Rotating built-in story will show here
           </p>
         )}
-        {line2 && (
-          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line2}</p>
-        )}
-        <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.45 }}>
-          {intro || 'Category intro text...'}
-        </p>
+        {line2 && <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line2}</p>}
+        <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.45 }}>{intro || 'Category intro text...'}</p>
       </div>
       <div style={{ background: '#f3f4f6', minHeight: 200, position: 'relative' }}>
         {imageUrl ? (
@@ -604,22 +656,7 @@ function CategoryPreview({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
             {usingBuiltInImage && (
-              <span
-                style={{
-                  position: 'absolute',
-                  left: 8,
-                  bottom: 8,
-                  background: 'rgba(3,105,161,0.92)',
-                  color: '#fff',
-                  fontSize: '0.625rem',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                }}
-              >
-                Built-in
-              </span>
+              <span style={builtInBadge}>Built-in</span>
             )}
           </>
         ) : (
@@ -648,14 +685,7 @@ function HomePreview({
   usingBuiltInImage?: boolean
 }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        minHeight: 200,
-        opacity: active ? 1 : 0.55,
-      }}
-    >
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 200, opacity: active ? 1 : 0.55 }}>
       <div style={{ padding: '18px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
         <p style={{ margin: 0, fontSize: '0.625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9ca3af' }}>
           Everyday Diamond Wear
@@ -682,24 +712,7 @@ function HomePreview({
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
-            {usingBuiltInImage && (
-              <span
-                style={{
-                  position: 'absolute',
-                  left: 8,
-                  bottom: 8,
-                  background: 'rgba(3,105,161,0.92)',
-                  color: '#fff',
-                  fontSize: '0.625rem',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                }}
-              >
-                Built-in
-              </span>
-            )}
+            {usingBuiltInImage && <span style={builtInBadge}>Built-in</span>}
           </>
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
@@ -732,4 +745,17 @@ function SimplePreview({
       {subtitle && <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>{subtitle}</p>}
     </div>
   )
+}
+
+const builtInBadge: React.CSSProperties = {
+  position: 'absolute',
+  left: 8,
+  bottom: 8,
+  background: 'rgba(3,105,161,0.92)',
+  color: '#fff',
+  fontSize: '0.625rem',
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  padding: '4px 8px',
+  borderRadius: 4,
 }

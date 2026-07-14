@@ -6,11 +6,9 @@ import type { Product } from "@/lib/ui-data";
 type CategoryPageProps = {
   category: ShopCategory;
   prismaProducts?: Product[];
-  /** Admin banner override (slot plp-hero-<category>) — falls back to built-in hero set. */
-  heroImageOverride?: string;
-  /** Admin story override — title->line1, subtitle->line2. Falls back to random built-in. */
+  /** Admin carousel override - falls back to built-in hero set when empty/undefined. */
+  heroImagesOverride?: string[];
   storyOverride?: CategoryStory | null;
-  /** Admin intro override (SiteBanner.ctaLabel for category slots). */
   introOverride?: string | null;
 };
 
@@ -18,7 +16,7 @@ type CategoryPageProps = {
 export function CategoryPage({
   category,
   prismaProducts,
-  heroImageOverride,
+  heroImagesOverride,
   storyOverride,
   introOverride,
 }: CategoryPageProps) {
@@ -28,7 +26,7 @@ export function CategoryPage({
       category={category}
       story={story}
       prismaProducts={prismaProducts}
-      heroImageOverride={heroImageOverride}
+      heroImagesOverride={heroImagesOverride}
       introOverride={introOverride ?? undefined}
     />
   );
