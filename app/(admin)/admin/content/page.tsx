@@ -11,7 +11,17 @@ export const dynamic = 'force-dynamic'
  * switched off, so nothing here can break a page.
  */
 export default async function AdminContentPage() {
-  const rows = await prisma.siteBanner.findMany()
+  let rows: Awaited<ReturnType<typeof prisma.siteBanner.findMany>> = []
+  let dbMissing = false
+
+  try {
+    rows = await prisma.siteBanner.findMany()
+  } catch (err) {
+    // Cloud / stage DB without migration 20260710000000_order_flow_deposit_banners
+    console.error('[admin/content] SiteBanner query failed', err)
+    dbMissing = true
+  }
+
   const bySlot = Object.fromEntries(rows.map((r) => [r.slot, r]))
 
   return (
@@ -23,6 +33,44 @@ export default async function AdminContentPage() {
         Customize banners and hero sections. Empty fields (or an inactive slot) fall back to the
         built-in design — you can&apos;t break the site from here.
       </p>
+
+      {dbMissing && (
+        <div
+          style={{
+            marginBottom: '1.5rem',
+            padding: '1rem 1.25rem',
+            background: '#fef3c7',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+            fontSize: '0.875rem',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Database migration required.</strong> Table <code>SiteBanner</code> is missing.
+          Run this in Supabase SQL Editor, then reload:
+          <pre
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              background: '#fffbeb',
+              overflow: 'auto',
+              fontSize: '0.75rem',
+            }}
+          >{`CREATE TABLE IF NOT EXISTS "SiteBanner" (
+  "id" TEXT NOT NULL,
+  "slot" TEXT NOT NULL,
+  "title" TEXT,
+  "subtitle" TEXT,
+  "imageUrl" TEXT,
+  "linkUrl" TEXT,
+  "ctaLabel" TEXT,
+  "active" BOOLEAN NOT NULL DEFAULT true,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "SiteBanner_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "SiteBanner_slot_key" ON "SiteBanner"("slot");`}</pre>
+        </div>
+      )}
 
       {KNOWN_SLOTS.map(({ slot, description }) => {
         const row = bySlot[slot]

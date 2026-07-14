@@ -25,8 +25,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slo
   const { slot } = await params
   if (!knownSlot(slot)) return NextResponse.json({ error: 'Unknown slot' }, { status: 404 })
 
-  const banner = await prisma.siteBanner.findUnique({ where: { slot } })
-  return NextResponse.json({ banner })
+  try {
+    const banner = await prisma.siteBanner.findUnique({ where: { slot } })
+    return NextResponse.json({ banner })
+  } catch (err) {
+    console.error('[admin/content GET]', err)
+    return NextResponse.json(
+      {
+        error:
+          'SiteBanner table missing. Apply scripts/apply-sitebanner-migration-cloud.sql in Supabase SQL Editor.',
+      },
+      { status: 503 },
+    )
+  }
 }
 
 /**
@@ -57,11 +68,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slot
     active: d.active,
   }
 
-  const banner = await prisma.siteBanner.upsert({
-    where: { slot },
-    create: { slot, ...data },
-    update: data,
-  })
-
-  return NextResponse.json({ banner })
+  try {
+    const banner = await prisma.siteBanner.upsert({
+      where: { slot },
+      create: { slot, ...data },
+      update: data,
+    })
+    return NextResponse.json({ banner })
+  } catch (err) {
+    console.error('[admin/content PUT]', err)
+    return NextResponse.json(
+      {
+        error:
+          'SiteBanner table missing. Apply scripts/apply-sitebanner-migration-cloud.sql in Supabase SQL Editor.',
+      },
+      { status: 503 },
+    )
+  }
 }
