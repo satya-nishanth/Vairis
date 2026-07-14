@@ -28,11 +28,16 @@ export function ContentEditor({
   slot,
   description,
   initial,
+  label,
 }: {
   slot: string
   description: string
   initial: BannerForm | null
+  /** Friendly title (e.g. "Necklaces"); falls back to slot id */
+  label?: string
 }) {
+  const isCategoryHero = slot.startsWith('plp-hero-')
+  const title = label ?? slot
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<BannerForm>(initial ?? EMPTY)
   const [saving, setSaving] = useState(false)
@@ -112,7 +117,7 @@ export function ContentEditor({
         }}
       >
         <span>
-          <strong style={{ fontSize: '0.875rem', color: '#111827' }}>{slot}</strong>
+          <strong style={{ fontSize: '0.875rem', color: '#111827' }}>{title}</strong>
           <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: 10 }}>{description}</span>
         </span>
         <span style={{ fontSize: '0.75rem', color: initial?.active === false ? '#9ca3af' : '#15803d' }}>
@@ -122,23 +127,21 @@ export function ContentEditor({
 
       {open && (
         <form onSubmit={save} style={{ padding: '4px 20px 20px' }}>
-          <label style={label}>Title</label>
-          <input style={input} value={form.title} onChange={set('title')} placeholder="Leave empty to use the built-in text" />
-
-          <label style={label}>Subtitle</label>
-          <input style={input} value={form.subtitle} onChange={set('subtitle')} />
-
-          <label style={label}>CTA label</label>
-          <input style={input} value={form.ctaLabel} onChange={set('ctaLabel')} placeholder="e.g. Shop Now" />
-
-          <label style={label}>Link URL</label>
-          <input style={input} value={form.linkUrl} onChange={set('linkUrl')} placeholder="/all-products/rings" />
-
-          <label style={label}>Image</label>
+          {/* Category PLP heroes are image-first; home/promo still get full copy fields */}
+          <label style={label}>Hero image</label>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
             {form.imageUrl && (
-               
-              <img src={form.imageUrl} alt="" style={{ width: 80, height: 50, objectFit: 'cover', border: '1px solid #e5e7eb' }} />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={form.imageUrl}
+                alt=""
+                style={{
+                  width: isCategoryHero ? 160 : 80,
+                  height: isCategoryHero ? 100 : 50,
+                  objectFit: 'cover',
+                  border: '1px solid #e5e7eb',
+                }}
+              />
             )}
             <button
               type="button"
@@ -169,6 +172,22 @@ export function ContentEditor({
               }}
             />
           </div>
+
+          {!isCategoryHero && (
+            <>
+              <label style={label}>Title</label>
+              <input style={input} value={form.title} onChange={set('title')} placeholder="Leave empty to use the built-in text" />
+
+              <label style={label}>Subtitle</label>
+              <input style={input} value={form.subtitle} onChange={set('subtitle')} />
+
+              <label style={label}>CTA label</label>
+              <input style={input} value={form.ctaLabel} onChange={set('ctaLabel')} placeholder="e.g. Shop Now" />
+
+              <label style={label}>Link URL</label>
+              <input style={input} value={form.linkUrl} onChange={set('linkUrl')} placeholder="/all-products/rings" />
+            </>
+          )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', marginBottom: 14 }}>
             <input

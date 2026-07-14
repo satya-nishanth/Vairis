@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { KNOWN_SLOTS } from '@/lib/site-content'
+import { isKnownContentSlot } from '@/lib/site-content'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,7 @@ const putSchema = z.object({
 })
 
 function knownSlot(slot: string): boolean {
-  return KNOWN_SLOTS.some((s) => s.slot === slot)
+  return isKnownContentSlot(slot)
 }
 
 /** GET /api/admin/content/[slot] — current row (even inactive), for the edit form. */
