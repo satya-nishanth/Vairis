@@ -4,12 +4,13 @@ import {
   OTHER_SHOP_HERO_SLOTS,
   KNOWN_SLOTS,
 } from '@/lib/site-content'
+import { CATEGORY_LABELS, type ShopCategory } from '@/lib/catalogue-ui'
 import { ContentEditor } from './ContentEditor'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Admin site content — global banners + per-navbar category heroes.
+ * Admin site content - global banners + per-navbar category heroes.
  * Storefront falls back to built-in assets when a slot is empty/inactive.
  */
 export default async function AdminContentPage() {
@@ -25,7 +26,7 @@ export default async function AdminContentPage() {
 
   const bySlot = Object.fromEntries(rows.map((r) => [r.slot, r]))
 
-  const editor = (slot: string, description: string, label?: string) => {
+  const editor = (slot: string, description: string, label?: string, defaultIntro?: string) => {
     const row = bySlot[slot]
     return (
       <ContentEditor
@@ -33,6 +34,7 @@ export default async function AdminContentPage() {
         slot={slot}
         label={label}
         description={description}
+        defaultIntro={defaultIntro}
         initial={
           row
             ? {
@@ -58,17 +60,17 @@ export default async function AdminContentPage() {
   }
 
   return (
-    <div style={{ padding: '1rem 2rem', maxWidth: 860 }}>
+    <div style={{ padding: '1.25rem 2rem 3rem', maxWidth: 1100 }}>
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Site Content
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-        Upload a different hero banner for each navbar category. Empty / inactive slots keep the
-        built-in design — you can&apos;t blank the shop from here.
+      <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.35rem', maxWidth: 640 }}>
+        Edit each navbar category hero with a live preview. Upload an image to see it immediately,
+        then save to publish.
       </p>
       <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '1.5rem' }}>
-        Adding a new nav category: add it to <code>HEADER_NAV_CATEGORIES</code> in{' '}
-        <code>lib/catalogue-ui.ts</code> — a hero upload card appears here automatically.
+        New nav category: add it to <code>HEADER_NAV_CATEGORIES</code> - an upload card appears here
+        automatically.
       </p>
 
       {dbMissing && (
@@ -78,6 +80,7 @@ export default async function AdminContentPage() {
             padding: '1rem 1.25rem',
             background: '#fef3c7',
             border: '1px solid #f59e0b',
+            borderRadius: 8,
             color: '#92400e',
             fontSize: '0.875rem',
             lineHeight: 1.5,
@@ -91,19 +94,24 @@ export default async function AdminContentPage() {
 
       <h2 style={sectionTitle}>Category heroes (navbar)</h2>
       <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-        Same order as the header: Necklaces, Earrings, Rings, Bracelets, Pendants. Edit headline,
-        intro copy, and hero image per category — same Content page as home.
+        Necklaces, Earrings, Rings, Bracelets, Pendants - headline, intro, and image for each shop
+        page.
       </p>
-      {CATEGORY_HERO_SLOTS.map((s) => editor(s.slot, s.description, s.label))}
+      {CATEGORY_HERO_SLOTS.map((s) => {
+        const slug = s.slot.replace('plp-hero-', '') as ShopCategory
+        return editor(s.slot, s.description, s.label, CATEGORY_LABELS[slug]?.intro)
+      })}
 
       {OTHER_SHOP_HERO_SLOTS.length > 0 && (
         <>
           <h2 style={sectionTitle}>Other shop categories</h2>
           <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-            Not in the main nav yet — upload now so the banner is ready when you add them to the
-            header.
+            Not in the main nav yet - prepare banners before you add them to the header.
           </p>
-          {OTHER_SHOP_HERO_SLOTS.map((s) => editor(s.slot, s.description, s.label))}
+          {OTHER_SHOP_HERO_SLOTS.map((s) => {
+            const slug = s.slot.replace('plp-hero-', '') as ShopCategory
+            return editor(s.slot, s.description, s.label, CATEGORY_LABELS[slug]?.intro)
+          })}
         </>
       )}
 
