@@ -3,6 +3,7 @@ import Image from 'next/image'
 import Navbar from '@/components/store/Navbar'
 import HeroCarousel from '@/components/store/HeroCarousel'
 import ProductCard from '@/components/store/ProductCard'
+import { getHeroSlides } from '@/lib/hero-images'
 import { prisma } from '@/lib/prisma'
 
 export const revalidate = 60
@@ -57,14 +58,16 @@ async function getFeatured() {
 }
 
 export default async function HomePage() {
-  const products = await getFeatured()
+  const [products, heroSlides] = await Promise.all([
+    getFeatured(),
+    getHeroSlides(),
+  ])
 
   return (
     <>
       <Navbar />
       <main>
-        {/* Hero — rotating carousel */}
-        <HeroCarousel />
+        <HeroCarousel dbSlides={heroSlides} />
 
         {/* Categories */}
         <section className="bg-brand-cream">
