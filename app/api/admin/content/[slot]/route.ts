@@ -61,7 +61,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slot
   const d = parsed.data
   const images = (d.images ?? []).map((u) => u.trim()).filter(Boolean)
   // Keep legacy imageUrl in sync with first slide for older readers
-  const imageUrl = images[0] ?? (d.imageUrl || null) || null
+  const imageUrl = images[0] || d.imageUrl || null
 
   const data = {
     title: d.title || null,
