@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import NotifyMeButton from '@/components/store/NotifyMeButton'
-import VariantSelector from '@/components/store/VariantSelector'
+// import VariantSelector from '@/components/store/VariantSelector' — hidden for now, see below
 import MediaGallery from '@/components/store/MediaGallery'
 import type { Metadata } from 'next'
 
@@ -130,8 +130,9 @@ export default async function ProductPage({
 
           <hr className="border-gray-100" />
 
-          {/* Metal variants — interactive selector with price */}
-          {product.variants.length > 0 && (
+          {/* Metal variants — interactive selector with price. Hidden for now:
+              enquire-on-WhatsApp + wishlist only, price shown on request. */}
+          {/* {product.variants.length > 0 && (
             <VariantSelector
               variants={product.variants.map(v => ({
                 ...v,
@@ -146,7 +147,7 @@ export default async function ProductPage({
                 ratePerGram: r.ratePerGram.toString(),
               }))}
             />
-          )}
+          )} */}
 
           {/* Design specs */}
           {hasSpecs && (
