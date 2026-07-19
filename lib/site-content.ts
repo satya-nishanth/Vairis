@@ -6,6 +6,10 @@ import {
   isShopCategory,
   type ShopCategory,
 } from "@/lib/catalogue-ui";
+import {
+  normalizeImageFits,
+  type BannerImageFit,
+} from "@/lib/banner-image-fit";
 
 /**
  * Admin-editable site content (banners, hero copy, promo bar) - SiteBanner
@@ -17,7 +21,10 @@ import {
  *
  * images[] = unlimited ordered carousel URLs (preferred).
  * imageUrl = legacy single image (used when images is empty).
+ * imageFits[] = per-slide web/mobile object-position (aligned with images[]).
  */
+
+export type { BannerImageFit };
 
 export type BannerContent = {
   slot: string;
@@ -25,6 +32,7 @@ export type BannerContent = {
   subtitle: string | null;
   imageUrl: string | null;
   images: string[];
+  imageFits: BannerImageFit[];
   linkUrl: string | null;
   ctaLabel: string | null;
 };
@@ -105,12 +113,17 @@ export async function getBanner(slot: string): Promise<BannerContent | null> {
     const row = await prisma.siteBanner.findUnique({ where: { slot } });
     if (!row || !row.active) return null;
     const images = bannerImageList(row);
+    const imageFits = normalizeImageFits(
+      images,
+      (row as { imageFits?: unknown }).imageFits,
+    );
     return {
       slot: row.slot,
       title: row.title,
       subtitle: row.subtitle,
       imageUrl: images[0] ?? row.imageUrl,
       images,
+      imageFits,
       linkUrl: row.linkUrl,
       ctaLabel: row.ctaLabel,
     };

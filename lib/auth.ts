@@ -27,15 +27,21 @@ export async function getAppUser(): Promise<User | null> {
 
   const isGoogle = session!.user.app_metadata?.provider === 'google'
 
-  return prisma.user.upsert({
-    where: { email },
-    update: isGoogle ? { googleId: session!.user.id } : {},
-    create: {
-      email,
-      name,
-      googleId: isGoogle ? session!.user.id : undefined,
-    },
-  })
+  try {
+    return await prisma.user.upsert({
+      where: { email },
+      update: isGoogle ? { googleId: session!.user.id } : {},
+      create: {
+        email,
+        name,
+        googleId: isGoogle ? session!.user.id : undefined,
+      },
+    })
+  } catch (err) {
+    // Local Supabase stopped (P1001) etc. — callers return 401/503 instead of crashing.
+    console.error('[auth.getAppUser] database error', err)
+    return null
+  }
 }
 
 /** For Server Components / pages — redirects to login when unauthenticated. */

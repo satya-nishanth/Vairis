@@ -69,6 +69,9 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
       heroImagesOverride={
         heroBanner?.images?.length ? heroBanner.images : undefined
       }
+      heroImageFits={
+        heroBanner?.images?.length ? heroBanner.imageFits : undefined
+      }
       storyOverride={storyOverride}
       introOverride={heroBanner?.ctaLabel ?? undefined}
     />

@@ -19,6 +19,7 @@ import { getCategoryHeroImages } from "@/lib/category-hero-images";
 import { pageLayouts } from "@/lib/layout-config";
 import { useCart } from "@/components/commerce/CartProvider";
 import type { Product } from "@/lib/ui-data";
+import type { BannerImageFit } from "@/lib/banner-image-fit";
 import {
   CATEGORY_LABELS,
   PLP_FILTER_GROUPS,
@@ -32,6 +33,7 @@ type CategoryPageViewProps = {
   story: CategoryStory;
   prismaProducts?: Product[];
   heroImagesOverride?: string[];
+  heroImageFits?: BannerImageFit[];
   introOverride?: string;
 };
 
@@ -71,6 +73,7 @@ export function CategoryPageView({
   story,
   prismaProducts,
   heroImagesOverride,
+  heroImageFits,
   introOverride,
 }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
@@ -84,6 +87,8 @@ export function CategoryPageView({
     heroImagesOverride && heroImagesOverride.length > 0
       ? heroImagesOverride
       : getCategoryHeroImages(category);
+  const imageFits =
+    heroImagesOverride && heroImagesOverride.length > 0 ? heroImageFits : undefined;
   const intro = introOverride?.trim() || meta.intro;
 
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
@@ -142,7 +147,11 @@ export function CategoryPageView({
               <p className="plp-hero__intro">{intro}</p>
             </div>
           </div>
-          <CategoryHeroMediaCarousel images={heroImages} label={meta.title} />
+          <CategoryHeroMediaCarousel
+            images={heroImages}
+            label={meta.title}
+            imageFits={imageFits}
+          />
         </section>
 
         <main className="container page-main plp-main">

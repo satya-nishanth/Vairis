@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
+import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 
 const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 const METAL_TYPES = [
@@ -286,6 +287,11 @@ export default function ProductForm({ initialData, mode }: Props) {
       <section className="pform__section">
         <h2>Product Images</h2>
         <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
+        <AdminProductGalleryPreview
+          images={form.images}
+          productName={form.name || 'Product'}
+          onChange={(imgs) => set('images', imgs)}
+        />
       </section>
 
       {/* Physical specs */}

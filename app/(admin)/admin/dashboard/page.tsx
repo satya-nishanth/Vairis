@@ -8,84 +8,28 @@ export default async function AdminDashboard() {
     prisma.product.groupBy({ by: ['category'], _count: { id: true } }),
   ])
 
-  const statCard: React.CSSProperties = {
-    background: '#fff',
-    border: '1px solid #f3f4f6',
-    borderRadius: '8px',
-    padding: '1.5rem',
-  }
-
-  const statLabel: React.CSSProperties = {
-    fontSize: '0.625rem',
-    color: '#9ca3af',
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase',
-    marginBottom: '0.25rem',
-  }
-
-  const statValue: React.CSSProperties = {
-    fontSize: '2.25rem',
-    fontWeight: 400,
-    color: '#111827',
-  }
-
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1
-        style={{
-          fontSize: '1.875rem',
-          fontWeight: 400,
-          color: '#111827',
-          marginBottom: '2rem',
-        }}
-      >
-        Dashboard
-      </h1>
+    <div className="admin-page">
+      <h1 className="admin-page__title">Dashboard</h1>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '1.5rem',
-          marginBottom: '2.5rem',
-        }}
-      >
-        <div style={statCard}>
-          <p style={statLabel}>Total Products</p>
-          <p style={statValue}>{totalProducts}</p>
+      <div className="admin-stats">
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Total Products</p>
+          <p className="admin-stat-card__value">{totalProducts}</p>
         </div>
-        <div style={statCard}>
-          <p style={statLabel}>Active</p>
-          <p style={{ ...statValue, color: '#b8963e' }}>{activeProducts}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Active</p>
+          <p className="admin-stat-card__value admin-stat-card__value--gold">{activeProducts}</p>
         </div>
-        <div style={statCard}>
-          <p style={statLabel}>Categories</p>
-          <p style={statValue}>{categories.length}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Categories</p>
+          <p className="admin-stat-card__value">{categories.length}</p>
         </div>
       </div>
 
       {categories.length > 0 && (
-        <div
-          style={{
-            background: '#fff',
-            border: '1px solid #f3f4f6',
-            borderRadius: '8px',
-            padding: '1.5rem',
-            marginBottom: '2.5rem',
-          }}
-        >
-          <h2
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 500,
-              color: '#4b5563',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              marginBottom: '1rem',
-            }}
-          >
-            By Category
-          </h2>
+        <div className="admin-panel">
+          <h2 className="admin-panel__title">By Category</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {categories.map((c) => (
               <div
@@ -104,19 +48,7 @@ export default async function AdminDashboard() {
         </div>
       )}
 
-      <Link
-        href="/admin/products/new"
-        style={{
-          display: 'inline-block',
-          padding: '0.75rem 2rem',
-          background: '#032b24',
-          color: '#fff',
-          fontSize: '0.75rem',
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          textDecoration: 'none',
-        }}
-      >
+      <Link href="/admin/products/new" className="admin-btn admin-btn--block">
         + Add Product
       </Link>
     </div>

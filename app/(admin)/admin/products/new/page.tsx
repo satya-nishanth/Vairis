@@ -14,7 +14,7 @@ export default async function NewProductPage({ searchParams }: PageProps) {
   const category = VALID.includes(raw as Category) ? (raw as Category) : 'RINGS'
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div className="admin-page">
       <div style={{ marginBottom: '1.5rem' }}>
         <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
           ← Products

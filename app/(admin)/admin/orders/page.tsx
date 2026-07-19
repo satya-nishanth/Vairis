@@ -55,21 +55,10 @@ export default async function AdminOrdersPage({
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
 
   return (
-    <div style={{ padding: '1rem 2rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827' }}>Orders</h1>
-        <Link
-          href="/admin/orders/new"
-          style={{
-            padding: '0.625rem 1.5rem',
-            background: '#032b24',
-            color: '#fff',
-            fontSize: '0.75rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            textDecoration: 'none',
-          }}
-        >
+    <div className="admin-page">
+      <div className="admin-page__header">
+        <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Orders</h1>
+        <Link href="/admin/orders/new" className="admin-btn">
           + Manual Order
         </Link>
       </div>
@@ -126,7 +115,8 @@ export default async function AdminOrdersPage({
       {dbMissing ? null : orders.length === 0 ? (
         <p style={{ color: '#6b7280', padding: '2rem 0' }}>No orders{filter ? ` in ${filter}` : ' yet'}.</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
+        <div className="admin-table-wrap">
+        <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left', color: '#6b7280' }}>
               <th style={{ padding: '10px 12px' }}>Order</th>
@@ -165,6 +155,7 @@ export default async function AdminOrdersPage({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

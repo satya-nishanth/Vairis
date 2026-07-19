@@ -1,11 +1,19 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { BannerStorefrontPreview } from '@/components/admin/BannerStorefrontPreview'
+import {
+  DEFAULT_BANNER_FIT,
+  defaultFitsFor,
+  normalizeImageFits,
+  type BannerImageFit,
+} from '@/lib/banner-image-fit'
 
 type BannerForm = {
   title: string
   subtitle: string
   images: string[]
+  imageFits: BannerImageFit[]
   linkUrl: string
   ctaLabel: string
   active: boolean
@@ -15,6 +23,7 @@ const EMPTY: BannerForm = {
   title: '',
   subtitle: '',
   images: [],
+  imageFits: [],
   linkUrl: '',
   ctaLabel: '',
   active: true,
@@ -23,7 +32,7 @@ const EMPTY: BannerForm = {
 const serif = 'Georgia, "Times New Roman", serif'
 
 /**
- * Collapsible banner editor: unlimited carousel uploads, live storefront preview.
+ * Full-page banner editor: unlimited carousel uploads + live storefront preview.
  */
 export function ContentEditor({
   slot,
@@ -49,14 +58,23 @@ export function ContentEditor({
   const heading = label ?? slot
   const builtIns = (builtInImages ?? []).filter(Boolean)
 
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<BannerForm>(initial ?? EMPTY)
+  const [form, setForm] = useState<BannerForm>(() => {
+    if (!initial) return EMPTY
+    return {
+      ...initial,
+      imageFits: normalizeImageFits(initial.images, initial.imageFits),
+    }
+  })
   const [savedImages, setSavedImages] = useState<string[]>(initial?.images ?? [])
+  const [savedFits, setSavedFits] = useState<BannerImageFit[]>(
+    normalizeImageFits(initial?.images ?? [], initial?.imageFits),
+  )
   const [localPreviews, setLocalPreviews] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
+  const [previewMode, setPreviewMode] = useState<'web' | 'mobile'>('web')
   const [message, setMessage] = useState<string | null>(null)
   const [messageOk, setMessageOk] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -71,12 +89,32 @@ export function ContentEditor({
   const customImages = form.images
   const showingBuiltIn = customImages.length === 0 && builtIns.length > 0
   const displayImages = customImages.length > 0 ? customImages : builtIns
+  const displayFits = normalizeImageFits(
+    displayImages,
+    customImages.length > 0 ? form.imageFits : defaultFitsFor(builtIns.length),
+  )
   const previewSlides = [...displayImages, ...localPreviews]
-  const activeSlide = previewSlides[previewIndex % Math.max(previewSlides.length, 1)] ?? ''
+  const previewFits = [
+    ...displayFits,
+    ...localPreviews.map(() => ({ ...DEFAULT_BANNER_FIT })),
+  ]
 
+  const fitsChanged =
+    form.imageFits.length !== savedFits.length ||
+    form.imageFits.some((f, i) => {
+      const s = savedFits[i]
+      if (!s) return true
+      return (
+        f.webX !== s.webX ||
+        f.webY !== s.webY ||
+        f.mobileX !== s.mobileX ||
+        f.mobileY !== s.mobileY
+      )
+    })
   const imagesChanged =
     customImages.length !== savedImages.length ||
-    customImages.some((u, i) => u !== savedImages[i])
+    customImages.some((u, i) => u !== savedImages[i]) ||
+    fitsChanged
   const hasCustomContent = Boolean(
     customImages.length || form.title.trim() || form.subtitle.trim() || (isCategoryHero ? form.ctaLabel.trim() : false),
   )
@@ -122,7 +160,7 @@ export function ContentEditor({
       for (const file of files) {
         const fd = new FormData()
         fd.append('file', file)
-        const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+        const res = await fetch(`/api/admin/upload`, { method: 'POST', body: fd })
         const json = await res.json()
         if (!res.ok) {
           setMessage(json.error ?? 'Upload failed')
@@ -132,7 +170,15 @@ export function ContentEditor({
         uploaded.push(json.url as string)
       }
       if (uploaded.length) {
-        setForm((f) => ({ ...f, images: [...f.images, ...uploaded] }))
+        setForm((f) => {
+          const baseImages = editableImages(f.images)
+          const baseFits = normalizeImageFits(baseImages, f.imageFits.length ? f.imageFits : displayFits)
+          return {
+            ...f,
+            images: [...baseImages, ...uploaded],
+            imageFits: [...baseFits, ...defaultFitsFor(uploaded.length)],
+          }
+        })
         setMessage(
           uploaded.length === 1
             ? 'Image added - click Save to publish'
@@ -152,14 +198,17 @@ export function ContentEditor({
     setSaving(true)
     setMessage(null)
     try {
+      const images = form.images
+      const imageFits = normalizeImageFits(images, form.imageFits)
       const res = await fetch(`/api/admin/content/${slot}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: form.title,
           subtitle: form.subtitle,
-          images: form.images,
-          imageUrl: form.images[0] ?? '',
+          images,
+          imageFits,
+          imageUrl: images[0] ?? '',
           linkUrl: form.linkUrl,
           ctaLabel: form.ctaLabel,
           active: form.active,
@@ -167,7 +216,9 @@ export function ContentEditor({
       })
       const json = await res.json()
       if (res.ok) {
-        setSavedImages([...form.images])
+        setForm((f) => ({ ...f, imageFits }))
+        setSavedImages([...images])
+        setSavedFits(imageFits)
         setMessage('Saved - live on the storefront shortly.')
         setMessageOk(true)
       } else {
@@ -179,23 +230,77 @@ export function ContentEditor({
     }
   }
 
+  /** Built-ins are read-only until edited — copy into form so order/fit can be saved. */
+  function editableImages(current: string[]): string[] {
+    return current.length > 0 ? [...current] : [...builtIns]
+  }
+
+  function editablePair(f: BannerForm): { images: string[]; imageFits: BannerImageFit[] } {
+    const images = editableImages(f.images)
+    const imageFits = normalizeImageFits(
+      images,
+      f.images.length > 0 ? f.imageFits : displayFits,
+    )
+    return { images, imageFits }
+  }
+
   function removeAt(index: number) {
-    setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== index) }))
-    setPreviewIndex(0)
+    setForm((f) => {
+      const { images, imageFits } = editablePair(f)
+      return {
+        ...f,
+        images: images.filter((_, i) => i !== index),
+        imageFits: imageFits.filter((_, i) => i !== index),
+      }
+    })
+    setPreviewIndex((i) => {
+      if (i > index) return i - 1
+      if (i === index) return Math.max(0, index - 1)
+      return i
+    })
   }
 
   function move(index: number, dir: -1 | 1) {
     setForm((f) => {
-      const next = [...f.images]
+      const { images, imageFits } = editablePair(f)
       const j = index + dir
-      if (j < 0 || j >= next.length) return f
-      ;[next[index], next[j]] = [next[j], next[index]]
-      return { ...f, images: next }
+      if (j < 0 || j >= images.length) return f
+      ;[images[index], images[j]] = [images[j], images[index]]
+      ;[imageFits[index], imageFits[j]] = [imageFits[j], imageFits[index]]
+      return { ...f, images, imageFits }
+    })
+    setPreviewIndex((i) => {
+      if (i === index) return index + dir
+      if (i === index + dir) return index
+      return i
+    })
+  }
+
+  function moveToFront(index: number) {
+    if (index <= 0) return
+    setForm((f) => {
+      const { images, imageFits } = editablePair(f)
+      const [item] = images.splice(index, 1)
+      const [fit] = imageFits.splice(index, 1)
+      images.unshift(item)
+      imageFits.unshift(fit)
+      return { ...f, images, imageFits }
+    })
+    setPreviewIndex(0)
+  }
+
+  function updateFit(index: number, fit: BannerImageFit) {
+    setForm((f) => {
+      const { images, imageFits } = editablePair(f)
+      if (index < 0 || index >= images.length) return f
+      const nextFits = [...imageFits]
+      nextFits[index] = fit
+      return { ...f, images, imageFits: nextFits }
     })
   }
 
   function clearCustomImages() {
-    setForm((f) => ({ ...f, images: [] }))
+    setForm((f) => ({ ...f, images: [], imageFits: [] }))
     setPreviewIndex(0)
   }
 
@@ -221,78 +326,19 @@ export function ContentEditor({
   }
 
   return (
-    <div
-      style={{
-        background: '#fff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 10,
-        marginBottom: 14,
-        overflow: 'hidden',
-        boxShadow: open ? '0 8px 24px rgba(0,0,0,0.06)' : 'none',
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          padding: '14px 18px',
-          background: open ? '#fafafa' : '#fff',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <div
-          style={{
-            width: 72,
-            height: 48,
-            borderRadius: 6,
-            overflow: 'hidden',
-            background: '#f3f4f6',
-            border: '1px solid #e5e7eb',
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-          }}
-        >
-          {displayImages[0] ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={displayImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontSize: 10, color: '#9ca3af', letterSpacing: '0.06em' }}>NO IMG</span>
-          )}
-          {displayImages.length > 1 && (
-            <span
-              style={{
-                position: 'absolute',
-                right: 3,
-                bottom: 3,
-                background: 'rgba(0,0,0,0.7)',
-                color: '#fff',
-                fontSize: 9,
-                padding: '1px 5px',
-                borderRadius: 4,
-              }}
-            >
-              {displayImages.length}
-            </span>
-          )}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <strong style={{ fontSize: '0.9375rem', color: '#111827', fontWeight: 600 }}>{heading}</strong>
+    <div className="content-editor">
+      <div className="content-editor__head">
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+            <h1 className="admin-page__title" style={{ marginBottom: 0 }}>
+              {heading}
+            </h1>
             <span
               style={{
                 fontSize: '0.625rem',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                padding: '2px 8px',
+                padding: '3px 10px',
                 borderRadius: 999,
                 background: `${statusColor}18`,
                 color: statusColor,
@@ -301,41 +347,15 @@ export function ContentEditor({
             >
               {statusLabel}
             </span>
-            {displayImages.length > 0 && (
-              <span style={{ fontSize: '0.6875rem', color: '#6b7280' }}>
-                {displayImages.length} image{displayImages.length === 1 ? '' : 's'}
-              </span>
-            )}
           </div>
-          <p
-            style={{
-              fontSize: '0.75rem',
-              color: '#6b7280',
-              margin: 0,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {showingBuiltIn
-              ? 'Showing built-in shop carousel - upload to replace'
-              : description}
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: '#6b7280' }}>
+            {showingBuiltIn ? 'Showing built-in shop carousel - upload to replace' : description}
           </p>
         </div>
-        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{open ? 'Collapse' : 'Edit'}</span>
-      </button>
+      </div>
 
-      {open && (
-        <form onSubmit={save} style={{ padding: '0 18px 20px', borderTop: '1px solid #f3f4f6' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 1.1fr)',
-              gap: 20,
-              paddingTop: 18,
-            }}
-            className="content-editor-grid"
-          >
+      <form onSubmit={save} className="content-editor__form">
+          <div className="content-editor-grid">
             <div>
               <label style={fieldLabel}>Hero images (unlimited)</label>
               <div
@@ -379,60 +399,90 @@ export function ContentEditor({
                 />
               </div>
 
-              {customImages.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10, marginBottom: 12 }}>
-                  {customImages.map((url, i) => (
-                    <div
-                      key={`${url}-${i}`}
-                      style={{
-                        border: previewIndex === i ? '2px solid #032b24' : '1px solid #e5e7eb',
-                        borderRadius: 8,
-                        overflow: 'hidden',
-                        background: '#f9fafb',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setPreviewIndex(i)}
-                        style={{ display: 'block', width: '100%', padding: 0, border: 'none', cursor: 'pointer' }}
+              {displayImages.length > 0 && (
+                <div className="banner-order">
+                  <label style={fieldLabel}>Carousel order</label>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.75rem', color: '#6b7280' }}>
+                    Click a thumb to preview. Use ↑↓ or First to change play order — Save to publish on the
+                    banner.
+                    {showingBuiltIn
+                      ? ' Reordering keeps these built-in files but locks your new sequence.'
+                      : ''}
+                  </p>
+                  <div className="banner-order__grid">
+                    {displayImages.map((url, i) => (
+                      <div
+                        key={`${url}-${i}`}
+                        className={
+                          previewIndex === i
+                            ? 'banner-order__card is-selected'
+                            : 'banner-order__card'
+                        }
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" style={{ width: '100%', height: 72, objectFit: 'cover', display: 'block' }} />
-                      </button>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', fontSize: 11 }}>
-                        <span style={{ color: '#6b7280' }}>#{i + 1}</span>
-                        <span style={{ display: 'flex', gap: 4 }}>
-                          <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={miniBtn}>
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => move(i, 1)}
-                            disabled={i === customImages.length - 1}
-                            style={miniBtn}
-                          >
-                            ↓
-                          </button>
-                          <button type="button" onClick={() => removeAt(i)} style={{ ...miniBtn, color: '#b91c1c' }}>
-                            ✕
-                          </button>
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewIndex(i)}
+                          className="banner-order__thumb"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" />
+                          {i === 0 && <span className="banner-order__first-tag">1st</span>}
+                        </button>
+                        <div className="banner-order__meta">
+                          <span>#{i + 1}</span>
+                          <span className="banner-order__actions">
+                            <button
+                              type="button"
+                              onClick={() => move(i, -1)}
+                              disabled={i === 0}
+                              style={miniBtn}
+                              title="Move earlier"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => move(i, 1)}
+                              disabled={i === displayImages.length - 1}
+                              style={miniBtn}
+                              title="Move later"
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveToFront(i)}
+                              disabled={i === 0}
+                              style={miniBtn}
+                              title="Set as first slide"
+                            >
+                              First
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeAt(i)}
+                              style={{ ...miniBtn, color: '#b91c1c' }}
+                              title="Remove"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
 
               {showingBuiltIn && (
                 <p style={{ fontSize: '0.75rem', color: '#0369a1', margin: '0 0 12px' }}>
-                  Currently using {builtIns.length} built-in image{builtIns.length === 1 ? '' : 's'}. Upload yours to
-                  take over the carousel.
+                  Using default order. Reorder above or upload new images, then Save.
                 </p>
               )}
 
               {customImages.length > 0 && (
                 <button type="button" onClick={clearCustomImages} style={{ ...linkBtn, marginBottom: 16 }}>
-                  Clear custom images (revert to built-in)
+                  Reset to default built-in order
                 </button>
               )}
 
@@ -516,80 +566,47 @@ export function ContentEditor({
             </div>
 
             <div>
-              <div style={{ ...fieldLabel, marginBottom: 8 }}>
-                Live preview{previewSlides.length > 1 ? ` (${(previewIndex % previewSlides.length) + 1}/${previewSlides.length})` : ''}
-              </div>
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff', minHeight: 220 }}>
-                <div
-                  style={{
-                    fontSize: '0.625rem',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    color: '#9ca3af',
-                    padding: '8px 12px',
-                    borderBottom: '1px solid #f3f4f6',
-                    background: '#fafafa',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span>
-                    {isCategoryHero ? `${heading} category page` : isHomeHero ? 'Home hero' : heading}
-                    {!form.active ? ' (inactive)' : ''}
-                  </span>
-                  {previewSlides.length > 1 && (
-                    <span style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" style={miniBtn} onClick={() => setPreviewIndex((i) => (i - 1 + previewSlides.length) % previewSlides.length)}>
-                        ‹
-                      </button>
-                      <button type="button" style={miniBtn} onClick={() => setPreviewIndex((i) => (i + 1) % previewSlides.length)}>
-                        ›
-                      </button>
-                    </span>
-                  )}
-                </div>
-
-                {isCategoryHero ? (
-                  <CategoryPreview
-                    title={heading}
-                    line1={form.title || builtInLine1 || ''}
-                    line2={form.subtitle || builtInLine2 || ''}
-                    intro={form.ctaLabel || defaultIntro || ''}
-                    imageUrl={activeSlide}
-                    active={form.active}
-                    usingBuiltInStory={!form.title.trim()}
-                    usingBuiltInImage={showingBuiltIn}
-                  />
-                ) : isHomeHero ? (
-                  <HomePreview
-                    title={form.title || "Diamonds You'll Actually Wear."}
-                    subtitle={
-                      form.subtitle ||
-                      'Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.'
-                    }
-                    cta={form.ctaLabel || 'Shop Now'}
-                    imageUrl={activeSlide}
-                    active={form.active}
-                    usingBuiltInImage={showingBuiltIn}
-                  />
-                ) : (
-                  <SimplePreview title={form.title || 'Promo text'} subtitle={form.subtitle} imageUrl={activeSlide} active={form.active} />
-                )}
-              </div>
-              <p style={{ fontSize: '0.6875rem', color: '#9ca3af', margin: '8px 0 0' }}>
-                Preview updates as you add images. Save to publish the full carousel.
-              </p>
+              <BannerStorefrontPreview
+                kind={isCategoryHero ? 'category' : isHomeHero ? 'home' : 'promo'}
+                heading={heading}
+                images={previewSlides}
+                imageFits={previewFits}
+                title={
+                  isCategoryHero
+                    ? form.title || builtInLine1 || ''
+                    : form.title || (isHomeHero ? "Diamonds You'll Actually Wear." : 'Promo text')
+                }
+                subtitle={
+                  isCategoryHero
+                    ? form.subtitle || builtInLine2 || ''
+                    : form.subtitle ||
+                      (isHomeHero
+                        ? 'Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.'
+                        : '')
+                }
+                intro={isCategoryHero ? form.ctaLabel || defaultIntro || '' : undefined}
+                ctaLabel={form.ctaLabel}
+                linkUrl={form.linkUrl}
+                active={form.active}
+                usingBuiltInStory={isCategoryHero && !form.title.trim()}
+                usingBuiltInImage={showingBuiltIn}
+                slideIndex={previewIndex}
+                onSlideIndexChange={setPreviewIndex}
+                onFitChange={updateFit}
+                previewMode={previewMode}
+                onPreviewModeChange={setPreviewMode}
+              />
             </div>
           </div>
 
           <style>{`
-            @media (max-width: 860px) {
-              .content-editor-grid { grid-template-columns: 1fr !important; }
+            .content-editor-grid {
+              display: flex;
+              flex-direction: column;
+              gap: 24px;
             }
           `}</style>
         </form>
-      )}
     </div>
   )
 }
@@ -610,152 +627,4 @@ const linkBtn: React.CSSProperties = {
   color: '#b91c1c',
   fontSize: '0.75rem',
   cursor: 'pointer',
-}
-
-function CategoryPreview({
-  title,
-  line1,
-  line2,
-  intro,
-  imageUrl,
-  active,
-  usingBuiltInStory,
-  usingBuiltInImage,
-}: {
-  title: string
-  line1: string
-  line2: string
-  intro: string
-  imageUrl: string
-  active: boolean
-  usingBuiltInStory?: boolean
-  usingBuiltInImage?: boolean
-}) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr', minHeight: 200, opacity: active ? 1 : 0.55 }}>
-      <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
-        <p style={{ margin: 0, fontSize: '0.625rem', color: '#9ca3af' }}>Home / {title}</p>
-        {usingBuiltInStory && (
-          <p style={{ margin: 0, fontSize: '0.625rem', color: '#0369a1', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            Sample built-in story (rotates on site)
-          </p>
-        )}
-        {line1 ? (
-          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line1}</p>
-        ) : (
-          <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', color: '#9ca3af', fontStyle: 'italic' }}>
-            Rotating built-in story will show here
-          </p>
-        )}
-        {line2 && <p style={{ margin: 0, fontFamily: serif, fontSize: '1.05rem', lineHeight: 1.4, color: '#111827' }}>{line2}</p>}
-        <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.45 }}>{intro || 'Category intro text...'}</p>
-      </div>
-      <div style={{ background: '#f3f4f6', minHeight: 200, position: 'relative' }}>
-        {imageUrl ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
-            {usingBuiltInImage && (
-              <span style={builtInBadge}>Built-in</span>
-            )}
-          </>
-        ) : (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
-            Hero image preview
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function HomePreview({
-  title,
-  subtitle,
-  cta,
-  imageUrl,
-  active,
-  usingBuiltInImage,
-}: {
-  title: string
-  subtitle: string
-  cta: string
-  imageUrl: string
-  active: boolean
-  usingBuiltInImage?: boolean
-}) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 200, opacity: active ? 1 : 0.55 }}>
-      <div style={{ padding: '18px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
-        <p style={{ margin: 0, fontSize: '0.625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9ca3af' }}>
-          Everyday Diamond Wear
-        </p>
-        <p style={{ margin: 0, fontFamily: serif, fontSize: '1.25rem', lineHeight: 1.25, color: '#111827' }}>{title}</p>
-        <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.45 }}>{subtitle}</p>
-        <span
-          style={{
-            alignSelf: 'flex-start',
-            background: '#032b24',
-            color: '#fff',
-            fontSize: '0.625rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            padding: '8px 14px',
-            borderRadius: 4,
-          }}
-        >
-          {cta}
-        </span>
-      </div>
-      <div style={{ background: '#f3f4f6', position: 'relative', minHeight: 200 }}>
-        {imageUrl ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
-            {usingBuiltInImage && <span style={builtInBadge}>Built-in</span>}
-          </>
-        ) : (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
-            Hero image preview
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SimplePreview({
-  title,
-  subtitle,
-  imageUrl,
-  active,
-}: {
-  title: string
-  subtitle: string
-  imageUrl: string
-  active: boolean
-}) {
-  return (
-    <div style={{ padding: 16, opacity: active ? 1 : 0.55 }}>
-      {imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 6, marginBottom: 10 }} />
-      )}
-      <p style={{ margin: 0, fontWeight: 600, color: '#111827' }}>{title}</p>
-      {subtitle && <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>{subtitle}</p>}
-    </div>
-  )
-}
-
-const builtInBadge: React.CSSProperties = {
-  position: 'absolute',
-  left: 8,
-  bottom: 8,
-  background: 'rgba(3,105,161,0.92)',
-  color: '#fff',
-  fontSize: '0.625rem',
-  letterSpacing: '0.06em',
-  textTransform: 'uppercase',
-  padding: '4px 8px',
-  borderRadius: 4,
 }

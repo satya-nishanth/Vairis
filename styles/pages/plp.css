@@ -102,16 +102,29 @@
   object-fit: cover;
   object-position: center top;
   opacity: 0;
+  visibility: hidden;
   transition: opacity 0.85s ease;
 }
 
 .plp-hero--landing .plp-hero__carousel-slide-img {
-  object-fit: contain;
+  object-fit: cover;
   object-position: center center;
+}
+
+/* Admin-saved focal points (web / mobile) */
+.plp-hero__carousel-slide-img.banner-fit {
+  object-position: var(--banner-fit-web, center center);
+}
+
+@media (max-width: 767px) {
+  .plp-hero__carousel-slide-img.banner-fit {
+    object-position: var(--banner-fit-mobile, center center);
+  }
 }
 
 .plp-hero__carousel-slide-img.is-active {
   opacity: 1;
+  visibility: visible;
 }
 
 .plp-hero--landing .plp-hero__carousel-dots--overlay {
@@ -147,15 +160,26 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: clamp(28px, 8%, 120px);
+  width: clamp(40px, 12%, 140px);
   z-index: 2;
   background: linear-gradient(
     to right,
     var(--bg-page) 0%,
-    var(--hero-fade-strong) 45%,
+    var(--bg-page) 18%,
+    rgba(255, 255, 255, 0.7) 55%,
     transparent 100%
   );
   pointer-events: none;
+}
+
+[data-theme="dark"] .plp-hero--landing .plp-hero__media::before {
+  background: linear-gradient(
+    to right,
+    var(--bg-page) 0%,
+    var(--bg-page) 18%,
+    rgba(10, 18, 16, 0.7) 55%,
+    transparent 100%
+  );
 }
 
 .plp-hero__img {

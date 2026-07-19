@@ -120,7 +120,12 @@ export const CATEGORY_STORIES: Record<ShopCategory, CategoryStory[]> = {
   ],
 };
 
-export function pickRandomCategoryStory(category: ShopCategory): CategoryStory {
+export function getDefaultCategoryStory(category: ShopCategory): CategoryStory {
   const stories = CATEGORY_STORIES[category];
-  return stories[Math.floor(Math.random() * stories.length)] ?? stories[0];
+  return stories[0] ?? { line1: "", line2: "" };
+}
+
+/** @deprecated Prefer getDefaultCategoryStory for stable admin/storefront parity. */
+export function pickRandomCategoryStory(category: ShopCategory): CategoryStory {
+  return getDefaultCategoryStory(category);
 }

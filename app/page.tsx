@@ -60,6 +60,7 @@ export default async function HomePage() {
           </div>
           <HeroCarousel
             slides={hero?.images?.length ? hero.images : hero?.imageUrl ? [hero.imageUrl] : getHeroSlides()}
+            imageFits={hero?.images?.length ? hero.imageFits : undefined}
             alt="Woman wearing minimal diamond jewellery"
           />
         </section>
