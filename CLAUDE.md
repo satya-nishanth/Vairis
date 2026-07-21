@@ -66,8 +66,8 @@ Next.js 14 App Router + Supabase (PostgreSQL + Auth + Storage) + Prisma 5 + Tail
 ## 3. Tech Constraints — DO NOT VIOLATE
 
 **Supabase DB connection**
-- Use Session Pooler: `aws-1-ap-south-1.pooler.supabase.com:5432`
-- NOT port 6543 (Transaction Pooler) — breaks Prisma prepared statements
+- Runtime (`DATABASE_URL`): Transaction Pooler, port 6543, `?pgbouncer=true` appended — required so Prisma skips server-side prepared statements (that flag is what makes 6543 safe; without it, breaks). Switched 2026-07-21 — Session Pooler (5432) exhausted its dedicated-connection-per-client pool under Vercel Fluid Compute concurrency (EMAXCONNSESSION even at pool_size 40).
+- Migrations (`DIRECT_DATABASE_URL` / `directUrl` in schema.prisma): stays Session Pooler, port 5432, no pgbouncer flag.
 - No direct IPv6 on free tier
 
 **Vercel**

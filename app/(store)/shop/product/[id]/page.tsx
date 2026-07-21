@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
@@ -21,16 +22,36 @@ const CATEGORY_LABELS: Record<string, string> = {
   BRACELETS: 'Bracelets',
 }
 
+/** React.cache-deduped so generateMetadata and the page component share one
+    query per request instead of two — Session Pooler connections are scarce. */
+const getProduct = cache(async (id: string) =>
+  prisma.product.findUnique({
+    where: { id, isActive: true },
+    include: {
+      variants: {
+        select: {
+          id: true,
+          metalType: true,
+          weightGrams: true,
+          makingChargePerGram: true,
+          flatMakingCharge: true,
+          stoneCharges: true,
+          miscCharges: true,
+          sku: true,
+          size: true,
+        },
+      },
+    },
+  })
+)
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id, isActive: true },
-    select: { name: true, description: true, images: true },
-  })
+  const product = await getProduct(id)
   if (!product) return {}
   return {
     title: `${product.name} — Vairis Fine Jewellery`,
@@ -49,27 +70,8 @@ export default async function ProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [product, goldRates] = await Promise.all([
-    prisma.product.findUnique({
-      where: { id, isActive: true },
-      include: {
-        variants: {
-          select: {
-            id: true,
-            metalType: true,
-            weightGrams: true,
-            makingChargePerGram: true,
-            flatMakingCharge: true,
-            stoneCharges: true,
-            miscCharges: true,
-            sku: true,
-            size: true,
-          },
-        },
-      },
-    }),
-    prisma.goldRate.findMany(),
-  ])
+  // goldRates query dropped — was only for VariantSelector, which is hidden for now.
+  const product = await getProduct(id)
 
   if (!product) notFound()
 
