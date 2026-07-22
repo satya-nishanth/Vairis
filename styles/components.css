@@ -290,7 +290,7 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   flex-wrap: nowrap;
   gap: var(--header-nav-gap);
   min-width: 0;
@@ -1366,7 +1366,7 @@
 /* Rating */
 .rating {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   font-size: 0.875rem;
 }

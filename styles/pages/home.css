@@ -76,8 +76,10 @@
 
 .hero__social {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  row-gap: 8px;
+  column-gap: 12px;
   font-size: 0.8125rem;
 }
 
