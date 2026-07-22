@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
+import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 
 const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 const METAL_TYPES = [
@@ -150,28 +151,28 @@ export default function ProductForm({ initialData, mode }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    // FE guard: making charge required unless product is Coming Soon
-    if (!form.comingSoon) {
-      for (const v of form.variants) {
-        if (v.makingChargePerGram === '' || v.makingChargePerGram === undefined) {
-          setError('Every variant must have a Making Charge (₹/g). Mark as "Coming Soon" if pricing is not set yet.')
-          return
-        }
-        if (parseFloat(v.makingChargePerGram) < 0) {
-          setError('Making Charge cannot be negative.')
-          return
-        }
+    // Making charge is optional — blank is treated as 0. Only block negatives.
+    for (const v of form.variants) {
+      if (v.makingChargePerGram !== '' && parseFloat(v.makingChargePerGram) < 0) {
+        setError('Making Charge cannot be negative.')
+        return
       }
     }
 
     setSaving(true)
     setError('')
 
+    // Drop empty Front/Left/Right/Back placeholders so storefront never gets "" src
+    const payload = {
+      ...form,
+      images: form.images.filter(Boolean),
+    }
+
     const url = mode === 'create' ? '/api/admin/products' : `/api/admin/products/${initialData?.id}`
     const res = await fetch(url, {
       method: mode === 'create' ? 'POST' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     })
 
     setSaving(false)
@@ -286,6 +287,11 @@ export default function ProductForm({ initialData, mode }: Props) {
       <section className="pform__section">
         <h2>Product Images</h2>
         <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
+        <AdminProductGalleryPreview
+          images={form.images}
+          productName={form.name || 'Product'}
+          onChange={(imgs) => set('images', imgs)}
+        />
       </section>
 
       {/* Physical specs */}
@@ -482,9 +488,7 @@ export default function ProductForm({ initialData, mode }: Props) {
                 <div className="pform__grid pform__grid--4">
                   {/* Making ₹/g */}
                   <div className="pform__field">
-                    <label>
-                      Making ₹/g {!form.comingSoon && <span className="pform__required">*</span>}
-                    </label>
+                    <label>Making ₹/g</label>
                     <input
                       type="number"
                       step="1"

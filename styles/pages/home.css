@@ -113,15 +113,26 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: clamp(28px, 8%, 120px);
+  width: clamp(40px, 12%, 140px);
   z-index: 1;
   background: linear-gradient(
     to right,
     var(--bg-page) 0%,
-    var(--hero-fade-strong) 45%,
+    var(--bg-page) 18%,
+    rgba(255, 255, 255, 0.7) 55%,
     transparent 100%
   );
   pointer-events: none;
+}
+
+[data-theme="dark"] .hero__media::before {
+  background: linear-gradient(
+    to right,
+    var(--bg-page) 0%,
+    var(--bg-page) 18%,
+    rgba(10, 18, 16, 0.7) 55%,
+    transparent 100%
+  );
 }
 
 .hero__media img,
@@ -137,11 +148,23 @@
   inset: 0;
   object-fit: cover;
   opacity: 0;
+  visibility: hidden;
   transition: opacity 0.85s ease;
+}
+
+.hero__slide.banner-fit {
+  object-position: var(--banner-fit-web, 50% 50%);
+}
+
+@media (max-width: 767px) {
+  .hero__slide.banner-fit {
+    object-position: var(--banner-fit-mobile, 50% 50%);
+  }
 }
 
 .hero__slide.is-active {
   opacity: 1;
+  visibility: visible;
 }
 
 .hero__carousel {

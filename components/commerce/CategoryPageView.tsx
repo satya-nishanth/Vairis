@@ -19,6 +19,7 @@ import { getCategoryHeroImages } from "@/lib/category-hero-images";
 import { pageLayouts } from "@/lib/layout-config";
 import { useCart } from "@/components/commerce/CartProvider";
 import type { Product } from "@/lib/ui-data";
+import type { BannerImageFit } from "@/lib/banner-image-fit";
 import {
   CATEGORY_LABELS,
   PLP_FILTER_GROUPS,
@@ -31,7 +32,9 @@ type CategoryPageViewProps = {
   category: ShopCategory;
   story: CategoryStory;
   prismaProducts?: Product[];
-  heroImageOverride?: string;
+  heroImagesOverride?: string[];
+  heroImageFits?: BannerImageFit[];
+  introOverride?: string;
 };
 
 function usePlpPageSize() {
@@ -65,15 +68,28 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   return result;
 }
 
-export function CategoryPageView({ category, story, prismaProducts, heroImageOverride }: CategoryPageViewProps) {
+export function CategoryPageView({
+  category,
+  story,
+  prismaProducts,
+  heroImagesOverride,
+  heroImageFits,
+  introOverride,
+}: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const meta = CATEGORY_LABELS[category];
   const { count: bagCount } = useCart();
   // Only real DB products — never fall back to mock catalogue (broken PDP links)
   const allProducts = useMemo(() => prismaProducts ?? [], [prismaProducts]);
   const filterGroups = PLP_FILTER_GROUPS[category];
-  // Admin banner override (SiteBanner slot plp-hero-<category>) wins over the built-in set
-  const heroImages = heroImageOverride ? [heroImageOverride] : getCategoryHeroImages(category);
+  // Admin SiteBanner images[] win over built-in category hero set
+  const heroImages =
+    heroImagesOverride && heroImagesOverride.length > 0
+      ? heroImagesOverride
+      : getCategoryHeroImages(category);
+  const imageFits =
+    heroImagesOverride && heroImagesOverride.length > 0 ? heroImageFits : undefined;
+  const intro = introOverride?.trim() || meta.intro;
 
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
   const [draftFilters, setDraftFilters] = useState<FilterState>(defaultFilterState());
@@ -128,10 +144,14 @@ export function CategoryPageView({ category, story, prismaProducts, heroImageOve
             />
             <div className="plp-hero__hero-main">
               <CategoryHeroStory story={story} />
-              <p className="plp-hero__intro">{meta.intro}</p>
+              <p className="plp-hero__intro">{intro}</p>
             </div>
           </div>
-          <CategoryHeroMediaCarousel images={heroImages} label={meta.title} />
+          <CategoryHeroMediaCarousel
+            images={heroImages}
+            label={meta.title}
+            imageFits={imageFits}
+          />
         </section>
 
         <main className="container page-main plp-main">

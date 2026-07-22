@@ -55,7 +55,7 @@ export default async function NewManualOrderPage() {
   )
 
   return (
-    <div style={{ padding: '1rem 2rem', maxWidth: 860 }}>
+    <div className="admin-page" style={{ maxWidth: 860 }}>
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         New Manual Order
       </h1>

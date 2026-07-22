@@ -2,28 +2,51 @@
 
 import { useEffect, useState } from "react";
 import { MarketingImage } from "@/components/ui/MarketingImage";
+import { fitToCssVars, type BannerImageFit } from "@/lib/banner-image-fit";
 
 type CategoryHeroMediaCarouselProps = {
   images: string[];
   label: string;
+  imageFits?: BannerImageFit[];
+  /** Controlled slide index (admin preview). Omit for auto-rotate on storefront. */
+  activeIndex?: number;
+  onActiveIndexChange?: (index: number) => void;
+  /** Pause auto-rotate when true (default when controlled). */
+  autoRotate?: boolean;
 };
 
 const ROTATE_MS = 5000;
 
-export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCarouselProps) {
+export function CategoryHeroMediaCarousel({
+  images,
+  label,
+  imageFits,
+  activeIndex: controlledIndex,
+  onActiveIndexChange,
+  autoRotate,
+}: CategoryHeroMediaCarouselProps) {
   const [index, setIndex] = useState(0);
   const slides = images.length > 0 ? images : [];
+  const isControlled = controlledIndex !== undefined;
+  const shouldAutoRotate = autoRotate ?? !isControlled;
 
-  // Clamp rather than resetting state in an effect when the slide set changes
-  const activeIndex = slides.length > 0 ? index % slides.length : 0;
+  const activeIndex =
+    slides.length > 0
+      ? (isControlled ? controlledIndex : index) % slides.length
+      : 0;
 
   useEffect(() => {
-    if (slides.length <= 1) return;
+    if (!shouldAutoRotate || slides.length <= 1) return;
     const timer = window.setInterval(() => {
       setIndex((current) => (current + 1) % slides.length);
     }, ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [slides.length]);
+  }, [slides.length, shouldAutoRotate]);
+
+  const select = (i: number) => {
+    if (isControlled) onActiveIndexChange?.(i);
+    else setIndex(i);
+  };
 
   if (slides.length === 0) {
     return (
@@ -40,13 +63,14 @@ export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCa
       <div className="plp-hero__carousel-stage">
         {slides.map((src, i) => (
           <MarketingImage
-            key={src}
+            key={`${src}-${i}`}
             src={src}
             alt={`${label} - look ${i + 1}`}
             width={1200}
             height={900}
             fill
-            className={`plp-hero__carousel-slide-img${i === activeIndex ? " is-active" : ""}`}
+            className={`plp-hero__carousel-slide-img banner-fit${i === activeIndex ? " is-active" : ""}`}
+            style={fitToCssVars(imageFits?.[i])}
             priority={i === 0}
           />
         ))}
@@ -55,11 +79,11 @@ export function CategoryHeroMediaCarousel({ images, label }: CategoryHeroMediaCa
         <div className="plp-hero__carousel-dots plp-hero__carousel-dots--overlay" aria-hidden={false}>
           {slides.map((src, i) => (
             <button
-              key={src}
+              key={`${src}-dot-${i}`}
               type="button"
               className={i === activeIndex ? "is-active" : ""}
               aria-label={`Show image ${i + 1} of ${slides.length}`}
-              onClick={() => setIndex(i)}
+              onClick={() => select(i)}
             />
           ))}
         </div>

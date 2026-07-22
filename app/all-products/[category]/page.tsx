@@ -34,25 +34,46 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   let prismaProducts: ReturnType<typeof prismaToProduct>[] = [];
 
   if (prismaCategory) {
-    const [dbProducts, goldRates] = await Promise.all([
-      prisma.product.findMany({
-        where: { category: prismaCategory as Category, isActive: true },
-        include: { variants: true },
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.goldRate.findMany(),
-    ]);
-    prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
+    try {
+      const [dbProducts, goldRates] = await Promise.all([
+        prisma.product.findMany({
+          where: { category: prismaCategory as Category, isActive: true },
+          include: { variants: true },
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.goldRate.findMany(),
+      ]);
+      prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
+    } catch (err) {
+      // e.g. Category enum value missing on DB (NECKLACES migration not applied)
+      console.error(`[plp] failed loading category=${category}`, err);
+      prismaProducts = [];
+    }
   }
 
   // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
+  // title -> story line 1, subtitle -> story line 2, ctaLabel -> intro, images[] -> carousel
   const heroBanner = await getBanner(`plp-hero-${category}`);
+  const storyOverride =
+    heroBanner?.title?.trim()
+      ? {
+          line1: heroBanner.title.trim(),
+          line2: (heroBanner.subtitle ?? "").trim(),
+        }
+      : null;
 
   return (
     <CategoryPage
       category={category}
       prismaProducts={prismaProducts}
-      heroImageOverride={heroBanner?.imageUrl ?? undefined}
+      heroImagesOverride={
+        heroBanner?.images?.length ? heroBanner.images : undefined
+      }
+      heroImageFits={
+        heroBanner?.images?.length ? heroBanner.imageFits : undefined
+      }
+      storyOverride={storyOverride}
+      introOverride={heroBanner?.ctaLabel ?? undefined}
     />
   );
 }

@@ -12,6 +12,7 @@ type MarketingImageProps = {
   placeholderLabel?: string;
   priority?: boolean;
   fill?: boolean;
+  style?: React.CSSProperties;
 };
 
 export function MarketingImage({
@@ -23,6 +24,7 @@ export function MarketingImage({
   placeholderLabel,
   priority,
   fill,
+  style,
 }: MarketingImageProps) {
   const [failed, setFailed] = useState(false);
 
@@ -32,8 +34,8 @@ export function MarketingImage({
         className={["img-placeholder", className].filter(Boolean).join(" ")}
         style={
           fill
-            ? { position: "absolute", inset: 0 }
-            : { width: "100%", maxWidth: width, aspectRatio: `${width} / ${height}` }
+            ? { position: "absolute", inset: 0, ...style }
+            : { width: "100%", maxWidth: width, aspectRatio: `${width} / ${height}`, ...style }
         }
         role="img"
         aria-label={alt}
@@ -50,6 +52,7 @@ export function MarketingImage({
         alt={alt}
         fill
         className={className}
+        style={style}
         unoptimized
         priority={priority}
         sizes="(max-width: 900px) 100vw, 55vw"
@@ -65,6 +68,7 @@ export function MarketingImage({
       width={width}
       height={height}
       className={className}
+      style={style}
       unoptimized
       priority={priority}
       onError={() => setFailed(true)}

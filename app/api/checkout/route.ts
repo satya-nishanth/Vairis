@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrice } from '@/lib/pricing'
 import { computeOrderAmounts } from '@/lib/orders'
@@ -32,7 +32,9 @@ const checkoutSchema = z.object({
  * rows are created in that case.
  */
 export async function POST(req: NextRequest) {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const gateway = getPaymentGateway()
 
   if (!gateway.isConfigured()) {

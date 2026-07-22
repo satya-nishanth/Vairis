@@ -64,7 +64,7 @@ export default async function AdminOrderDetailPage({
   }
 
   return (
-    <div style={{ padding: '1rem 2rem', maxWidth: 1000 }}>
+    <div className="admin-page" style={{ maxWidth: 1000 }}>
       <p style={{ marginBottom: 12, fontSize: '0.8125rem' }}>
         <Link href="/admin/orders" style={{ color: '#032b24' }}>
           ← Orders

@@ -83,7 +83,7 @@ export default async function LoginPage({
       <div className="auth-screen__panel">
         <div className="auth-screen__mobile-logo">
           <Link href="/">
-            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" style={{ height: 100, width: 'auto', borderRadius: 4 }} />
+            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" />
           </Link>
         </div>
 

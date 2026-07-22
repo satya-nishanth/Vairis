@@ -22,10 +22,12 @@ export function prismaToProduct(
     const priced = p.variants
       .map((v) => {
         const rate = rateMap[v.metalType];
-        if (!rate) return null;
+        const weight = Number(v.weightGrams);
+        // Skip stub variants (weight 0) — avoid fake ₹misc-only prices
+        if (!rate || !(weight > 0)) return null;
         const total = calculatePrice(
           {
-            weightGrams: Number(v.weightGrams),
+            weightGrams: weight,
             makingChargePerGram: Number(v.makingChargePerGram),
             flatMakingCharge: Number(v.flatMakingCharge),
             stoneCharges: Number(v.stoneCharges),
@@ -45,14 +47,17 @@ export function prismaToProduct(
 
   const category: ProductCategory = prismaCategoryToSlug(p.category);
 
+  const images = (p.images ?? []).filter(Boolean);
+  const primaryImage = images.find((src) => !/\.(mp4|webm|mov)(\?|$)/i.test(src)) ?? images[0] ?? "";
+
   return {
     slug: p.id,
     sku: p.itemCode ?? p.id,
     name: p.name,
     description: p.description ?? "",
     price,
-    image: p.images[0] ?? "",
-    images: p.images,
+    image: primaryImage,
+    images,
     category,
     catalogueId: p.id,
     video: null,

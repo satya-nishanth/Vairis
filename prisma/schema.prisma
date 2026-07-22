@@ -277,6 +277,10 @@ model SiteBanner {
   title     String?
   subtitle  String?
   imageUrl  String?
+  /// Ordered hero / carousel images — unlimited. Prefer over imageUrl when non-empty.
+  images    String[] @default([])
+  /// Per-slide focal points aligned with images[]: { webX, webY, mobileX, mobileY } (0–100).
+  imageFits Json     @default("[]")
   linkUrl   String?
   ctaLabel  String?
   active    Boolean  @default(true)
