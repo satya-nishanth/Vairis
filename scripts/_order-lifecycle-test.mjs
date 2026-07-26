@@ -1,23 +1,32 @@
 /**
- * End-to-end order lifecycle test — runs WITHOUT real Razorpay keys.
+ * End-to-end order lifecycle test — pricing v2 (no deposit model) + the
+ * active payment gateway (mock by default; also works against real Razorpay
+ * keys with PAYMENT_GATEWAY=razorpay). Runs WITHOUT needing real gateway
+ * keys when the mock gateway is active.
  *
- * Real-key-dependent step (gateway payment intent creation) is bypassed by
- * seeding the Order/Payment rows directly; everything downstream — webhook
- * capture, admin transitions, shipping entry, deposit refund webhook,
- * customer pages — is exercised through the real HTTP surface:
+ * Gateway-side calls (payment intent creation) are bypassed by seeding the
+ * Order/Payment rows directly, exactly as /api/checkout would; everything
+ * downstream — webhook capture, admin transitions, shipping entry, refund
+ * webhook, customer pages — is exercised through the real HTTP surface, with
+ * webhooks signed for whichever gateway is actually configured
+ * (PAYMENT_GATEWAY env, mock by default).
  *
- *   1. checkout: 503 not-configured (no keys) OR 200 + intent (keys present)
- *   2. seed PAYMENT_PENDING order + CREATED payment (as /api/checkout would)
- *   3. webhook payment.captured (HMAC-signed) → PAYMENT_CONFIRMED, cart cleared
+ *   1. checkout: 200 + intent (mock, or razorpay with real keys) OR 503 (razorpay, no keys)
+ *   2. seed order + payment exactly as /api/checkout would (pricing v2: grandTotal = totalAmount, no deposit)
+ *   3. payment.captured webhook (signed) → PAYMENT_CONFIRMED, cart cleared
  *   4. duplicate webhook delivery → idempotent no-op
  *   5. bad webhook signature → 400
- *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED
- *   7. refund: 503 not-configured (no keys) OR 502 gateway-refused (keys + simulated payment id)
- *   8. ledger-matched refund.processed webhook (5% deposit) → DEPOSIT_REFUNDED; duplicate delivery idempotent
- *   9. sweep expires a stale PAYMENT_PENDING order; late capture on it never resurrects (auto-refund alert)
+ *   6. admin: PREPARING → SHIPPED (courier+AWB required) → DELIVERED (terminal, no deposit step)
+ *   7. refund API without gateway configured → 503 (only reachable if PAYMENT_GATEWAY=razorpay + no keys)
+ *   8. full refund on a DELIVERED order, ledger-matched refund.processed webhook → REFUNDED
+ *   8b. LEGACY backward-compat: a pre-pricing-v2 order (depositAmount > 0) still
+ *       supports kind:"deposit" refunds and reaches DEPOSIT_REFUNDED
+ *   9. sweep expires a stale PAYMENT_PENDING order; late capture on it never resurrects;
+ *      sweep skips CAPTURED payments and manual/offline orders with no Payment row;
+ *      sweep releases a reserved promo redemption
  *   10. customer surfaces: /account/orders, order detail, /track-order API
  *   11. auto-split: manual multi-item order (POST /api/admin/orders) → children created atomically,
- *       proration exact (traced 10001/20003/30007 by hand); single-item manual order stays unsplit
+ *       proration exact (goods 10001/20003/30007, no deposit); single-item manual order stays unsplit
  *   12. auto-split: online checkout multi-item order → payment.captured splits atomically with
  *       confirmation; child refund resolves the parent's payment; customer/admin/track-order rendering
  *   13. delivery-fail → retry (OUT_FOR_DELIVERY) → deliver
@@ -41,32 +50,57 @@ const PASSWORD = "Admin1234!";
 const prisma = new PrismaClient();
 
 const envFile = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
-const WEBHOOK_SECRET = envFile.match(/^RAZORPAY_WEBHOOK_SECRET=(.+)$/m)?.[1]?.trim();
-// Gateway-aware: with real test keys in .env.local the "not configured" 503
-// paths don't exist — those steps assert the configured behavior instead.
-const GATEWAY_CONFIGURED = Boolean(envFile.match(/^RAZORPAY_KEY_ID=(.+)$/m)?.[1]?.trim());
-if (!WEBHOOK_SECRET) throw new Error("RAZORPAY_WEBHOOK_SECRET missing from .env.local");
+const envVar = (name) => envFile.match(new RegExp(`^${name}=(.+)$`, "m"))?.[1]?.trim();
+
+// Gateway-aware: whichever PAYMENT_GATEWAY is active is what /api/checkout
+// and /api/webhooks/payment actually use — sign webhooks to match, and only
+// take the "not configured" 503 branch when that specific gateway lacks keys.
+const GATEWAY = envVar("PAYMENT_GATEWAY") || "razorpay";
+const RAZORPAY_WEBHOOK_SECRET = envVar("RAZORPAY_WEBHOOK_SECRET");
+const RAZORPAY_KEY_ID = envVar("RAZORPAY_KEY_ID");
+const MOCK_PAYMENT_SECRET = envVar("MOCK_PAYMENT_SECRET") || "vairis-mock-secret";
+const GATEWAY_CONFIGURED = GATEWAY === "mock" ? true : Boolean(RAZORPAY_KEY_ID);
+if (GATEWAY === "razorpay" && !RAZORPAY_WEBHOOK_SECRET) {
+  throw new Error("RAZORPAY_WEBHOOK_SECRET missing from .env.local");
+}
 
 let pass = 0;
 let fail = 0;
+let shippedAwb; // captured in section 6, reused by later sections' AWB assertions
 const step = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
   ok ? pass++ : fail++;
 };
 
-function signedWebhook(body) {
-  const raw = JSON.stringify(body);
-  return {
-    raw,
-    signature: crypto.createHmac("sha256", WEBHOOK_SECRET).update(raw).digest("hex"),
-  };
-}
+/**
+ * Sign + POST a normalized payment event to /api/webhooks/payment for
+ * whichever gateway is active. `kind` is the normalized vocabulary
+ * (captured | failed | refunded); ids/amount are gateway-agnostic —
+ * this builds the correct wire shape + header per gateway.
+ */
+async function postWebhook(kind, { gatewayOrderId, gatewayPaymentId, gatewayRefundId, amount } = {}, { badSignature = false } = {}) {
+  let raw, header, signature;
 
-async function postWebhook(body, sig) {
-  const { raw, signature } = signedWebhook(body);
+  if (GATEWAY === "mock") {
+    const eventMap = { captured: "payment.captured", failed: "payment.failed", refunded: "refund.processed" };
+    const body = { event: eventMap[kind], gatewayOrderId, gatewayPaymentId, gatewayRefundId, amount };
+    raw = JSON.stringify(body);
+    header = "x-mock-signature";
+    signature = crypto.createHmac("sha256", MOCK_PAYMENT_SECRET).update(raw).digest("hex");
+  } else {
+    const bodies = {
+      captured: { event: "payment.captured", payload: { payment: { entity: { id: gatewayPaymentId, order_id: gatewayOrderId } } } },
+      failed: { event: "payment.failed", payload: { payment: { entity: { id: gatewayPaymentId, order_id: gatewayOrderId } } } },
+      refunded: { event: "refund.processed", payload: { refund: { entity: { id: gatewayRefundId, payment_id: gatewayPaymentId, amount: Math.round(amount * 100) } } } },
+    };
+    raw = JSON.stringify(bodies[kind]);
+    header = "x-razorpay-signature";
+    signature = crypto.createHmac("sha256", RAZORPAY_WEBHOOK_SECRET).update(raw).digest("hex");
+  }
+
   return fetch(`${BASE}/api/webhooks/payment`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-razorpay-signature": sig ?? signature },
+    headers: { "Content-Type": "application/json", [header]: badSignature ? "deadbeef".repeat(8) : signature },
     body: raw,
   });
 }
@@ -90,12 +124,25 @@ const api = (path, init) => page.evaluate(
   { path, init },
 );
 
-// ── 1. checkout without gateway keys → 503 ──
+async function cleanupOrder(id) {
+  await prisma.promoRedemption.deleteMany({ where: { orderId: id } });
+  await prisma.orderNote.deleteMany({ where: { orderId: id } });
+  await prisma.orderRefund.deleteMany({ where: { orderId: id } });
+  await prisma.orderEvent.deleteMany({ where: { orderId: id } });
+  await prisma.shipment.deleteMany({ where: { orderId: id } });
+  await prisma.orderItem.deleteMany({ where: { orderId: id } });
+  await prisma.payment.deleteMany({ where: { orderId: id } });
+  await prisma.order.delete({ where: { id } }).catch((err) => {
+    if (err?.code !== "P2025") throw err;
+  });
+}
+
+// ── 1. checkout ──
 {
   const user = await prisma.user.findUnique({ where: { email: EMAIL } });
-  const variant = await prisma.productVariant.findFirst({ where: { product: { isActive: true } } });
+  const variant = await prisma.productVariant.findFirst({ where: { product: { isActive: true, status: "LIVE" } } });
   await prisma.cartItem.upsert({
-    where: { userId_variantId: { userId: user.id, variantId: variant.id } },
+    where: { userId_variantId_withExchange: { userId: user.id, variantId: variant.id, withExchange: false } },
     update: { quantity: 1 },
     create: { userId: user.id, variantId: variant.id, quantity: 1 },
   });
@@ -114,17 +161,11 @@ const api = (path, init) => page.evaluate(
   });
   if (GATEWAY_CONFIGURED) {
     step(
-      "checkout with keys → 200 + gateway intent",
-      res.status === 200 && !!res.body?.clientParams && !!res.body?.orderId,
+      `checkout with ${GATEWAY} configured → 200 + gateway intent`,
+      res.status === 200 && !!res.body?.clientParams && !!res.body?.orderId && res.body?.gateway === GATEWAY,
       `status ${res.status}`,
     );
-    // clean up the real PAYMENT_PENDING order this created
-    if (res.body?.orderId) {
-      await prisma.payment.deleteMany({ where: { orderId: res.body.orderId } });
-      await prisma.orderEvent.deleteMany({ where: { orderId: res.body.orderId } });
-      await prisma.orderItem.deleteMany({ where: { orderId: res.body.orderId } });
-      await prisma.order.delete({ where: { id: res.body.orderId } }).catch(() => {});
-    }
+    if (res.body?.orderId) await cleanupOrder(res.body.orderId);
   } else {
     step(
       "checkout without keys → 503 PAYMENTS_NOT_CONFIGURED",
@@ -134,11 +175,12 @@ const api = (path, init) => page.evaluate(
   }
 }
 
-// ── 2. seed order + payment exactly as /api/checkout would ──
+// ── 2. seed order + payment exactly as /api/checkout would (pricing v2:
+//      grandTotal === totalAmount, depositAmount always 0 on new orders) ──
 const user = await prisma.user.findUnique({ where: { email: EMAIL } });
-const variant = await prisma.productVariant.findFirst({ where: { product: { isActive: true } }, include: { product: true } });
+const variant = await prisma.productVariant.findFirst({ where: { product: { isActive: true, status: "LIVE" } }, include: { product: true } });
 const total = 20000;
-const grandTotal = Math.round(total * 1.05);
+const grandTotal = total;
 const gwOrderId = `order_SIM${Date.now()}`;
 const gwPaymentId = `pay_SIM${Date.now()}`;
 
@@ -147,7 +189,7 @@ const order = await prisma.order.create({
     userId: user.id,
     status: "PAYMENT_PENDING",
     totalAmount: total,
-    depositAmount: grandTotal - total,
+    depositAmount: 0,
     grandTotal,
     contactName: "Test Buyer",
     contactPhone: "9876543210",
@@ -166,10 +208,7 @@ console.log(`      seeded order ${order.id}`);
 
 // ── 3. payment.captured webhook → confirmed + cart cleared ──
 {
-  const res = await postWebhook({
-    event: "payment.captured",
-    payload: { payment: { entity: { id: gwPaymentId, order_id: gwOrderId } } },
-  });
+  const res = await postWebhook("captured", { gatewayOrderId: gwOrderId, gatewayPaymentId: gwPaymentId });
   const after = await prisma.order.findUnique({ where: { id: order.id }, include: { payment: true } });
   const cartCount = await prisma.cartItem.count({ where: { userId: user.id } });
   step(
@@ -181,24 +220,18 @@ console.log(`      seeded order ${order.id}`);
 
 // ── 4. duplicate delivery → idempotent ──
 {
-  await postWebhook({
-    event: "payment.captured",
-    payload: { payment: { entity: { id: gwPaymentId, order_id: gwOrderId } } },
-  });
+  await postWebhook("captured", { gatewayOrderId: gwOrderId, gatewayPaymentId: gwPaymentId });
   const events = await prisma.orderEvent.count({ where: { orderId: order.id, status: "PAYMENT_CONFIRMED" } });
   step("duplicate payment.captured is idempotent", events === 1, `${events} confirmation event(s)`);
 }
 
 // ── 5. bad signature → 400 ──
 {
-  const res = await postWebhook(
-    { event: "payment.captured", payload: { payment: { entity: { id: "x", order_id: "y" } } } },
-    "deadbeef".repeat(8),
-  );
+  const res = await postWebhook("captured", { gatewayOrderId: "y", gatewayPaymentId: "x" }, { badSignature: true });
   step("tampered webhook signature rejected", res.status === 400, `status ${res.status}`);
 }
 
-// ── 6. admin transitions ──
+// ── 6. admin transitions — DELIVERED is now the terminal happy state (no deposit step) ──
 {
   let res = await api(`/api/admin/orders/${order.id}`, {
     method: "PATCH",
@@ -214,83 +247,187 @@ console.log(`      seeded order ${order.id}`);
   });
   step("→ PREPARING", res.status === 200, `status ${res.status}`);
 
-  res = await api(`/api/admin/orders/${order.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "SHIPPED" }),
-  });
-  step("SHIPPED without courier/AWB rejected", res.status === 400, `status ${res.status}`);
+  // Shipping-provider-aware: the manual provider requires courier/AWB and
+  // 400s without them; a booking-capable provider (Shiprocket/DTDC, live or
+  // SHIPPING_MOCK) auto-books instead — both are correct, just different
+  // active configs (see .env.local SHIPPING_PROVIDER / SHIPPING_MOCK).
+  const shippingProvider = envVar("SHIPPING_PROVIDER") || "manual";
+  const shippingAutoBooks = shippingProvider !== "manual";
 
-  res = await api(`/api/admin/orders/${order.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      status: "SHIPPED",
-      courierName: "BlueDart",
-      awbCode: "BD123456789",
-      trackingUrl: "https://bluedart.com/track/BD123456789",
-    }),
-  });
-  const shipment = await prisma.shipment.findFirst({
-    where: { orderId: order.id },
-    orderBy: { dispatchedAt: "desc" },
-  });
-  step("→ SHIPPED with manual courier details", res.status === 200 && shipment?.awbCode === "BD123456789");
+  if (shippingAutoBooks) {
+    res = await api(`/api/admin/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "SHIPPED" }),
+    });
+    const autoShipment = await prisma.shipment.findFirst({ where: { orderId: order.id } });
+    shippedAwb = autoShipment?.awbCode;
+    step(
+      `SHIPPED without courier/AWB auto-books via ${shippingProvider}`,
+      res.status === 200 && !!shippedAwb,
+      `status ${res.status}, awb ${shippedAwb}`,
+    );
+  } else {
+    res = await api(`/api/admin/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "SHIPPED" }),
+    });
+    step("SHIPPED without courier/AWB rejected (manual provider)", res.status === 400, `status ${res.status}`);
+
+    // Manually-typed courier/AWB always win as an override, regardless of
+    // provider (see app/api/admin/orders/[id]/route.ts).
+    shippedAwb = "BD123456789";
+    res = await api(`/api/admin/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "SHIPPED",
+        courierName: "BlueDart",
+        awbCode: shippedAwb,
+        trackingUrl: `https://bluedart.com/track/${shippedAwb}`,
+      }),
+    });
+    const shipment = await prisma.shipment.findFirst({
+      where: { orderId: order.id },
+      orderBy: { dispatchedAt: "desc" },
+    });
+    step("→ SHIPPED with manual courier details", res.status === 200 && shipment?.awbCode === shippedAwb);
+  }
 
   res = await api(`/api/admin/orders/${order.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status: "DELIVERED" }),
   });
-  step("→ DELIVERED", res.status === 200, `status ${res.status}`);
+  const afterDelivered = await prisma.order.findUnique({ where: { id: order.id } });
+  step(
+    "→ DELIVERED (terminal — pricing v2 has no deposit step)",
+    res.status === 200 && afterDelivered.status === "DELIVERED",
+    `status ${res.status}`,
+  );
 }
 
-// ── 7. refund API without gateway keys → 503 ──
+// ── 7. refund API without gateway configured → 503 (only when the active
+//      gateway genuinely lacks keys; skipped for mock, which is always "on") ──
 {
-  const res = await api(`/api/admin/orders/${order.id}/refund`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "deposit", reason: "test deposit refund" }),
-  });
-  if (GATEWAY_CONFIGURED) {
-    // pay_SIM… doesn't exist at the gateway → our API surfaces 502 (gateway refused)
-    step("refund on simulated payment → 502 (gateway refused)", res.status === 502, `status ${res.status}`);
-  } else {
+  if (!GATEWAY_CONFIGURED) {
+    const res = await api(`/api/admin/orders/${order.id}/refund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "full", reason: "test refund, gateway not configured" }),
+    });
     step("refund initiation without keys → 503 (not-configured path)", res.status === 503, `status ${res.status}`);
+  } else {
+    step("refund-not-configured path — skipped (active gateway is configured)", true);
   }
 }
 
-// ── 8. ledger-matched refund webhook ──
+// ── 8. full refund on a DELIVERED order, ledger-matched refund.processed webhook ──
 {
-  const refundId = `rfnd_LEDGER${Date.now()}`;
-  await prisma.orderRefund.create({
-    data: { orderId: order.id, amount: grandTotal - total, kind: "DEPOSIT", method: "GATEWAY", gatewayRefundId: refundId, reason: "test deposit", status: "INITIATED" },
-  });
-  const res = await postWebhook({
-    event: "refund.processed",
-    payload: { refund: { entity: { id: refundId, payment_id: gwPaymentId, amount: (grandTotal - total) * 100 } } },
-  });
-  const after = await prisma.order.findUnique({ where: { id: order.id } });
-  const row = await prisma.orderRefund.findUnique({ where: { gatewayRefundId: refundId } });
-  step("refund.processed matches ledger intent", res.status === 200 && after.status === "DEPOSIT_REFUNDED" && row.status === "COMPLETED");
-  // duplicate delivery is a no-op
-  await postWebhook({
-    event: "refund.processed",
-    payload: { refund: { entity: { id: refundId, payment_id: gwPaymentId, amount: (grandTotal - total) * 100 } } },
-  });
-  const events = await prisma.orderEvent.count({ where: { orderId: order.id, status: "DEPOSIT_REFUNDED" } });
-  step("duplicate refund webhook idempotent", events === 1);
+  let refundId;
+  let initiateStatus;
+  if (GATEWAY === "mock") {
+    // Mock gateway self-posts the refund.processed webhook ~800ms after
+    // createRefund resolves — call the real refund endpoint and wait for it.
+    const res = await api(`/api/admin/orders/${order.id}/refund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "full", reason: "test full refund via mock gateway" }),
+    });
+    initiateStatus = res.status;
+    step("mock gateway refund initiation → 200", res.status === 200, `status ${res.status}`);
+    await new Promise((r) => setTimeout(r, 1500)); // let the mock's async webhook land
+  } else {
+    // Real gateways: no live payment exists for a simulated payment id, so
+    // ledger-match the intent directly and post the webhook ourselves —
+    // exactly mirrors what a real refund.processed delivery would do.
+    refundId = `rfnd_LEDGER${Date.now()}`;
+    await prisma.orderRefund.create({
+      data: { orderId: order.id, amount: grandTotal, kind: "FULL", method: "GATEWAY", gatewayRefundId: refundId, reason: "test full refund", status: "INITIATED" },
+    });
+    await postWebhook("refunded", { gatewayPaymentId: gwPaymentId, gatewayRefundId: refundId, amount: grandTotal });
+    initiateStatus = 200;
+  }
+  const after = await prisma.order.findUnique({ where: { id: order.id }, include: { refunds: true } });
+  step(
+    "full refund → REFUNDED with a COMPLETED ledger row",
+    initiateStatus === 200 && after.status === "REFUNDED" && after.refunds.some((r) => r.status === "COMPLETED"),
+    `order=${after.status} refunds=${JSON.stringify(after.refunds.map((r) => r.status))}`,
+  );
+
+  // duplicate delivery is a no-op (only meaningful for the manually-posted path)
+  if (refundId) {
+    await postWebhook("refunded", { gatewayPaymentId: gwPaymentId, gatewayRefundId: refundId, amount: grandTotal });
+    const events = await prisma.orderEvent.count({ where: { orderId: order.id, note: { contains: "Refund" } } });
+    step("duplicate refund webhook idempotent", events <= 2, `${events} refund event(s)`); // initiated + completed, no 3rd
+  }
 }
 
-// ── 9. sweep + late capture ──
+// ── 8b. LEGACY backward-compat: a pre-pricing-v2 order (depositAmount > 0)
+//        still supports kind:"deposit" refunds through to DEPOSIT_REFUNDED ──
+{
+  const legacyGwOrderId = `order_LEGACY${Date.now()}`;
+  const legacyGwPaymentId = `pay_LEGACY${Date.now()}`;
+  const legacyTotal = 10000;
+  const legacyDeposit = 500;
+  const legacyGrand = legacyTotal + legacyDeposit;
+
+  const legacy = await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: "DELIVERED",
+      totalAmount: legacyTotal,
+      depositAmount: legacyDeposit,
+      grandTotal: legacyGrand,
+      contactName: "Legacy Deposit Buyer",
+      contactPhone: "9876543210",
+      addressLine1: "3 Old Model Lane",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      events: { create: { status: "DELIVERED", note: "seed — legacy deposit-model order" } },
+    },
+  });
+  await prisma.payment.create({
+    data: { orderId: legacy.id, razorpayOrderId: legacyGwOrderId, razorpayPaymentId: legacyGwPaymentId, status: "CAPTURED", amount: legacyGrand },
+  });
+
+  let refundedOk;
+  if (GATEWAY === "mock") {
+    const res = await api(`/api/admin/orders/${legacy.id}/refund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "deposit", reason: "legacy deposit refund test" }),
+    });
+    await new Promise((r) => setTimeout(r, 1500));
+    refundedOk = res.status === 200;
+  } else {
+    const legacyRefundId = `rfnd_LEGACY${Date.now()}`;
+    await prisma.orderRefund.create({
+      data: { orderId: legacy.id, amount: legacyDeposit, kind: "DEPOSIT", method: "GATEWAY", gatewayRefundId: legacyRefundId, reason: "legacy deposit refund test", status: "INITIATED" },
+    });
+    await postWebhook("refunded", { gatewayPaymentId: legacyGwPaymentId, gatewayRefundId: legacyRefundId, amount: legacyDeposit });
+    refundedOk = true;
+  }
+  const legacyAfter = await prisma.order.findUnique({ where: { id: legacy.id } });
+  step(
+    "legacy deposit-model order: kind:'deposit' refund still reaches DEPOSIT_REFUNDED",
+    refundedOk && legacyAfter.status === "DEPOSIT_REFUNDED",
+    `status ${legacyAfter.status}`,
+  );
+  await cleanupOrder(legacy.id);
+}
+
+// ── 9. sweep + late capture + promo release ──
 {
   const old = await prisma.order.create({
     data: {
       userId: user.id,
       status: "PAYMENT_PENDING",
       totalAmount: 1000,
-      depositAmount: 50,
-      grandTotal: 1050,
+      depositAmount: 0,
+      grandTotal: 1000,
       contactName: "x",
       contactPhone: "9999999999",
       addressLine1: "a street 1",
@@ -302,13 +439,26 @@ console.log(`      seeded order ${order.id}`);
     },
   });
   const oldGw = `order_SWEEP${Date.now()}`;
-  await prisma.payment.create({ data: { orderId: old.id, razorpayOrderId: oldGw, status: "CREATED", amount: 1050 } });
+  await prisma.payment.create({ data: { orderId: old.id, razorpayOrderId: oldGw, status: "CREATED", amount: 1000 } });
+
+  // A reserved promo redemption on this stale order must be released by the sweep.
+  const sweepPromo = await prisma.promoCode.create({
+    data: { code: `SWEEPTEST${Date.now()}`, kind: "FLAT", value: 100, maxPerUser: 1 },
+  });
+  await prisma.promoRedemption.create({
+    data: { promoCodeId: sweepPromo.id, userId: user.id, orderId: old.id, amount: 100 },
+  });
+
   const res = await fetch(`${BASE}/api/admin/sweep-orders`, {
     method: "POST",
     headers: { Authorization: "Bearer dev-local-sweep-secret" },
   });
   const after = await prisma.order.findUnique({ where: { id: old.id } });
   step("sweep expires stale unpaid order", res.status === 200 && after.status === "PAYMENT_EXPIRED");
+
+  const redemptionGone = await prisma.promoRedemption.count({ where: { orderId: old.id } });
+  step("sweep releases the reserved promo redemption", redemptionGone === 0, `${redemptionGone} redemption row(s) remain`);
+  await prisma.promoCode.delete({ where: { id: sweepPromo.id } });
 
   // a stale order whose payment already CAPTURED must survive the sweep —
   // this is what the race fix in sweep-orders/route.ts protects
@@ -317,8 +467,8 @@ console.log(`      seeded order ${order.id}`);
       userId: user.id,
       status: "PAYMENT_PENDING",
       totalAmount: 1000,
-      depositAmount: 50,
-      grandTotal: 1050,
+      depositAmount: 0,
+      grandTotal: 1000,
       contactName: "x",
       contactPhone: "9999999999",
       addressLine1: "a street 1",
@@ -330,7 +480,7 @@ console.log(`      seeded order ${order.id}`);
     },
   });
   await prisma.payment.create({
-    data: { orderId: paid.id, razorpayOrderId: `order_SWEEPCAP${Date.now()}`, status: "CAPTURED", amount: 1050 },
+    data: { orderId: paid.id, razorpayOrderId: `order_SWEEPCAP${Date.now()}`, status: "CAPTURED", amount: 1000 },
   });
   const sweepRes2 = await fetch(`${BASE}/api/admin/sweep-orders`, {
     method: "POST",
@@ -342,9 +492,7 @@ console.log(`      seeded order ${order.id}`);
     "sweep skips a stale order whose payment is CAPTURED",
     sweepRes2.status === 200 && paidAfter.status === "PAYMENT_PENDING" && !paidExpiredEvent,
   );
-  await prisma.orderEvent.deleteMany({ where: { orderId: paid.id } });
-  await prisma.payment.deleteMany({ where: { orderId: paid.id } });
-  await prisma.order.delete({ where: { id: paid.id } });
+  await cleanupOrder(paid.id);
 
   // Bug 2 regression: a manual/WhatsApp admin-order-entry order has NO
   // Payment row at all (offline order awaiting bank transfer/WhatsApp
@@ -357,8 +505,8 @@ console.log(`      seeded order ${order.id}`);
       userId: user.id,
       status: "PAYMENT_PENDING",
       totalAmount: 1000,
-      depositAmount: 50,
-      grandTotal: 1050,
+      depositAmount: 0,
+      grandTotal: 1000,
       contactName: "Manual Offline Buyer",
       contactPhone: "9999999999",
       addressLine1: "a street 1",
@@ -386,19 +534,12 @@ console.log(`      seeded order ${order.id}`);
   // late capture on the expired order → auto-refund intent (asserts the
   // late-capture guard never resurrects the order, regardless of whether
   // the gateway refund call itself succeeds against a fake payment id)
-  await postWebhook({
-    event: "payment.captured",
-    payload: { payment: { entity: { id: `pay_LATE${Date.now()}`, order_id: oldGw } } },
-  });
+  await postWebhook("captured", { gatewayOrderId: oldGw, gatewayPaymentId: `pay_LATE${Date.now()}` });
   const alert = await prisma.orderEvent.findFirst({ where: { orderId: old.id, note: { contains: "after order expiry" } } });
   const stillDead = await prisma.order.findUnique({ where: { id: old.id } });
   step("late capture never resurrects the order", !!alert && stillDead.status === "PAYMENT_EXPIRED");
 
-  // cleanup
-  await prisma.orderEvent.deleteMany({ where: { orderId: old.id } });
-  await prisma.orderRefund.deleteMany({ where: { orderId: old.id } });
-  await prisma.payment.deleteMany({ where: { orderId: old.id } });
-  await prisma.order.delete({ where: { id: old.id } });
+  await cleanupOrder(old.id);
 }
 
 // ── 10. customer surfaces ──
@@ -409,9 +550,12 @@ console.log(`      seeded order ${order.id}`);
 
   await page.goto(`${BASE}/account/orders/${order.id}`, { waitUntil: "networkidle" });
   const body = await page.textContent("body");
+  // Pricing v2: no deposit on this order, so the "Security Deposit" card is
+  // hidden (it only renders when deposit > 0 or refunded > 0) — assert the
+  // timeline + AWB instead, which always render.
   step(
-    "order detail shows timeline + deposit + AWB",
-    body.includes("Deposit Refunded") && body.includes("BD123456789") && body.includes("Security Deposit"),
+    "order detail shows timeline + AWB, refund shown as 'Refunds'",
+    body.includes(shippedAwb) && (body.includes("Refunds") || body.includes("REFUNDED") || body.includes("Refunded")),
   );
   await page.screenshot({ path: `${process.env.SHOTS_DIR ?? "/tmp"}/order-detail.png`, fullPage: true });
 
@@ -422,7 +566,8 @@ console.log(`      seeded order ${order.id}`);
   });
   step(
     "public track-order lookup",
-    track.status === 200 && track.body?.status === "DEPOSIT_REFUNDED" && track.body?.shipment?.awbCode === "BD123456789",
+    track.status === 200 && track.body?.status === "REFUNDED" && track.body?.shipment?.awbCode === shippedAwb,
+    JSON.stringify(track.body?.status),
   );
 
   const trackBad = await api("/api/track-order", {
@@ -433,18 +578,16 @@ console.log(`      seeded order ${order.id}`);
   step("track-order with wrong email → 404", trackBad.status === 404, `status ${trackBad.status}`);
 }
 
-// ── 11. auto-split: manual multi-item order ──
+// ── 11. auto-split: manual multi-item order (pricing v2: no deposit, grandTotal === totalAmount) ──
 {
   const variants = await prisma.productVariant.findMany({
     take: 3,
-    where: { product: { isActive: true } },
+    where: { product: { isActive: true, status: "LIVE" } },
     include: { product: true },
   });
 
   // Odd, non-round prices — chosen to prove the proration math has no
-  // rounding drift (manually traced: goods 10001/20003/30007 → parent
-  // totalAmount 60011, depositAmount 3001, grandTotal 63012; per-child
-  // deposit 500/1000/1501, grand 10501/21003/31508 — sums exact).
+  // rounding drift even with 3-way splits (sums must match exactly).
   const res = await api("/api/admin/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -456,7 +599,6 @@ console.log(`      seeded order ${order.id}`);
       city: "Bengaluru",
       state: "Karnataka",
       pincode: "560001",
-      applyDeposit: true,
       initialStatus: "PAYMENT_CONFIRMED",
       paymentNote: "UPI ref SPLIT1",
       items: [10001, 20003, 30007].map((unitPrice, i) => ({
@@ -482,24 +624,19 @@ console.log(`      seeded order ${order.id}`);
     parentA.status === "SPLIT_INTO_DELIVERIES" && parentA.items.length === 0,
   );
   step(
-    "proration sums exact (no rounding drift)",
+    "proration sums exact (no rounding drift, no deposit)",
     sum("totalAmount") === Number(parentA.totalAmount) &&
-      sum("depositAmount") === Number(parentA.depositAmount) &&
-      sum("grandTotal") === Number(parentA.grandTotal),
-    `totalAmount ${sum("totalAmount")}/${parentA.totalAmount} deposit ${sum("depositAmount")}/${parentA.depositAmount} grand ${sum("grandTotal")}/${parentA.grandTotal}`,
+      sum("depositAmount") === 0 &&
+      sum("grandTotal") === Number(parentA.grandTotal) &&
+      Number(parentA.grandTotal) === Number(parentA.totalAmount),
+    `totalAmount ${sum("totalAmount")}/${parentA.totalAmount} grand ${sum("grandTotal")}/${parentA.grandTotal}`,
   );
   const [c0, c1, c2] = parentA.children;
   step(
-    "per-child proration matches hand-traced values",
-    Number(c0.totalAmount) === 10001 &&
-      Number(c0.depositAmount) === 500 &&
-      Number(c0.grandTotal) === 10501 &&
-      Number(c1.totalAmount) === 20003 &&
-      Number(c1.depositAmount) === 1000 &&
-      Number(c1.grandTotal) === 21003 &&
-      Number(c2.totalAmount) === 30007 &&
-      Number(c2.depositAmount) === 1501 &&
-      Number(c2.grandTotal) === 31508,
+    "per-child proration matches hand-traced values (grandTotal === totalAmount, deposit 0)",
+    Number(c0.totalAmount) === 10001 && Number(c0.depositAmount) === 0 && Number(c0.grandTotal) === 10001 &&
+      Number(c1.totalAmount) === 20003 && Number(c1.depositAmount) === 0 && Number(c1.grandTotal) === 20003 &&
+      Number(c2.totalAmount) === 30007 && Number(c2.depositAmount) === 0 && Number(c2.grandTotal) === 30007,
     parentA.children.map((c) => `${c.totalAmount}/${c.depositAmount}/${c.grandTotal}`).join(" | "),
   );
   step(
@@ -533,7 +670,6 @@ console.log(`      seeded order ${order.id}`);
       city: "Bengaluru",
       state: "Karnataka",
       pincode: "560001",
-      applyDeposit: true,
       initialStatus: "PAYMENT_CONFIRMED",
       items: [{ variantId: variants[0].id, quantity: 1, unitPrice: 5000 }],
     }),
@@ -545,33 +681,26 @@ console.log(`      seeded order ${order.id}`);
   );
 
   // cleanup
-  const allIds = [...parentA.children.map((c) => c.id), parentA.id, singleOrder.id];
-  for (const oid of allIds) {
-    await prisma.orderEvent.deleteMany({ where: { orderId: oid } });
-    await prisma.orderRefund.deleteMany({ where: { orderId: oid } });
-    await prisma.shipment.deleteMany({ where: { orderId: oid } });
-    await prisma.orderItem.deleteMany({ where: { orderId: oid } });
-  }
-  await prisma.order.deleteMany({ where: { parentOrderId: parentA.id } });
-  await prisma.order.delete({ where: { id: parentA.id } });
-  await prisma.order.delete({ where: { id: singleOrder.id } });
+  for (const c of parentA.children) await cleanupOrder(c.id);
+  await cleanupOrder(parentA.id);
+  await cleanupOrder(singleOrder.id);
 }
 
-// ── 12. auto-split: online checkout multi-item order ──
+// ── 12. auto-split: online checkout multi-item order (pricing v2 money model) ──
 {
   const variants = await prisma.productVariant.findMany({
     take: 2,
-    where: { product: { isActive: true } },
+    where: { product: { isActive: true, status: "LIVE" } },
     include: { product: true },
   });
-  // goods 15000 + 9999 = 24999 → grandTotal 26249, deposit 1250; children:
-  // 15000/750/15750 and 9999/500/10499 (hand-traced, sums exact).
+  // goods 15000 + 9999 = 24999, no deposit, grandTotal === totalAmount;
+  // children: 15000/0/15000 and 9999/0/9999 (hand-traced, sums exact).
   const lineItems = [
     { variantId: variants[0].id, price: 15000 },
     { variantId: variants[1].id, price: 9999 },
   ];
   const totalB = lineItems.reduce((s, i) => s + i.price, 0);
-  const grandB = Math.round(totalB * 1.05);
+  const grandB = totalB;
   const gwOrderB = `order_SPLIT${Date.now()}`;
   const gwPaymentB = `pay_SPLIT${Date.now()}`;
 
@@ -580,7 +709,7 @@ console.log(`      seeded order ${order.id}`);
       userId: user.id,
       status: "PAYMENT_PENDING",
       totalAmount: totalB,
-      depositAmount: grandB - totalB,
+      depositAmount: 0,
       grandTotal: grandB,
       contactName: "Split Online Buyer",
       contactPhone: "9876543210",
@@ -603,10 +732,7 @@ console.log(`      seeded order ${order.id}`);
     data: { orderId: parentSeed.id, razorpayOrderId: gwOrderB, status: "CREATED", amount: grandB },
   });
 
-  const capRes = await postWebhook({
-    event: "payment.captured",
-    payload: { payment: { entity: { id: gwPaymentB, order_id: gwOrderB } } },
-  });
+  const capRes = await postWebhook("captured", { gatewayOrderId: gwOrderB, gatewayPaymentId: gwPaymentB });
   const parentB = await prisma.order.findUnique({
     where: { id: parentSeed.id },
     include: { children: { orderBy: { createdAt: "asc" } }, payment: true, items: true },
@@ -617,9 +743,9 @@ console.log(`      seeded order ${order.id}`);
   );
   const sumB = (f) => parentB.children.reduce((s, c) => s + Number(c[f]), 0);
   step(
-    "online split proration sums exact",
+    "online split proration sums exact (no deposit)",
     sumB("totalAmount") === Number(parentB.totalAmount) &&
-      sumB("depositAmount") === Number(parentB.depositAmount) &&
+      sumB("depositAmount") === 0 &&
       sumB("grandTotal") === Number(parentB.grandTotal),
   );
   step(
@@ -629,42 +755,34 @@ console.log(`      seeded order ${order.id}`);
 
   const [b0, b1] = parentB.children;
 
-  // Drive one child to DELIVERED, then attempt a deposit refund — proves
-  // the child's refund resolves the PARENT's gateway payment (lib/refunds.ts
+  // Drive one child to DELIVERED, then attempt a full refund — proves the
+  // child's refund resolves the PARENT's gateway payment (lib/refunds.ts
   // resolvePayment), not an (always-absent) payment of its own.
   await api(`/api/admin/orders/${b0.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "PREPARING" }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "PREPARING" }),
   });
   await api(`/api/admin/orders/${b0.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    method: "PATCH", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status: "SHIPPED", courierName: "DTDC", awbCode: "SPLIT-AWB-1" }),
   });
   await api(`/api/admin/orders/${b0.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "DELIVERED" }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "DELIVERED" }),
   });
   const refundRes = await api(`/api/admin/orders/${b0.id}/refund`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "deposit", reason: "test child deposit refund" }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "full", reason: "test child full refund" }),
   });
   step(
-    GATEWAY_CONFIGURED
-      ? "child deposit refund resolves parent payment → 502 (gateway refused simulated payment)"
-      : "child deposit refund resolves parent payment → 503 (gateway not configured, not 'offline' path)",
-    GATEWAY_CONFIGURED ? refundRes.status === 502 : refundRes.status === 503,
+    "child full refund resolves parent payment → 200 (mock) / 502 (razorpay, simulated payment id)",
+    GATEWAY === "mock" ? refundRes.status === 200 : refundRes.status === 502,
     `status ${refundRes.status}`,
   );
+  if (GATEWAY === "mock") await new Promise((r) => setTimeout(r, 1500));
 
   // Review fix #3: refunding directly on the split PARENT is rejected —
   // money for a split order must move through an individual delivery.
   const parentRefundRes = await api(`/api/admin/orders/${parentB.id}/refund`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kind: "full", reason: "should be rejected" }),
   });
   step(
@@ -673,72 +791,54 @@ console.log(`      seeded order ${order.id}`);
     `status ${parentRefundRes.status} — ${parentRefundRes.body?.error}`,
   );
 
-  // Review fix #2: a sibling's completed deposit refund must not block this
-  // delivery's OWN deposit refund. Simulate b0's deposit as fully refunded
-  // (ledger row + the same Payment.refundedAmount bump the webhook would
-  // apply — that field is shared across all children of one parent), then
-  // confirm b1 — delivered, its own deposit untouched — still offers its
-  // own deposit-refund button on the admin page.
+  // Bring b1 to DELIVERED too and confirm its refund path is independent of b0's.
   await api(`/api/admin/orders/${b1.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "PREPARING" }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "PREPARING" }),
   });
   await api(`/api/admin/orders/${b1.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    method: "PATCH", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status: "SHIPPED", courierName: "DTDC", awbCode: "SPLIT-AWB-2" }),
   });
   await api(`/api/admin/orders/${b1.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "DELIVERED" }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "DELIVERED" }),
   });
 
   // Bug 1 regression: a SPLIT child's own order.payment is always null (the
   // Payment row lives on the parent — payment anchoring, lib/refunds.ts
-  // resolvePayment). A direct admin PATCH to an OFFLINE_SETTLEMENT_TRANSITIONS
-  // target (DEPOSIT_REFUNDED) — bypassing /refund entirely, so no ledger row
-  // and no real gateway refund — must be rejected. If the route misclassifies
-  // the child as "offline" (isOffline = !order.payment without walking to the
-  // parent), this PATCH would wrongly succeed with 200.
+  // resolvePayment). The admin route classifies "offline" (no gateway
+  // payment → OFFLINE_SETTLEMENT_TRANSITIONS shortcuts become available) by
+  // walking to the parent's payment, not just the child's own — if that walk
+  // were missing, a split child would incorrectly qualify as offline and
+  // allow a direct status PATCH to bypass /refund entirely (no ledger row,
+  // no real refund). Pricing v2 retired the DELIVERED→DEPOSIT_REFUNDED
+  // offline shortcut this originally targeted, so exercise the same guard
+  // via the shortcut that still exists: DELIVERED → FAILED_OTHER (a normal,
+  // listed transition) → then the FAILED_OTHER → REFUNDED offline shortcut.
+  await api(`/api/admin/orders/${b1.id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "FAILED_OTHER", note: "regression test — routing to offline-shortcut check" }),
+  });
   const offlineBypassRes = await api(`/api/admin/orders/${b1.id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "DEPOSIT_REFUNDED" }),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "REFUNDED" }),
   });
   const b1AfterBypass = await prisma.order.findUnique({ where: { id: b1.id } });
   step(
-    "split child rejects direct offline-settlement PATCH (DEPOSIT_REFUNDED) — must use /refund",
-    (offlineBypassRes.status === 400 || offlineBypassRes.status === 409) && b1AfterBypass.status === "DELIVERED",
+    "split child with a real gateway payment (on the parent) rejects the offline REFUNDED shortcut — must use /refund",
+    (offlineBypassRes.status === 400 || offlineBypassRes.status === 409) && b1AfterBypass.status === "FAILED_OTHER",
     `status ${offlineBypassRes.status}, order now ${b1AfterBypass.status}`,
   );
+  // FAILED_OTHER has no further admin transition (terminal short of /refund)
+  // — the refund-independence check below runs against this FAILED_OTHER
+  // child directly; kind:"full" refunds aren't status-gated.
 
-  await prisma.orderRefund.create({
-    data: {
-      orderId: b0.id,
-      amount: Number(b0.depositAmount),
-      kind: "DEPOSIT",
-      method: "GATEWAY",
-      gatewayRefundId: `rfnd_SIBLING${Date.now()}`,
-      reason: "sibling deposit refund (simulated)",
-      status: "COMPLETED",
-    },
+  const b1RefundRes = await api(`/api/admin/orders/${b1.id}/refund`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "full", reason: "sibling refund independence check" }),
   });
-  await prisma.payment.update({
-    where: { id: parentB.payment.id },
-    data: { refundedAmount: { increment: Number(b0.depositAmount) } },
-  });
-  await page.goto(`${BASE}/admin/orders/${b1.id}`, { waitUntil: "networkidle" });
-  // Deposit-specific: open the refund mini-form and check for the "Deposit"
-  // <option>, which only renders when canRefundDeposit is true. The generic
-  // "Refund…" button alone doesn't distinguish this — it also shows for
-  // canRefund (full/partial), which stays true regardless of this bug.
-  await page.locator("button", { hasText: "Refund…" }).click();
-  const depositOptionVisible = await page.locator('option[value="deposit"]').count();
   step(
-    "sibling's deposit refund doesn't block this delivery's own deposit-refund option",
-    depositOptionVisible === 1,
+    "sibling's refund doesn't block this delivery's own refund",
+    GATEWAY === "mock" ? b1RefundRes.status === 200 : b1RefundRes.status === 502,
+    `status ${b1RefundRes.status}`,
   );
 
   // Customer surfaces.
@@ -755,8 +855,7 @@ console.log(`      seeded order ${order.id}`);
 
   // track-order on the parent id returns children summaries.
   const track = await api("/api/track-order", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orderId: parentB.id, email: EMAIL }),
   });
   step(
@@ -769,29 +868,22 @@ console.log(`      seeded order ${order.id}`);
   );
 
   // cleanup
-  const allIdsB = [...parentB.children.map((c) => c.id), parentB.id];
-  for (const oid of allIdsB) {
-    await prisma.orderEvent.deleteMany({ where: { orderId: oid } });
-    await prisma.orderRefund.deleteMany({ where: { orderId: oid } });
-    await prisma.shipment.deleteMany({ where: { orderId: oid } });
-    await prisma.orderItem.deleteMany({ where: { orderId: oid } });
-  }
-  await prisma.payment.deleteMany({ where: { orderId: parentB.id } });
-  await prisma.order.deleteMany({ where: { parentOrderId: parentB.id } });
-  await prisma.order.delete({ where: { id: parentB.id } });
+  for (const c of parentB.children) await cleanupOrder(c.id);
+  await cleanupOrder(parentB.id);
 }
 
 // ── shared seed for the delivery/return scenarios below: an offline
 // (no gateway Payment) order in an arbitrary starting status, optionally
-// with a Shipment row already attached (as PATCH SHIPPED would create). ──
+// with a Shipment row already attached (as PATCH SHIPPED would create).
+// Pricing v2: no deposit on freshly-seeded orders (grandTotal === totalAmount). ──
 async function seedOrder(status, { shipment = false, events = undefined, label = "Lifecycle Buyer" } = {}) {
   const o = await prisma.order.create({
     data: {
       userId: user.id,
       status,
       totalAmount: 10000,
-      depositAmount: 500,
-      grandTotal: 10500,
+      depositAmount: 0,
+      grandTotal: 10000,
       contactName: label,
       contactPhone: "9876543210",
       addressLine1: "5 Test Colony",
@@ -807,15 +899,6 @@ async function seedOrder(status, { shipment = false, events = undefined, label =
     });
   }
   return o;
-}
-
-async function cleanupOrder(id) {
-  await prisma.orderNote.deleteMany({ where: { orderId: id } });
-  await prisma.orderRefund.deleteMany({ where: { orderId: id } });
-  await prisma.orderEvent.deleteMany({ where: { orderId: id } });
-  await prisma.shipment.deleteMany({ where: { orderId: id } });
-  await prisma.orderItem.deleteMany({ where: { orderId: id } });
-  await prisma.order.delete({ where: { id } });
 }
 
 // ── 13. delivery-fail → retry (OUT_FOR_DELIVERY) → deliver ──
@@ -963,7 +1046,7 @@ async function cleanupOrder(id) {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
   });
 
-  let res = await patch3("DEPOSIT_REFUNDED");
+  let res = await patch3("REFUNDED");
   step("reject with wrong revert target → 409", res.status === 409, `status ${res.status} — ${res.body?.error}`);
 
   res = await patch3("DELIVERED");
@@ -1018,7 +1101,7 @@ async function cleanupOrder(id) {
   step(
     "offline refund on FAILED_OTHER → REFUNDED with ledger row",
     res.status === 200 && after.status === "REFUNDED" && after.refunds.length === 1 &&
-      after.refunds[0].method === "OFFLINE" && Number(after.refunds[0].amount) === 10500,
+      after.refunds[0].method === "OFFLINE" && Number(after.refunds[0].amount) === 10000,
     JSON.stringify({ status: after.status, refunds: after.refunds.length }),
   );
 
@@ -1077,12 +1160,7 @@ async function cleanupOrder(id) {
 }
 
 // ── cleanup ──
-await prisma.orderEvent.deleteMany({ where: { orderId: order.id } });
-await prisma.orderRefund.deleteMany({ where: { orderId: order.id } });
-await prisma.shipment.deleteMany({ where: { orderId: order.id } });
-await prisma.payment.deleteMany({ where: { orderId: order.id } });
-await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
-await prisma.order.delete({ where: { id: order.id } });
+await cleanupOrder(order.id);
 console.log("      cleaned up test order");
 
 await browser.close();

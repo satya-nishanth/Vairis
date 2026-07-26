@@ -26,6 +26,19 @@ const variantSchema = z.object({
   size: z.string().optional(),
 })
 
+const stoneSchema = z.object({
+  diamondRateId: z.string().min(1, 'Diamond type is required'),
+  caratWeight: z
+    .union([z.string(), z.number()])
+    .transform(Number)
+    .refine((n) => !Number.isNaN(n) && n > 0, 'Carat weight must be positive'),
+  count: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
+  label: z.string().optional().nullable(),
+})
+
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   description: z.string().default(''),
@@ -43,7 +56,19 @@ const productSchema = z.object({
   images: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),
   comingSoon: z.boolean().default(false),
-  variants: z.array(variantSchema).min(1, 'At least one variant is required'),
+  status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
+  stones: z.array(stoneSchema).default([]),
+  // Drafts only need a title — LIVE products need at least one variant
+  // (enforced in superRefine below).
+  variants: z.array(variantSchema).default([]),
+}).superRefine((data, ctx) => {
+  if (data.status === 'LIVE' && data.variants.length < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['variants'],
+      message: 'A live product needs at least one variant',
+    })
+  }
 })
 
 function validationError(error: z.ZodError) {
@@ -93,6 +118,16 @@ export async function POST(req: NextRequest) {
       images: data.images,
       isActive: data.isActive,
       comingSoon: data.comingSoon,
+      status: data.status,
+      stones: {
+        create: data.stones.map((s, i) => ({
+          diamondRateId: s.diamondRateId,
+          caratWeight: s.caratWeight,
+          count: s.count,
+          label: s.label || null,
+          sortOrder: i,
+        })),
+      },
       variants: {
         create: data.variants.map((v) => ({
           metalType: v.metalType,
@@ -107,7 +142,7 @@ export async function POST(req: NextRequest) {
         })),
       },
     },
-    include: { variants: true },
+    include: { variants: true, stones: { include: { diamondRate: true } } },
   })
 
   return NextResponse.json(product, { status: 201 })

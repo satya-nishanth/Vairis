@@ -114,7 +114,9 @@ export default function CartPage() {
                   image: item.variant.product.images[0] ?? "",
                   meta: `${item.variant.product.itemCode ?? item.variant.sku} · ${
                     METAL_LABELS[item.variant.metalType] ?? item.variant.metalType
-                  }${item.variant.size ? ` · ${item.variant.size}` : ""}`,
+                  }${item.variant.size ? ` · Size ${item.variant.size}` : ""}${
+                    item.withExchange ? " · With Exchange" : ""
+                  }`,
                   quantity: item.quantity,
                   unitPrice: item.unitPrice,
                 }}

@@ -35,8 +35,9 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
 
   const where = {
     ...(activeCategory !== 'ALL' ? { category: activeCategory } : {}),
-    ...(statusParam === 'active' ? { isActive: true } : {}),
-    ...(statusParam === 'draft' ? { isActive: false } : {}),
+    ...(statusParam === 'live' ? { status: 'LIVE' as const } : {}),
+    ...(statusParam === 'draft' ? { status: 'DRAFT' as const } : {}),
+    ...(statusParam === 'ai-draft' ? { status: 'AI_DRAFT' as const } : {}),
   }
 
   const [filteredTotal, counts] = await Promise.all([
@@ -101,6 +102,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     itemCode: p.itemCode,
     images: p.images ?? [],
     isActive: p.isActive,
+    status: p.status,
     variantCount: p.variants.length,
     mediaCount: (p.images ?? []).filter(Boolean).length,
   }))
@@ -147,8 +149,9 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
         <div className="admin-products__status">
           {[
             { key: 'all', label: 'All statuses' },
-            { key: 'active', label: 'Active' },
+            { key: 'live', label: 'Live' },
             { key: 'draft', label: 'Draft' },
+            { key: 'ai-draft', label: 'AI Draft' },
           ].map((s) => {
             const active = statusParam === s.key
             return (

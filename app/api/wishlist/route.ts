@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   // Any active product can be wishlisted — not just coming-soon
   const product = await prisma.product.findUnique({
-    where: { id: productId, isActive: true },
+    where: { id: productId, isActive: true, status: 'LIVE' },
     select: { id: true },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })

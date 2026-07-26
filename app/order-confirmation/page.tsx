@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 import { CopyOrderButton } from "./CopyOrderButton";
+import { PurchaseTracker } from "./PurchaseTracker";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,9 @@ export default async function OrderConfirmationPage({
 
   return (
     <PageShell {...layout}>
+      {!paymentPending && (
+        <PurchaseTracker orderId={order.id} value={Number(order.grandTotal)} />
+      )}
       <Container>
         <div className="confirm-layout">
           <div>
@@ -84,21 +88,23 @@ export default async function OrderConfirmationPage({
               </dl>
             </div>
 
-            <div className="confirm-card">
-              <h3 className="confirm-card__heading">Your 5% security deposit</h3>
-              <p className="checkout-note">
-                {formatPrice(deposit)} of your payment is a refundable security deposit — it is
-                returned to your payment method after delivery. You can follow it on the order
-                page.
-              </p>
-            </div>
+            {deposit > 0 && (
+              <div className="confirm-card">
+                <h3 className="confirm-card__heading">Your security deposit</h3>
+                <p className="checkout-note">
+                  {formatPrice(deposit)} of your payment is a refundable security deposit — it is
+                  returned to your payment method after delivery. You can follow it on the order
+                  page.
+                </p>
+              </div>
+            )}
 
             <section className="what-next">
               {[
                 ["🔍", "Quality Check", "Every piece is inspected before dispatch."],
                 ["🚚", "Insured Dispatch", "Tracked, tamper-proof shipping."],
                 ["📦", "Delivered", "OTP-protected handover."],
-                ["💎", "Deposit Back", `${formatPrice(deposit)} refunded after delivery.`],
+                ["💎", "Certified", "IGI certified · BIS hallmarked."],
               ].map(([icon, title, desc]) => (
                 <div key={title}>
                   <div className="what-next__icon">{icon}</div>
@@ -122,18 +128,18 @@ export default async function OrderConfirmationPage({
             title="Order Summary"
             lines={[
               ...order.items.map((item) => ({
-                label: `${item.productName} × ${item.quantity}`,
+                label: `${item.productName} × ${item.quantity}${item.withExchange ? " (with exchange)" : ""}`,
                 value: formatPrice(Number(item.price) * item.quantity),
               })),
-              { label: "Refundable deposit (5%)", value: formatPrice(deposit) },
+              ...(deposit > 0
+                ? [{ label: "Refundable deposit", value: formatPrice(deposit) }]
+                : []),
               { label: "Shipping", value: "FREE" },
             ]}
             total={Number(order.grandTotal)}
             totalLabel={paymentPending ? "Payable" : "Paid"}
             footer={
-              <p className="summary-badges">
-                {formatPrice(deposit)} refunded after delivery · IGI · BIS · Insured
-              </p>
+              <p className="summary-badges">IGI · BIS Hallmarked · Insured Delivery</p>
             }
           />
         </div>

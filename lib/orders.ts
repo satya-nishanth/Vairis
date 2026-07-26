@@ -2,28 +2,26 @@ import type { OrderStatus } from "@prisma/client";
 
 /**
  * Order lifecycle — single source of truth for statuses, transitions,
- * customer-facing labels, and the 105%/5% deposit money model.
+ * customer-facing labels, and the money model.
  *
- * ─── MONEY MODEL (jewellery security deposit) ────────────────────────────
- * At checkout the customer pays 105% of the goods total:
- *   totalAmount   = Σ line prices (GST-inclusive, from lib/pricing.ts)
- *   grandTotal    = round(totalAmount × 1.05)  ← what Razorpay captures
- *   depositAmount = grandTotal − totalAmount   ← refunded after delivery
- * After the order is DELIVERED, admin triggers a partial Razorpay refund of
- * depositAmount; the refund.processed webhook flips status to
- * DEPOSIT_REFUNDED — the terminal happy state.
+ * ─── MONEY MODEL (pricing v2) ────────────────────────────────────────────
+ * Customer pays exactly the displayed total:
+ *   totalAmount = Σ line prices (GST-inclusive, from lib/pricing.ts —
+ *                 includes the disclosed Value Addition line)
+ *   grandTotal  = totalAmount            ← what the gateway captures
+ * The 105%/5% refundable-deposit model is retired. depositAmount stays 0 on
+ * new orders; DEPOSIT_REFUNDED remains a valid historical status so legacy
+ * orders keep rendering. DELIVERED is the terminal happy state.
  * ─────────────────────────────────────────────────────────────────────────
  */
-
-export const DEPOSIT_RATE = 0.05;
 
 export function computeOrderAmounts(totalAmount: number): {
   totalAmount: number;
   grandTotal: number;
   depositAmount: number;
 } {
-  const grandTotal = Math.round(totalAmount * (1 + DEPOSIT_RATE));
-  return { totalAmount, grandTotal, depositAmount: grandTotal - totalAmount };
+  const grandTotal = Math.round(totalAmount);
+  return { totalAmount: grandTotal, grandTotal, depositAmount: 0 };
 }
 
 /** Customer-facing labels + timeline copy per status. */
@@ -53,12 +51,13 @@ export const ORDER_STATUS_META: Record<
   },
   DELIVERED: {
     label: "Delivered",
-    description: "Delivered. Your 5% security deposit refund is being processed.",
+    description: "Delivered. We hope you love your piece.",
     tone: "done",
   },
+  // Historical status from the retired deposit model — legacy orders only.
   DEPOSIT_REFUNDED: {
     label: "Deposit Refunded",
-    description: "5% security deposit refunded to your payment method.",
+    description: "Security deposit refunded to your payment method.",
     tone: "done",
   },
   CANCELLED: {
@@ -144,7 +143,6 @@ export const ADMIN_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
 /** Extra manual marks for OFFLINE orders only (no gateway payment). */
 export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   PAYMENT_PENDING: ["PAYMENT_CONFIRMED"],
-  DELIVERED: ["DEPOSIT_REFUNDED"],
   CANCELLED: ["REFUNDED"],
   RETURN_RECEIVED: ["REFUNDED"],
   FAILED_OTHER: ["REFUNDED"],
@@ -165,10 +163,13 @@ export const TIMELINE_STEPS: OrderStatus[] = [
   "PREPARING",
   "SHIPPED",
   "DELIVERED",
-  "DEPOSIT_REFUNDED",
 ];
 
 /** Orders in these states render the event-log timeline instead of happy-path steps. */
 export function isHappyPath(status: OrderStatus): boolean {
-  return (TIMELINE_STEPS as string[]).includes(status) || status === "PAYMENT_PENDING";
+  return (
+    (TIMELINE_STEPS as string[]).includes(status) ||
+    status === "PAYMENT_PENDING" ||
+    status === "DEPOSIT_REFUNDED" // legacy deposit-model orders
+  );
 }

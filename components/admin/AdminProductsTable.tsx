@@ -11,8 +11,15 @@ export type AdminProductRow = {
   itemCode: string | null
   images: string[]
   isActive: boolean
+  status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
   variantCount: number
   mediaCount: number
+}
+
+const STATUS_META: Record<AdminProductRow['status'], { label: string; className: string }> = {
+  LIVE: { label: 'Live', className: 'admin-products__badge is-active' },
+  DRAFT: { label: 'Draft', className: 'admin-products__badge' },
+  AI_DRAFT: { label: 'AI Draft', className: 'admin-products__badge is-ai' },
 }
 
 const ROW_OPTIONS = [10, 25, 50] as const
@@ -72,8 +79,8 @@ export function AdminProductsTable({ products, total, page, rows }: Props) {
             <div className="admin-products__card-body">
               <div className="admin-products__card-top">
                 <strong className="admin-products__name">{p.name}</strong>
-                <span className={p.isActive ? 'admin-products__badge is-active' : 'admin-products__badge'}>
-                  {p.isActive ? 'Active' : 'Draft'}
+                <span className={STATUS_META[p.status].className}>
+                  {STATUS_META[p.status].label}
                 </span>
               </div>
               <p className="admin-products__meta">
@@ -125,8 +132,8 @@ export function AdminProductsTable({ products, total, page, rows }: Props) {
                 <td className={p.mediaCount ? undefined : 'is-warn'}>{p.mediaCount}</td>
                 <td>{p.variantCount}</td>
                 <td>
-                  <span className={p.isActive ? 'admin-products__badge is-active' : 'admin-products__badge'}>
-                    {p.isActive ? 'Active' : 'Draft'}
+                  <span className={STATUS_META[p.status].className}>
+                    {STATUS_META[p.status].label}
                   </span>
                 </td>
                 <td className="admin-products__actions">

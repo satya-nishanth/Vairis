@@ -168,12 +168,15 @@ export default async function AdminOrderDetailPage({
           {order.items.map((item) => (
             <p key={item.id} style={{ fontSize: '0.875rem', marginBottom: 6 }}>
               {item.productName} × {item.quantity} — {inr(Number(item.price) * item.quantity)}
+              {item.withExchange && <span style={{ color: '#b45309' }}> · with exchange</span>}
               <span style={{ color: '#9ca3af' }}> · SKU {item.variant.sku}</span>
             </p>
           ))}
           <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
           <p style={{ fontSize: '0.875rem' }}>Goods total: {inr(order.totalAmount)}</p>
-          <p style={{ fontSize: '0.875rem' }}>Security deposit (5%): {inr(order.depositAmount)}</p>
+          {Number(order.depositAmount) > 0 && (
+            <p style={{ fontSize: '0.875rem' }}>Security deposit (legacy): {inr(order.depositAmount)}</p>
+          )}
           <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>Captured: {inr(order.grandTotal)}</p>
           {Number(order.payment?.refundedAmount ?? 0) > 0 && (
             <p style={{ fontSize: '0.875rem', color: '#b45309' }}>

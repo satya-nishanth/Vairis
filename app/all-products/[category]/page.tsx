@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { CategoryPage } from "@/components/commerce/CategoryPage";
 import { CATEGORY_LABELS, isShopCategory } from "@/lib/catalogue-ui";
 import { prismaToProduct } from "@/lib/prisma-to-product";
+import { getPricingConfig } from "@/lib/pricing-data";
 import { SLUG_TO_PRISMA } from "@/lib/categories";
 import { getBanner } from "@/lib/site-content";
 
@@ -35,15 +36,19 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
 
   if (prismaCategory) {
     try {
-      const [dbProducts, goldRates] = await Promise.all([
+      const [dbProducts, goldRates, pricingConfig] = await Promise.all([
         prisma.product.findMany({
-          where: { category: prismaCategory as Category, isActive: true },
-          include: { variants: true },
+          where: { category: prismaCategory as Category, isActive: true, status: 'LIVE' },
+          include: {
+            variants: true,
+            stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" } },
+          },
           orderBy: { createdAt: "asc" },
         }),
         prisma.goldRate.findMany(),
+        getPricingConfig(),
       ]);
-      prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i));
+      prismaProducts = dbProducts.map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig));
     } catch (err) {
       // e.g. Category enum value missing on DB (NECKLACES migration not applied)
       console.error(`[plp] failed loading category=${category}`, err);

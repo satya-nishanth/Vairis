@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { getPricingConfig } from '@/lib/pricing-data'
 import ProductForm from '@/components/admin/ProductForm'
+
+export const dynamic = 'force-dynamic'
 
 export default async function EditProductPage({
   params,
@@ -9,10 +12,18 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: { variants: true },
-  })
+  const [product, diamondRates, goldRates, pricingConfig] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id },
+      include: {
+        variants: true,
+        stones: { orderBy: { sortOrder: 'asc' } },
+      },
+    }),
+    prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
 
   if (!product) notFound()
 
@@ -27,6 +38,14 @@ export default async function EditProductPage({
       </div>
       <ProductForm
         mode="edit"
+        diamondRates={diamondRates.map((r) => ({
+          id: r.id,
+          label: r.label,
+          ratePerCarat: Number(r.ratePerCarat),
+          ratePerCaratExchange: Number(r.ratePerCaratExchange),
+        }))}
+        goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
+        pricingConfig={pricingConfig}
         initialData={{
           id: product.id,
           name: product.name,
@@ -45,8 +64,16 @@ export default async function EditProductPage({
           images: product.images,
           isActive: product.isActive,
           comingSoon: product.comingSoon,
+          status: product.status,
+          stones: product.stones.map((s) => ({
+            diamondRateId: s.diamondRateId,
+            caratWeight: s.caratWeight.toString(),
+            count: s.count?.toString() ?? '',
+            label: s.label ?? '',
+          })),
           variants: product.variants.map((v) => ({
             metalType: v.metalType,
+            size: v.size ?? '',
             weightGrams: v.weightGrams.toString(),
             makingChargePerGram: v.makingChargePerGram.toString(),
             flatMakingCharge: v.flatMakingCharge.toString(),

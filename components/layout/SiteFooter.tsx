@@ -140,9 +140,13 @@ export function SiteFooter({ variant }: SiteFooterProps) {
           <div className="site-footer__bottom-inner">
             <span>© 2026 VAIRIS. All rights reserved.</span>
             <span className="site-footer__legal">
-              <Link href="#">Privacy Policy</Link>
+              <Link href="/policies/privacy">Privacy Policy</Link>
               <span aria-hidden> · </span>
-              <Link href="#">Terms &amp; Conditions</Link>
+              <Link href="/policies/terms">Terms of Service</Link>
+              <span aria-hidden> · </span>
+              <Link href="/policies/refund">Refunds &amp; Returns</Link>
+              <span aria-hidden> · </span>
+              <Link href="/policies/shipping">Shipping</Link>
             </span>
           </div>
         </div>
@@ -179,7 +183,7 @@ export function SiteFooter({ variant }: SiteFooterProps) {
         <div className="site-footer__bottom">
           <div className="site-footer__bottom-inner">
             <span>© 2026 VAIRIS</span>
-            <Link href="#">Privacy</Link>
+            <Link href="/policies/privacy">Privacy</Link>
           </div>
         </div>
       </footer>

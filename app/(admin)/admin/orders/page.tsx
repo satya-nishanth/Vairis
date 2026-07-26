@@ -132,7 +132,7 @@ export default async function AdminOrdersPage({
               <th style={{ padding: '10px 12px' }}>Order</th>
               <th style={{ padding: '10px 12px' }}>Customer</th>
               <th style={{ padding: '10px 12px' }}>Items</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Paid (105%)</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Paid</th>
               <th style={{ padding: '10px 12px', textAlign: 'right' }}>Deposit</th>
               <th style={{ padding: '10px 12px' }}>Status</th>
               <th style={{ padding: '10px 12px' }}>Placed</th>

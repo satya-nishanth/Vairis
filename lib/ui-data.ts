@@ -25,6 +25,12 @@ export type Product = {
   video?: string | null;
   /** Prisma ProductVariant id for real add-to-cart; absent on mock catalogue data */
   variantId?: string;
+  /** Human metal labels across variants (e.g. "18K Gold", "Rose Gold") — PLP filters */
+  metals?: string[];
+  /** Free-text style/design descriptors — PLP style filter matches substrings */
+  styleText?: string;
+  /** Any variant in stock — PLP "Ready to Ship" filter */
+  inStock?: boolean;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

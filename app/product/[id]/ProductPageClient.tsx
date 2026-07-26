@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { CartModalProvider, useCartModal } from "@/components/commerce/CartModal";
 import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpPanel";
+import { ProductReviews } from "@/components/commerce/ProductReviews";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { PdpStickyBar } from "@/components/commerce/PdpStickyBar";
@@ -14,7 +15,9 @@ import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
-import { calculatePrice } from "@/lib/pricing";
+import { calculatePrice, type PricingConfig, type StoneInput } from "@/lib/pricing";
+import type { StoneView } from "@/lib/pricing-data";
+import { track } from "@/lib/analytics-client";
 
 const METAL_LABELS: Record<string, string> = {
   GOLD_18K: "18kt Yellow Gold",
@@ -42,15 +45,17 @@ type ProductData = {
   images: string[];
   itemCode: string | null;
   comingSoon: boolean;
+  stones: StoneView[];
   variants: Variant[];
 };
 
 type Props = {
   product: ProductData;
   goldRates: { metalType: string; ratePerGram: string }[];
+  pricingConfig: PricingConfig;
 };
 
-function PdpContent({ product, goldRates }: Props) {
+function PdpContent({ product, goldRates, pricingConfig }: Props) {
   const { openCartModal } = useCartModal();
   const { addItem, isLoggedIn, hydrated } = useCart();
   const router = useRouter();
@@ -88,21 +93,61 @@ function PdpContent({ product, goldRates }: Props) {
   const selectedVariant = product.variants.find(
     (v) => v.id === selectedVariantId,
   );
-  const price =
+
+  const [withExchange, setWithExchange] = useState(false);
+  const hasStones = product.stones.length > 0;
+
+  const stoneInputs: StoneInput[] = useMemo(
+    () =>
+      product.stones.map((s) => ({
+        caratWeight: s.caratWeight,
+        ratePerCarat: s.ratePerCarat,
+        ratePerCaratExchange: s.ratePerCaratExchange,
+        typeLabel: s.typeLabel,
+      })),
+    [product.stones],
+  );
+
+  const priceFor = (exchange: boolean) =>
     selectedVariant && Number(selectedVariant.weightGrams) > 0
-      ? Math.round(
-          calculatePrice(
-            {
-              weightGrams: Number(selectedVariant.weightGrams),
-              makingChargePerGram: Number(selectedVariant.makingChargePerGram),
-              flatMakingCharge: Number(selectedVariant.flatMakingCharge),
-              stoneCharges: Number(selectedVariant.stoneCharges),
-              miscCharges: Number(selectedVariant.miscCharges),
-            },
-            rateMap[selectedVariant.metalType] ?? 0,
-          ).total,
+      ? calculatePrice(
+          {
+            weightGrams: Number(selectedVariant.weightGrams),
+            makingChargePerGram: Number(selectedVariant.makingChargePerGram),
+            flatMakingCharge: Number(selectedVariant.flatMakingCharge),
+            stoneCharges: Number(selectedVariant.stoneCharges),
+            miscCharges: Number(selectedVariant.miscCharges),
+          },
+          rateMap[selectedVariant.metalType] ?? 0,
+          { stones: stoneInputs, withExchange: exchange, config: pricingConfig },
         )
       : undefined;
+
+  const breakdown = priceFor(withExchange);
+  const price = breakdown ? Math.round(breakdown.total) : undefined;
+  const priceWithout = priceFor(false);
+  const priceWith = priceFor(true);
+
+  // Metal + size selection: metals are unique; sizes belong to the chosen
+  // metal. Plain derivations — the React Compiler memoizes them.
+  const metals = [...new Set(product.variants.map((v) => v.metalType))];
+  const selectedMetal = selectedVariant?.metalType ?? metals[0];
+  const sizesForMetal = product.variants.filter(
+    (v) => v.metalType === selectedMetal && v.size,
+  );
+
+  const selectMetal = (metal: string) => {
+    // Keep the current size when the new metal has it; else first variant of metal.
+    const sameSize = product.variants.find(
+      (v) => v.metalType === metal && v.size === selectedVariant?.size,
+    );
+    const fallback = product.variants.find((v) => v.metalType === metal);
+    setSelectedVariantId((sameSize ?? fallback)?.id ?? null);
+  };
+
+  useEffect(() => {
+    track("pdp_view", { productId: product.id, meta: { name: product.name } });
+  }, [product.id, product.name]);
 
   useEffect(() => {
     const el = swipeRef.current;
@@ -135,7 +180,11 @@ function PdpContent({ product, goldRates }: Props) {
     setAddingToCart(true);
     setCartError(null);
     try {
-      await addItem(selectedVariant.id, 1);
+      await addItem(selectedVariant.id, 1, withExchange);
+      track("add_to_cart", {
+        productId: product.id,
+        meta: { variantId: selectedVariant.id, withExchange, price },
+      });
       openCartModal();
     } catch {
       setCartError("Couldn't add to cart. Please try again.");
@@ -256,11 +305,48 @@ function PdpContent({ product, goldRates }: Props) {
               <p className="pdp-info__description">{product.description}</p>
             )}
 
-            {product.variants.length > 0 && (
+            {hasStones && (
+              <div className="pdp-options" data-testid="pdp-stones">
+                <label>Diamonds</label>
+                <ul className="pdp-info__stones">
+                  {product.stones.map((s) => (
+                    <li key={s.id} className="pdp-info__stone">
+                      <span>
+                        {s.label ? `${s.label} — ` : ""}
+                        {s.typeLabel}
+                        {s.count ? ` × ${s.count}` : ""}
+                      </span>
+                      <span>{s.caratWeight.toFixed(2)} ct</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {metals.length > 1 && (
               <div className="pdp-options">
                 <label>Metal</label>
                 <div className="pdp-variants">
-                  {product.variants.map((v) => (
+                  {metals.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`btn ${m === selectedMetal ? "btn-primary" : "btn-secondary"}`}
+                      aria-pressed={m === selectedMetal}
+                      onClick={() => selectMetal(m)}
+                    >
+                      {METAL_LABELS[m] ?? m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sizesForMetal.length > 0 && (
+              <div className="pdp-options" data-testid="pdp-sizes">
+                <label>Size</label>
+                <div className="pdp-variants">
+                  {sizesForMetal.map((v) => (
                     <button
                       key={v.id}
                       type="button"
@@ -268,12 +354,86 @@ function PdpContent({ product, goldRates }: Props) {
                       aria-pressed={v.id === selectedVariantId}
                       onClick={() => setSelectedVariantId(v.id)}
                     >
-                      {METAL_LABELS[v.metalType] ?? v.metalType}
-                      {v.size ? ` — Size ${v.size}` : ""}
+                      {v.size}
                     </button>
                   ))}
                 </div>
               </div>
+            )}
+
+            {hasStones && priceWith && priceWithout && (
+              <div className="pdp-options" data-testid="pdp-exchange">
+                <label>Diamond Pricing</label>
+                <div className="pdp-variants">
+                  <button
+                    type="button"
+                    className={`btn ${!withExchange ? "btn-primary" : "btn-secondary"}`}
+                    aria-pressed={!withExchange}
+                    onClick={() => setWithExchange(false)}
+                  >
+                    Without Exchange — ₹{Math.round(priceWithout.total).toLocaleString("en-IN")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${withExchange ? "btn-primary" : "btn-secondary"}`}
+                    aria-pressed={withExchange}
+                    onClick={() => setWithExchange(true)}
+                  >
+                    With Exchange — ₹{Math.round(priceWith.total).toLocaleString("en-IN")}
+                  </button>
+                </div>
+                <p className="pdp-info__meta">
+                  With Exchange: your diamonds are priced at the higher exchange
+                  rate per carat and qualify for full-value exchange later.
+                </p>
+              </div>
+            )}
+
+            {breakdown && (
+              <details className="pdp-info__breakup" data-testid="pdp-breakup">
+                <summary>Price Breakup</summary>
+                <table>
+                  <tbody>
+                    <tr>
+                      <td>Gold value ({Number(selectedVariant?.weightGrams).toFixed(3)} g)</td>
+                      <td>₹{Math.round(breakdown.goldValue).toLocaleString("en-IN")}</td>
+                    </tr>
+                    {breakdown.stoneLines.map((l, i) => (
+                      <tr key={i}>
+                        <td>
+                          {l.typeLabel} ({l.caratWeight.toFixed(2)} ct × ₹
+                          {l.ratePerCarat.toLocaleString("en-IN")}/ct)
+                        </td>
+                        <td>₹{Math.round(l.value).toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td>Making charges</td>
+                      <td>₹{Math.round(breakdown.making).toLocaleString("en-IN")}</td>
+                    </tr>
+                    {breakdown.vaTotal > 0 && (
+                      <tr>
+                        <td>{breakdown.vaLabel}</td>
+                        <td>₹{Math.round(breakdown.vaTotal).toLocaleString("en-IN")}</td>
+                      </tr>
+                    )}
+                    {breakdown.miscCharges > 0 && (
+                      <tr>
+                        <td>Hallmarking &amp; certification</td>
+                        <td>₹{Math.round(breakdown.miscCharges).toLocaleString("en-IN")}</td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td>GST</td>
+                      <td>₹{Math.round(breakdown.gst).toLocaleString("en-IN")}</td>
+                    </tr>
+                    <tr className="pdp-info__breakup-total">
+                      <td>Total</td>
+                      <td>₹{Math.round(breakdown.total).toLocaleString("en-IN")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </details>
             )}
 
             {product.comingSoon ? (
@@ -334,6 +494,8 @@ function PdpContent({ product, goldRates }: Props) {
             </div>
           </div>
         </div>
+
+        <ProductReviews productId={product.id} productName={product.name} />
       </main>
 
       {!product.comingSoon && (
@@ -348,11 +510,11 @@ function PdpContent({ product, goldRates }: Props) {
   );
 }
 
-export default function ProductPageClient({ product, goldRates }: Props) {
+export default function ProductPageClient({ product, goldRates, pricingConfig }: Props) {
   const { count } = useCart();
   return (
     <CartModalProvider bagCount={count}>
-      <PdpContent product={product} goldRates={goldRates} />
+      <PdpContent product={product} goldRates={goldRates} pricingConfig={pricingConfig} />
     </CartModalProvider>
   );
 }

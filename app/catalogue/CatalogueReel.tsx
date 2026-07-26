@@ -98,14 +98,19 @@ export default function CatalogueReel({
 
   const currentMedia = mediaByProduct[currentProduct] ?? 0
   const currentFlat = toFlatIndex(products, currentProduct, currentMedia)
-  currentFlatRef.current = currentFlat
   const debouncedFlat = useDebounce(currentFlat, 400)
 
   const totalMedia = totalMediaCount(products)
   const activeProductId = products[currentProduct]?.productId
   const canAdvance = activeProductId ? (engagementDone[activeProductId] ?? false) : true
 
-  lockedProductRef.current = canAdvance ? currentProduct : lockedProductRef.current
+  // Bookkeeping refs — read only from callbacks/effects, never during
+  // render, so writing them here (post-render) rather than inline keeps
+  // the component pure.
+  useEffect(() => {
+    currentFlatRef.current = currentFlat
+    if (canAdvance) lockedProductRef.current = currentProduct
+  }, [currentFlat, canAdvance, currentProduct])
 
   const scrollToProduct = useCallback((idx: number, mediaIdx = 0) => {
     const el = slideRefs.current[idx]
@@ -117,6 +122,7 @@ export default function CatalogueReel({
   useEffect(() => {
     const el = slideRefs.current[startProductIndex]
     if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs scroll position to the deep-link start index on mount/param change
     setCurrentProduct(startProductIndex)
     setMediaByProduct((s) => ({ ...s, [startProductIndex]: startMediaIndex }))
   }, [startProductIndex, startMediaIndex])

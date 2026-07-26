@@ -9,6 +9,7 @@ import { HeaderWishlistLink } from "./HeaderWishlistLink";
 import { HeaderSearchButton } from "./HeaderSearchButton";
 import { SiteHeaderMobileToggle } from "./SiteHeaderMobileToggle";
 import { HeaderCartLink } from "./HeaderCartLink";
+import { NavCollections } from "./NavCollections";
 
 type SiteHeaderProps = {
   variant: Exclude<HeaderVariant, "checkout">;
@@ -53,6 +54,7 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
               {link.label}
             </Link>
           ))}
+          {variant !== "minimal" && <NavCollections />}
         </nav>
 
         <div className="site-header__utilities">

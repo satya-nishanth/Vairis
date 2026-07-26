@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrice } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { computeOrderAmounts } from '@/lib/orders'
+import { validatePromo } from '@/lib/promo'
 import { getPaymentGateway } from '@/lib/payments'
 
 export const dynamic = 'force-dynamic'
@@ -16,12 +18,12 @@ const checkoutSchema = z.object({
   city: z.string().trim().min(2, 'City is required'),
   state: z.string().trim().min(2, 'State is required'),
   pincode: z.string().trim().regex(/^\d{6}$/, 'Enter a 6-digit pincode'),
+  promoCode: z.string().trim().max(40).optional(),
 })
 
 /**
  * POST /api/checkout — create an Order from the user's cart plus a matching
- * gateway payment intent for grandTotal (105% of goods total — the 5%
- * security deposit model; see lib/orders.ts).
+ * gateway payment intent for grandTotal (= goods total; see lib/orders.ts).
  *
  * Gateway-agnostic: talks only to the PaymentGateway port (lib/payments).
  * Prices are recomputed server-side from the DB + current gold rates —
@@ -56,12 +58,23 @@ export async function POST(req: NextRequest) {
   }
   const address = parsed.data
 
-  const [cartItems, goldRates] = await Promise.all([
+  const [cartItems, goldRates, pricingConfig] = await Promise.all([
     prisma.cartItem.findMany({
       where: { userId: user.id },
-      include: { variant: { include: { product: true } } },
+      include: {
+        variant: {
+          include: {
+            product: {
+              include: {
+                stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.goldRate.findMany(),
+    getPricingConfig(),
   ])
 
   if (cartItems.length === 0) {
@@ -70,7 +83,8 @@ export async function POST(req: NextRequest) {
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  // Server-side price snapshot per line (same formula the PDP shows)
+  // Server-side price snapshot per line (same formula the PDP shows) —
+  // stones priced at the per-carat rate for the item's exchange choice.
   const lines = cartItems.map((item) => {
     const rate = rateMap[item.variant.metalType]
     if (!rate) {
@@ -86,6 +100,11 @@ export async function POST(req: NextRequest) {
           miscCharges: item.variant.miscCharges.toString(),
         },
         rate,
+        {
+          stones: toStoneInputs(item.variant.product.stones),
+          withExchange: item.withExchange,
+          config: pricingConfig,
+        },
       ).total,
     )
     return {
@@ -93,11 +112,30 @@ export async function POST(req: NextRequest) {
       productName: item.variant.product.name,
       quantity: item.quantity,
       unitPrice,
+      withExchange: item.withExchange,
     }
   })
 
-  const total = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
-  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+  const goodsTotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+
+  // Promo (server-validated; discount applies to the goods total)
+  let discountAmount = 0
+  let promoCodeId: string | null = null
+  if (address.promoCode) {
+    const promoResult = await validatePromo(address.promoCode, user.id, goodsTotal)
+    if (!promoResult.ok) {
+      return NextResponse.json(
+        { error: 'PROMO_INVALID', message: promoResult.reason },
+        { status: 422 },
+      )
+    }
+    discountAmount = promoResult.discount
+    promoCodeId = promoResult.promo.id
+  }
+
+  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(
+    goodsTotal - discountAmount,
+  )
 
   // Create our Order first (PAYMENT_PENDING), then the gateway intent with our id
   // as reference so dashboard entries reconcile 1:1.
@@ -108,6 +146,8 @@ export async function POST(req: NextRequest) {
       totalAmount,
       depositAmount,
       grandTotal,
+      discountAmount,
+      promoCodeId,
       contactName: address.contactName,
       contactPhone: address.contactPhone,
       addressLine1: address.addressLine1,
@@ -121,11 +161,25 @@ export async function POST(req: NextRequest) {
           quantity: l.quantity,
           price: l.unitPrice,
           productName: l.productName,
+          withExchange: l.withExchange,
         })),
       },
-      events: { create: { status: 'PAYMENT_PENDING', note: 'Order created' } },
+      events: {
+        create: {
+          status: 'PAYMENT_PENDING',
+          note: discountAmount > 0 ? `Order created (promo −₹${discountAmount.toLocaleString('en-IN')})` : 'Order created',
+        },
+      },
     },
   })
+
+  // Reserve the promo redemption against this order; released if the order
+  // is cancelled before payment or swept as expired.
+  if (promoCodeId) {
+    await prisma.promoRedemption.create({
+      data: { promoCodeId, userId: user.id, orderId: order.id, amount: discountAmount },
+    })
+  }
 
   let intent
   try {
@@ -140,6 +194,7 @@ export async function POST(req: NextRequest) {
         events: { create: { status: 'CANCELLED', note: 'Payment gateway error before payment' } },
       },
     })
+    await prisma.promoRedemption.deleteMany({ where: { orderId: order.id } })
     console.error('checkout: payment intent creation failed', err)
     return NextResponse.json(
       { error: 'GATEWAY', message: 'Payment gateway error. Please try again.' },

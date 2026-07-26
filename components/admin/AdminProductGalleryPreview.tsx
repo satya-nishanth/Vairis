@@ -39,6 +39,7 @@ export function AdminProductGalleryPreview({
   const syncingRef = useRef(false)
 
   useEffect(() => {
+// eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
     if (active >= gallery.length) setActive(Math.max(0, gallery.length - 1))
   }, [gallery.length, active])
 

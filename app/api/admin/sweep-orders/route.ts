@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     await prisma.orderEvent.create({
       data: { orderId: order.id, status: 'PAYMENT_EXPIRED', note: `No payment within ${hours}h — order expired` },
     })
+    // Release any reserved promo redemption — the code becomes usable again.
+    await prisma.promoRedemption.deleteMany({ where: { orderId: order.id } })
     expired++
   }
 

@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { WishlistProvider } from "@/components/commerce/WishlistProvider";
 import { CartProvider } from "@/components/commerce/CartProvider";
+import { PageViewTracker } from "@/components/layout/PageViewTracker";
 import { DEFAULT_SITE_THEME } from "@/lib/theme";
 import "./globals.css";
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -51,10 +55,22 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script src="/scripts/vairis-theme-init.js" />
       </head>
       <body suppressHydrationWarning>
+        {GA_ID && (
+          <>
+            <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_ID}', { send_page_view: false });`}
+            </Script>
+          </>
+        )}
         <ThemeProvider defaultTheme={DEFAULT_SITE_THEME}>
           <WishlistProvider>
             <CartProvider>
               {children}
+              <PageViewTracker />
               <Analytics />
             </CartProvider>
           </WishlistProvider>

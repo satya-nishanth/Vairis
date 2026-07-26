@@ -76,7 +76,7 @@ function CatalogueImage({
   }, [url])
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
+     
     <img
       src={url}
       alt={alt}
@@ -106,6 +106,7 @@ export default function ProductMediaCarousel({
 
   useEffect(() => {
     if (!isActive) return
+// eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
     setMediaIndex(initialMediaIndex)
   }, [isActive, initialMediaIndex])
 

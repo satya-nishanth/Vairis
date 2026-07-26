@@ -535,6 +535,11 @@
   color: #15803d;
 }
 
+.admin-products__badge.is-ai {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
 .admin-products__placeholder {
   display: flex;
   width: 100%;

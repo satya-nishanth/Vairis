@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
+import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
 
 const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 const METAL_TYPES = [
@@ -11,33 +12,29 @@ const METAL_TYPES = [
   { value: 'ROSE_GOLD', label: 'Rose Gold 18kt', skuSuffix: 'RG' },
 ]
 
-// Approximate rates for admin price preview — updated by gold rate cron
-const STORED_RATES: Record<string, number> = {
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft', hint: 'Not on store. Only a title is required.' },
+  { value: 'AI_DRAFT', label: 'AI Draft', hint: 'Machine-generated draft — review before going live.' },
+  { value: 'LIVE', label: 'Live', hint: 'Visible & purchasable on the store. Needs ≥1 variant.' },
+] as const
+
+// Fallback rates if the gold-rate table is empty (dev) — real rates come in via props.
+const FALLBACK_RATES: Record<string, number> = {
   GOLD_18K: 5100,
   GOLD_14K: 3967,
   ROSE_GOLD: 5100,
 }
 
-function buildSku(itemCode: string, metalType: string): string {
+function buildSku(itemCode: string, metalType: string, size?: string): string {
   if (!itemCode) return ''
   const suffix = METAL_TYPES.find((m) => m.value === metalType)?.skuSuffix ?? metalType
-  return `${itemCode.toUpperCase()}-${suffix}`
-}
-
-function calcEstimatedPrice(v: Variant): number | null {
-  const weight = parseFloat(v.weightGrams)
-  if (!weight || weight <= 0) return null
-  const rate = STORED_RATES[v.metalType] ?? 0
-  const making = weight * (parseFloat(v.makingChargePerGram) || 0) + (parseFloat(v.flatMakingCharge) || 0)
-  const goldValue = weight * rate
-  const stones = parseFloat(v.stoneCharges) || 0
-  const misc = parseFloat(v.miscCharges) || 0
-  const gst = goldValue * 0.03 + making * 0.05
-  return Math.round(goldValue + making + stones + misc + gst)
+  const sizePart = size?.trim() ? `-${size.trim().toUpperCase().replace(/\s+/g, '')}` : ''
+  return `${itemCode.toUpperCase()}-${suffix}${sizePart}`
 }
 
 type Variant = {
   metalType: string
+  size: string
   weightGrams: string
   makingChargePerGram: string
   flatMakingCharge: string
@@ -45,6 +42,20 @@ type Variant = {
   miscCharges: string
   stock: string
   sku: string
+}
+
+type FormStone = {
+  diamondRateId: string
+  caratWeight: string
+  count: string
+  label: string
+}
+
+export type DiamondRateOption = {
+  id: string
+  label: string
+  ratePerCarat: number
+  ratePerCaratExchange: number
 }
 
 type FormData = {
@@ -63,18 +74,24 @@ type FormData = {
   caratWeight: string
   images: string[]
   variants: Variant[]
+  stones: FormStone[]
   isActive: boolean
   comingSoon: boolean
+  status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
 }
 
 type Props = {
   initialData?: Partial<FormData> & { id?: string }
   mode: 'create' | 'edit'
+  diamondRates: DiamondRateOption[]
+  goldRates?: Record<string, number>
+  pricingConfig?: PricingConfig
 }
 
 function emptyVariant(): Variant {
   return {
     metalType: 'GOLD_18K',
+    size: '',
     weightGrams: '',
     makingChargePerGram: '',
     flatMakingCharge: '0',
@@ -82,6 +99,15 @@ function emptyVariant(): Variant {
     miscCharges: '45',
     stock: '0',
     sku: '',
+  }
+}
+
+function emptyStone(diamondRates: DiamondRateOption[]): FormStone {
+  return {
+    diamondRateId: diamondRates[0]?.id ?? '',
+    caratWeight: '',
+    count: '',
+    label: '',
   }
 }
 
@@ -102,16 +128,53 @@ function initialForm(data?: Partial<FormData>): FormData {
     caratWeight: data?.caratWeight ?? '',
     images: data?.images ?? [],
     variants: data?.variants?.length ? data.variants as Variant[] : [emptyVariant()],
+    stones: data?.stones ?? [],
     isActive: data?.isActive ?? true,
     comingSoon: data?.comingSoon ?? false,
+    status: data?.status ?? 'DRAFT',
   }
 }
 
-export default function ProductForm({ initialData, mode }: Props) {
+export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
+  const isDraft = form.status !== 'LIVE'
+
+  const stoneInputs = form.stones.flatMap((s): StoneInput[] => {
+    const rate = diamondRates.find((r) => r.id === s.diamondRateId)
+    const carat = parseFloat(s.caratWeight)
+    if (!rate || !carat || carat <= 0) return []
+    return [
+      {
+        caratWeight: carat,
+        ratePerCarat: rate.ratePerCarat,
+        ratePerCaratExchange: rate.ratePerCaratExchange,
+        typeLabel: rate.label,
+      },
+    ]
+  })
+
+  function calcEstimatedPrice(v: Variant, withExchange: boolean): number | null {
+    const weight = parseFloat(v.weightGrams)
+    if (!weight || weight <= 0) return null
+    return Math.round(
+      calculatePrice(
+        {
+          weightGrams: weight,
+          makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
+          flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
+          stoneCharges: parseFloat(v.stoneCharges) || 0,
+          miscCharges: parseFloat(v.miscCharges) || 0,
+        },
+        rates[v.metalType] ?? 0,
+        { stones: stoneInputs, withExchange, config: pricingConfig },
+      ).total,
+    )
+  }
 
   function set<K extends keyof FormData>(field: K, value: FormData[K]) {
     setForm((f) => {
@@ -119,7 +182,7 @@ export default function ProductForm({ initialData, mode }: Props) {
       if (field === 'itemCode') {
         next.variants = f.variants.map((v) => ({
           ...v,
-          sku: buildSku(value as string, v.metalType),
+          sku: buildSku(value as string, v.metalType, v.size),
         }))
       }
       return next
@@ -129,10 +192,11 @@ export default function ProductForm({ initialData, mode }: Props) {
   function setVariant(idx: number, field: keyof Variant, value: string) {
     setForm((f) => {
       const v = [...f.variants]
-      v[idx] = { ...v[idx], [field]: value }
-      if (field === 'metalType' && f.itemCode) {
-        const wasAuto = !v[idx].sku || v[idx].sku === buildSku(f.itemCode, v[idx].metalType)
-        if (wasAuto) v[idx].sku = buildSku(f.itemCode, value)
+      const prev = v[idx]
+      v[idx] = { ...prev, [field]: value }
+      if ((field === 'metalType' || field === 'size') && f.itemCode) {
+        const wasAuto = !prev.sku || prev.sku === buildSku(f.itemCode, prev.metalType, prev.size)
+        if (wasAuto) v[idx].sku = buildSku(f.itemCode, v[idx].metalType, v[idx].size)
       }
       return { ...f, variants: v }
     })
@@ -146,6 +210,22 @@ export default function ProductForm({ initialData, mode }: Props) {
 
   function removeVariant(idx: number) {
     setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== idx) }))
+  }
+
+  function setStone(idx: number, field: keyof FormStone, value: string) {
+    setForm((f) => {
+      const s = [...f.stones]
+      s[idx] = { ...s[idx], [field]: value }
+      return { ...f, stones: s }
+    })
+  }
+
+  function addStone() {
+    setForm((f) => ({ ...f, stones: [...f.stones, emptyStone(diamondRates)] }))
+  }
+
+  function removeStone(idx: number) {
+    setForm((f) => ({ ...f, stones: f.stones.filter((_, i) => i !== idx) }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -162,9 +242,20 @@ export default function ProductForm({ initialData, mode }: Props) {
     setSaving(true)
     setError('')
 
+    // Drafts: silently drop untouched variant stubs (no SKU + no weight).
+    // LIVE keeps every row so the API can validate them properly.
+    const variants = isDraft
+      ? form.variants.filter((v) => v.sku.trim() || parseFloat(v.weightGrams) > 0)
+      : form.variants
+
+    // Drop stone rows without a carat value
+    const stones = form.stones.filter((s) => parseFloat(s.caratWeight) > 0 && s.diamondRateId)
+
     // Drop empty Front/Left/Right/Back placeholders so storefront never gets "" src
     const payload = {
       ...form,
+      variants,
+      stones,
       images: form.images.filter(Boolean),
     }
 
@@ -233,6 +324,28 @@ export default function ProductForm({ initialData, mode }: Props) {
               ))}
             </select>
           </div>
+          <div className="pform__field">
+            <label htmlFor="pf-status">Status *</label>
+            <select
+              id="pf-status"
+              value={form.status}
+              onChange={(e) => set('status', e.target.value as FormData['status'])}
+              className="pform__input"
+              data-testid="product-status"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p className="pform__hint">
+              {STATUS_OPTIONS.find((s) => s.value === form.status)?.hint}
+            </p>
+          </div>
+        </div>
+
+        <div className="pform__grid pform__grid--2">
           <div className="pform__checks">
             <label className="pform__check">
               <input
@@ -240,7 +353,7 @@ export default function ProductForm({ initialData, mode }: Props) {
                 checked={form.isActive}
                 onChange={(e) => set('isActive', e.target.checked)}
               />
-              <span>Active (visible on store)</span>
+              <span>Active (include in catalogue reel; store needs Live status)</span>
             </label>
             <label className="pform__check">
               <input
@@ -397,6 +510,111 @@ export default function ProductForm({ initialData, mode }: Props) {
         </div>
       </section>
 
+      {/* Diamonds (priced per carat) */}
+      <section className="pform__section">
+        <div className="pform__variant-head">
+          <div>
+            <h2>Diamonds (priced per carat)</h2>
+            <p className="pform__section-note">
+              One row per diamond entry — e.g. a centre stone and its accent stones. Priced from
+              the per-carat rates in Settings → Pricing (with / without exchange). Customers see
+              type + carat; count &amp; label are optional.
+            </p>
+          </div>
+          <button type="button" onClick={addStone} className="pform__addvariant" data-testid="add-stone">
+            + Add diamond
+          </button>
+        </div>
+
+        {diamondRates.length === 0 && (
+          <p className="pform__warn">
+            No diamond rates configured — add types at Settings → Pricing first.
+          </p>
+        )}
+
+        {form.stones.map((s, idx) => {
+          const rate = diamondRates.find((r) => r.id === s.diamondRateId)
+          const carat = parseFloat(s.caratWeight) || 0
+          return (
+            <div key={idx} className="pform__variant" data-testid="stone-row">
+              <div className="pform__grid pform__grid--12">
+                <div className="pform__field pform__span-3">
+                  <label>Diamond Type</label>
+                  <select
+                    value={s.diamondRateId}
+                    onChange={(e) => setStone(idx, 'diamondRateId', e.target.value)}
+                    className="pform__input"
+                  >
+                    {diamondRates.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                  {rate && (
+                    <p className="pform__hint">
+                      ₹{rate.ratePerCarat.toLocaleString('en-IN')}/ct · exch ₹
+                      {rate.ratePerCaratExchange.toLocaleString('en-IN')}/ct
+                    </p>
+                  )}
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Carat (ct)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={s.caratWeight}
+                    onChange={(e) => setStone(idx, 'caratWeight', e.target.value)}
+                    className="pform__input"
+                    placeholder="0.50"
+                  />
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Count (optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={s.count}
+                    onChange={(e) => setStone(idx, 'count', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. 5"
+                  />
+                </div>
+                <div className="pform__field pform__span-4">
+                  <label>Label (optional)</label>
+                  <input
+                    value={s.label}
+                    onChange={(e) => setStone(idx, 'label', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. Centre stone / Blue accents"
+                  />
+                </div>
+                <div className="pform__span-1">
+                  <button
+                    type="button"
+                    onClick={() => removeStone(idx)}
+                    className="pform__variant-remove"
+                    aria-label="Remove diamond"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              {rate && carat > 0 && (
+                <div className="pform__estimate">
+                  <span className="pform__estimate-label">Stone value</span>
+                  <span className="pform__estimate-value">
+                    ₹{Math.round(carat * rate.ratePerCarat).toLocaleString('en-IN')} · exch ₹
+                    {Math.round(carat * rate.ratePerCaratExchange).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </section>
+
       {/* Variants */}
       <section className="pform__section">
         <div className="pform__variant-head">
@@ -413,7 +631,8 @@ export default function ProductForm({ initialData, mode }: Props) {
         </div>
 
         {form.variants.map((v, idx) => {
-          const estimated = calcEstimatedPrice(v)
+          const estimated = calcEstimatedPrice(v, false)
+          const estimatedExchange = calcEstimatedPrice(v, true)
           const makingHigh = parseFloat(v.makingChargePerGram) > 1500
           const stonesHigh = parseFloat(v.stoneCharges) > 500000
 
@@ -434,6 +653,17 @@ export default function ProductForm({ initialData, mode }: Props) {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Size</label>
+                  <input
+                    value={v.size}
+                    onChange={(e) => setVariant(idx, 'size', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. 12 / M"
+                    data-testid="variant-size"
+                  />
+                  <p className="pform__hint">One row per size — weight differs by size</p>
                 </div>
                 <div className="pform__field pform__span-2">
                   <label>Weight (g)</label>
@@ -459,7 +689,7 @@ export default function ProductForm({ initialData, mode }: Props) {
                     className="pform__input"
                   />
                 </div>
-                <div className="pform__field pform__span-4">
+                <div className="pform__field pform__span-2">
                   <label>SKU</label>
                   <input
                     value={v.sku}
@@ -562,14 +792,19 @@ export default function ProductForm({ initialData, mode }: Props) {
                 </div>
               </div>
 
-              {/* Live price estimate */}
+              {/* Live price estimate (incl. VA + diamonds at current rates) */}
               {estimated !== null && (
                 <div className="pform__estimate">
                   <span className="pform__estimate-label">
                     Estimated retail price{' '}
-                    <span>(at stored gold rate — updates with live cron)</span>
+                    <span>(current gold rate · incl. VA{stoneInputs.length ? ' + diamonds' : ''})</span>
                   </span>
-                  <span className="pform__estimate-value">₹{estimated.toLocaleString('en-IN')}</span>
+                  <span className="pform__estimate-value">
+                    ₹{estimated.toLocaleString('en-IN')}
+                    {stoneInputs.length > 0 && estimatedExchange !== null && (
+                      <> · with exchange ₹{estimatedExchange.toLocaleString('en-IN')}</>
+                    )}
+                  </span>
                 </div>
               )}
             </div>

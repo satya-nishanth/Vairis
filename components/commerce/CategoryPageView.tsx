@@ -57,12 +57,34 @@ function usePlpPageSize() {
 function filterProducts(products: Product[], filters: FilterState): Product[] {
   let result = [...products];
 
-  if (filters.readyToShip) {
-    result = result.filter((_, i) => i % 3 !== 0);
+  if (filters.metals.length > 0) {
+    result = result.filter((p) => p.metals?.some((m) => filters.metals.includes(m)));
   }
 
-  if (filters.sort === "newest") {
-    result = [...result].reverse();
+  if (filters.styles.length > 0) {
+    const wanted = filters.styles.map((s) => s.toLowerCase());
+    result = result.filter((p) => {
+      const text = p.styleText ?? "";
+      return wanted.some((s) => text.includes(s));
+    });
+  }
+
+  if (filters.readyToShip) {
+    result = result.filter((p) => p.inStock);
+  }
+
+  switch (filters.sort) {
+    case "newest":
+      // Server orders by createdAt asc — reversed = newest first.
+      result = [...result].reverse();
+      break;
+    case "price-asc":
+      result = [...result].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+      break;
+    case "price-desc":
+      result = [...result].sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity));
+      break;
+    // "popular" keeps the curated server order
   }
 
   return result;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Script from "next/script";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
@@ -11,14 +11,14 @@ import { OrderSummary } from "@/components/commerce/OrderSummary";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
-import { DEPOSIT_RATE } from "@/lib/orders";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
+import { track } from "@/lib/analytics-client";
 
 /**
  * Checkout — real order + gateway payment.
  *
- * Money model: customer pays 105% of the goods total; the 5% security
- * deposit is refunded after delivery (rules in lib/orders.ts).
+ * Money model: customer pays exactly the displayed total (pricing v2 —
+ * the breakup incl. Value Addition is computed server-side per line).
  *
  * The server decides the gateway (lib/payments); this page receives
  * `{ gateway, clientParams }` from /api/checkout and hands clientParams to
@@ -63,6 +63,19 @@ type CheckoutResponse = {
   contact: { name: string; phone: string; email: string };
 };
 
+type SavedAddress = {
+  id: string;
+  label: string | null;
+  contactName: string;
+  contactPhone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string;
+  pincode: string;
+  isDefault: boolean;
+};
+
 export default function CheckoutPage() {
   const layout = pageLayouts.checkout;
   const router = useRouter();
@@ -73,18 +86,93 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [setupNotice, setSetupNotice] = useState(false);
 
+  // Saved addresses (address book)
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
+  const [saveAddress, setSaveAddress] = useState(true);
+
+  // Promo code
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState<{ code: string; discount: number } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+
   const subtotal = useMemo(
     () => items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0),
     [items],
   );
-  const grandTotal = Math.round(subtotal * (1 + DEPOSIT_RATE));
-  const deposit = grandTotal - subtotal;
+  const discount = promo?.discount ?? 0;
+  const grandTotal = Math.max(0, Math.round(subtotal - discount));
 
   const set = (field: keyof AddressForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setAddress((a) => ({ ...a, [field]: e.target.value }));
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    fetch("/api/account/addresses")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: SavedAddress[]) => {
+        setSavedAddresses(rows);
+        const def = rows.find((a) => a.isDefault) ?? rows[0];
+        if (def) selectSaved(def);
+      })
+      .catch(() => {});
+     
+  }, [isLoggedIn]);
+
+  function selectSaved(a: SavedAddress) {
+    setSelectedAddressId(a.id);
+    setAddress({
+      contactName: a.contactName,
+      contactPhone: a.contactPhone,
+      addressLine1: a.line1,
+      addressLine2: a.line2 ?? "",
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+    });
+  }
+
+  function selectNew() {
+    setSelectedAddressId("new");
+    setAddress(EMPTY_ADDRESS);
+  }
+
+  async function applyPromo() {
+    setPromoBusy(true);
+    setPromoError(null);
+    try {
+      const res = await fetch("/api/promo/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoInput, cartTotal: subtotal }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPromoError(data.error ?? "Invalid code");
+        setPromo(null);
+        return;
+      }
+      setPromo({ code: data.code, discount: data.discount });
+    } catch {
+      setPromoError("Could not validate the code. Try again.");
+    } finally {
+      setPromoBusy(false);
+    }
+  }
+
   /** Gateway-specific browser SDK launch. Add a branch per new gateway. */
   function launchGatewayCheckout(data: CheckoutResponse) {
+    if (data.gateway === "mock") {
+      // Mock gateway (dev/e2e): its "modal" is our own page.
+      const p = data.clientParams as { gatewayOrderId?: string; amount?: number };
+      router.push(
+        `/mock-pay?orderId=${encodeURIComponent(data.orderId)}&gatewayOrderId=${encodeURIComponent(
+          p.gatewayOrderId ?? "",
+        )}&amount=${encodeURIComponent(String(p.amount ?? 0))}`,
+      );
+      return;
+    }
     if (data.gateway !== "razorpay") {
       setError(`Unsupported payment gateway "${data.gateway}" in browser — update checkout page.`);
       return;
@@ -137,12 +225,30 @@ export default function CheckoutPage() {
     setError(null);
     setSetupNotice(false);
     setPaying(true);
+    track("begin_checkout", { meta: { value: grandTotal, items: items.length } });
 
     try {
+      // Save a newly-typed address to the address book (best-effort).
+      if (selectedAddressId === "new" && saveAddress && address.addressLine1) {
+        fetch("/api/account/addresses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contactName: address.contactName,
+            contactPhone: address.contactPhone,
+            line1: address.addressLine1,
+            line2: address.addressLine2 || undefined,
+            city: address.city,
+            state: address.state,
+            pincode: address.pincode,
+          }),
+        }).catch(() => {});
+      }
+
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(address),
+        body: JSON.stringify({ ...address, promoCode: promo?.code }),
       });
       const data = await res.json();
 
@@ -251,6 +357,35 @@ export default function CheckoutPage() {
               <h2 className="checkout-section__title">
                 <span className="checkout-section__num">1</span> Delivery Address
               </h2>
+
+              {savedAddresses.length > 0 && (
+                <div className="form-group" data-testid="address-book">
+                  <label>Saved Addresses</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {savedAddresses.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        className={`btn ${selectedAddressId === a.id ? "btn-primary" : "btn-secondary"}`}
+                        aria-pressed={selectedAddressId === a.id}
+                        onClick={() => selectSaved(a)}
+                      >
+                        {a.label || `${a.city} · ${a.pincode}`}
+                        {a.isDefault ? " ★" : ""}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={`btn ${selectedAddressId === "new" ? "btn-primary" : "btn-secondary"}`}
+                      aria-pressed={selectedAddressId === "new"}
+                      onClick={selectNew}
+                    >
+                      + New Address
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="co-name">Full Name</label>
                 <input
@@ -346,6 +481,16 @@ export default function CheckoutPage() {
                   />
                 </div>
               </div>
+              {selectedAddressId === "new" && isLoggedIn && (
+                <label className="checkout-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={saveAddress}
+                    onChange={(e) => setSaveAddress(e.target.checked)}
+                  />
+                  Save this address for next time
+                </label>
+              )}
               <p className="checkout-note">
                 🛡 Your jewellery delivery is fully insured and OTP protected.
               </p>
@@ -381,13 +526,54 @@ export default function CheckoutPage() {
                 </div>
               </label>
 
-              <div className="deposit-explainer">
-                <strong>About the 5% security deposit</strong>
-                <p>
-                  You pay {formatPrice(grandTotal)} today — {formatPrice(subtotal)} for your
-                  jewellery plus a {formatPrice(deposit)} refundable security deposit. The
-                  deposit is returned to your payment method after delivery.
-                </p>
+              <div className="form-group" style={{ marginTop: 16 }} data-testid="promo-box">
+                <label htmlFor="co-promo">Promo Code</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="form-input"
+                    id="co-promo"
+                    type="text"
+                    placeholder="Enter code"
+                    value={promoInput}
+                    onChange={(e) => {
+                      setPromoInput(e.target.value.toUpperCase());
+                      setPromoError(null);
+                    }}
+                    disabled={promo != null}
+                    style={{ textTransform: "uppercase" }}
+                  />
+                  {promo ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setPromo(null);
+                        setPromoInput("");
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={applyPromo}
+                      disabled={promoBusy || promoInput.trim().length < 3}
+                    >
+                      {promoBusy ? "Checking…" : "Apply"}
+                    </button>
+                  )}
+                </div>
+                {promo && (
+                  <p className="checkout-note" role="status">
+                    ✓ {promo.code} applied — you save {formatPrice(promo.discount)}
+                  </p>
+                )}
+                {promoError && (
+                  <p className="checkout-alert checkout-alert--error" role="alert">
+                    {promoError}
+                  </p>
+                )}
               </div>
 
               {setupNotice && (
@@ -411,7 +597,9 @@ export default function CheckoutPage() {
           <OrderSummary
             lines={[
               { label: "Subtotal (incl. GST)", value: formatPrice(subtotal) },
-              { label: "Refundable deposit (5%)", value: formatPrice(deposit) },
+              ...(discount > 0
+                ? [{ label: `Promo (${promo?.code})`, value: `− ${formatPrice(discount)}` }]
+                : []),
               { label: "Shipping", value: "FREE" },
             ]}
             total={grandTotal}
@@ -422,9 +610,7 @@ export default function CheckoutPage() {
                 <button type="submit" className="btn btn-primary btn--full" disabled={paying}>
                   {paying ? "Opening secure payment…" : `Pay ${formatPrice(grandTotal)}`}
                 </button>
-                <p className="summary-badges">
-                  {formatPrice(deposit)} refunded after delivery · IGI · BIS · Insured
-                </p>
+                <p className="summary-badges">IGI · BIS Hallmarked · Insured Delivery</p>
               </>
             }
           />

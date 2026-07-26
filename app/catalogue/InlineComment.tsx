@@ -27,6 +27,7 @@ export default function InlineComment({
 
   useEffect(() => {
     if (!visible || !isActive) {
+// eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
       setEntered(false)
       return
     }

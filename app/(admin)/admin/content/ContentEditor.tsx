@@ -424,7 +424,7 @@ export function ContentEditor({
                           onClick={() => setPreviewIndex(i)}
                           className="banner-order__thumb"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          { }
                           <img src={url} alt="" />
                           {i === 0 && <span className="banner-order__first-tag">1st</span>}
                         </button>

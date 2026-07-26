@@ -34,7 +34,9 @@ export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
     setOpen(true);
   };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const [sending, setSending] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!title.trim()) {
       setError("Please enter a title.");
@@ -53,7 +55,30 @@ export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
       return;
     }
     setError("");
-    setSubmitted(true);
+    setSending(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: title.trim().slice(0, 80) || "Website enquiry",
+          email: email.trim() || undefined,
+          phone: mobile.trim(),
+          subject: title.trim(),
+          message: description.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j.error ?? "Could not send your message. Try again.");
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setError("Could not send your message. Check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -141,8 +166,8 @@ export function ContactUsFab({ label = "Contact us" }: ContactUsFabProps) {
                   />
                 </div>
                 {error && <p className="contact-form__error">{error}</p>}
-                <Button type="submit" variant="primary" full>
-                  Submit
+                <Button type="submit" variant="primary" full disabled={sending}>
+                  {sending ? "Sending…" : "Submit"}
                 </Button>
               </form>
             </>

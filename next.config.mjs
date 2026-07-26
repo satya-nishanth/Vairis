@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async redirects() {
@@ -20,4 +22,15 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+// Source-map upload only runs when SENTRY_AUTH_TOKEN is set (CI/prod);
+// local dev and PRs without the token build normally, untouched.
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, {
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      silent: true,
+      widenClientFileUpload: true,
+      disableLogger: true,
+      automaticVercelMonitors: false,
+    })
+  : nextConfig

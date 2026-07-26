@@ -33,6 +33,7 @@ export type CartLine = {
   id: string;
   variantId: string;
   quantity: number;
+  withExchange: boolean;
   variant: CartVariant;
   unitPrice: number;
 };
@@ -42,7 +43,7 @@ type CartContextValue = {
   count: number;
   isLoggedIn: boolean;
   hydrated: boolean;
-  addItem: (variantId: string, quantity?: number) => Promise<void>;
+  addItem: (variantId: string, quantity?: number, withExchange?: boolean) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
 };
@@ -96,11 +97,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const addItem = useCallback(
-    async (variantId: string, quantity = 1) => {
+    async (variantId: string, quantity = 1, withExchange = false) => {
       const res = await fetch("/api/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variantId, quantity }),
+        body: JSON.stringify({ variantId, quantity, withExchange }),
       });
       if (!res.ok) throw new Error(`Could not add to cart (${res.status})`);
       await refresh();

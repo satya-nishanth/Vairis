@@ -23,6 +23,12 @@ enum MetalType {
   ROSE_GOLD
 }
 
+enum ProductStatus {
+  DRAFT
+  AI_DRAFT
+  LIVE
+}
+
 enum OrderStatus {
   PAYMENT_PENDING
   PAYMENT_EXPIRED
@@ -80,18 +86,25 @@ model User {
   orders    Order[]
   cartItems CartItem[]
   wishlists Wishlist[]
+  reviews   Review[]
 }
 
 model Address {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
-  line1     String
-  line2     String?
-  city      String
-  state     String
-  pincode   String
-  isDefault Boolean @default(false)
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id])
+  label        String? // "Home", "Office"
+  contactName  String  @default("")
+  contactPhone String  @default("")
+  line1        String
+  line2        String?
+  city         String
+  state        String
+  pincode      String
+  isDefault    Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Product {
@@ -121,9 +134,53 @@ model Product {
   caratWeight Decimal?
 
   comingSoon  Boolean          @default(false)
+  status      ProductStatus    @default(DRAFT)
 
   variants    ProductVariant[]
+  stones      ProductStone[]
   wishlists   Wishlist[]
+  reviews     Review[]
+  collections CollectionProduct[]
+}
+
+/// Per-carat diamond pricing — one row per diamond type, two rates each
+/// (with / without exchange). Admin-editable at /admin/settings/pricing.
+model DiamondRate {
+  id                   String         @id @default(cuid())
+  code                 String         @unique
+  label                String
+  ratePerCarat         Decimal
+  ratePerCaratExchange Decimal
+  sortOrder            Int            @default(0)
+  active               Boolean        @default(true)
+  updatedAt            DateTime       @updatedAt
+  stones               ProductStone[]
+}
+
+/// A stone entry on a product: type + carat (+ optional count/label).
+/// Customer always sees type + carat; count/label optional.
+model ProductStone {
+  id            String      @id @default(cuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  diamondRateId String
+  diamondRate   DiamondRate @relation(fields: [diamondRateId], references: [id])
+  caratWeight   Decimal
+  count         Int?
+  label         String?
+  sortOrder     Int         @default(0)
+
+  @@index([productId, sortOrder])
+}
+
+/// Singleton (id=1). VA = Value Addition — disclosed % line on the price
+/// breakup applied to gold value and stone value. Label admin-editable.
+model PricingSettings {
+  id         Int      @id @default(1)
+  vaGoldPct  Decimal  @default(5)
+  vaStonePct Decimal  @default(5)
+  vaLabel    String   @default("Value Addition")
+  updatedAt  DateTime @updatedAt
 }
 
 model ProductVariant {
@@ -152,22 +209,26 @@ model GoldRate {
 }
 
 model CartItem {
-  id        String         @id @default(cuid())
-  userId    String
-  user      User           @relation(fields: [userId], references: [id])
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id])
-  quantity  Int
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id])
+  variantId    String
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  quantity     Int
+  withExchange Boolean        @default(false)
 
-  @@unique([userId, variantId])
+  @@unique([userId, variantId, withExchange])
 }
 
 model Order {
-  id            String       @id @default(cuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id])
-  items         OrderItem[]
-  status        OrderStatus  @default(PAYMENT_PENDING)
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  items          OrderItem[]
+  status         OrderStatus  @default(PAYMENT_PENDING)
+  promoCodeId    String?
+  promoCode      PromoCode?   @relation(fields: [promoCodeId], references: [id])
+  discountAmount Decimal      @default(0)
   totalAmount   Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
@@ -204,14 +265,15 @@ model OrderEvent {
 }
 
 model OrderItem {
-  id          String         @id @default(cuid())
-  orderId     String
-  order       Order          @relation(fields: [orderId], references: [id])
-  variantId   String
-  variant     ProductVariant @relation(fields: [variantId], references: [id])
-  quantity    Int
-  price       Decimal
-  productName String
+  id           String         @id @default(cuid())
+  orderId      String
+  order        Order          @relation(fields: [orderId], references: [id])
+  variantId    String
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  quantity     Int
+  price        Decimal
+  productName  String
+  withExchange Boolean        @default(false)
 }
 
 model Payment {
@@ -296,6 +358,154 @@ model Wishlist {
   createdAt DateTime @default(now())
 
   @@unique([userId, productId])
+}
+
+// ── Commerce v2: promos, contact, reviews ────────────────────────────────────
+
+enum PromoKind {
+  PERCENT
+  FLAT
+}
+
+model PromoCode {
+  id             String            @id @default(cuid())
+  code           String            @unique // stored uppercase
+  description    String?
+  kind           PromoKind
+  value          Decimal
+  minOrderValue  Decimal           @default(0)
+  maxDiscount    Decimal? // cap for PERCENT codes
+  startsAt       DateTime?
+  endsAt         DateTime?
+  maxRedemptions Int?
+  maxPerUser     Int               @default(1)
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  redemptions    PromoRedemption[]
+  orders         Order[]
+}
+
+model PromoRedemption {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id])
+  userId      String
+  orderId     String    @unique
+  amount      Decimal
+  createdAt   DateTime  @default(now())
+
+  @@index([promoCodeId, userId])
+}
+
+enum ContactStatus {
+  NEW
+  RESPONDED
+  CLOSED
+}
+
+model ContactRequest {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String?
+  message   String
+  status    ContactStatus @default(NEW)
+  createdAt DateTime      @default(now())
+
+  @@index([status, createdAt])
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  HIDDEN
+}
+
+model Review {
+  id         String       @id @default(cuid())
+  productId  String
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id])
+  /// Set when the reviewer has a DELIVERED order containing this product.
+  orderId    String?
+  rating     Int
+  title      String?
+  body       String
+  images     String[]     @default([])
+  status     ReviewStatus @default(PENDING)
+  adminReply String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([userId, productId])
+  @@index([productId, status])
+}
+
+// ── CMS: collections + home sections ────────────────────────────────────────
+
+model Collection {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  title          String
+  subtitle       String?
+  description    String?
+  heroImages     String[]            @default([])
+  seoTitle       String?
+  seoDescription String?
+  active         Boolean             @default(true)
+  showInNav      Boolean             @default(false)
+  sortOrder      Int                 @default(0)
+  updatedAt      DateTime            @updatedAt
+  products       CollectionProduct[]
+}
+
+model CollectionProduct {
+  id           String     @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sortOrder    Int        @default(0)
+
+  @@unique([collectionId, productId])
+  @@index([collectionId, sortOrder])
+}
+
+/// Ordered, schedulable home page sections. `config` is a per-kind payload:
+/// hero {images,fits,cta}, collection-rail {collectionSlug,limit},
+/// editorial {image,heading,body,ctaLabel,ctaHref}, video {url,poster},
+/// usp {items[]}, testimonials {items[]}, category-tiles {categories[]}.
+model HomeSection {
+  id        String    @id @default(cuid())
+  kind      String
+  title     String?
+  subtitle  String?
+  config    Json      @default("{}")
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// ── Analytics (first-party) ──────────────────────────────────────────────────
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  name      String // page_view | pdp_view | add_to_cart | search | begin_checkout | purchase
+  path      String?
+  productId String?
+  userId    String?
+  sessionId String?
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([productId, name])
 }
 
 // ── Catalogue reel (Instagram-style) ─────────────────────────────────────────

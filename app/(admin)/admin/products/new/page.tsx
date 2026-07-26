@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import ProductForm from '@/components/admin/ProductForm'
+import { prisma } from '@/lib/prisma'
+import { getPricingConfig } from '@/lib/pricing-data'
 import type { Category } from '@prisma/client'
+
+export const dynamic = 'force-dynamic'
 
 const VALID: Category[] = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 
@@ -13,6 +17,12 @@ export default async function NewProductPage({ searchParams }: PageProps) {
   const raw = (params.category ?? '').toUpperCase()
   const category = VALID.includes(raw as Category) ? (raw as Category) : 'RINGS'
 
+  const [diamondRates, goldRates, pricingConfig] = await Promise.all([
+    prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
+
   return (
     <div className="admin-page">
       <div style={{ marginBottom: '1.5rem' }}>
@@ -23,7 +33,18 @@ export default async function NewProductPage({ searchParams }: PageProps) {
           New Product
         </h1>
       </div>
-      <ProductForm mode="create" initialData={{ category }} />
+      <ProductForm
+        mode="create"
+        initialData={{ category }}
+        diamondRates={diamondRates.map((r) => ({
+          id: r.id,
+          label: r.label,
+          ratePerCarat: Number(r.ratePerCarat),
+          ratePerCaratExchange: Number(r.ratePerCaratExchange),
+        }))}
+        goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
+        pricingConfig={pricingConfig}
+      />
     </div>
   )
 }

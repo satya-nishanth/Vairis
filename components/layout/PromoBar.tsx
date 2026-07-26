@@ -13,14 +13,16 @@ type PromoBarProps = {
 /**
  * Promo bar — admin-customizable via the "promo-bar" SiteBanner slot
  * (/admin/content). Renders the built-in items immediately; if an active
- * banner row exists it swaps to that single message (+ optional link)
- * after load. No row → defaults stay, so this can never blank the bar.
+ * banner row exists it swaps to that message (+ optional link) after load.
+ * Multiple rotating messages: separate them with " | " in the title —
+ * the bar cycles every 5s. No row → defaults stay, never blanks the bar.
  *
  * Client component because PageShell renders inside client trees (PLP,
  * cart, checkout) — content comes from /api/content/promo-bar.
  */
 export function PromoBar({ variant }: PromoBarProps) {
   const [banner, setBanner] = useState<BannerContent | null>(null);
+  const [messageIndex, setMessageIndex] = useState(0);
 
   useEffect(() => {
     fetch("/api/content/promo-bar")
@@ -33,6 +35,17 @@ export function PromoBar({ variant }: PromoBarProps) {
       });
   }, []);
 
+  const messages = (banner?.title ?? "")
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (messages.length < 2) return;
+    const t = setInterval(() => setMessageIndex((i) => (i + 1) % messages.length), 5000);
+    return () => clearInterval(t);
+  }, [messages.length]);
+
   const isAnnouncement = variant === "announcement";
   const items = isAnnouncement ? announcementBarItems : utilityBarItems;
   const barClass = isAnnouncement ? "announcement-bar" : "utility-bar";
@@ -40,12 +53,13 @@ export function PromoBar({ variant }: PromoBarProps) {
   const innerClass = isAnnouncement ? "announcement-bar__inner" : "utility-bar__inner";
   const iconSize = isAnnouncement ? 14 : 16;
 
-  if (banner?.title) {
-    const text = <span className={itemClass}>{banner.title}</span>;
+  if (messages.length > 0) {
+    const message = messages[messageIndex % messages.length];
+    const text = <span className={itemClass}>{message}</span>;
     return (
       <div className={barClass}>
         <div className={innerClass}>
-          {banner.linkUrl ? (
+          {banner?.linkUrl ? (
             <a href={banner.linkUrl} className="promo-bar__link">
               {text}
             </a>

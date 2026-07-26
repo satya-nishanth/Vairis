@@ -71,7 +71,7 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         <div className="w-full md:w-40 h-40 bg-brand-cream rounded-lg overflow-hidden relative shrink-0">
           {product.images[0] ? (
-            // eslint-disable-next-line @next/next/no-img-element
+             
             <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-4xl">

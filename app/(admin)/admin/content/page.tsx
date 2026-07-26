@@ -7,7 +7,7 @@ import {
   bannerImageList,
   type ContentSlot,
 } from '@/lib/site-content'
-import { CATEGORY_LABELS, type ShopCategory } from '@/lib/catalogue-ui'
+import type { ShopCategory } from '@/lib/catalogue-ui'
 import { getCategoryHeroImages } from '@/lib/category-hero-images'
 import { getHeroSlides } from '@/lib/ui-data'
 
@@ -122,7 +122,7 @@ function Section({ title, items }: { title: string; items: ListItem[] }) {
             <li key={item.slot.slot} className="content-slot-list__item">
               <div className="content-slot-list__thumb">
                 {thumb ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img src={thumb} alt="" />
                 ) : (
                   <span>NO IMG</span>

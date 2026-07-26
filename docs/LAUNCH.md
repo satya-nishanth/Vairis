@@ -23,20 +23,30 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/publishable key | browser-safe |
 | `SUPABASE_SERVICE_ROLE_KEY` | service role key | server-only; used by image upload |
 
-### Payments (Razorpay) — ⚠ REQUIRED FOR LAUNCH, currently missing
+### Payments — ⚠ REQUIRED FOR LAUNCH (mock works today, Razorpay needed for real money)
 | Key | Value | Notes |
 |-----|-------|-------|
+| `PAYMENT_GATEWAY` | `mock` in dev/e2e → `razorpay` at launch | mock = full lifecycle without keys via `/mock-pay`; guarded off on Vercel prod unless `ALLOW_MOCK_PAYMENTS=true` |
 | `RAZORPAY_KEY_ID` | `rzp_test_…` now → `rzp_live_…` at launch | Dashboard → Settings → API Keys |
 | `RAZORPAY_KEY_SECRET` | matching secret | server-only |
 | `NEXT_PUBLIC_RAZORPAY_KEY_ID` | same as `RAZORPAY_KEY_ID` | browser SDK needs it |
 | `RAZORPAY_WEBHOOK_SECRET` | your chosen webhook secret | must match dashboard webhook config |
-| `PAYMENT_GATEWAY` | *(optional)* `razorpay` | default; only set when swapping gateways |
 | `NEXT_PUBLIC_CHECKOUT_ENABLED` | `true` at launch | **off by default** — storefront runs WhatsApp-enquiry mode (no cart/checkout); admin records offline sales at /admin/orders/new |
 
 ### Shipping
 | Key | Value | Notes |
 |-----|-------|-------|
-| `SHIPPING_PROVIDER` | *(optional)* `manual` | default. Set to `shiprocket` once that adapter exists |
+| `SHIPPING_PROVIDER` | `manual` \| `shiprocket` \| `dtdc` | default `manual` (admin types courier/AWB) |
+| `SHIPPING_MOCK` | `true` in dev/e2e | shiprocket/dtdc return deterministic fixtures without keys |
+| `SHIPROCKET_EMAIL` / `SHIPROCKET_PASSWORD` / `SHIPROCKET_PICKUP_LOCATION` | Shiprocket API user | needed when `SHIPPING_PROVIDER=shiprocket` and not mocked |
+| `DTDC_API_KEY` / `DTDC_CUSTOMER_CODE` / `DTDC_SERVICE_TYPE` | DTDC integration creds | needed when `SHIPPING_PROVIDER=dtdc` and not mocked |
+
+### Analytics & error tracking — optional
+| Key | Value | Notes |
+|-----|-------|-------|
+| `NEXT_PUBLIC_GA_ID` | GA4 measurement id | unset = GA4 mirror skipped; first-party `AnalyticsEvent` tracking always runs |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry project DSN (server/client) | unset = Sentry no-ops |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | Sentry source-map upload | only needed in CI/prod build for readable stack traces |
 
 ### Email (Resend)
 | Key | Value | Notes |
@@ -73,11 +83,20 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
    - [ ] KYC + activation for LIVE mode (needs business docs; BIS cert dependency — Anil)
    - [ ] Register webhook: URL `https://<domain>/api/webhooks/payment`, secret = `RAZORPAY_WEBHOOK_SECRET`, events: `payment.captured`, `payment.failed`, `refund.processed`
    - [ ] Enable payment methods in dashboard (UPI, cards, netbanking) + set settlement account
-2. **Delivery partner** (owner: Anil/Nishi — decision pending)
-   - [ ] Choose partner (Shiprocket likely). Until then admin enters courier/AWB manually — launch is NOT blocked on this
-   - [ ] After choosing: implement `lib/shipping/<partner>.ts` against the `ShippingProvider` port, set `SHIPPING_PROVIDER`
+2. **Delivery partner** (owner: Anil/Nishi) — Shiprocket and DTDC adapters are both built (`lib/shipping/shiprocket.ts`, `lib/shipping/dtdc.ts`)
+   - [ ] Get API credentials for the chosen partner, set env (`SHIPROCKET_*` or `DTDC_*`), set `SHIPPING_PROVIDER`
+   - [ ] Unset `SHIPPING_MOCK` once real credentials are in place
+   - [ ] Until then: `SHIPPING_PROVIDER=manual` (admin types courier/AWB) — launch is NOT blocked on this
 3. **Resend**
    - [ ] Verify sending domain (SPF + DKIM records) → set `EMAIL_FROM`
+   - [ ] **Auth emails (Supabase Cloud dashboard → Authentication → Email Templates)** — branded
+     templates exist locally at `supabase/templates/*.html` (confirmation, recovery, magic_link,
+     email_change, invite, reauthentication) and are wired in `supabase/config.toml`. These apply
+     automatically to a *linked* local project via `supabase config push`, but a fresh Supabase
+     Cloud project needs the same HTML pasted into each template in the dashboard, OR set up
+     Custom SMTP (Dashboard → Auth → SMTP Settings) with Resend credentials so auth emails send
+     from the same verified domain as order emails. **Do this before launch** — the raw default
+     Supabase template ("Admin <admin@email.com>", no branding) reads as a phishing email.
 4. **Google OAuth** (Supabase → Auth → Providers)
    - [ ] Add production redirect URL `https://<domain>/api/auth/callback`
 5. **Custom domain** (roadmap P1)

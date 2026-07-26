@@ -10,6 +10,7 @@ import {
   REASON_REQUIRED_TARGETS,
 } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
+import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,8 +108,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // SHIPPED requires shipping details. Manual provider = admin types them;
-  // a future partner adapter (supportsBooking=true) will book via API and
-  // fill these itself.
+  // partner adapters (Shiprocket/DTDC, supportsBooking=true) book via API
+  // here and fill them in. Manually-typed values always win as override.
+  let shipCourierName = courierName
+  let shipAwbCode = awbCode
+  let shipTrackingUrl = trackingUrl
+  let providerShipmentId: string | null = null
   if (nextStatus === 'SHIPPED') {
     const provider = getShippingProvider()
     if (!provider.supportsBooking && (!courierName || !awbCode)) {
@@ -117,12 +122,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         { status: 400 },
       )
     }
+    if (provider.supportsBooking && (!courierName || !awbCode)) {
+      try {
+        const booking = await provider.bookShipment({
+          orderId: order.id,
+          contactName: order.contactName,
+          contactPhone: order.contactPhone,
+          addressLine1: order.addressLine1,
+          addressLine2: order.addressLine2,
+          city: order.city,
+          state: order.state,
+          pincode: order.pincode,
+          declaredValue: Number(order.grandTotal),
+        })
+        shipCourierName = booking.courierName
+        shipAwbCode = booking.awbCode
+        shipTrackingUrl = booking.trackingUrl ?? undefined
+        providerShipmentId = booking.providerShipmentId
+      } catch (err) {
+        console.error(`[admin/orders] ${provider.name} booking failed`, err)
+        return NextResponse.json(
+          { error: `Shipment booking via ${provider.name} failed — retry or enter courier details manually` },
+          { status: 502 },
+        )
+      }
+    }
   }
 
   const eventNote =
     note ??
     (nextStatus === 'SHIPPED'
-      ? `Shipped via ${courierName}${awbCode ? ` (AWB ${awbCode})` : ''}`
+      ? `Shipped via ${shipCourierName}${shipAwbCode ? ` (AWB ${shipAwbCode})` : ''}`
       : nextStatus === 'DELIVERED'
         ? Number(order.depositAmount) > 0
           ? 'Delivered — security deposit refund due'
@@ -158,9 +188,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await tx.shipment.create({
         data: {
           orderId: id,
-          courierName: courierName ?? null,
-          awbCode: awbCode ?? null,
-          trackingUrl: trackingUrl || null,
+          courierName: shipCourierName ?? null,
+          awbCode: shipAwbCode ?? null,
+          trackingUrl: shipTrackingUrl || null,
+          shiprocketId: providerShipmentId,
           status: 'IN_TRANSIT',
         },
       })
@@ -192,6 +223,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
     }
   })
+
+  // Customer notifications — best-effort, never block the transition.
+  if (nextStatus === 'SHIPPED') void sendOrderShippedEmail(id)
+  if (nextStatus === 'DELIVERED') void sendOrderDeliveredEmail(id)
 
   return NextResponse.json({ ok: true })
 }

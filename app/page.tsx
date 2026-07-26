@@ -4,7 +4,6 @@ import { TrustBar } from "@/components/layout/TrustBar";
 import { Container } from "@/components/ui/Container";
 import { Section, SectionHeader } from "@/components/ui/Section";
 import { Button } from "@/components/ui/Button";
-import { Rating } from "@/components/ui/Rating";
 import { CategoryCarouselSection } from "@/components/commerce/CategoryCarouselSection";
 import { HeroCarousel } from "@/components/home/HeroCarousel";
 import { TestimonialCard } from "@/components/content/TestimonialCard";
@@ -19,6 +18,8 @@ import { founderVideos, howItWorksSteps, whyVairisFeatures } from "@/lib/home-co
 import { categoryHref } from "@/lib/catalogue-ui";
 import { marketingImages } from "@/lib/images";
 import { getBanner } from "@/lib/site-content";
+import { getActiveHomeSections } from "@/lib/home-sections";
+import { HomeDbSections } from "@/components/home/HomeDbSections";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,10 @@ export default async function HomePage() {
   const layout = pageLayouts.home;
   // Admin-customizable hero (slot "home-hero", /admin/content) — every
   // field falls back to the built-in copy below when unset.
-  const hero = await getBanner("home-hero");
+  const [hero, dbSections] = await Promise.all([
+    getBanner("home-hero"),
+    getActiveHomeSections().catch(() => []),
+  ]);
 
   return (
     <PageShell {...layout}>
@@ -48,14 +52,15 @@ export default async function HomePage() {
                 {hero?.ctaLabel ?? "Shop Now"}
               </Button>
             </div>
+            {/* Honest trust line — fabricated review counts removed; real
+                per-product ratings come from moderated customer reviews. */}
             <div className="hero__social">
               <div className="hero__avatars">
                 {marketingImages.hero.socialAvatars.map((src) => (
                   <ProductImage key={src} src={src} alt="Customer" width={32} height={32} />
                 ))}
               </div>
-              <span>Loved by 10,000+ women</span>
-              <Rating score="4.9" reviews="2,300+ reviews" />
+              <span>IGI Certified · BIS Hallmarked · Insured Delivery</span>
             </div>
           </div>
           <HeroCarousel
@@ -67,6 +72,9 @@ export default async function HomePage() {
 
         <div className="home-main__body">
         <TrustBar variant="full" />
+
+        {/* Admin-managed sections (/admin/sections) render here, in order */}
+        <HomeDbSections sections={dbSections} />
 
         <Section className="section--shop-categories section--shop-categories--desktop-only">
           <CategoryCarouselSection categories={categories} variant="marquee" />
@@ -149,7 +157,7 @@ export default async function HomePage() {
 
         <Section id="reviews">
           <Container>
-            <SectionHeader title="Loved by 10,000+ Happy Customers" actionLabel="View All Reviews →" actionHref="#" />
+            <SectionHeader title="What Our Customers Say" />
             <div className="grid-4 home-testimonials-scroll">
               {testimonials.map((t) => (
                 <TestimonialCard key={t.name} {...t} />

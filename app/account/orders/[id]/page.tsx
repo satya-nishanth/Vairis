@@ -6,6 +6,7 @@ import { OrderSummary } from "@/components/commerce/OrderSummary";
 import { OrderStatusChip, OrderTimeline } from "@/components/commerce/OrderTimeline";
 import { RetryPaymentButton } from "./RetryPaymentButton";
 import { ReturnRequestButton } from "./ReturnRequestButton";
+import { CancelOrderButton } from "./CancelOrderButton";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
@@ -37,7 +38,7 @@ function computeReturnEligibility(
 }
 
 /**
- * Order detail — items, 105%/5% money breakdown, status timeline, shipment.
+ * Order detail — items, money breakdown, status timeline, shipment.
  *
  * Shipment block: delivery partner is not integrated yet (lib/shipping,
  * manual provider) — courier/AWB/tracking URL are whatever admin entered
@@ -96,6 +97,12 @@ export default async function OrderDetailPage({
           <div className="order-detail__layout">
             <div>
               {order.status === "PAYMENT_PENDING" && <RetryPaymentButton orderId={order.id} />}
+              {["PAYMENT_PENDING", "PAYMENT_CONFIRMED", "PREPARING"].includes(order.status) && (
+                <CancelOrderButton
+                  orderId={order.id}
+                  paid={order.status !== "PAYMENT_PENDING"}
+                />
+              )}
               {canRequestReturn && returnEligibleUntil && (
                 <ReturnRequestButton
                   orderId={order.id}
@@ -169,14 +176,18 @@ export default async function OrderDetailPage({
                 </section>
               )}
 
-              <section className="confirm-card">
-                <h3 className="confirm-card__heading">Security Deposit</h3>
-                <p className="checkout-note">
-                  {refunded > 0
-                    ? `${formatPrice(refunded)} refunded to your payment method.`
-                    : `${formatPrice(deposit)} will be refunded to your payment method after delivery.`}
-                </p>
-              </section>
+              {(deposit > 0 || refunded > 0) && (
+                <section className="confirm-card">
+                  <h3 className="confirm-card__heading">
+                    {deposit > 0 ? "Security Deposit" : "Refunds"}
+                  </h3>
+                  <p className="checkout-note">
+                    {refunded > 0
+                      ? `${formatPrice(refunded)} refunded to your payment method.`
+                      : `${formatPrice(deposit)} will be refunded to your payment method after delivery.`}
+                  </p>
+                </section>
+              )}
 
               <section className="confirm-card">
                 <h3 className="confirm-card__heading">Delivery Address</h3>
@@ -197,11 +208,13 @@ export default async function OrderDetailPage({
                 // receipt lists every child's items (see lib/split.ts).
                 ...(isSplitParent ? order.children.flatMap((c) => c.items) : order.items).map(
                   (item) => ({
-                    label: `${item.productName} × ${item.quantity}`,
+                    label: `${item.productName} × ${item.quantity}${item.withExchange ? " (with exchange)" : ""}`,
                     value: formatPrice(Number(item.price) * item.quantity),
                   }),
                 ),
-                { label: "Refundable deposit (5%)", value: formatPrice(deposit) },
+                ...(deposit > 0
+                  ? [{ label: "Refundable deposit", value: formatPrice(deposit) }]
+                  : []),
                 { label: "Shipping", value: "FREE" },
                 ...(refunded > 0
                   ? [{ label: "Refunded", value: `− ${formatPrice(refunded)}` }]

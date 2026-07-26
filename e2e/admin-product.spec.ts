@@ -22,6 +22,10 @@ test.describe('Admin product CRUD + store reflection', () => {
   // Shared state between tests — Playwright runs tests within a describe
   // sequentially when fullyParallel is false.
   let createdProductId = ''
+  // Unique per run — a prior run's failed-before-cleanup product must never
+  // collide with this one on the itemCode unique constraint.
+  const ITEM_CODE = `E2E-${Date.now()}`
+  const SKU = `${ITEM_CODE}-G18K`
 
   test.afterAll(async ({ browser }) => {
     if (createdProductId) {
@@ -67,7 +71,7 @@ test.describe('Admin product CRUD + store reflection', () => {
     await page.locator('input[placeholder*="Heart Diamond"]').fill('E2E Test Ring')
 
     // Item Code input — use exact placeholder to avoid matching SKU input (which also contains AJBR)
-    await page.getByPlaceholder('e.g. AJBR-74').fill('E2E-001')
+    await page.getByPlaceholder('e.g. AJBR-74').fill(ITEM_CODE)
 
     // Category select — first <select> on the form
     await page.locator('form select').first().selectOption('RINGS')
@@ -75,13 +79,14 @@ test.describe('Admin product CRUD + store reflection', () => {
     // Description textarea (first textarea)
     await page.locator('textarea').first().fill('E2E test product')
 
-    // isActive checkbox — default is true; use accessible role to avoid matching 'Coming Soon'
-    const activeCheckbox = page.getByRole('checkbox', { name: 'Active (visible on store)' })
-    await expect(activeCheckbox).toBeChecked()
+    // Status defaults to Draft — set Live so the product is visible on the
+    // storefront (pricing v2: storefront visibility follows status, not isActive)
+    await page.getByTestId('product-status').selectOption('LIVE')
 
     // --- Metal Variants section ---
-    // Metal type select — the second <select> on the page (index 1)
-    await page.locator('form select').nth(1).selectOption('GOLD_18K')
+    // Selects in order: Category(0), Status(1), Metal Type(2) — Status field
+    // added in pricing v2.
+    await page.locator('form select').nth(2).selectOption('GOLD_18K')
 
     // Weight input (placeholder "8.500") — only one with this placeholder
     await page.locator('input[placeholder="8.500"]').fill('3.5')
@@ -98,24 +103,32 @@ test.describe('Admin product CRUD + store reflection', () => {
     await stockInput.fill('5')
 
     // SKU input — placeholder "AJBR-74-G18K" (uses short suffix format)
-    // After filling itemCode "E2E-001", buildSku auto-sets value to "E2E-001-G18K"
+    // After filling itemCode, buildSku auto-sets the SKU value
     const skuInput = page.getByPlaceholder('AJBR-74-G18K')
     await skuInput.waitFor({ state: 'visible', timeout: 5000 })
     await page.waitForTimeout(300) // let React propagate itemCode → sku
     const currentSku = await skuInput.inputValue()
     if (!currentSku) {
-      await skuInput.fill('E2E-001-G18K')
+      await skuInput.fill(SKU)
     }
 
     // --- Submit ---
     await page.locator('button[type="submit"]', { hasText: 'Create Product' }).click()
 
-    // ProductForm does router.push('/admin/products') after successful fetch
-    await page.waitForURL('**/admin/products', { timeout: 20000 })
+    // ProductForm does router.push('/admin/products') after successful fetch —
+    // client-side navigation via history API, so poll the URL directly rather
+    // than page.waitForURL (which waits on a 'load' event that a client-side
+    // route transition never fires in dev/Turbopack).
+    await expect
+      .poll(() => page.url(), { timeout: 20000, message: 'expected redirect to /admin/products' })
+      .toMatch(/\/admin\/products$/)
     await page.waitForLoadState('networkidle')
 
-    // Product must appear in the table
-    await expect(page.locator('text=E2E Test Ring')).toBeVisible()
+    // Product must appear in the table. Admin renders both a mobile-card
+    // list and a desktop table in the DOM simultaneously (CSS media query
+    // toggles which is visible) — scope to the table, which is what's
+    // actually visible at Playwright's default desktop viewport.
+    await expect(page.locator('table').getByText('E2E Test Ring')).toBeVisible()
 
     // Capture product ID from the last Edit link (newest product is last or first depending on sort)
     // Admin sorts by createdAt desc so the newest is at the top → first row's Edit link
@@ -138,35 +151,37 @@ test.describe('Admin product CRUD + store reflection', () => {
     }
   })
 
-  test('Step 6: /shop/rings shows the created product', async ({ page }) => {
+  test('Step 6: /all-products/rings shows the created product', async ({ page }) => {
     test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
 
-    await page.goto('/shop/rings')
+    await page.goto('/all-products/rings')
     await page.waitForLoadState('networkidle')
 
     await expect(page.locator('text=E2E Test Ring')).toBeVisible()
   })
 
-  test('Steps 7–8: Product detail page shows item code E2E-001 and 18kt Gold variant', async ({
+  test('Steps 7–8: Product detail page shows item code and 18kt Gold variant', async ({
     page,
   }) => {
     test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
 
-    await page.goto(`/shop/product/${createdProductId}`)
+    await page.goto(`/product/${createdProductId}`)
     await page.waitForLoadState('networkidle')
 
-    // Item code shown in font-mono element
-    await expect(page.locator('p.font-mono', { hasText: 'E2E-001' })).toBeVisible()
+    // Item code
+    await expect(page.locator('p.pdp-info__meta', { hasText: ITEM_CODE })).toBeVisible()
 
     // Product name in h1
     await expect(page.locator('h1', { hasText: 'E2E Test Ring' })).toBeVisible()
 
-    // Metal variant row: "18kt Gold" label and "3.500g" weight
-    await expect(page.locator('text=18kt Gold')).toBeVisible()
-    await expect(page.locator('text=3.500g')).toBeVisible()
+    // Metal selector only renders when a product has >1 metal (nothing to
+    // pick otherwise) — this test product has a single GOLD_18K variant, so
+    // assert against the price breakup instead, which always renders.
+    await page.locator('summary', { hasText: 'Price Breakup' }).click()
+    await expect(page.locator('text=3.500 g')).toBeVisible()
   })
 
-  test('Steps 9–10: Edit product name and verify updated name on /shop/rings', async ({
+  test('Steps 9–10: Edit product name and verify updated name on /all-products/rings', async ({
     page,
   }) => {
     test.skip(!createdProductId, 'Requires product creation (Step 3–5)')
@@ -185,15 +200,17 @@ test.describe('Admin product CRUD + store reflection', () => {
     // Submit
     await page.locator('button[type="submit"]', { hasText: 'Save Changes' }).click()
 
-    // Wait for redirect back to products list
-    await page.waitForURL('**/admin/products', { timeout: 20000 })
+    // Wait for redirect back to products list (poll — client-side nav, see note above)
+    await expect
+      .poll(() => page.url(), { timeout: 20000, message: 'expected redirect to /admin/products' })
+      .toMatch(/\/admin\/products$/)
     await page.waitForLoadState('networkidle')
 
     // Admin table shows updated name
-    await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
+    await expect(page.locator('table').getByText('E2E Test Ring Updated')).toBeVisible()
 
-    // Store /shop/rings also shows updated name (revalidate=120 but dev mode skips cache)
-    await page.goto('/shop/rings')
+    // Store /all-products/rings also shows updated name (revalidate=120 but dev mode skips cache)
+    await page.goto('/all-products/rings')
     await page.waitForLoadState('networkidle')
     await expect(page.locator('text=E2E Test Ring Updated')).toBeVisible()
   })

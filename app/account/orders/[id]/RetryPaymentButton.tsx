@@ -31,6 +31,15 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
   const [setupNotice, setSetupNotice] = useState(false);
 
   function launchGatewayCheckout(data: RetryResponse) {
+    if (data.gateway === "mock") {
+      const p = data.clientParams as { gatewayOrderId?: string; amount?: number };
+      router.push(
+        `/mock-pay?orderId=${encodeURIComponent(data.orderId)}&gatewayOrderId=${encodeURIComponent(
+          p.gatewayOrderId ?? "",
+        )}&amount=${encodeURIComponent(String(p.amount ?? 0))}`,
+      );
+      return;
+    }
     if (data.gateway !== "razorpay") {
       setError(`Unsupported payment gateway "${data.gateway}" in browser — update checkout page.`);
       return;

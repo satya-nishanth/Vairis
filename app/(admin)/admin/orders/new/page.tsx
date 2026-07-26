@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { calculatePrice } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { ManualOrderForm } from './ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -13,13 +14,17 @@ export const dynamic = 'force-dynamic'
  * the current gold rate; the admin can override per line (negotiated deals).
  */
 export default async function NewManualOrderPage() {
-  const [products, goldRates] = await Promise.all([
+  const [products, goldRates, pricingConfig] = await Promise.all([
     prisma.product.findMany({
       where: { isActive: true },
-      include: { variants: { orderBy: { metalType: 'asc' } } },
+      include: {
+        variants: { orderBy: { metalType: 'asc' } },
+        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     }),
     prisma.goldRate.findMany(),
+    getPricingConfig(),
   ])
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
@@ -38,6 +43,7 @@ export default async function NewManualOrderPage() {
                 miscCharges: v.miscCharges.toString(),
               },
               rate,
+              { stones: toStoneInputs(p.stones), withExchange: false, config: pricingConfig },
             ).total,
           )
         : 0

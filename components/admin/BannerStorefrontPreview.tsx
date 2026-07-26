@@ -7,7 +7,6 @@ import { HeroCarousel } from '@/components/home/HeroCarousel'
 import { BannerFocusEditor } from '@/components/admin/BannerFocusEditor'
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs'
 import { Button } from '@/components/ui/Button'
-import { Rating } from '@/components/ui/Rating'
 import { ProductImage } from '@/components/ui/ProductImage'
 import { marketingImages } from '@/lib/images'
 import {
@@ -299,8 +298,7 @@ function PreviewBody({
                 <ProductImage key={avatarSrc} src={avatarSrc} alt="Customer" width={32} height={32} />
               ))}
             </div>
-            <span>Loved by 10,000+ women</span>
-            <Rating score="4.9" reviews="2,300+ reviews" />
+            <span>IGI Certified · BIS Hallmarked · Insured Delivery</span>
           </div>
         </div>
         {slides.length > 0 ? (

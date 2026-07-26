@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { DEPOSIT_RATE } from '@/lib/orders'
 
 type VariantOption = {
   variantId: string
@@ -72,7 +71,6 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
 
   // Lines + settlement
   const [lines, setLines] = useState<Line[]>([])
-  const [applyDeposit, setApplyDeposit] = useState(false)
   const [paid, setPaid] = useState(true)
   const [paymentNote, setPaymentNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -137,8 +135,7 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
   }
 
   const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))
-  const grandTotal = applyDeposit ? Math.round(total * (1 + DEPOSIT_RATE)) : total
-  const deposit = grandTotal - total
+  const grandTotal = total
   const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`
 
   async function submit(e: React.FormEvent) {
@@ -160,7 +157,6 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
         body: JSON.stringify({
           userId: customer.id,
           ...address,
-          applyDeposit,
           initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
           paymentNote: paymentNote || undefined,
           items: lines,
@@ -381,10 +377,6 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
 
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>4 · Settlement</strong>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', margin: '12px 0 0' }}>
-          <input type="checkbox" checked={applyDeposit} onChange={(e) => setApplyDeposit(e.target.checked)} />
-          Apply 5% refundable security deposit (customer pays 105%, deposit returned after delivery)
-        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', margin: '10px 0 0' }}>
           <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
           Payment already received (UPI / bank transfer)
@@ -394,7 +386,6 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
 
         <div style={{ marginTop: 16, fontSize: '0.875rem', borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
           <p>Goods total: {inr(total)}</p>
-          {applyDeposit && <p>Security deposit (5%): {inr(deposit)}</p>}
           <p style={{ fontWeight: 600 }}>Customer pays: {inr(grandTotal)}</p>
         </div>
       </div>

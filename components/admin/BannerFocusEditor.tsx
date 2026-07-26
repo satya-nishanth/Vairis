@@ -129,7 +129,7 @@ export function BannerFocusEditor({
         onPointerCancel={onPointerUp}
         role="presentation"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        { }
         <img src={src} alt="" draggable={false} className="banner-focus__img" />
         <div className="banner-focus__veil" aria-hidden />
         <div

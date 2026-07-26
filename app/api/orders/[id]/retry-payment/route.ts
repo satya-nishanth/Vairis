@@ -25,15 +25,27 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'PAYMENTS_NOT_CONFIGURED' }, { status: 503 })
   }
 
+  // clientParams are gateway-shaped: Razorpay wants paise + order_id for its
+  // SDK; the mock gateway's modal page wants rupee amount + gatewayOrderId.
+  const clientParams =
+    gateway.name === 'mock'
+      ? {
+          mock: true,
+          gatewayOrderId: order.payment.razorpayOrderId,
+          amount: Math.round(Number(order.payment.amount)),
+          reference: order.id,
+        }
+      : {
+          key: gateway.publicKey(),
+          order_id: order.payment.razorpayOrderId,
+          amount: Math.round(Number(order.payment.amount) * 100),
+          currency: 'INR',
+        }
+
   return NextResponse.json({
     orderId: order.id,
     gateway: gateway.name,
-    clientParams: {
-      key: gateway.publicKey(),
-      order_id: order.payment.razorpayOrderId,
-      amount: Math.round(Number(order.payment.amount) * 100),
-      currency: 'INR',
-    },
+    clientParams,
     contact: { name: order.contactName, phone: order.contactPhone, email: user.email },
   })
 }

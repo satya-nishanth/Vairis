@@ -36,8 +36,8 @@ const manualOrderSchema = z.object({
   city: z.string().trim().min(2),
   state: z.string().trim().min(2),
   pincode: z.string().trim().regex(/^\d{6}$/, '6-digit pincode required'),
-  /** Apply the 105%/5% security-deposit model — off for flat WhatsApp deals. */
-  applyDeposit: z.boolean(),
+  /** Deposit model retired — accepted for backwards compatibility, ignored. */
+  applyDeposit: z.boolean().optional(),
   /** PAYMENT_PENDING = money not received yet; PAYMENT_CONFIRMED = paid via UPI/bank. */
   initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
   /** e.g. "Paid via GPay ref 12345" — lands in the order timeline. */
@@ -94,9 +94,7 @@ export async function POST(req: NextRequest) {
   }
 
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
-  const { totalAmount, grandTotal, depositAmount } = d.applyDeposit
-    ? computeOrderAmounts(total)
-    : { totalAmount: total, grandTotal: total, depositAmount: 0 }
+  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
   const { order, childOrderIds } = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({

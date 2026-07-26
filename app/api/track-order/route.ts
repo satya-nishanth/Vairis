@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
+import { rateLimit } from '@/lib/rate-limit'
 
 const trackSchema = z.object({
   orderId: z.string().trim().min(6),
@@ -16,6 +17,9 @@ const trackSchema = z.object({
  * shipment info, no amounts, no address.
  */
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, 'track-order', 10)
+  if (limited) return limited
+
   const parsed = trackSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json({ error: 'Enter your order ID and email' }, { status: 400 })

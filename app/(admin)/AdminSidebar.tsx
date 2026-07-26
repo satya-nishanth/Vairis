@@ -6,9 +6,16 @@ import { usePathname } from 'next/navigation'
 
 const NAV = [
   { label: 'Dashboard', href: '/admin/dashboard' },
+  { label: 'Analytics', href: '/admin/analytics' },
   { label: 'Products', href: '/admin/products' },
   { label: 'Orders', href: '/admin/orders' },
   { label: 'Content', href: '/admin/content' },
+  { label: 'Collections', href: '/admin/collections' },
+  { label: 'Home Sections', href: '/admin/sections' },
+  { label: 'Pricing', href: '/admin/settings/pricing' },
+  { label: 'Promos', href: '/admin/promos' },
+  { label: 'Reviews', href: '/admin/reviews' },
+  { label: 'Contacts', href: '/admin/contacts' },
 ]
 
 function isActive(pathname: string, href: string) {
@@ -24,6 +31,7 @@ export function AdminSidebar() {
 
   // Close drawer on route change
   useEffect(() => {
+// eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
     setOpen(false)
   }, [pathname])
 

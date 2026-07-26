@@ -29,11 +29,18 @@ export const footerShopLinks = [
 
 export const footerHelpLinks = [
   { label: "FAQ", href: "/contact" },
-  { label: "Shipping & Delivery", href: "/contact" },
+  { label: "Shipping & Delivery", href: "/policies/shipping" },
   { label: "Returns", href: "/returns" },
   { label: "Care Guide", href: "/contact" },
   { label: "Track Order", href: "/track-order" },
   { label: "Contact Us", href: "/contact" },
+] as const;
+
+export const footerLegalLinks = [
+  { label: "Privacy Policy", href: "/policies/privacy" },
+  { label: "Terms of Service", href: "/policies/terms" },
+  { label: "Shipping Policy", href: "/policies/shipping" },
+  { label: "Refund & Return Policy", href: "/policies/refund" },
 ] as const;
 
 export const footerAboutLinks = [

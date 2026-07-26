@@ -45,7 +45,25 @@ const patchSchema = z.object({
   images: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
   comingSoon: z.boolean().optional(),
-  variants: z.array(patchVariantSchema).min(1).optional(),
+  status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).optional(),
+  stones: z
+    .array(
+      z.object({
+        diamondRateId: z.string().min(1),
+        caratWeight: z
+          .union([z.string(), z.number()])
+          .transform(Number)
+          .refine((n) => !Number.isNaN(n) && n > 0, 'Carat weight must be positive'),
+        count: z
+          .union([z.string(), z.number(), z.null()])
+          .optional()
+          .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
+        label: z.string().optional().nullable(),
+      }),
+    )
+    .optional(),
+  // Drafts may have zero variants; LIVE needs ≥1 (checked against DB state below).
+  variants: z.array(patchVariantSchema).optional(),
 })
 
 export async function GET(_: NextRequest, { params }: { params: Params }) {
@@ -53,7 +71,7 @@ export async function GET(_: NextRequest, { params }: { params: Params }) {
   const { id } = await params
   const product = await prisma.product.findUnique({
     where: { id },
-    include: { variants: true },
+    include: { variants: true, stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } } },
   })
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(product)
@@ -81,6 +99,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
 
   try {
     const product = await prisma.$transaction(async (tx) => {
+      // A product being made (or kept) LIVE must end up with ≥1 variant.
+      const targetStatus =
+        data.status ?? (await tx.product.findUniqueOrThrow({ where: { id }, select: { status: true } })).status
+      if (targetStatus === 'LIVE') {
+        const variantCount =
+          data.variants !== undefined
+            ? data.variants.length
+            : await tx.productVariant.count({ where: { productId: id } })
+        if (variantCount < 1) {
+          throw new Error('A live product needs at least one variant')
+        }
+      }
+
+      // Stones have no order/cart FKs — replace wholesale.
+      if (data.stones !== undefined) {
+        await tx.productStone.deleteMany({ where: { productId: id } })
+        if (data.stones.length) {
+          await tx.productStone.createMany({
+            data: data.stones.map((s, i) => ({
+              productId: id,
+              diamondRateId: s.diamondRateId,
+              caratWeight: s.caratWeight,
+              count: s.count,
+              label: s.label || null,
+              sortOrder: i,
+            })),
+          })
+        }
+      }
+
       // Upsert variants by SKU so cart/order FKs stay valid (deleteMany breaks them).
       if (data.variants !== undefined) {
         const existing = await tx.productVariant.findMany({ where: { productId: id } })
@@ -145,8 +193,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
           ...(data.images !== undefined && { images: data.images }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
           ...(data.comingSoon !== undefined && { comingSoon: data.comingSoon }),
+          ...(data.status !== undefined && { status: data.status }),
         },
-        include: { variants: true },
+        include: { variants: true, stones: { include: { diamondRate: true } } },
       })
     })
 
@@ -154,6 +203,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Cannot remove a variant')) {
       return NextResponse.json({ error: err.message }, { status: 409 })
+    }
+    if (err instanceof Error && err.message.startsWith('A live product needs')) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
     }
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
       if (err.code === 'P2002') {
