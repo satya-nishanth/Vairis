@@ -1,0 +1,10 @@
+name: vairis
+metadata:
+  template: vairis-azure-migration
+services:
+  web:
+    project: .
+    host: containerapp
+    language: js
+    docker:
+      path: ./Dockerfile
