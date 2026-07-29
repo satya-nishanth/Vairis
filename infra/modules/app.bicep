@@ -56,6 +56,13 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
             { name: 'STORAGE_PROVIDER', value: 'azure' }
             { name: 'DATABASE_URL', secretRef: 'database-url' }
+            // schema.prisma's directUrl exists for Supabase's pooler-vs-direct split —
+            // Azure Postgres Flexible Server has no such split, so this is just the
+            // same connection string again. Without it, `prisma migrate deploy` (now
+            // run on every container boot, see Dockerfile) fails schema validation
+            // before the app can even start: "Environment variable not found:
+            // DIRECT_DATABASE_URL" — took the whole app down, not just migrations.
+            { name: 'DIRECT_DATABASE_URL', secretRef: 'database-url' }
             // GOTRUE_INTERNAL_URL is server-only — used by next.config.mjs's rewrite to proxy
             // /auth-api/* to GoTrue from the Next.js server, not the browser. Bare self-hosted
             // GoTrue's CORS layer rejects the `apikey` header supabase-js always sends (it expects
