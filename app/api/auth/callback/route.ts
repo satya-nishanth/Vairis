@@ -5,7 +5,12 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  // Not request.url's origin — behind Azure Container Apps' proxy this
+  // resolves to the container's internal bind address (0.0.0.0:3000, see
+  // Dockerfile HOSTNAME/PORT) rather than the public host, sending users
+  // to an unreachable URL after login.
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/'
   const error = searchParams.get('error')
