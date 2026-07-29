@@ -2,17 +2,19 @@ param location string
 param environmentName string
 param containerAppsEnvironmentId string
 param postgresConnectionString string
-@secure()
-param jwtSecret string
 param siteUrl string
 param apiExternalUrl string
 param googleClientId string
-@secure()
-param googleClientSecret string
+param keyVaultUri string
+param userAssignedIdentityId string
 
 resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'gotrue-vairis-${environmentName}'
   location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${userAssignedIdentityId}': {} }
+  }
   properties: {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
@@ -20,8 +22,8 @@ resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
       ingress: { external: true, targetPort: 8081 } // GoTrue's actual default listen port — 9999 is Supabase's docker-compose *external* mapping, not the container's internal port
       secrets: [
         { name: 'db-url', value: postgresConnectionString }
-        { name: 'jwt-secret', value: jwtSecret }
-        { name: 'google-secret', value: googleClientSecret }
+        { name: 'jwt-secret', keyVaultUrl: '${keyVaultUri}secrets/gotrue-jwt-secret', identity: userAssignedIdentityId }
+        { name: 'google-secret', keyVaultUrl: '${keyVaultUri}secrets/google-client-secret', identity: userAssignedIdentityId }
       ]
     }
     template: {

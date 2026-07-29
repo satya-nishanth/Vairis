@@ -5,17 +5,8 @@
     "environmentName": { "value": "${AZURE_ENV_NAME}" },
     "location": { "value": "${AZURE_LOCATION}" },
     "postgresAdminPassword": { "value": "${POSTGRES_ADMIN_PASSWORD}" },
-    "gotrueJwtSecret": { "value": "${GOTRUE_JWT_SECRET}" },
     "siteUrl": { "value": "${SITE_URL}" },
     "googleClientId": { "value": "${GOOGLE_CLIENT_ID}" },
-    "googleClientSecret": { "value": "${GOOGLE_CLIENT_SECRET}" },
-    "containerRegistryEndpoint": { "value": "${AZURE_CONTAINER_REGISTRY_ENDPOINT}" },
-    "supabaseAnonKey": { "value": "${SUPABASE_ANON_KEY}" },
-    "supabaseServiceRoleKey": { "value": "${SUPABASE_SERVICE_ROLE_KEY}" },
-    "adminEmails": { "value": "${ADMIN_EMAILS}" },
-    "cronSecret": { "value": "${CRON_SECRET}" },
-    "internalApiKey": { "value": "${INTERNAL_API_KEY}" },
-    "goldApiKey": { "value": "${GOLD_API_KEY}" },
-    "resendApiKey": { "value": "${RESEND_API_KEY}" }
+    "containerRegistryEndpoint": { "value": "${AZURE_CONTAINER_REGISTRY_ENDPOINT}" }
   }
 }
