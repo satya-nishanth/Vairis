@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import { requireAdmin } from '@/lib/auth'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { uploadProductMedia } from '@/lib/azure-blob'
 
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ const ALLOWED_TYPES = [
 ]
 
 async function ensureBucket() {
-  const { error } = await supabaseAdmin.storage.createBucket(BUCKET, {
+  const { error } = await getSupabaseAdmin().storage.createBucket(BUCKET, {
     public: true,
     allowedMimeTypes: ALLOWED_TYPES,
     fileSizeLimit: VIDEO_SIZE_LIMIT,
@@ -60,11 +60,11 @@ export async function POST(req: NextRequest) {
       const url = await uploadProductMedia(path, arrayBuffer, file.type)
       return NextResponse.json({ url, type: 'video' })
     }
-    const { error } = await supabaseAdmin.storage
+    const { error } = await getSupabaseAdmin().storage
       .from(BUCKET)
       .upload(path, arrayBuffer, { contentType: file.type, upsert: false })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
+    const { data } = getSupabaseAdmin().storage.from(BUCKET).getPublicUrl(path)
     return NextResponse.json({ url: data.publicUrl, type: 'video' })
   }
 
@@ -81,11 +81,11 @@ export async function POST(req: NextRequest) {
     const url = await uploadProductMedia(path, resized, 'image/jpeg')
     return NextResponse.json({ url, type: 'image' })
   }
-  const { error } = await supabaseAdmin.storage
+  const { error } = await getSupabaseAdmin().storage
     .from(BUCKET)
     .upload(path, resized, { contentType: 'image/jpeg', upsert: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path)
+  const { data } = getSupabaseAdmin().storage.from(BUCKET).getPublicUrl(path)
   return NextResponse.json({ url: data.publicUrl, type: 'image' })
 }
