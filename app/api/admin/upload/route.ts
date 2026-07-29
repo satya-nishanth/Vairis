@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import { requireAdmin } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { uploadProductMedia } from '@/lib/azure-blob'
 
 export const dynamic = 'force-dynamic'
+
+// STORAGE_PROVIDER=azure opts into the Azure Blob path (staging, ahead of the
+// full Azure migration cutover). Defaults to supabase — unchanged prod/local behavior.
+const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER ?? 'supabase'
 
 const BUCKET = 'product-media'
 const VIDEO_SIZE_LIMIT = 50 * 1024 * 1024 // 50MB — Supabase free tier cap
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  await ensureBucket()
+  if (STORAGE_PROVIDER !== 'azure') await ensureBucket()
 
   const isVideo = file.type.startsWith('video/')
   const arrayBuffer = await file.arrayBuffer()
@@ -50,6 +55,11 @@ export async function POST(req: NextRequest) {
     }
     const ext = file.name.split('.').pop() ?? 'mp4'
     const path = `products/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+
+    if (STORAGE_PROVIDER === 'azure') {
+      const url = await uploadProductMedia(path, arrayBuffer, file.type)
+      return NextResponse.json({ url, type: 'video' })
+    }
     const { error } = await supabaseAdmin.storage
       .from(BUCKET)
       .upload(path, arrayBuffer, { contentType: file.type, upsert: false })
@@ -66,6 +76,11 @@ export async function POST(req: NextRequest) {
     .toBuffer()
 
   const path = `products/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+
+  if (STORAGE_PROVIDER === 'azure') {
+    const url = await uploadProductMedia(path, resized, 'image/jpeg')
+    return NextResponse.json({ url, type: 'image' })
+  }
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
     .upload(path, resized, { contentType: 'image/jpeg', upsert: false })
