@@ -70,7 +70,11 @@ export function ProductCard({ product, showActions = true, linkPrefix = "/produc
           <Link href={href}>{product.name}</Link>
         </h3>
         {product.description && <p className="product-card__desc">{product.description}</p>}
-        {product.price != null && <p className="product-card__price">{formatPrice(product.price)}</p>}
+        {product.price != null ? (
+          <p className="product-card__price">{formatPrice(product.price)}</p>
+        ) : (
+          product.priceHidden && <p className="product-card__price product-card__price--on-request">Price on Request</p>
+        )}
         {product.meta && <p className="product-card__meta">{product.meta}</p>}
         {CHECKOUT_ENABLED && showActions && product.variantId && (
           <div className="product-card__actions">

@@ -46,6 +46,7 @@ const patchSchema = z.object({
   isActive: z.boolean().optional(),
   comingSoon: z.boolean().optional(),
   status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).optional(),
+  priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).optional(),
   stones: z
     .array(
       z.object({
@@ -99,16 +100,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
 
   try {
     const product = await prisma.$transaction(async (tx) => {
-      // A product being made (or kept) LIVE must end up with ≥1 variant.
-      const targetStatus =
-        data.status ?? (await tx.product.findUniqueOrThrow({ where: { id }, select: { status: true } })).status
+      // A product being made (or kept) LIVE must end up with ≥1 variant, and
+      // (unless coming-soon) at least one with weight > 0 — a weight-0
+      // variant silently produces no price at all on the storefront
+      // (calculatePrice requires weight > 0), so the PDP just shows
+      // "Enquire on WhatsApp" with no indication anything is wrong.
+      const existing =
+        data.status === undefined || data.comingSoon === undefined
+          ? await tx.product.findUniqueOrThrow({ where: { id }, select: { status: true, comingSoon: true } })
+          : null
+      const targetStatus = data.status ?? existing!.status
+      const targetComingSoon = data.comingSoon ?? existing!.comingSoon
       if (targetStatus === 'LIVE') {
-        const variantCount =
+        const variantWeights =
           data.variants !== undefined
-            ? data.variants.length
-            : await tx.productVariant.count({ where: { productId: id } })
-        if (variantCount < 1) {
+            ? data.variants.map((v) => Number(v.weightGrams))
+            : (await tx.productVariant.findMany({ where: { productId: id }, select: { weightGrams: true } })).map(
+                (v) => Number(v.weightGrams),
+              )
+        if (variantWeights.length < 1) {
           throw new Error('A live product needs at least one variant')
+        }
+        if (!targetComingSoon && !variantWeights.some((w) => w > 0)) {
+          throw new Error(
+            'A live product needs at least one variant with a gold weight greater than 0 — otherwise no price ever shows on the storefront',
+          )
         }
       }
 
@@ -194,6 +210,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
           ...(data.isActive !== undefined && { isActive: data.isActive }),
           ...(data.comingSoon !== undefined && { comingSoon: data.comingSoon }),
           ...(data.status !== undefined && { status: data.status }),
+          ...(data.priceVisibility !== undefined && { priceVisibility: data.priceVisibility }),
         },
         include: { variants: true, stones: { include: { diamondRate: true } } },
       })

@@ -16,6 +16,7 @@ type FormState = {
   vaGoldPct: number | string
   vaStonePct: number | string
   vaLabel: string
+  showPricesGlobal: boolean
   diamondRates: RateRow[]
 }
 
@@ -71,6 +72,25 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
 
   return (
     <form onSubmit={handleSubmit} className="pform">
+      <section className="pform__section">
+        <h2>Price Visibility</h2>
+        <p className="pform__section-note">
+          Storefront-wide default for whether a computed price is shown at all. Products
+          without a finalized diamond/gold cost show &ldquo;Price on Request&rdquo; with a
+          WhatsApp enquiry CTA instead of a checkout price. Any individual product can override
+          this default from its own edit page (always show / always hide).
+        </p>
+        <label className="pform__check">
+          <input
+            type="checkbox"
+            checked={form.showPricesGlobal}
+            onChange={(e) => setForm((f) => ({ ...f, showPricesGlobal: e.target.checked }))}
+            data-testid="show-prices-global"
+          />
+          <span>Show prices storefront-wide by default</span>
+        </label>
+      </section>
+
       <section className="pform__section">
         <h2>Value Addition (VA)</h2>
         <p className="pform__section-note">

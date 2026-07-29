@@ -52,5 +52,17 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+# Next's standalone output only traces runtime deps actually imported by app
+# code (@prisma/client) — the `prisma` CLI itself (a devDependency, invoked
+# by name via npx, never imported) is pruned out. Install it directly so
+# `migrate deploy` below has something to run.
+RUN npm install --no-save prisma@5.22.0
 EXPOSE 3000
-CMD ["node", "server.js"]
+# Applying pending migrations here — not as a separate manual/CI step — is
+# the fix for a real incident: this target database went a full session
+# without ever having `prisma migrate deploy` run against it, so tables
+# added by later migrations (e.g. AnalyticsEvent) simply didn't exist and
+# any route touching them 500'd. Running it on every boot makes that
+# structurally impossible to forget again. If it fails, the container
+# should crash-loop rather than silently serve against a stale schema.
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=./prisma/schema.prisma && node server.js"]

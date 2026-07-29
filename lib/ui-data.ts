@@ -31,6 +31,9 @@ export type Product = {
   styleText?: string;
   /** Any variant in stock — PLP "Ready to Ship" filter */
   inStock?: boolean;
+  /** Price intentionally not shown (admin pricing-visibility setting) — distinct
+   * from `price` simply being unavailable (e.g. no gold rate configured yet). */
+  priceHidden?: boolean;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

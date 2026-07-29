@@ -41,6 +41,13 @@ resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'GOTRUE_EXTERNAL_GOOGLE_ENABLED', value: 'true' }
             { name: 'GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID', value: googleClientId }
             { name: 'GOTRUE_EXTERNAL_GOOGLE_SECRET', secretRef: 'google-secret' }
+            // GoTrue does not reliably auto-derive this from API_EXTERNAL_URL on
+            // this image version — without it, /authorize 400s with "Unsupported
+            // provider: missing redirect URI" before ever reaching Google. Must
+            // also be added to the Google Cloud Console OAuth client's own
+            // "Authorized redirect URIs" list, or Google will reject it with
+            // redirect_uri_mismatch on the next hop instead.
+            { name: 'GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI', value: '${apiExternalUrl}/callback' }
             { name: 'GOTRUE_MAILER_AUTOCONFIRM', value: 'false' }
           ]
         }

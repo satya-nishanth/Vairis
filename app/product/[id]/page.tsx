@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { calculatePrice } from "@/lib/pricing";
-import { getPricingConfig, toStoneInputs, toStoneViews } from "@/lib/pricing-data";
+import { getPricingConfig, getShowPricesGlobal, toStoneInputs, toStoneViews, resolvePriceVisibility } from "@/lib/pricing-data";
 import ProductPageClient from "./ProductPageClient";
 
 export const revalidate = 120;
@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, goldRates, pricingConfig, reviewAgg] = await Promise.all([
+  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg] = await Promise.all([
     prisma.product.findUnique({
       where: { id, isActive: true, status: 'LIVE' },
       include: {
@@ -39,6 +39,7 @@ export default async function ProductPage({ params }: Props) {
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getShowPricesGlobal(),
     prisma.review.aggregate({
       where: { productId: id, status: "APPROVED" },
       _avg: { rating: true },
@@ -47,6 +48,8 @@ export default async function ProductPage({ params }: Props) {
   ]);
 
   if (!product) notFound();
+
+  const showPrice = resolvePriceVisibility(product.priceVisibility, showPricesGlobal);
 
   // JSON-LD Product schema — price from the cheapest variant at current
   // rates (without-exchange), real review aggregates only.
@@ -78,7 +81,7 @@ export default async function ProductPage({ params }: Props) {
     sku: product.itemCode ?? product.id,
     image: product.images.filter((s) => s && !/\.(mp4|webm|mov)(\?|$)/i.test(s)),
     brand: { "@type": "Brand", name: "VAIRIS" },
-    ...(prices.length > 0 && {
+    ...(showPrice && prices.length > 0 && {
       offers: {
         "@type": "Offer",
         priceCurrency: "INR",
@@ -115,6 +118,7 @@ export default async function ProductPage({ params }: Props) {
         images: product.images.filter(Boolean),
         itemCode: product.itemCode,
         comingSoon: product.comingSoon,
+        showPrice,
         stones: toStoneViews(product.stones),
         variants: product.variants.map((v) => ({
           id: v.id,

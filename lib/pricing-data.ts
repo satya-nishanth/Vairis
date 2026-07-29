@@ -20,6 +20,22 @@ export async function getPricingConfig(): Promise<PricingConfig> {
   }
 }
 
+/** Storefront-wide default for whether computed prices are shown at all. */
+export async function getShowPricesGlobal(): Promise<boolean> {
+  const row = await prisma.pricingSettings.findUnique({ where: { id: 1 }, select: { showPricesGlobal: true } })
+  return row?.showPricesGlobal ?? true
+}
+
+/** Effective show/hide decision: per-product override wins, else the global default. */
+export function resolvePriceVisibility(
+  priceVisibility: 'INHERIT' | 'SHOW' | 'HIDE',
+  showPricesGlobal: boolean,
+): boolean {
+  if (priceVisibility === 'SHOW') return true
+  if (priceVisibility === 'HIDE') return false
+  return showPricesGlobal
+}
+
 export function toStoneInputs(stones: StoneWithRate[]): StoneInput[] {
   return stones.map((s) => ({
     caratWeight: Number(s.caratWeight),

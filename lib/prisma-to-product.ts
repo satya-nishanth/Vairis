@@ -1,6 +1,6 @@
 import type { Product as PrismaProduct, ProductVariant, GoldRate } from "@prisma/client";
 import { calculatePrice, DEFAULT_PRICING_CONFIG, type PricingConfig } from "@/lib/pricing";
-import { toStoneInputs, type StoneWithRate } from "@/lib/pricing-data";
+import { toStoneInputs, resolvePriceVisibility, type StoneWithRate } from "@/lib/pricing-data";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 import type { ProductCategory } from "@/lib/catalogue-ui";
@@ -15,10 +15,12 @@ export function prismaToProduct(
   goldRates: GoldRate[],
   index = 0,
   pricingConfig: PricingConfig = DEFAULT_PRICING_CONFIG,
+  showPricesGlobal = true,
 ): Product {
+  const priceHidden = !resolvePriceVisibility(p.priceVisibility, showPricesGlobal);
   let price: number | undefined;
   let variantId: string | undefined;
-  if (!p.comingSoon && p.variants.length > 0 && goldRates.length > 0) {
+  if (!priceHidden && !p.comingSoon && p.variants.length > 0 && goldRates.length > 0) {
     const rateMap = Object.fromEntries(
       goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]),
     );
@@ -83,5 +85,6 @@ export function prismaToProduct(
     metals,
     styleText,
     inStock,
+    priceHidden,
   };
 }

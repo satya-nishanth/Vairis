@@ -57,16 +57,30 @@ const productSchema = z.object({
   isActive: z.boolean().default(true),
   comingSoon: z.boolean().default(false),
   status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
+  priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).default('INHERIT'),
   stones: z.array(stoneSchema).default([]),
   // Drafts only need a title — LIVE products need at least one variant
   // (enforced in superRefine below).
   variants: z.array(variantSchema).default([]),
 }).superRefine((data, ctx) => {
-  if (data.status === 'LIVE' && data.variants.length < 1) {
+  if (data.status !== 'LIVE') return
+  if (data.variants.length < 1) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['variants'],
       message: 'A live product needs at least one variant',
+    })
+    return
+  }
+  // A variant with weight 0 silently produces no price at all on the
+  // storefront (calculatePrice requires weight > 0) — the PDP just shows
+  // "Enquire on WhatsApp" with no indication anything is wrong. Coming-soon
+  // products are exempt since they're allowed to ship without pricing yet.
+  if (!data.comingSoon && !data.variants.some((v) => Number(v.weightGrams) > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['variants'],
+      message: 'A live product needs at least one variant with a gold weight greater than 0 — otherwise no price ever shows on the storefront',
     })
   }
 })
@@ -119,6 +133,7 @@ export async function POST(req: NextRequest) {
       isActive: data.isActive,
       comingSoon: data.comingSoon,
       status: data.status,
+      priceVisibility: data.priceVisibility,
       stones: {
         create: data.stones.map((s, i) => ({
           diamondRateId: s.diamondRateId,

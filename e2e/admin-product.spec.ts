@@ -84,9 +84,8 @@ test.describe('Admin product CRUD + store reflection', () => {
     await page.getByTestId('product-status').selectOption('LIVE')
 
     // --- Metal Variants section ---
-    // Selects in order: Category(0), Status(1), Metal Type(2) — Status field
-    // added in pricing v2.
-    await page.locator('form select').nth(2).selectOption('GOLD_18K')
+    // Selects in order: Category(0), Status(1), Price Visibility(2), Metal Type(3).
+    await page.locator('form select').nth(3).selectOption('GOLD_18K')
 
     // Weight input (placeholder "8.500") — only one with this placeholder
     await page.locator('input[placeholder="8.500"]').fill('3.5')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { prismaToProduct } from '@/lib/prisma-to-product'
-import { getPricingConfig } from '@/lib/pricing-data'
+import { getPricingConfig, getShowPricesGlobal } from '@/lib/pricing-data'
 
 export const dynamic = 'force-dynamic'
 import { rateLimit } from '@/lib/rate-limit'
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const q = (new URL(req.url).searchParams.get('q') ?? '').trim().slice(0, 80)
   if (q.length < 2) return NextResponse.json({ query: q, results: [] })
 
-  const [products, goldRates, pricingConfig] = await Promise.all([
+  const [products, goldRates, pricingConfig, showPricesGlobal] = await Promise.all([
     prisma.product.findMany({
       where: {
         isActive: true,
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getShowPricesGlobal(),
   ])
 
   // Fire-and-forget analytics — never block the response.
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     query: q,
     results: products.map((p, i) => {
-      const ui = prismaToProduct(p, goldRates, i, pricingConfig)
+      const ui = prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)
       return {
         id: p.id,
         name: p.name,

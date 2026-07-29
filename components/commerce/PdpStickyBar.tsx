@@ -11,9 +11,16 @@ type PdpStickyBarProps = {
   onAddToCart: () => void;
   addingToCart?: boolean;
   expertLabel?: string;
+  canPurchase?: boolean;
 };
 
-export function PdpStickyBar({ price, onAddToCart, addingToCart, expertLabel = "Talk to Expert" }: PdpStickyBarProps) {
+export function PdpStickyBar({
+  price,
+  onAddToCart,
+  addingToCart,
+  expertLabel = "Talk to Expert",
+  canPurchase = true,
+}: PdpStickyBarProps) {
   useEffect(() => {
     document.body.classList.add("has-mobile-sticky-bar");
     return () => document.body.classList.remove("has-mobile-sticky-bar");
@@ -30,9 +37,10 @@ export function PdpStickyBar({ price, onAddToCart, addingToCart, expertLabel = "
           {expertLabel}
         </Link>
       </div>
-      {/* Cart/Buy hidden until CHECKOUT_ENABLED (Razorpay go-live) — the
-          expert WhatsApp link above stays as the purchase path */}
-      {CHECKOUT_ENABLED && (
+      {/* Cart/Buy hidden until CHECKOUT_ENABLED (Razorpay go-live), or when
+          this product's price is hidden — the expert WhatsApp link above
+          stays as the purchase path in both cases */}
+      {CHECKOUT_ENABLED && canPurchase && (
         <div className="pdp-sticky-bar__actions">
           <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
             {addingToCart ? "Adding…" : "Add to Cart"}

@@ -45,6 +45,7 @@ type ProductData = {
   images: string[];
   itemCode: string | null;
   comingSoon: boolean;
+  showPrice: boolean;
   stones: StoneView[];
   variants: Variant[];
 };
@@ -166,6 +167,10 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
     const el = swipeRef.current;
     if (el) el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
   };
+
+  // No self-serve checkout without a price to charge — WhatsApp enquiry
+  // remains the only CTA for price-hidden products, same as CHECKOUT_ENABLED=false.
+  const canAddToCart = CHECKOUT_ENABLED && product.showPrice;
 
   const whatsappText = encodeURIComponent(
     `Hi! I'm interested in *${product.name}*${product.itemCode ? ` (Code: ${product.itemCode})` : ""} from VAIRIS.`,
@@ -294,11 +299,13 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
             <h1 className="pdp-info__title">{product.name}</h1>
             <p className="pdp-info__tagline">{categoryLabel}</p>
 
-            {price != null && (
+            {product.showPrice && price != null ? (
               <p className="pdp-info__price">
                 ₹{price.toLocaleString("en-IN")}
                 <span className="pdp-info__meta"> incl. GST</span>
               </p>
+            ) : (
+              !product.showPrice && <p className="pdp-info__price pdp-info__price--on-request">Price on Request</p>
             )}
 
             {product.description && (
@@ -361,7 +368,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
               </div>
             )}
 
-            {hasStones && priceWith && priceWithout && (
+            {product.showPrice && hasStones && priceWith && priceWithout && (
               <div className="pdp-options" data-testid="pdp-exchange">
                 <label>Diamond Pricing</label>
                 <div className="pdp-variants">
@@ -389,7 +396,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
               </div>
             )}
 
-            {breakdown && (
+            {product.showPrice && breakdown && (
               <details className="pdp-info__breakup" data-testid="pdp-breakup">
                 <summary>Price Breakup</summary>
                 <table>
@@ -450,8 +457,9 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
             ) : (
               <div className="pdp-actions pdp-actions--inline">
                 {/* Self-serve checkout is behind CHECKOUT_ENABLED until
-                    Razorpay is fully live — WhatsApp is the purchase CTA */}
-                {CHECKOUT_ENABLED && (
+                    Razorpay is fully live, and needs a real price — WhatsApp
+                    is the purchase CTA in both cases */}
+                {canAddToCart && (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -465,7 +473,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                   href={`https://wa.me/917075486464?text=${whatsappText}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={CHECKOUT_ENABLED ? "btn btn-secondary" : "btn btn-primary"}
+                  className={canAddToCart ? "btn btn-secondary" : "btn btn-primary"}
                 >
                   Enquire on WhatsApp
                 </a>
@@ -500,10 +508,11 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
 
       {!product.comingSoon && (
         <PdpStickyBar
-          price={price}
+          price={product.showPrice ? price : undefined}
           onAddToCart={handleAddToCart}
           addingToCart={addingToCart}
           expertLabel="Enquire on WhatsApp"
+          canPurchase={product.showPrice}
         />
       )}
     </PageShell>

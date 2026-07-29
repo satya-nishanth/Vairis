@@ -65,6 +65,7 @@ export default async function EditProductPage({
           isActive: product.isActive,
           comingSoon: product.comingSoon,
           status: product.status,
+          priceVisibility: product.priceVisibility,
           stones: product.stones.map((s) => ({
             diamondRateId: s.diamondRateId,
             caratWeight: s.caratWeight.toString(),

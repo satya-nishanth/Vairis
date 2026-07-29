@@ -135,6 +135,9 @@ model Product {
 
   comingSoon  Boolean          @default(false)
   status      ProductStatus    @default(DRAFT)
+  /// Per-product override of PricingSettings.showPricesGlobal. INHERIT (default)
+  /// follows the global toggle; SHOW/HIDE always win regardless of it.
+  priceVisibility PriceVisibility @default(INHERIT)
 
   variants    ProductVariant[]
   stones      ProductStone[]
@@ -180,7 +183,18 @@ model PricingSettings {
   vaGoldPct  Decimal  @default(5)
   vaStonePct Decimal  @default(5)
   vaLabel    String   @default("Value Addition")
+  /// Storefront-wide default for whether prices are shown at all. Many
+  /// products (no finalized diamond/gold cost yet) should read
+  /// "Price on Request" instead of a computed number — Product.priceVisibility
+  /// can override this per product.
+  showPricesGlobal Boolean @default(true)
   updatedAt  DateTime @updatedAt
+}
+
+enum PriceVisibility {
+  INHERIT
+  SHOW
+  HIDE
 }
 
 model ProductVariant {

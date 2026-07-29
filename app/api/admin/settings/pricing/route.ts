@@ -19,6 +19,7 @@ const putSchema = z.object({
   vaGoldPct: pct,
   vaStonePct: pct,
   vaLabel: z.string().trim().min(1, 'Label is required').max(40),
+  showPricesGlobal: z.boolean(),
   diamondRates: z.array(
     z.object({
       id: z.string().optional(), // absent = create
@@ -46,6 +47,7 @@ export async function GET() {
     vaGoldPct: Number(settings?.vaGoldPct ?? 5),
     vaStonePct: Number(settings?.vaStonePct ?? 5),
     vaLabel: settings?.vaLabel ?? 'Value Addition',
+    showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,
       code: r.code,
@@ -70,10 +72,16 @@ export async function PUT(req: NextRequest) {
 
   try {
     await prisma.$transaction(async (tx) => {
+      const fields = {
+        vaGoldPct: data.vaGoldPct,
+        vaStonePct: data.vaStonePct,
+        vaLabel: data.vaLabel,
+        showPricesGlobal: data.showPricesGlobal,
+      }
       await tx.pricingSettings.upsert({
         where: { id: 1 },
-        update: { vaGoldPct: data.vaGoldPct, vaStonePct: data.vaStonePct, vaLabel: data.vaLabel },
-        create: { id: 1, vaGoldPct: data.vaGoldPct, vaStonePct: data.vaStonePct, vaLabel: data.vaLabel },
+        update: fields,
+        create: { id: 1, ...fields },
       })
 
       const existing = await tx.diamondRate.findMany()

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { prismaToProduct } from "@/lib/prisma-to-product";
-import { getPricingConfig } from "@/lib/pricing-data";
+import { getPricingConfig, getShowPricesGlobal } from "@/lib/pricing-data";
 import { CollectionPageView } from "./CollectionPageView";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CollectionPage({ params }: Props) {
   const { slug } = await params;
-  const [collection, goldRates, pricingConfig] = await Promise.all([
+  const [collection, goldRates, pricingConfig, showPricesGlobal] = await Promise.all([
     prisma.collection.findUnique({
       where: { slug },
       include: {
@@ -46,6 +46,7 @@ export default async function CollectionPage({ params }: Props) {
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getShowPricesGlobal(),
   ]);
 
   if (!collection || !collection.active) notFound();
@@ -53,7 +54,7 @@ export default async function CollectionPage({ params }: Props) {
   const products = collection.products
     .map((cp) => cp.product)
     .filter((p) => p.isActive && p.status === "LIVE")
-    .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig));
+    .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
 
   return (
     <CollectionPageView

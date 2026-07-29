@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { prismaToProduct } from '@/lib/prisma-to-product'
-import { getPricingConfig } from '@/lib/pricing-data'
+import { getPricingConfig, getShowPricesGlobal } from '@/lib/pricing-data'
 import type { Product } from '@/lib/ui-data'
 
 /**
@@ -61,9 +61,10 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
   })
   if (rows.length === 0) return []
 
-  const [goldRates, pricingConfig] = await Promise.all([
+  const [goldRates, pricingConfig, showPricesGlobal] = await Promise.all([
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getShowPricesGlobal(),
   ])
 
   const views: HomeSectionView[] = []
@@ -99,7 +100,7 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
         products: collection.products
           .map((cp) => cp.product)
           .filter((p) => p.isActive && p.status === 'LIVE')
-          .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig)),
+          .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)),
       })
     } else if (row.kind === 'editorial') {
       views.push({

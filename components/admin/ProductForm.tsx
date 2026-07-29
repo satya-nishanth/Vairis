@@ -18,6 +18,12 @@ const STATUS_OPTIONS = [
   { value: 'LIVE', label: 'Live', hint: 'Visible & purchasable on the store. Needs ≥1 variant.' },
 ] as const
 
+const PRICE_VISIBILITY_OPTIONS = [
+  { value: 'INHERIT', label: 'Use global default', hint: 'Follows the storefront-wide setting in Pricing Settings.' },
+  { value: 'SHOW', label: 'Always show price', hint: 'Shows the computed price regardless of the global default.' },
+  { value: 'HIDE', label: 'Always hide (Price on Request)', hint: 'No checkout price shown — WhatsApp enquiry only.' },
+] as const
+
 // Fallback rates if the gold-rate table is empty (dev) — real rates come in via props.
 const FALLBACK_RATES: Record<string, number> = {
   GOLD_18K: 5100,
@@ -78,6 +84,7 @@ type FormData = {
   isActive: boolean
   comingSoon: boolean
   status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
+  priceVisibility: 'INHERIT' | 'SHOW' | 'HIDE'
 }
 
 type Props = {
@@ -132,6 +139,7 @@ function initialForm(data?: Partial<FormData>): FormData {
     isActive: data?.isActive ?? true,
     comingSoon: data?.comingSoon ?? false,
     status: data?.status ?? 'DRAFT',
+    priceVisibility: data?.priceVisibility ?? 'INHERIT',
   }
 }
 
@@ -341,6 +349,28 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
             </select>
             <p className="pform__hint">
               {STATUS_OPTIONS.find((s) => s.value === form.status)?.hint}
+            </p>
+          </div>
+        </div>
+
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="pf-price-visibility">Price Visibility</label>
+            <select
+              id="pf-price-visibility"
+              value={form.priceVisibility}
+              onChange={(e) => set('priceVisibility', e.target.value as FormData['priceVisibility'])}
+              className="pform__input"
+              data-testid="product-price-visibility"
+            >
+              {PRICE_VISIBILITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="pform__hint">
+              {PRICE_VISIBILITY_OPTIONS.find((o) => o.value === form.priceVisibility)?.hint}
             </p>
           </div>
         </div>
@@ -676,6 +706,9 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
                     placeholder="8.500"
                   />
                   <p className="pform__hint">Net gold weight from CAD sheet</p>
+                  {form.status === 'LIVE' && !form.comingSoon && !(parseFloat(v.weightGrams) > 0) && (
+                    <p className="pform__warn">⚠ 0 weight — this variant won&apos;t show a price at all on the storefront</p>
+                  )}
                 </div>
                 <div className="pform__field pform__span-2">
                   <label>Stock</label>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrice } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { getPricingConfig, getShowPricesGlobal, toStoneInputs, resolvePriceVisibility } from '@/lib/pricing-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +57,16 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { variantId, quantity, withExchange = false } = await req.json()
+
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    select: { product: { select: { priceVisibility: true } } },
+  })
+  if (!variant) return NextResponse.json({ error: 'Variant not found' }, { status: 404 })
+  const showPricesGlobal = await getShowPricesGlobal()
+  if (!resolvePriceVisibility(variant.product.priceVisibility, showPricesGlobal)) {
+    return NextResponse.json({ error: 'This product is priced on request — enquire on WhatsApp' }, { status: 403 })
+  }
 
   const item = await prisma.cartItem.upsert({
     where: {

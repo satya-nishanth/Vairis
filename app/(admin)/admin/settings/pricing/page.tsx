@@ -28,6 +28,7 @@ export default async function PricingSettingsPage() {
           vaGoldPct: Number(settings?.vaGoldPct ?? 5),
           vaStonePct: Number(settings?.vaStonePct ?? 5),
           vaLabel: settings?.vaLabel ?? 'Value Addition',
+          showPricesGlobal: settings?.showPricesGlobal ?? true,
           diamondRates: diamondRates.map((r) => ({
             id: r.id,
             code: r.code,
