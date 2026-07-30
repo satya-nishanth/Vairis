@@ -450,6 +450,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                   <WishlistButton
                     productId={product.id}
                     productName={product.name}
+                    variant="inline"
                   />
                   <span>Notify me when it&apos;s back</span>
                 </div>
@@ -480,6 +481,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                 <WishlistButton
                   productId={product.id}
                   productName={product.name}
+                  variant="inline"
                 />
               </div>
             )}

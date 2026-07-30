@@ -683,6 +683,13 @@
   border-color: var(--brand-olive, #5e684e);
 }
 
+/* PDP actions row etc — no positioned image-wrapper ancestor to overlay,
+   so render as a normal in-flow circular button instead. */
+.product-card__wish--inline {
+  position: static;
+  flex: 0 0 auto;
+}
+
 .product-card__wish.is-active {
   background: rgba(94, 104, 78, 0.12);
   border-color: var(--brand-olive, #5e684e);
