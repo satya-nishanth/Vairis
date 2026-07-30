@@ -94,11 +94,18 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         return next;
       });
       if (isLoggedIn) {
-        fetch("/api/wishlist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: id }),
-        }).catch(console.error);
+        // Always POSTed regardless of direction before — removing an item
+        // never actually deleted it server-side, so it silently reappeared
+        // (or never left the wishlist page's list) on refresh.
+        if (added) {
+          fetch("/api/wishlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ productId: id }),
+          }).catch(console.error);
+        } else {
+          fetch(`/api/wishlist?productId=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(console.error);
+        }
       }
       return added;
     },

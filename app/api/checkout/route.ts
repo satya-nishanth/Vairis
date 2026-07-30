@@ -211,6 +211,17 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  // Cart items are now owned by this order — clear them here, once a real
+  // payment attempt exists (order + gateway intent both created), rather
+  // than waiting for payment.captured. Previously cart only cleared on a
+  // successful payment, so a pending, failed, or abandoned checkout left
+  // the same items sitting in the cart alongside the order that already
+  // has them, inviting an accidental double order. Cleared only after the
+  // gateway intent succeeds — a gateway failure above cancels the order
+  // and leaves the cart untouched, so retrying doesn't require re-adding
+  // everything.
+  await prisma.cartItem.deleteMany({ where: { userId: user.id } })
+
   return NextResponse.json({
     orderId: order.id,
     gateway: gateway.name,

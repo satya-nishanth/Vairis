@@ -78,7 +78,12 @@ export function WishlistPageView() {
 
   const guestResolved = [...ids].every((id) => guestCache.has(id));
   const guestProducts = [...ids].map((id) => guestCache.get(id)).filter((p): p is Product => !!p);
-  const products: Product[] = apiProducts ?? guestProducts;
+  // Filter the fetched list by the live `ids` set (not just render it as-is)
+  // so removing a heart on this page drops the card immediately — apiProducts
+  // itself is fetched once and never refetched, it's just a name→id lookup.
+  const products: Product[] = apiProducts
+    ? apiProducts.filter((p) => ids.has(p.catalogueId))
+    : guestProducts;
   const loading = loggedIn === null || (loggedIn === false && !guestResolved);
 
   return (

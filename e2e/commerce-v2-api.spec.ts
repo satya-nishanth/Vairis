@@ -127,6 +127,12 @@ test.describe('Mock payment gateway — full lifecycle', () => {
     const order = await prisma.order.findUnique({ where: { id: res.body.orderId as string } })
     expect(order?.status).toBe('PAYMENT_PENDING')
 
+    // Cart items are owned by the order the moment it's created — they used
+    // to only clear on a *successful* payment, leaving a pending order's
+    // items still sitting in the cart too.
+    const cartCount = await prisma.cartItem.count({ where: { userId } })
+    expect(cartCount).toBe(0)
+
     await cleanupOrder(res.body.orderId as string)
   })
 
@@ -180,6 +186,12 @@ test.describe('Mock payment gateway — full lifecycle', () => {
     const order = await prisma.order.findUnique({ where: { id: orderId }, include: { payment: true } })
     expect(order?.status).toBe('PAYMENT_PENDING')
     expect(order?.payment?.status).toBe('FAILED')
+
+    // The exact bug this covers: cart previously only cleared on
+    // payment.captured, so a failed payment left the same items sitting in
+    // the cart right next to the order that already owns them.
+    const cartCount = await prisma.cartItem.count({ where: { userId } })
+    expect(cartCount).toBe(0)
 
     await cleanupOrder(orderId)
   })

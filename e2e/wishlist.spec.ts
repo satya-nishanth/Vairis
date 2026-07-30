@@ -183,6 +183,36 @@ test.describe('Login & wishlist flows', () => {
     await page.request.delete(`/api/wishlist?productId=${testProductId}`)
   })
 
+  test('6b. logged-in: clicking the heart to remove actually deletes it server-side (not just locally)', async ({ page }) => {
+    test.skip(!testProductId, 'Requires test product')
+
+    await loginAsUser(page)
+    await page.request.delete(`/api/wishlist?productId=${testProductId}`)
+    await page.request.post('/api/wishlist', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { productId: testProductId },
+    })
+
+    await page.goto('/wishlist')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('.wishlist-grid').getByText(PRODUCT_NAME)).toBeVisible()
+
+    // Toggle.remove() used to always POST (upsert) regardless of direction,
+    // so the server-side row never actually got deleted — the card would
+    // reappear (or never truly leave) on the next fetch. Assert the actual
+    // server state via a fresh GET, not just what's rendered client-side.
+    const [deleteRes] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/api/wishlist') && r.request().method() === 'DELETE'),
+      page.locator(`button[aria-label="Remove ${PRODUCT_NAME} from wishlist"]`).first().click(),
+    ])
+    expect(deleteRes.ok()).toBe(true)
+    await expect(page.locator('.wishlist-empty')).toBeVisible({ timeout: 6000 })
+
+    const res = await page.request.get('/api/wishlist')
+    const items = (await res.json()) as { productId: string }[]
+    expect(items.some((i) => i.productId === testProductId)).toBe(false)
+  })
+
   // ─── 4. Public /wishlist ─────────────────────────────────────────────────
 
   test('7. /wishlist is public — no login redirect, shows empty state for a fresh guest', async ({ page }) => {
