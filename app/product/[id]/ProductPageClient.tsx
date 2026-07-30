@@ -8,6 +8,7 @@ import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpP
 import { ProductReviews } from "@/components/commerce/ProductReviews";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
+import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { PdpStickyBar } from "@/components/commerce/PdpStickyBar";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
@@ -318,12 +319,18 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                 <ul className="pdp-info__stones">
                   {product.stones.map((s) => (
                     <li key={s.id} className="pdp-info__stone">
-                      <span>
+                      <span className="pdp-info__stone-label">
+                        <ThemeIcon
+                          name="vairis_diamond_mark"
+                          category="brand"
+                          size={16}
+                          className="pdp-info__stone-icon"
+                        />
                         {s.label ? `${s.label} — ` : ""}
                         {s.typeLabel}
                         {s.count ? ` × ${s.count}` : ""}
                       </span>
-                      <span>{s.caratWeight.toFixed(2)} ct</span>
+                      <span className="pdp-info__stone-carat">{s.caratWeight.toFixed(2)} ct</span>
                     </li>
                   ))}
                 </ul>

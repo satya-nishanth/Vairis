@@ -800,9 +800,20 @@
   border-top: 1px solid var(--color-border);
 }
 
-.pdp-info__stone span:last-child {
+.pdp-info__stone-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdp-info__stone-icon {
+  flex-shrink: 0;
+}
+
+.pdp-info__stone-carat {
   font-weight: 600;
   white-space: nowrap;
+  color: var(--brand-olive, #5e684e);
 }
 
 .pdp-info__breakup {
