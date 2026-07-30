@@ -86,10 +86,37 @@
 }
 
 /* CommerceTrustHelpPanel reuses .plp-bottom (a full-bleed PLP section with
-   56px vertical padding) — collapse that inside the narrow PDP info column */
+   56px vertical padding) — collapse that inside the narrow PDP info column.
+   PLP gives this a 2fr:1fr split (trust cards : help panel) because it has
+   the full page width to work with. The PDP info column never does — it's
+   already only ~0.9fr of the gallery layout — so splitting it again 2:1
+   left the trust-cards area as little as ~260px wide at common laptop
+   widths (1100–1700px), squeezing all 7 cards into one cramped column.
+   Stack instead: full-width trust-card grid, help panel below. */
 .pdp-section--trust-help .plp-bottom {
   padding-top: 0;
   padding-bottom: 0;
+  grid-template-columns: 1fr;
+}
+
+.pdp-section--trust-help .plp-bottom__trust {
+  padding: 0;
+}
+
+.pdp-section--trust-help .plp-trust-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pdp-section--trust-help .plp-trust-cards__row {
+  display: contents;
+}
+
+.pdp-section--trust-help .plp-trust-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  width: calc(50% - 6px);
+  justify-self: center;
 }
 
 .pdp-gallery__360 {
@@ -747,15 +774,6 @@
     padding-top: 0;
     padding-bottom: 0;
   }
-}
-
-/* Trust cards live in the narrow info column here — let columns adapt
-   instead of forcing 4-up (titles clip below ~1700px viewports) */
-.pdp-section--trust-help .plp-trust-cards__row--four,
-.pdp-section--trust-help .plp-trust-cards__row--three {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  width: auto;
-  margin-inline: 0;
 }
 
 /* ── Pricing v2: stones list, exchange toggle, price breakup ─────────────── */
