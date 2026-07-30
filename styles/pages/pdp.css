@@ -790,6 +790,7 @@
 .pdp-info__stone {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
   padding: 10px 14px;
   font-size: 0.875rem;
@@ -802,12 +803,16 @@
 
 .pdp-info__stone-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
 
 .pdp-info__stone-icon {
   flex-shrink: 0;
+  /* Nudge to align with the first line's cap-height instead of the icon's
+     literal box top — wrapped labels (mobile) would otherwise show the
+     icon floating centered against the whole multi-line block. */
+  margin-top: 2px;
 }
 
 .pdp-info__stone-carat {
