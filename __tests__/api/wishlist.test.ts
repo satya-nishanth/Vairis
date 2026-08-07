@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { GET, POST, DELETE } from '@/app/api/wishlist/route'
 import { prisma } from '@/lib/prisma'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -16,7 +16,7 @@ jest.mock('@/lib/prisma', () => ({
   },
 }))
 jest.mock('@/lib/auth', () => ({
-  requireUser: jest.fn(),
+  getAppUser: jest.fn(),
 }))
 jest.mock('next/navigation', () => ({
   redirect: jest.fn().mockImplementation((url: string) => { throw new Error(`REDIRECT:${url}`) }),
@@ -24,7 +24,7 @@ jest.mock('next/navigation', () => ({
 
 const mockWishlist = prisma.wishlist as jest.Mocked<typeof prisma.wishlist>
 const mockProduct = prisma.product as jest.Mocked<typeof prisma.product>
-const mockRequireUser = requireUser as jest.MockedFunction<typeof requireUser>
+const mockGetAppUser = getAppUser as jest.MockedFunction<typeof getAppUser>
 
 const fakeUser = { id: 'user-1', email: 'user@test.com', name: 'Test' }
 const comingSoonProduct = { id: 'p1', comingSoon: true }
@@ -39,7 +39,7 @@ function makeReq(url: string, method = 'GET', body?: object) {
 
 beforeEach(() => {
   jest.clearAllMocks()
-  mockRequireUser.mockResolvedValue(fakeUser as any)
+  mockGetAppUser.mockResolvedValue(fakeUser as any)
 })
 
 // ─── GET /api/wishlist ─────────────────────────────────────────────────────
@@ -62,9 +62,10 @@ describe('GET /api/wishlist', () => {
     )
   })
 
-  it('redirects when not authenticated', async () => {
-    mockRequireUser.mockRejectedValue(new Error('REDIRECT:/auth/login'))
-    await expect(GET()).rejects.toThrow('REDIRECT:/auth/login')
+  it('returns 401 when not authenticated', async () => {
+    mockGetAppUser.mockResolvedValue(null)
+    const res = await GET()
+    expect(res.status).toBe(401)
   })
 })
 
@@ -116,9 +117,10 @@ describe('POST /api/wishlist', () => {
   })
 
   it('requires authentication', async () => {
-    mockRequireUser.mockRejectedValue(new Error('REDIRECT:/auth/login'))
+    mockGetAppUser.mockResolvedValue(null)
     const req = makeReq('http://localhost/api/wishlist', 'POST', { productId: 'p1' })
-    await expect(POST(req)).rejects.toThrow('REDIRECT:/auth/login')
+    const res = await POST(req)
+    expect(res.status).toBe(401)
     expect(mockWishlist.upsert).not.toHaveBeenCalled()
   })
 })

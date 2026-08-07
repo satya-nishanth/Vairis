@@ -171,12 +171,13 @@ describe('POST /api/admin/products', () => {
     const res = await createProduct(req)
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toBe('Validation failed')
+    expect(data.error).toBe('Invalid input')
   })
 
-  it('returns 400 when weight is zero', async () => {
+  it('returns 400 when a LIVE product has zero weight on every variant', async () => {
     const badBody = {
       ...validBody,
+      status: 'LIVE',
       variants: [{ ...validBody.variants[0], weightGrams: '0' }],
     }
     const req = makeReq('http://localhost/api/admin/products', 'POST', badBody)
@@ -224,7 +225,10 @@ describe('PATCH /api/admin/products/[id]', () => {
       },
       orderItem: { count: jest.fn() },
       cartItem: { deleteMany: jest.fn() },
-      product: { update: jest.fn().mockResolvedValue(updated) },
+      product: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ status: 'DRAFT', comingSoon: false }),
+        update: jest.fn().mockResolvedValue(updated),
+      },
     }
     ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 
@@ -252,7 +256,10 @@ describe('PATCH /api/admin/products/[id]', () => {
       },
       orderItem: { count: jest.fn().mockResolvedValue(0) },
       cartItem: { deleteMany: jest.fn() },
-      product: { update: jest.fn().mockResolvedValue(updated) },
+      product: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ status: 'DRAFT', comingSoon: false }),
+        update: jest.fn().mockResolvedValue(updated),
+      },
     }
     ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 
@@ -292,7 +299,10 @@ describe('PATCH /api/admin/products/[id]', () => {
       },
       orderItem: { count: jest.fn() },
       cartItem: { deleteMany: jest.fn() },
-      product: { update: jest.fn().mockResolvedValue(updated) },
+      product: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ status: 'DRAFT', comingSoon: false }),
+        update: jest.fn().mockResolvedValue(updated),
+      },
     }
     ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 

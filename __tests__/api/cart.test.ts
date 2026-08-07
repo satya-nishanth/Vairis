@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server'
 import { GET, POST } from '@/app/api/cart/route'
 import { PATCH, DELETE } from '@/app/api/cart/[itemId]/route'
 import { prisma } from '@/lib/prisma'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
+import { getPricingConfig, getShowPricesGlobal, resolvePriceVisibility } from '@/lib/pricing-data'
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -12,19 +13,54 @@ jest.mock('@/lib/prisma', () => ({
       updateMany: jest.fn(),
       deleteMany: jest.fn(),
     },
+    goldRate: {
+      findMany: jest.fn(),
+    },
+    productVariant: {
+      findUnique: jest.fn(),
+    },
   },
 }))
 jest.mock('@/lib/auth', () => ({
-  requireUser: jest.fn(),
+  getAppUser: jest.fn(),
+}))
+jest.mock('@/lib/pricing-data', () => ({
+  getPricingConfig: jest.fn(),
+  getShowPricesGlobal: jest.fn(),
+  resolvePriceVisibility: jest.fn(),
+  toStoneInputs: jest.fn().mockReturnValue([]),
 }))
 jest.mock('next/navigation', () => ({
   redirect: jest.fn().mockImplementation((url: string) => { throw new Error(`REDIRECT:${url}`) }),
 }))
 
 const mockCart = prisma.cartItem as jest.Mocked<typeof prisma.cartItem>
-const mockRequireUser = requireUser as jest.MockedFunction<typeof requireUser>
+const mockGoldRate = prisma.goldRate as jest.Mocked<typeof prisma.goldRate>
+const mockVariant = prisma.productVariant as jest.Mocked<typeof prisma.productVariant>
+const mockGetAppUser = getAppUser as jest.MockedFunction<typeof getAppUser>
+const mockGetPricingConfig = getPricingConfig as jest.MockedFunction<typeof getPricingConfig>
+const mockGetShowPricesGlobal = getShowPricesGlobal as jest.MockedFunction<typeof getShowPricesGlobal>
+const mockResolvePriceVisibility = resolvePriceVisibility as jest.MockedFunction<typeof resolvePriceVisibility>
 
 const fakeUser = { id: 'user-1', email: 'test@test.com', name: 'Test', createdAt: new Date(), mobile: null, googleId: null, addresses: [], orders: [], cartItems: [] }
+
+const fakeCartItem = (overrides: Record<string, unknown> = {}) => ({
+  id: 'c1',
+  userId: 'user-1',
+  variantId: 'v1',
+  quantity: 2,
+  withExchange: false,
+  variant: {
+    weightGrams: '5',
+    makingChargePerGram: '100',
+    flatMakingCharge: '0',
+    stoneCharges: '0',
+    miscCharges: '0',
+    metalType: 'GOLD_18K',
+    product: { stones: [] },
+  },
+  ...overrides,
+})
 
 function makeReq(url: string, method = 'GET', body?: object) {
   return new NextRequest(new URL(url, 'http://localhost'), {
@@ -35,15 +71,19 @@ function makeReq(url: string, method = 'GET', body?: object) {
 
 beforeEach(() => {
   jest.clearAllMocks()
-  mockRequireUser.mockResolvedValue(fakeUser as any)
+  mockGetAppUser.mockResolvedValue(fakeUser as any)
+  mockGoldRate.findMany.mockResolvedValue([{ metalType: 'GOLD_18K', ratePerGram: '6000', fetchedAt: new Date() }] as any)
+  mockGetPricingConfig.mockResolvedValue({ vaGoldPct: '5', vaStonePct: '5' } as any)
+  mockGetShowPricesGlobal.mockResolvedValue(true)
+  mockResolvePriceVisibility.mockReturnValue(true)
+  mockVariant.findUnique.mockResolvedValue({ product: { priceVisibility: 'INHERIT' } } as any)
 })
 
 // ─── GET /api/cart ─────────────────────────────────────────────────────────
 
 describe('GET /api/cart', () => {
   it('returns cart items for authenticated user', async () => {
-    const items = [{ id: 'c1', userId: 'user-1', variantId: 'v1', quantity: 2 }]
-    mockCart.findMany.mockResolvedValue(items as any)
+    mockCart.findMany.mockResolvedValue([fakeCartItem()] as any)
 
     const res = await GET()
     expect(res.status).toBe(200)
@@ -60,14 +100,34 @@ describe('GET /api/cart', () => {
     )
   })
 
-  it('includes variant and product in response', async () => {
+  it('includes variant, product and stones in response', async () => {
     mockCart.findMany.mockResolvedValue([])
     await GET()
     expect(mockCart.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: { variant: { include: { product: true } } },
+        include: {
+          variant: {
+            include: {
+              product: {
+                include: {
+                  stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+                },
+              },
+            },
+          },
+        },
       })
     )
+  })
+
+  it('attaches a computed unitPrice to each item', async () => {
+    mockCart.findMany.mockResolvedValue([fakeCartItem()] as any)
+    const res = await GET()
+    const data = await res.json()
+    // goldValue 5g*6000=30000, goldVA 5%=1500, making 5*100=500,
+    // gst = (30000+1500)*0.03 + 500*0.05 = 945+25 = 970
+    // total = 30000+1500+500+970 = 32970
+    expect(data[0].unitPrice).toBe(32970)
   })
 
   it('returns empty array when cart is empty', async () => {
@@ -77,9 +137,10 @@ describe('GET /api/cart', () => {
     expect(await res.json()).toEqual([])
   })
 
-  it('redirects when not authenticated', async () => {
-    mockRequireUser.mockRejectedValue(new Error('REDIRECT:/auth/login'))
-    await expect(GET()).rejects.toThrow('REDIRECT:/auth/login')
+  it('returns 401 when not authenticated', async () => {
+    mockGetAppUser.mockResolvedValue(null)
+    const res = await GET()
+    expect(res.status).toBe(401)
   })
 })
 
@@ -101,7 +162,7 @@ describe('POST /api/cart', () => {
     await POST(req)
     expect(mockCart.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId_variantId: { userId: 'user-1', variantId: 'v2' } },
+        where: { userId_variantId_withExchange: { userId: 'user-1', variantId: 'v2', withExchange: false } },
       })
     )
   })
