@@ -7,8 +7,14 @@ param userAssignedIdentityPrincipalId string
 param appInsightsConnectionString string
 param storageAccountName string
 param secretRefs array
+@description('Custom domain (e.g. www.thevairis.com) to bind to this app. Empty = no custom domain (staging).')
+param customDomainFqdn string = ''
+@description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued (DNS TXT/CNAME verified) before this deploys.')
+param customCertificateName string = ''
 
 var isProd = environmentName == 'prod'
+var certificateResourceId = !empty(customCertificateName) ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', 'cae-vairis-${environmentName}', customCertificateName) : ''
+var customDomains = !empty(customDomainFqdn) ? [{ name: customDomainFqdn, certificateId: certificateResourceId, bindingType: 'SniEnabled' }] : []
 
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
   name: storageAccountName
@@ -38,7 +44,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
       activeRevisionsMode: 'Single'
-      ingress: { external: true, targetPort: 3000 }
+      ingress: { external: true, targetPort: 3000, customDomains: customDomains }
       registries: [{ server: containerRegistryEndpoint, identity: userAssignedIdentityId }]
       secrets: secretRefs
     }

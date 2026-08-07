@@ -7,6 +7,8 @@
     "postgresAdminPassword": { "value": "${POSTGRES_ADMIN_PASSWORD}" },
     "siteUrl": { "value": "${SITE_URL}" },
     "googleClientId": { "value": "${GOOGLE_CLIENT_ID}" },
-    "containerRegistryEndpoint": { "value": "${AZURE_CONTAINER_REGISTRY_ENDPOINT}" }
+    "containerRegistryEndpoint": { "value": "${AZURE_CONTAINER_REGISTRY_ENDPOINT}" },
+    "customDomainFqdn": { "value": "${CUSTOM_DOMAIN_FQDN}" },
+    "customCertificateName": { "value": "${CUSTOM_CERTIFICATE_NAME}" }
   }
 }

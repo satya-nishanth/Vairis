@@ -21,6 +21,12 @@ param googleClientId string
 
 param containerRegistryEndpoint string
 
+@description('Custom domain (e.g. www.thevairis.com) to bind to the app. Empty = no custom domain.')
+param customDomainFqdn string = ''
+
+@description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued before this deploys, or provisioning fails.')
+param customCertificateName string = ''
+
 @description('True when deploying the prod environment — lets modules size themselves differently per environment')
 var isProd = environmentName == 'prod'
 
@@ -135,6 +141,8 @@ module app 'modules/app.bicep' = {
     userAssignedIdentityPrincipalId: identity.outputs.principalId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     storageAccountName: storage.outputs.storageAccountName
+    customDomainFqdn: customDomainFqdn
+    customCertificateName: customCertificateName
     secretRefs: [
       { name: 'database-url', value: 'postgresql://vairisadmin:${uriComponent(postgresAdminPassword)}@${database.outputs.postgresHost}:5432/postgres?sslmode=require&schema=public' } // vairisadmin's default search_path is auth-first (for GoTrue) — pin Prisma to public explicitly or its migrations/queries land in the wrong schema
       { name: 'supabase-url', value: gotrue.outputs.gotrueUrl }
