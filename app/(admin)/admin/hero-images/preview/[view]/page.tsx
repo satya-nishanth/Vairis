@@ -5,13 +5,14 @@ import { getAllHeroSlides } from '@/lib/hero-images'
 export const dynamic = 'force-dynamic'
 
 type Props = {
-  params: { view: string }
+  params: Promise<{ view: string }>
 }
 
 export default async function HeroPreviewPage({ params }: Props) {
-  if (params.view !== 'mobile' && params.view !== 'web') notFound()
+  const { view } = await params
+  if (view !== 'mobile' && view !== 'web') notFound()
 
   const slides = await getAllHeroSlides()
 
-  return <HeroBannerFullPreview variant={params.view} slides={slides} />
+  return <HeroBannerFullPreview variant={view} slides={slides} />
 }

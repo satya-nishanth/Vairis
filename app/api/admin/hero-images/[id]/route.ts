@@ -11,13 +11,14 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     await requireAdmin()
+    const { id } = await params
 
-    const existing = await prisma.heroImage.findUnique({ where: { id: params.id } })
+    const existing = await prisma.heroImage.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const image = await prisma.heroImage.update({
-      where: { id: params.id },
+      where: { id },
       data: parsed.data,
     })
 
@@ -47,13 +48,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     await requireAdmin()
+    const { id } = await params
 
-    const existing = await prisma.heroImage.findUnique({ where: { id: params.id } })
+    const existing = await prisma.heroImage.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    await prisma.heroImage.delete({ where: { id: params.id } })
+    await prisma.heroImage.delete({ where: { id } })
 
     const remaining = await prisma.heroImage.findMany({ orderBy: { sortOrder: 'asc' } })
     await prisma.$transaction(
