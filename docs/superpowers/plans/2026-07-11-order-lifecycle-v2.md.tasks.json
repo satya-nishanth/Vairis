@@ -1,0 +1,98 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-11-order-lifecycle-v2.md",
+  "tasks": [
+    {
+      "id": 0,
+      "nativeId": 29,
+      "subject": "Task 0: Schema v2 migration + status renames across codebase",
+      "status": "completed"
+    },
+    {
+      "id": 1,
+      "nativeId": 30,
+      "subject": "Task 1: lib/orders.ts v2 \u2014 complete state machine",
+      "status": "completed",
+      "blockedBy": [
+        0
+      ]
+    },
+    {
+      "id": 2,
+      "nativeId": 31,
+      "subject": "Task 2: Refund ledger + webhook intent matching + late-capture guard",
+      "status": "completed",
+      "blockedBy": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "nativeId": 32,
+      "subject": "Task 3: Shipments per dispatch \u2014 attempts, outcomes, history",
+      "status": "completed",
+      "blockedBy": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "nativeId": 33,
+      "subject": "Task 4: Transition API expansion + OrderActions v2",
+      "status": "completed",
+      "blockedBy": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "nativeId": 34,
+      "subject": "Task 5: Payment retry + expiry sweep",
+      "status": "completed",
+      "blockedBy": [
+        2
+      ]
+    },
+    {
+      "id": 6,
+      "nativeId": 35,
+      "subject": "Task 6: Auto-split with payment anchoring",
+      "status": "completed",
+      "blockedBy": [
+        2
+      ]
+    },
+    {
+      "id": 7,
+      "nativeId": 36,
+      "subject": "Task 7: Customer returns",
+      "status": "completed",
+      "blockedBy": [
+        4
+      ]
+    },
+    {
+      "id": 8,
+      "nativeId": 37,
+      "subject": "Task 8: Order notes (WhatsApp context)",
+      "status": "completed",
+      "blockedBy": [
+        4
+      ]
+    },
+    {
+      "id": 9,
+      "nativeId": 38,
+      "subject": "Task 9: Lifecycle test suite v2 + docs + full verification",
+      "status": "completed",
+      "blockedBy": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    }
+  ],
+  "lastUpdated": "2026-07-12T20:03:29.491318Z"
+}

@@ -1,0 +1,225 @@
+.checkout-header {
+  text-align: center;
+  padding: 24px;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--bg-page);
+}
+
+.checkout-header .logo img {
+  height: 72px;
+  width: auto;
+}
+
+.checkout-header__secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.checkout-header__badges {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 16px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.checkout-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 40px;
+  padding: 40px 0 80px;
+  align-items: start;
+}
+
+.checkout-section {
+  background: var(--bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 28px;
+  margin-bottom: 20px;
+}
+
+.checkout-section__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.checkout-section__num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+}
+
+.shipping-card {
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.payment-option {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.payment-option.is-selected {
+  border-color: var(--color-primary);
+  background: var(--bg-muted);
+}
+
+.protection-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.protection-icons span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.support-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  font-size: 0.8125rem;
+}
+
+.expert-avatars {
+  display: flex;
+  margin: 16px 0;
+}
+
+.expert-avatars img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-left: -8px;
+  border: 2px solid var(--bg-card);
+  object-fit: cover;
+  background: var(--bg-category);
+}
+
+@media (max-width: 900px) {
+  .checkout-layout {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-bottom: 32px;
+  }
+
+  .checkout-header__badges {
+    flex-wrap: wrap;
+    gap: 12px 20px;
+  }
+}
+
+@media (max-width: 767px) {
+  .checkout-header {
+    padding: 16px;
+  }
+
+  .checkout-header__badges span {
+    flex: 0 0 auto;
+  }
+
+  .checkout-layout {
+    padding-bottom: calc(80px + var(--mobile-sticky-offset));
+  }
+
+  .checkout-section {
+    padding: 20px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-submit--inline {
+    display: none !important;
+  }
+
+  .shipping-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* Real checkout additions (order flow) */
+.checkout-note {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.payment-option__badge {
+  font-size: 0.75rem;
+  background: var(--bg-category);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* 105% / 5% security-deposit explainer (money model: lib/orders.ts) */
+.deposit-explainer {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+}
+
+.deposit-explainer p {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.checkout-alert {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  border: 1px solid transparent;
+}
+
+.checkout-alert--info {
+  background: var(--bg-muted);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.checkout-alert--info a {
+  text-decoration: underline;
+}
+
+.checkout-alert--error {
+  background: rgba(185, 28, 28, 0.08);
+  border-color: rgba(185, 28, 28, 0.3);
+  color: #b91c1c;
+}

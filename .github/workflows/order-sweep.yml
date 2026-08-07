@@ -1,0 +1,19 @@
+# Hourly sweep: expires unpaid PAYMENT_PENDING orders past ORDER_EXPIRY_HOURS
+# and releases their promo redemptions.
+# Repo secrets required: APP_URL, ORDER_SWEEP_SECRET.
+name: Order expiry sweep
+
+on:
+  schedule:
+    - cron: "30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/sweep-orders
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.ORDER_SWEEP_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/admin/sweep-orders"

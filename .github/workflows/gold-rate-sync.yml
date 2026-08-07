@@ -1,0 +1,19 @@
+# Hourly gold-rate sync during Indian market hours (Vercel Hobby has no crons).
+# Repo secrets required: APP_URL (https://<domain>), GOLD_SYNC_SECRET.
+name: Gold rate sync
+
+on:
+  schedule:
+    # Every hour 03:00–14:00 UTC ≈ 08:30–19:30 IST
+    - cron: "0 3-14 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/sync-gold-rate
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GOLD_SYNC_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/admin/sync-gold-rate"

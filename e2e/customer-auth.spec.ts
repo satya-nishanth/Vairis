@@ -71,16 +71,19 @@ test.describe('Customer auth flows — sign in / sign up / forgot password', () 
 
   // ── Sign up new account ──────────────────────────────────────────────────
 
-  test('sign up with new email → redirected to sign-in with success msg', async ({ page }) => {
+  test('sign up with new email → redirected to email-confirmation screen', async ({ page }) => {
     await goToLogin(page, 'signup')
 
     await page.locator('input[name="email"]').fill(TEST_USER.email)
     await page.locator('input[name="password"]').fill(TEST_USER.password)
     await page.getByRole('button', { name: 'Create Account' }).click()
 
-    // Redirect to sign-in page with success message
-    await page.waitForURL(/\/auth\/login\?msg=/, { timeout: 10000 })
-    await expect(page.locator('text=Account created')).toBeVisible()
+    // Supabase confirmation emails are on (see supabase/config.toml
+    // enable_confirmations) — signup redirects to the "Check your inbox"
+    // screen, not straight back to a signed-in sign-in page.
+    await page.waitForURL(/\/auth\/login\?mode=confirm&email=/, { timeout: 10000 })
+    await expect(page.locator('h2', { hasText: 'Check your inbox' })).toBeVisible()
+    await expect(page.locator('text=' + TEST_USER.email)).toBeVisible()
   })
 
   test('sign up with duplicate email → shows error', async ({ page }) => {
@@ -93,7 +96,7 @@ test.describe('Customer auth flows — sign in / sign up / forgot password', () 
 
     await page.waitForURL(/mode=signup.*error=|error=.*mode=signup/, { timeout: 10000 })
     // Error message rendered
-    await expect(page.locator('text=already').or(page.locator('text=registered')).or(page.locator('[class*=red]'))).toBeVisible()
+    await expect(page.locator('text=already').or(page.locator('text=registered')).or(page.locator('.auth-msg--error'))).toBeVisible()
   })
 
   // ── Sign in ──────────────────────────────────────────────────────────────
@@ -113,7 +116,7 @@ test.describe('Customer auth flows — sign in / sign up / forgot password', () 
     await page.locator('input[name="password"]').fill('wrongpassword')
     await page.getByRole('button', { name: 'Sign In' }).click()
     await page.waitForURL(/\/auth\/login\?error=/, { timeout: 10000 })
-    await expect(page.locator('[class*=red]')).toBeVisible()
+    await expect(page.locator('.auth-msg--error')).toBeVisible()
   })
 
   // ── Forgot password ──────────────────────────────────────────────────────

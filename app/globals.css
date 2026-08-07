@@ -1,77 +1,21 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ── Brand colour & typography tokens ─────────────────────── */
-:root {
-  /* Backgrounds */
-  --bg-page:        #ffffff;
-  --bg-dark:        #0f2418;   /* brand forest green */
-  --bg-cream:       #faf8f5;   /* warm off-white */
-
-  /* Text — light surfaces */
-  --text-primary:   #1a1a1a;
-  --text-secondary: #6b7280;
-  --text-muted:     #9ca3af;
-
-  /* Text — dark surfaces */
-  --text-on-dark:       #ffffff;
-  --text-on-dark-muted: rgba(255,255,255,0.55);
-
-  /* Brand accent */
-  --gold:           #c9a84c;   /* primary gold */
-  --gold-light:     #e8d48b;   /* lighter gold, readable on warm bg */
-  --gold-dim:       rgba(201,168,76,0.6);
-
-  /* Border */
-  --border:         #e5e1d8;
-  --border-dark:    rgba(255,255,255,0.12);
-
-  /* Font stacks — set via next/font variables */
-  --font-display:   'Cormorant Garamond', Georgia, serif;
-  --font-body:      'Inter', system-ui, sans-serif;
-}
-
-body {
-  color: var(--text-primary);
-  background: var(--bg-page);
-  font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ── Hero carousel: mobile object-position crop ─────────────────
-   Landscape hero images have jewelry/people on the LEFT.
-   Portrait crop (mobile) must pan left to show the subject, not
-   the empty space on the right side of each image.          */
-@media (max-width: 767px) {
-  /* 78vh so category cards peek below fold — scroll invitation */
-  .hero-carousel { height: 78vh !important; }
-
-  .hero-slide-0 { object-position: 20% center !important; }
-  .hero-slide-1 { object-position: 40% center !important; }
-  .hero-slide-2 { object-position: 22% center !important; }
-}
-
-@layer utilities {
-  .text-balance { text-wrap: balance; }
-
-  /* Display / headline convenience classes */
-  .display-xl {
-    font-family: var(--font-display);
-    font-weight: 300;
-    letter-spacing: 0.06em;
-  }
-  .display-lg {
-    font-family: var(--font-display);
-    font-weight: 400;
-    letter-spacing: 0.04em;
-  }
-  .label-caps {
-    font-family: var(--font-body);
-    font-size: 11px;
-    font-weight: 400;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-  }
-}
+@import "../styles/tokens.css";
+@import "../styles/themes/light.css";
+@import "../styles/themes/dark.css";
+@import "../styles/reset.css";
+@import "../styles/layout.css";
+@import "../styles/components.css";
+@import "../styles/pages/home.css";
+@import "../styles/pages/plp.css";
+@import "../styles/pages/pdp.css";
+@import "../styles/pages/cart.css";
+@import "../styles/pages/checkout.css";
+@import "../styles/pages/confirmation.css";
+@import "../styles/pages/orders.css";
+@import "../styles/pages/contact.css";
+@import "../styles/pages/returns.css";
+@import "../styles/pages/wishlist.css";
+@import "../styles/pages/auth.css";
+@import "../styles/pages/admin-form.css";
+@import "../styles/pages/admin-shell.css";
+@import "../styles/auth.css";
+@import "../styles/responsive.css";

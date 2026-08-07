@@ -42,24 +42,29 @@ Next.js 14 App Router + Supabase (PostgreSQL + Auth + Storage) + Prisma 5 + Tail
 **Email:** Resend (working, template bare-bones)
 
 ### What's built
-- Auth: email/password + Google OAuth; admin gated via `ADMIN_EMAILS` env var
-- Shop page (SSR, category filter), PDP (SSR, revalidate=60), Wishlist, Account page
-- Cart API (GET/POST/PATCH/DELETE, force-dynamic), Admin product CRUD
-- 23 products in prod with images + videos
-- `lib/pricing.ts`: GST-correct pricing formula (see below)
-- Loading skeletons for shop, PDP, wishlist, account
+Full store — see `docs/FEATURES.md` for the complete inventory. Highlights:
+- Auth (email/password + Google OAuth), address book, admin gated via `ADMIN_EMAILS`
+- Catalogue: shop/category pages, collections, PDP with multi-diamond pricing
+  (with/without exchange), reviews, live search
+- Checkout: cart, promo codes, mock or Razorpay payment gateway
+  (`PAYMENT_GATEWAY=mock` — full lifecycle without keys, see `lib/payments/mock.ts`)
+- Shipping: manual, Shiprocket, DTDC adapters (`SHIPPING_MOCK=true` for keyless dev)
+- Order lifecycle v2: split deliveries, returns, RTO, refund ledger, cancellation
+- Admin: product CRUD (draft/AI-draft/live), pricing settings, collections,
+  home-sections CMS, promos, reviews moderation, contacts inbox, analytics,
+  dashboard stats
+- SEO (sitemap/robots/JSON-LD), legal pages, branded emails, rate limiting,
+  Sentry (opt-in), first-party analytics + optional GA4
 
-### Not built yet (priority order)
+### Remaining before real-money launch
 1. **P1** Custom domain → Vercel
-2. **P2** Live gold rate fetch → GitHub Actions cron (not Vercel)
-3. **P3** Razorpay checkout + webhook (BIS cert pending — Anil)
-4. **P4** Shiprocket integration (post-Razorpay)
-5. **P5** Cart page + checkout flow (blocked on Razorpay)
-6. **P6** Admin: orders UI + Razorpay payment links
-7. **P7** SEO: sitemap.xml, robots.txt
-8. **P8** Email template redesign
-9. **P9** Azure migration (Vercel sufficient now)
-10. **P10** WhatsApp bot (Python service, future phase)
+2. **P2** Turn on gold-rate + order-sweep GitHub Actions crons (workflows committed, need repo secrets)
+3. **P3** Razorpay LIVE keys + webhook (BIS cert pending — Anil) — swap `PAYMENT_GATEWAY=mock` → `razorpay`
+4. **P4** Shiprocket/DTDC real API keys — swap `SHIPPING_MOCK=true` off
+5. **P5** Resend domain verification
+6. **P6** e2e test suite (Stage 7, in progress)
+7. **P7** Azure migration (Vercel sufficient now)
+8. **P8** WhatsApp bot (Python service, future phase)
 
 ---
 
@@ -82,14 +87,26 @@ Next.js 14 App Router + Supabase (PostgreSQL + Auth + Storage) + Prisma 5 + Tail
 
 ---
 
-## 4. Pricing Formula (`lib/pricing.ts`)
+## 4. Pricing Formula v2 (`lib/pricing.ts`)
 
 ```
-goldValue   = weight × goldRatePerGram
-making      = weight × makingChargePerGram + flatMakingCharge
-GST         = goldValue × 3% + making × 5%
-total       = goldValue + making + stoneCharges + miscCharges + GST
+goldValue  = weight(size) × goldRatePerGram
+goldVA     = goldValue × vaGoldPct        (PricingSettings, default 5%)
+making     = weight × makingChargePerGram + flatMakingCharge
+stoneValue = Σ stones(carat × DiamondRate[type][withExchange?]) + legacy flat stoneCharges
+stoneVA    = stoneValue × vaStonePct      (PricingSettings, default 5%)
+GST        = (goldValue + goldVA + stoneValue + stoneVA) × 3% + making × 5%
+total      = goldValue + goldVA + making + stoneValue + stoneVA + miscCharges + GST
 ```
+
+VA = "Value Addition" — a **disclosed** breakup line (admin-editable label + %),
+shown on PDP/checkout/order/email. Weights and carats shown to the customer
+are always the true values — **never** silently inflated. The 105%/5%
+refundable-deposit model is retired (`depositAmount` stays 0 on new orders).
+
+Diamond rates (`DiamondRate` table) are per-carat, two rates each
+(with/without exchange) — admin-editable at `/admin/settings/pricing`.
+Product diamonds live in `ProductStone` (type + carat, count/label optional).
 
 Do not change this formula without explicit instruction.
 

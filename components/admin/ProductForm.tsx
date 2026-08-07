@@ -2,41 +2,45 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
+import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
+import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
 
-const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS']
+const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 const METAL_TYPES = [
   { value: 'GOLD_18K', label: '18kt Gold', skuSuffix: 'G18K' },
   { value: 'GOLD_14K', label: '14kt Gold', skuSuffix: 'G14K' },
   { value: 'ROSE_GOLD', label: 'Rose Gold 18kt', skuSuffix: 'RG' },
 ]
 
-// Approximate rates for admin price preview — updated by gold rate cron
-const STORED_RATES: Record<string, number> = {
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft', hint: 'Not on store. Only a title is required.' },
+  { value: 'AI_DRAFT', label: 'AI Draft', hint: 'Machine-generated draft — review before going live.' },
+  { value: 'LIVE', label: 'Live', hint: 'Visible & purchasable on the store. Needs ≥1 variant.' },
+] as const
+
+const PRICE_VISIBILITY_OPTIONS = [
+  { value: 'INHERIT', label: 'Use global default', hint: 'Follows the storefront-wide setting in Pricing Settings.' },
+  { value: 'SHOW', label: 'Always show price', hint: 'Shows the computed price regardless of the global default.' },
+  { value: 'HIDE', label: 'Always hide (Price on Request)', hint: 'No checkout price shown — WhatsApp enquiry only.' },
+] as const
+
+// Fallback rates if the gold-rate table is empty (dev) — real rates come in via props.
+const FALLBACK_RATES: Record<string, number> = {
   GOLD_18K: 5100,
   GOLD_14K: 3967,
   ROSE_GOLD: 5100,
 }
 
-function buildSku(itemCode: string, metalType: string): string {
+function buildSku(itemCode: string, metalType: string, size?: string): string {
   if (!itemCode) return ''
   const suffix = METAL_TYPES.find((m) => m.value === metalType)?.skuSuffix ?? metalType
-  return `${itemCode.toUpperCase()}-${suffix}`
-}
-
-function calcEstimatedPrice(v: Variant): number | null {
-  const weight = parseFloat(v.weightGrams)
-  if (!weight || weight <= 0) return null
-  const rate = STORED_RATES[v.metalType] ?? 0
-  const making = weight * (parseFloat(v.makingChargePerGram) || 0) + (parseFloat(v.flatMakingCharge) || 0)
-  const goldValue = weight * rate
-  const stones = parseFloat(v.stoneCharges) || 0
-  const misc = parseFloat(v.miscCharges) || 0
-  const gst = goldValue * 0.03 + making * 0.05
-  return Math.round(goldValue + making + stones + misc + gst)
+  const sizePart = size?.trim() ? `-${size.trim().toUpperCase().replace(/\s+/g, '')}` : ''
+  return `${itemCode.toUpperCase()}-${suffix}${sizePart}`
 }
 
 type Variant = {
   metalType: string
+  size: string
   weightGrams: string
   makingChargePerGram: string
   flatMakingCharge: string
@@ -44,6 +48,20 @@ type Variant = {
   miscCharges: string
   stock: string
   sku: string
+}
+
+type FormStone = {
+  diamondRateId: string
+  caratWeight: string
+  count: string
+  label: string
+}
+
+export type DiamondRateOption = {
+  id: string
+  label: string
+  ratePerCarat: number
+  ratePerCaratExchange: number
 }
 
 type FormData = {
@@ -62,18 +80,25 @@ type FormData = {
   caratWeight: string
   images: string[]
   variants: Variant[]
+  stones: FormStone[]
   isActive: boolean
   comingSoon: boolean
+  status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
+  priceVisibility: 'INHERIT' | 'SHOW' | 'HIDE'
 }
 
 type Props = {
   initialData?: Partial<FormData> & { id?: string }
   mode: 'create' | 'edit'
+  diamondRates: DiamondRateOption[]
+  goldRates?: Record<string, number>
+  pricingConfig?: PricingConfig
 }
 
 function emptyVariant(): Variant {
   return {
     metalType: 'GOLD_18K',
+    size: '',
     weightGrams: '',
     makingChargePerGram: '',
     flatMakingCharge: '0',
@@ -81,6 +106,15 @@ function emptyVariant(): Variant {
     miscCharges: '45',
     stock: '0',
     sku: '',
+  }
+}
+
+function emptyStone(diamondRates: DiamondRateOption[]): FormStone {
+  return {
+    diamondRateId: diamondRates[0]?.id ?? '',
+    caratWeight: '',
+    count: '',
+    label: '',
   }
 }
 
@@ -101,24 +135,62 @@ function initialForm(data?: Partial<FormData>): FormData {
     caratWeight: data?.caratWeight ?? '',
     images: data?.images ?? [],
     variants: data?.variants?.length ? data.variants as Variant[] : [emptyVariant()],
+    stones: data?.stones ?? [],
     isActive: data?.isActive ?? true,
-    comingSoon: (data as any)?.comingSoon ?? false,
+    comingSoon: data?.comingSoon ?? false,
+    status: data?.status ?? 'DRAFT',
+    priceVisibility: data?.priceVisibility ?? 'INHERIT',
   }
 }
 
-export default function ProductForm({ initialData, mode }: Props) {
+export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  function set(field: keyof FormData, value: any) {
+  const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
+  const isDraft = form.status !== 'LIVE'
+
+  const stoneInputs = form.stones.flatMap((s): StoneInput[] => {
+    const rate = diamondRates.find((r) => r.id === s.diamondRateId)
+    const carat = parseFloat(s.caratWeight)
+    if (!rate || !carat || carat <= 0) return []
+    return [
+      {
+        caratWeight: carat,
+        ratePerCarat: rate.ratePerCarat,
+        ratePerCaratExchange: rate.ratePerCaratExchange,
+        typeLabel: rate.label,
+      },
+    ]
+  })
+
+  function calcEstimatedPrice(v: Variant, withExchange: boolean): number | null {
+    const weight = parseFloat(v.weightGrams)
+    if (!weight || weight <= 0) return null
+    return Math.round(
+      calculatePrice(
+        {
+          weightGrams: weight,
+          makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
+          flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
+          stoneCharges: parseFloat(v.stoneCharges) || 0,
+          miscCharges: parseFloat(v.miscCharges) || 0,
+        },
+        rates[v.metalType] ?? 0,
+        { stones: stoneInputs, withExchange, config: pricingConfig },
+      ).total,
+    )
+  }
+
+  function set<K extends keyof FormData>(field: K, value: FormData[K]) {
     setForm((f) => {
       const next = { ...f, [field]: value }
       if (field === 'itemCode') {
         next.variants = f.variants.map((v) => ({
           ...v,
-          sku: buildSku(value as string, v.metalType),
+          sku: buildSku(value as string, v.metalType, v.size),
         }))
       }
       return next
@@ -128,10 +200,11 @@ export default function ProductForm({ initialData, mode }: Props) {
   function setVariant(idx: number, field: keyof Variant, value: string) {
     setForm((f) => {
       const v = [...f.variants]
-      v[idx] = { ...v[idx], [field]: value }
-      if (field === 'metalType' && f.itemCode) {
-        const wasAuto = !v[idx].sku || v[idx].sku === buildSku(f.itemCode, v[idx].metalType)
-        if (wasAuto) v[idx].sku = buildSku(f.itemCode, value)
+      const prev = v[idx]
+      v[idx] = { ...prev, [field]: value }
+      if ((field === 'metalType' || field === 'size') && f.itemCode) {
+        const wasAuto = !prev.sku || prev.sku === buildSku(f.itemCode, prev.metalType, prev.size)
+        if (wasAuto) v[idx].sku = buildSku(f.itemCode, v[idx].metalType, v[idx].size)
       }
       return { ...f, variants: v }
     })
@@ -147,31 +220,58 @@ export default function ProductForm({ initialData, mode }: Props) {
     setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== idx) }))
   }
 
+  function setStone(idx: number, field: keyof FormStone, value: string) {
+    setForm((f) => {
+      const s = [...f.stones]
+      s[idx] = { ...s[idx], [field]: value }
+      return { ...f, stones: s }
+    })
+  }
+
+  function addStone() {
+    setForm((f) => ({ ...f, stones: [...f.stones, emptyStone(diamondRates)] }))
+  }
+
+  function removeStone(idx: number) {
+    setForm((f) => ({ ...f, stones: f.stones.filter((_, i) => i !== idx) }))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    // FE guard: making charge required unless product is Coming Soon
-    if (!form.comingSoon) {
-      for (const v of form.variants) {
-        if (v.makingChargePerGram === '' || v.makingChargePerGram === undefined) {
-          setError('Every variant must have a Making Charge (₹/g). Mark as "Coming Soon" if pricing is not set yet.')
-          return
-        }
-        if (parseFloat(v.makingChargePerGram) < 0) {
-          setError('Making Charge cannot be negative.')
-          return
-        }
+    // Making charge is optional — blank is treated as 0. Only block negatives.
+    for (const v of form.variants) {
+      if (v.makingChargePerGram !== '' && parseFloat(v.makingChargePerGram) < 0) {
+        setError('Making Charge cannot be negative.')
+        return
       }
     }
 
     setSaving(true)
     setError('')
 
+    // Drafts: silently drop untouched variant stubs (no SKU + no weight).
+    // LIVE keeps every row so the API can validate them properly.
+    const variants = isDraft
+      ? form.variants.filter((v) => v.sku.trim() || parseFloat(v.weightGrams) > 0)
+      : form.variants
+
+    // Drop stone rows without a carat value
+    const stones = form.stones.filter((s) => parseFloat(s.caratWeight) > 0 && s.diamondRateId)
+
+    // Drop empty Front/Left/Right/Back placeholders so storefront never gets "" src
+    const payload = {
+      ...form,
+      variants,
+      stones,
+      images: form.images.filter(Boolean),
+    }
+
     const url = mode === 'create' ? '/api/admin/products' : `/api/admin/products/${initialData?.id}`
     const res = await fetch(url, {
       method: mode === 'create' ? 'POST' : 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     })
 
     setSaving(false)
@@ -185,47 +285,45 @@ export default function ProductForm({ initialData, mode }: Props) {
     router.refresh()
   }
 
-  const inputCls =
-    'w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold'
-  const labelCls = 'block text-xs font-medium text-gray-600 mb-1 tracking-wide uppercase'
-  const hintCls = 'text-[10px] text-gray-400 mt-0.5 leading-tight'
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-3xl">
+    <form onSubmit={handleSubmit} className="pform">
       {/* Basic info */}
-      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
-        <h2 className="font-display text-lg text-gray-900">Basic Information</h2>
+      <section className="pform__section">
+        <h2>Basic Information</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Product Name *</label>
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="pf-name">Product Name *</label>
             <input
+              id="pf-name"
               required
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. Heart Diamond Bracelet"
             />
           </div>
-          <div>
-            <label className={labelCls}>Item Code</label>
+          <div className="pform__field">
+            <label htmlFor="pf-itemcode">Item Code</label>
             <input
+              id="pf-itemcode"
               value={form.itemCode}
               onChange={(e) => set('itemCode', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. AJBR-74"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Category *</label>
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="pf-category">Category *</label>
             <select
+              id="pf-category"
               required
               value={form.category}
               onChange={(e) => set('category', e.target.value)}
-              className={inputCls}
+              className="pform__input"
             >
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -234,96 +332,148 @@ export default function ProductForm({ initialData, mode }: Props) {
               ))}
             </select>
           </div>
-          <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="pform__field">
+            <label htmlFor="pf-status">Status *</label>
+            <select
+              id="pf-status"
+              value={form.status}
+              onChange={(e) => set('status', e.target.value as FormData['status'])}
+              className="pform__input"
+              data-testid="product-status"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p className="pform__hint">
+              {STATUS_OPTIONS.find((s) => s.value === form.status)?.hint}
+            </p>
+          </div>
+        </div>
+
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="pf-price-visibility">Price Visibility</label>
+            <select
+              id="pf-price-visibility"
+              value={form.priceVisibility}
+              onChange={(e) => set('priceVisibility', e.target.value as FormData['priceVisibility'])}
+              className="pform__input"
+              data-testid="product-price-visibility"
+            >
+              {PRICE_VISIBILITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="pform__hint">
+              {PRICE_VISIBILITY_OPTIONS.find((o) => o.value === form.priceVisibility)?.hint}
+            </p>
+          </div>
+        </div>
+
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__checks">
+            <label className="pform__check">
               <input
                 type="checkbox"
                 checked={form.isActive}
                 onChange={(e) => set('isActive', e.target.checked)}
-                className="w-4 h-4 accent-brand-gold"
               />
-              <span className="text-sm text-gray-700">Active (visible on store)</span>
+              <span>Active (include in catalogue reel; store needs Live status)</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="pform__check">
               <input
                 type="checkbox"
                 checked={form.comingSoon}
                 onChange={(e) => set('comingSoon', e.target.checked)}
-                className="w-4 h-4 accent-brand-gold"
               />
-              <span className="text-sm text-gray-700">Coming Soon</span>
+              <span>Coming Soon</span>
             </label>
             {form.comingSoon && (
-              <p className="text-[10px] text-amber-600 leading-tight">
-                Pricing optional — shown as "Coming Soon" with a Notify Me button. No price displayed.
+              <p className="pform__warn">
+                Pricing optional — shown as &ldquo;Coming Soon&rdquo; with a Notify Me button. No price displayed.
               </p>
             )}
           </div>
         </div>
 
-        <div>
-          <label className={labelCls}>Description</label>
+        <div className="pform__field">
+          <label htmlFor="pf-description">Description</label>
           <textarea
+            id="pf-description"
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
             rows={3}
-            className={inputCls}
+            className="pform__input"
             placeholder="Brief product description"
           />
         </div>
 
-        <div>
-          <label className={labelCls}>Design Style</label>
+        <div className="pform__field">
+          <label htmlFor="pf-designstyle">Design Style</label>
           <textarea
+            id="pf-designstyle"
             value={form.designStyle}
             onChange={(e) => set('designStyle', e.target.value)}
             rows={2}
-            className={inputCls}
+            className="pform__input"
             placeholder="e.g. Alternating open heart motifs and bezel-set round stones"
           />
         </div>
       </section>
 
       {/* Images */}
-      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-3">
-        <h2 className="font-display text-lg text-gray-900">Product Images</h2>
+      <section className="pform__section">
+        <h2>Product Images</h2>
         <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
+        <AdminProductGalleryPreview
+          images={form.images}
+          productName={form.name || 'Product'}
+          onChange={(imgs) => set('images', imgs)}
+        />
       </section>
 
       {/* Physical specs */}
-      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
-        <h2 className="font-display text-lg text-gray-900">Design Specifications</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className={labelCls}>Total Length (mm)</label>
+      <section className="pform__section">
+        <h2>Design Specifications</h2>
+        <div className="pform__grid pform__grid--3">
+          <div className="pform__field">
+            <label htmlFor="pf-length">Total Length (mm)</label>
             <input
+              id="pf-length"
               type="number"
               step="0.01"
               value={form.totalLengthMm}
               onChange={(e) => set('totalLengthMm', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 152.4 (6 inch)"
             />
           </div>
-          <div>
-            <label className={labelCls}>Motif Size (mm)</label>
+          <div className="pform__field">
+            <label htmlFor="pf-motif">Motif Size (mm)</label>
             <input
+              id="pf-motif"
               type="number"
               step="0.01"
               value={form.motifSizeMm}
               onChange={(e) => set('motifSizeMm', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 9"
             />
           </div>
-          <div>
-            <label className={labelCls}>Thickness/Depth (mm)</label>
+          <div className="pform__field">
+            <label htmlFor="pf-thickness">Thickness/Depth (mm)</label>
             <input
+              id="pf-thickness"
               type="number"
               step="0.01"
               value={form.thicknessMm}
               onChange={(e) => set('thicknessMm', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 2.7"
             />
           </div>
@@ -331,277 +481,377 @@ export default function ProductForm({ initialData, mode }: Props) {
       </section>
 
       {/* Gemstone */}
-      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
-        <h2 className="font-display text-lg text-gray-900">Gemstone Details</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Stone Type</label>
+      <section className="pform__section">
+        <h2>Gemstone Details</h2>
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="pf-stonetype">Stone Type</label>
             <input
+              id="pf-stonetype"
               value={form.stoneType}
               onChange={(e) => set('stoneType', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. Diamond"
             />
           </div>
-          <div>
-            <label className={labelCls}>Stone Shape</label>
+          <div className="pform__field">
+            <label htmlFor="pf-stoneshape">Stone Shape</label>
             <input
+              id="pf-stoneshape"
               value={form.stoneShape}
               onChange={(e) => set('stoneShape', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. Round"
             />
           </div>
-          <div>
-            <label className={labelCls}>Stone Dimensions (mm)</label>
+          <div className="pform__field">
+            <label htmlFor="pf-stonedim">Stone Dimensions (mm)</label>
             <input
+              id="pf-stonedim"
               value={form.stoneDimMm}
               onChange={(e) => set('stoneDimMm', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 4.80 x 4.80"
             />
           </div>
-          <div>
-            <label className={labelCls}>Gem Count</label>
+          <div className="pform__field">
+            <label htmlFor="pf-gemcount">Gem Count</label>
             <input
+              id="pf-gemcount"
               type="number"
               value={form.gemCount}
               onChange={(e) => set('gemCount', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 5"
             />
           </div>
-          <div>
-            <label className={labelCls}>Total Carat Weight (ctw)</label>
+          <div className="pform__field">
+            <label htmlFor="pf-carat">Total Carat Weight (ctw)</label>
             <input
+              id="pf-carat"
               type="number"
               step="0.01"
               value={form.caratWeight}
               onChange={(e) => set('caratWeight', e.target.value)}
-              className={inputCls}
+              className="pform__input"
               placeholder="e.g. 2.00"
             />
           </div>
         </div>
       </section>
 
-      {/* Variants */}
-      <section className="bg-white border border-gray-100 rounded-lg p-4 md:p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      {/* Diamonds (priced per carat) */}
+      <section className="pform__section">
+        <div className="pform__variant-head">
           <div>
-            <h2 className="font-display text-lg text-gray-900">Metal Variants &amp; Pricing</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <h2>Diamonds (priced per carat)</h2>
+            <p className="pform__section-note">
+              One row per diamond entry — e.g. a centre stone and its accent stones. Priced from
+              the per-carat rates in Settings → Pricing (with / without exchange). Customers see
+              type + carat; count &amp; label are optional.
+            </p>
+          </div>
+          <button type="button" onClick={addStone} className="pform__addvariant" data-testid="add-stone">
+            + Add diamond
+          </button>
+        </div>
+
+        {diamondRates.length === 0 && (
+          <p className="pform__warn">
+            No diamond rates configured — add types at Settings → Pricing first.
+          </p>
+        )}
+
+        {form.stones.map((s, idx) => {
+          const rate = diamondRates.find((r) => r.id === s.diamondRateId)
+          const carat = parseFloat(s.caratWeight) || 0
+          return (
+            <div key={idx} className="pform__variant" data-testid="stone-row">
+              <div className="pform__grid pform__grid--12">
+                <div className="pform__field pform__span-3">
+                  <label>Diamond Type</label>
+                  <select
+                    value={s.diamondRateId}
+                    onChange={(e) => setStone(idx, 'diamondRateId', e.target.value)}
+                    className="pform__input"
+                  >
+                    {diamondRates.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                  {rate && (
+                    <p className="pform__hint">
+                      ₹{rate.ratePerCarat.toLocaleString('en-IN')}/ct · exch ₹
+                      {rate.ratePerCaratExchange.toLocaleString('en-IN')}/ct
+                    </p>
+                  )}
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Carat (ct)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={s.caratWeight}
+                    onChange={(e) => setStone(idx, 'caratWeight', e.target.value)}
+                    className="pform__input"
+                    placeholder="0.50"
+                  />
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Count (optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={s.count}
+                    onChange={(e) => setStone(idx, 'count', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. 5"
+                  />
+                </div>
+                <div className="pform__field pform__span-4">
+                  <label>Label (optional)</label>
+                  <input
+                    value={s.label}
+                    onChange={(e) => setStone(idx, 'label', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. Centre stone / Blue accents"
+                  />
+                </div>
+                <div className="pform__span-1">
+                  <button
+                    type="button"
+                    onClick={() => removeStone(idx)}
+                    className="pform__variant-remove"
+                    aria-label="Remove diamond"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              {rate && carat > 0 && (
+                <div className="pform__estimate">
+                  <span className="pform__estimate-label">Stone value</span>
+                  <span className="pform__estimate-value">
+                    ₹{Math.round(carat * rate.ratePerCarat).toLocaleString('en-IN')} · exch ₹
+                    {Math.round(carat * rate.ratePerCaratExchange).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </section>
+
+      {/* Variants */}
+      <section className="pform__section">
+        <div className="pform__variant-head">
+          <div>
+            <h2>Metal Variants &amp; Pricing</h2>
+            <p className="pform__section-note">
               Add one row per metal you offer. Pricing fields are used to calculate the retail price
               shown to customers.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={addVariant}
-            className="text-xs text-brand-gold hover:underline shrink-0"
-          >
+          <button type="button" onClick={addVariant} className="pform__addvariant">
             + Add variant
           </button>
         </div>
 
-        <div className="space-y-4">
-          {form.variants.map((v, idx) => {
-            const estimated = calcEstimatedPrice(v)
-            const makingHigh = parseFloat(v.makingChargePerGram) > 1500
-            const stonesHigh = parseFloat(v.stoneCharges) > 500000
+        {form.variants.map((v, idx) => {
+          const estimated = calcEstimatedPrice(v, false)
+          const estimatedExchange = calcEstimatedPrice(v, true)
+          const makingHigh = parseFloat(v.makingChargePerGram) > 1500
+          const stonesHigh = parseFloat(v.stoneCharges) > 500000
 
-            return (
-              <div key={idx} className="border border-gray-100 rounded-lg p-4 space-y-4">
-                {/* Row 1: Identity */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
-                  <div className="sm:col-span-3">
-                    <label className={labelCls}>Metal Type</label>
-                    <select
-                      value={v.metalType}
-                      onChange={(e) => setVariant(idx, 'metalType', e.target.value)}
-                      className={inputCls}
+          return (
+            <div key={idx} className="pform__variant">
+              {/* Row 1: Identity */}
+              <div className="pform__grid pform__grid--12">
+                <div className="pform__field pform__span-3">
+                  <label>Metal Type</label>
+                  <select
+                    value={v.metalType}
+                    onChange={(e) => setVariant(idx, 'metalType', e.target.value)}
+                    className="pform__input"
+                  >
+                    {METAL_TYPES.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Size</label>
+                  <input
+                    value={v.size}
+                    onChange={(e) => setVariant(idx, 'size', e.target.value)}
+                    className="pform__input"
+                    placeholder="e.g. 12 / M"
+                    data-testid="variant-size"
+                  />
+                  <p className="pform__hint">One row per size — weight differs by size</p>
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Weight (g)</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={v.weightGrams}
+                    onChange={(e) => setVariant(idx, 'weightGrams', e.target.value)}
+                    className="pform__input"
+                    placeholder="8.500"
+                  />
+                  <p className="pform__hint">Net gold weight from CAD sheet</p>
+                  {form.status === 'LIVE' && !form.comingSoon && !(parseFloat(v.weightGrams) > 0) && (
+                    <p className="pform__warn">⚠ 0 weight — this variant won&apos;t show a price at all on the storefront</p>
+                  )}
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    data-testid="variant-stock"
+                    value={v.stock}
+                    onChange={(e) => setVariant(idx, 'stock', e.target.value)}
+                    className="pform__input"
+                  />
+                </div>
+                <div className="pform__field pform__span-2">
+                  <label>SKU</label>
+                  <input
+                    value={v.sku}
+                    onChange={(e) => setVariant(idx, 'sku', e.target.value)}
+                    className="pform__input"
+                    placeholder="AJBR-74-G18K"
+                  />
+                </div>
+                <div className="pform__span-1">
+                  {form.variants.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeVariant(idx)}
+                      className="pform__variant-remove"
+                      aria-label="Remove variant"
                     >
-                      {METAL_TYPES.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Weight (g)</label>
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Divider + Pricing */}
+              <div className="pform__pricing">
+                <p className="pform__pricing-head">Pricing — used to calculate the retail price</p>
+                <div className="pform__grid pform__grid--4">
+                  {/* Making ₹/g */}
+                  <div className="pform__field">
+                    <label>Making ₹/g</label>
                     <input
                       type="number"
-                      step="0.001"
-                      value={v.weightGrams}
-                      onChange={(e) => setVariant(idx, 'weightGrams', e.target.value)}
-                      className={inputCls}
-                      placeholder="8.500"
-                    />
-                    <p className={hintCls}>Net gold weight from CAD sheet</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}>Stock</label>
-                    <input
-                      type="number"
+                      step="1"
                       min="0"
-                      placeholder="0"
-                      data-testid="variant-stock"
-                      value={v.stock}
-                      onChange={(e) => setVariant(idx, 'stock', e.target.value)}
-                      className={inputCls}
+                      value={v.makingChargePerGram}
+                      onChange={(e) => setVariant(idx, 'makingChargePerGram', e.target.value)}
+                      className={makingHigh ? 'pform__input pform__input--warn' : 'pform__input'}
+                      placeholder="e.g. 400"
                     />
-                  </div>
-                  <div className="sm:col-span-4">
-                    <label className={labelCls}>SKU</label>
-                    <input
-                      value={v.sku}
-                      onChange={(e) => setVariant(idx, 'sku', e.target.value)}
-                      className={inputCls}
-                      placeholder="AJBR-74-G18K"
-                    />
-                  </div>
-                  <div className="sm:col-span-1 flex items-end pb-[1px] pt-5">
-                    {form.variants.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeVariant(idx)}
-                        className="w-8 h-9 flex items-center justify-center text-gray-300 hover:text-red-400 transition-colors text-lg"
-                      >
-                        ×
-                      </button>
+                    <p className="pform__hint">
+                      Labour per gram. Typical: ₹200–400 (simple) · ₹400–700 (intricate). From
+                      manufacturer.
+                    </p>
+                    {makingHigh && (
+                      <p className="pform__warn">⚠ Unusually high — verify with manufacturer</p>
                     )}
                   </div>
-                </div>
 
-                {/* Divider + Pricing */}
-                <div className="border-t border-gray-50 pt-3">
-                  <p className="text-[10px] text-gray-400 tracking-widest uppercase mb-3">
-                    Pricing — used to calculate the retail price
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    {/* Making ₹/g */}
-                    <div>
-                      <label className={labelCls}>
-                        Making ₹/g{' '}
-                        {!form.comingSoon && <span className="text-red-400">*</span>}
-                      </label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={v.makingChargePerGram}
-                        onChange={(e) => setVariant(idx, 'makingChargePerGram', e.target.value)}
-                        className={`${inputCls} ${makingHigh ? 'border-amber-400' : ''}`}
-                        placeholder="e.g. 400"
-                      />
-                      <p className={hintCls}>
-                        Labour per gram. Typical: ₹200–400 (simple) · ₹400–700 (intricate). From
-                        manufacturer.
-                      </p>
-                      {makingHigh && (
-                        <p className="text-[10px] text-amber-600 mt-0.5">
-                          ⚠ Unusually high — verify with manufacturer
-                        </p>
-                      )}
-                    </div>
+                  {/* Flat making */}
+                  <div className="pform__field">
+                    <label>Flat Making (₹)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={v.flatMakingCharge}
+                      onChange={(e) => setVariant(idx, 'flatMakingCharge', e.target.value)}
+                      className="pform__input"
+                      placeholder="0"
+                    />
+                    <p className="pform__hint">
+                      Fixed labour for engravings or complex clasps. Leave 0 if not applicable.
+                    </p>
+                  </div>
 
-                    {/* Flat making */}
-                    <div>
-                      <label className={labelCls}>Flat Making (₹)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={v.flatMakingCharge}
-                        onChange={(e) => setVariant(idx, 'flatMakingCharge', e.target.value)}
-                        className={inputCls}
-                        placeholder="0"
-                      />
-                      <p className={hintCls}>
-                        Fixed labour for engravings or complex clasps. Leave 0 if not applicable.
-                      </p>
-                    </div>
+                  {/* Stone charges */}
+                  <div className="pform__field">
+                    <label>Stone Charges (₹)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={v.stoneCharges}
+                      onChange={(e) => setVariant(idx, 'stoneCharges', e.target.value)}
+                      className={stonesHigh ? 'pform__input pform__input--warn' : 'pform__input'}
+                      placeholder="0"
+                    />
+                    <p className="pform__hint">
+                      Total diamond/gem cost. Get from stone supplier. Leave 0 if no stones.
+                    </p>
+                    {stonesHigh && <p className="pform__warn">⚠ Above ₹5L — double-check this figure</p>}
+                  </div>
 
-                    {/* Stone charges */}
-                    <div>
-                      <label className={labelCls}>Stone Charges (₹)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={v.stoneCharges}
-                        onChange={(e) => setVariant(idx, 'stoneCharges', e.target.value)}
-                        className={`${inputCls} ${stonesHigh ? 'border-amber-400' : ''}`}
-                        placeholder="0"
-                      />
-                      <p className={hintCls}>
-                        Total diamond/gem cost. Get from stone supplier. Leave 0 if no stones.
-                      </p>
-                      {stonesHigh && (
-                        <p className="text-[10px] text-amber-600 mt-0.5">
-                          ⚠ Above ₹5L — double-check this figure
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Misc */}
-                    <div>
-                      <label className={labelCls}>Misc (₹)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={v.miscCharges}
-                        onChange={(e) => setVariant(idx, 'miscCharges', e.target.value)}
-                        className={inputCls}
-                        placeholder="45"
-                      />
-                      <p className={hintCls}>
-                        BIS hallmark (₹45) + certs + packaging. Default ₹45 covers standard
-                        hallmarking.
-                      </p>
-                    </div>
+                  {/* Misc */}
+                  <div className="pform__field">
+                    <label>Misc (₹)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={v.miscCharges}
+                      onChange={(e) => setVariant(idx, 'miscCharges', e.target.value)}
+                      className="pform__input"
+                      placeholder="45"
+                    />
+                    <p className="pform__hint">
+                      BIS hallmark (₹45) + certs + packaging. Default ₹45 covers standard
+                      hallmarking.
+                    </p>
                   </div>
                 </div>
-
-                {/* Live price estimate */}
-                {estimated !== null && (
-                  <div className="bg-brand-cream rounded px-3 py-2 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">
-                      Estimated retail price{' '}
-                      <span className="text-gray-400">(at stored gold rate — updates with live cron)</span>
-                    </span>
-                    <span className="text-sm font-medium text-brand-dark">
-                      ₹{estimated.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                )}
               </div>
-            )
-          })}
-        </div>
+
+              {/* Live price estimate (incl. VA + diamonds at current rates) */}
+              {estimated !== null && (
+                <div className="pform__estimate">
+                  <span className="pform__estimate-label">
+                    Estimated retail price{' '}
+                    <span>(current gold rate · incl. VA{stoneInputs.length ? ' + diamonds' : ''})</span>
+                  </span>
+                  <span className="pform__estimate-value">
+                    ₹{estimated.toLocaleString('en-IN')}
+                    {stoneInputs.length > 0 && estimatedExchange !== null && (
+                      <> · with exchange ₹{estimatedExchange.toLocaleString('en-IN')}</>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </section>
 
-      {error && (
-        <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded px-4 py-2">
-          {error}
-        </p>
-      )}
+      {error && <p className="pform__error">{error}</p>}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-8 py-3 bg-brand-dark text-white text-sm tracking-widest uppercase hover:bg-brand-light transition-colors disabled:opacity-50"
-        >
+      <div className="pform__actions">
+        <button type="submit" disabled={saving} className="pform__submit">
           {saving ? 'Saving…' : mode === 'create' ? 'Create Product' : 'Save Changes'}
         </button>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="px-6 py-3 border border-gray-200 text-sm text-gray-600 hover:border-gray-400 transition-colors"
-        >
+        <button type="button" onClick={() => router.back()} className="pform__cancel">
           Cancel
         </button>
       </div>

@@ -1,0 +1,252 @@
+.returns-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  padding: 48px 0;
+  align-items: center;
+}
+
+.returns-hero h1 {
+  font-size: 2.25rem;
+  margin-bottom: 16px;
+}
+
+.returns-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.returns-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+
+.returns-chip svg {
+  width: 18px;
+  stroke: var(--color-primary);
+}
+
+.returns-hero__visual img {
+  width: 100%;
+  border-radius: var(--radius-md);
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--bg-muted);
+}
+
+.returns-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  padding: 48px 0;
+}
+
+.returns-step-card {
+  padding: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.returns-step-card__num {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  color: var(--color-primary);
+  margin-bottom: 12px;
+}
+
+.protection-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+  padding: 48px 0;
+}
+
+.protection-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.timeline-flow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 40px 0;
+  flex-wrap: wrap;
+}
+
+.timeline-flow__item {
+  text-align: center;
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.8125rem;
+}
+
+.timeline-flow__item svg {
+  width: 32px;
+  height: 32px;
+  stroke: var(--color-primary);
+  margin: 0 auto 8px;
+  display: block;
+}
+
+.timeline-notice {
+  background: var(--bg-muted);
+  padding: 16px 24px;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  margin-bottom: 48px;
+}
+
+.eligibility-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.eligibility-card {
+  padding: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.eligibility-card h3 {
+  font-size: 1.125rem;
+  margin-bottom: 16px;
+}
+
+.eligibility-card li {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+}
+
+.eligibility-card .ok::before {
+  content: "✓";
+  color: var(--color-primary);
+}
+
+.eligibility-card .no::before {
+  content: "✕";
+  color: var(--color-text-muted);
+}
+
+.compare-mini {
+  width: 100%;
+  font-size: 0.8125rem;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.compare-mini th,
+.compare-mini td {
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border-light);
+  text-align: left;
+}
+
+.returns-cta-band {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 40px;
+  align-items: center;
+  padding: 48px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  margin: 48px 0;
+}
+
+.returns-cta-band img {
+  width: 100%;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.faq-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px 48px;
+}
+
+@media (max-width: 900px) {
+  .returns-hero {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: 32px 0;
+  }
+
+  .returns-hero__visual {
+    order: -1;
+  }
+
+  .returns-steps {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    padding: 32px 0;
+  }
+
+  .protection-split,
+  .eligibility-split {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: 32px 0;
+  }
+
+  .protection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .returns-cta-band {
+    grid-template-columns: 1fr;
+    padding: 32px 24px;
+    gap: 24px;
+    margin: 32px 0;
+  }
+
+  .faq-two-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .timeline-flow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .timeline-flow__item {
+    min-width: 0;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .timeline-flow__item svg {
+    margin: 0;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .returns-hero h1 {
+    font-size: 1.75rem;
+  }
+
+  .returns-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .returns-step-card {
+    padding: 20px;
+  }
+}

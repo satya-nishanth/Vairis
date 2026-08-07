@@ -1,0 +1,12 @@
+/* Header account button (auth entry point) */
+
+.header-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--header-action-color);
+}
+
+.header-account-btn:hover {
+  color: var(--header-nav-text-hover);
+}

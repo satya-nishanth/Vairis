@@ -1,46 +1,81 @@
-import type { Metadata } from 'next'
-import { Cormorant_Garamond, Inter } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/react'
-import './globals.css'
+import type { Metadata } from "next";
+import Script from "next/script";
+import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { WishlistProvider } from "@/components/commerce/WishlistProvider";
+import { CartProvider } from "@/components/commerce/CartProvider";
+import { PageViewTracker } from "@/components/layout/PageViewTracker";
+import { DEFAULT_SITE_THEME } from "@/lib/theme";
+import "./globals.css";
 
-// Cormorant Garamond — matches index.html, more elegant for jewellery
-const display = Cormorant_Garamond({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: ['300', '400', '500', '600'],
-  style: ['normal', 'italic'],
-  display: 'swap',
-})
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
-const body = Inter({
-  subsets: ['latin'],
-  variable: '--font-body',
-  display: 'swap',
-})
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-serif-loaded",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans-loaded",
+});
 
 export const metadata: Metadata = {
-  title: 'VAIRIS — Fine Jewellery',
-  description: 'Where heritage meets the extraordinary. Fine jewellery, reimagined.',
+  title: "VAIRIS - Everyday Diamond Wear",
+  description:
+    "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
   openGraph: {
-    title: 'VAIRIS — Fine Jewellery',
-    description: 'Where heritage meets the extraordinary. Fine jewellery, reimagined.',
-    siteName: 'Vairis',
-    type: 'website',
+    title: "VAIRIS - Everyday Diamond Wear",
+    description:
+      "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
+    siteName: "Vairis",
+    type: "website",
   },
   icons: {
-    icon: '/images/logo_icon.png',
-    shortcut: '/images/logo_icon.png',
-    apple: '/images/logo_icon.png',
+    icon: "/images/logo_icon.png",
+    shortcut: "/images/logo_icon.png",
+    apple: "/images/logo_icon.png",
   },
-}
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${display.variable} ${body.variable} antialiased`}>
-        {children}
-        <Analytics />
+    <html
+      lang="en"
+      className={`${cormorant.variable} ${inter.variable}`}
+      data-theme={DEFAULT_SITE_THEME}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Sets data-theme before first paint — must block to avoid theme flash */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/scripts/vairis-theme-init.js" />
+      </head>
+      <body suppressHydrationWarning>
+        {GA_ID && (
+          <>
+            <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_ID}', { send_page_view: false });`}
+            </Script>
+          </>
+        )}
+        <ThemeProvider defaultTheme={DEFAULT_SITE_THEME}>
+          <WishlistProvider>
+            <CartProvider>
+              {children}
+              <PageViewTracker />
+              <Analytics />
+            </CartProvider>
+          </WishlistProvider>
+        </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }

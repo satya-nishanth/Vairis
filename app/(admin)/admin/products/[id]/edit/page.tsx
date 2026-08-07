@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { getPricingConfig } from '@/lib/pricing-data'
 import ProductForm from '@/components/admin/ProductForm'
+
+export const dynamic = 'force-dynamic'
 
 export default async function EditProductPage({
   params,
@@ -9,24 +12,40 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: { variants: true },
-  })
+  const [product, diamondRates, goldRates, pricingConfig] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id },
+      include: {
+        variants: true,
+        stones: { orderBy: { sortOrder: 'asc' } },
+      },
+    }),
+    prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
 
   if (!product) notFound()
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <Link href="/admin/products" className="text-xs text-gray-400 hover:text-brand-gold">
+    <div className="admin-page">
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
           ← Products
         </Link>
-        <h1 className="font-display text-3xl text-gray-900 mt-2">Edit Product</h1>
-        <p className="text-sm text-gray-400 mt-0.5">{product.name}</p>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>Edit Product</h1>
+        <p style={{ fontSize: '0.875rem', color: '#9ca3af', marginTop: '0.125rem' }}>{product.name}</p>
       </div>
       <ProductForm
         mode="edit"
+        diamondRates={diamondRates.map((r) => ({
+          id: r.id,
+          label: r.label,
+          ratePerCarat: Number(r.ratePerCarat),
+          ratePerCaratExchange: Number(r.ratePerCaratExchange),
+        }))}
+        goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
+        pricingConfig={pricingConfig}
         initialData={{
           id: product.id,
           name: product.name,
@@ -45,8 +64,17 @@ export default async function EditProductPage({
           images: product.images,
           isActive: product.isActive,
           comingSoon: product.comingSoon,
+          status: product.status,
+          priceVisibility: product.priceVisibility,
+          stones: product.stones.map((s) => ({
+            diamondRateId: s.diamondRateId,
+            caratWeight: s.caratWeight.toString(),
+            count: s.count?.toString() ?? '',
+            label: s.label ?? '',
+          })),
           variants: product.variants.map((v) => ({
             metalType: v.metalType,
+            size: v.size ?? '',
             weightGrams: v.weightGrams.toString(),
             makingChargePerGram: v.makingChargePerGram.toString(),
             flatMakingCharge: v.flatMakingCharge.toString(),

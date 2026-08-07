@@ -5,16 +5,19 @@ import { requireAdmin } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
+const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES'] as const
+
 const variantSchema = z.object({
   metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD']),
+  // 0 allowed for catalogue stubs / coming-soon — priced variants need > 0
   weightGrams: z
     .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => n > 0, 'Weight must be greater than 0'),
+    .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))
+    .refine((n) => !Number.isNaN(n) && n >= 0, 'Weight cannot be negative'),
   makingChargePerGram: z
     .union([z.string(), z.number()])
-    .transform(Number)
-    .refine((n) => n >= 0, 'Making charge cannot be negative'),
+    .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))
+    .refine((n) => !Number.isNaN(n) && n >= 0, 'Making charge cannot be negative'),
   flatMakingCharge: z.union([z.string(), z.number()]).transform(Number).default(0),
   stoneCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
   miscCharges: z.union([z.string(), z.number()]).transform(Number).default(45),
@@ -23,10 +26,23 @@ const variantSchema = z.object({
   size: z.string().optional(),
 })
 
+const stoneSchema = z.object({
+  diamondRateId: z.string().min(1, 'Diamond type is required'),
+  caratWeight: z
+    .union([z.string(), z.number()])
+    .transform(Number)
+    .refine((n) => !Number.isNaN(n) && n > 0, 'Carat weight must be positive'),
+  count: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
+  label: z.string().optional().nullable(),
+})
+
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   description: z.string().default(''),
-  category: z.enum(['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS']),
+  category: z.enum(CATEGORIES),
   itemCode: z.string().optional().nullable(),
   designStyle: z.string().optional().nullable(),
   totalLengthMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
@@ -40,8 +56,46 @@ const productSchema = z.object({
   images: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),
   comingSoon: z.boolean().default(false),
-  variants: z.array(variantSchema).min(1, 'At least one variant is required'),
+  status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
+  priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).default('INHERIT'),
+  stones: z.array(stoneSchema).default([]),
+  // Drafts only need a title — LIVE products need at least one variant
+  // (enforced in superRefine below).
+  variants: z.array(variantSchema).default([]),
+}).superRefine((data, ctx) => {
+  if (data.status !== 'LIVE') return
+  if (data.variants.length < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['variants'],
+      message: 'A live product needs at least one variant',
+    })
+    return
+  }
+  // A variant with weight 0 silently produces no price at all on the
+  // storefront (calculatePrice requires weight > 0) — the PDP just shows
+  // "Enquire on WhatsApp" with no indication anything is wrong. Coming-soon
+  // products are exempt since they're allowed to ship without pricing yet.
+  if (!data.comingSoon && !data.variants.some((v) => Number(v.weightGrams) > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['variants'],
+      message: 'A live product needs at least one variant with a gold weight greater than 0 — otherwise no price ever shows on the storefront',
+    })
+  }
 })
+
+function validationError(error: z.ZodError) {
+  const flat = error.flatten()
+  const first =
+    error.issues[0]?.message ??
+    Object.values(flat.fieldErrors).flat()[0] ??
+    'Validation failed'
+  return NextResponse.json(
+    { error: first, fields: flat.fieldErrors, formErrors: flat.formErrors },
+    { status: 400 },
+  )
+}
 
 export async function GET() {
   await requireAdmin()
@@ -57,13 +111,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const parsed = productSchema.safeParse(body)
-  if (!parsed.success) {
-    const errors = parsed.error.flatten()
-    return NextResponse.json(
-      { error: 'Validation failed', fields: errors.fieldErrors },
-      { status: 400 }
-    )
-  }
+  if (!parsed.success) return validationError(parsed.error)
 
   const data = parsed.data
   const product = await prisma.product.create({
@@ -84,6 +132,17 @@ export async function POST(req: NextRequest) {
       images: data.images,
       isActive: data.isActive,
       comingSoon: data.comingSoon,
+      status: data.status,
+      priceVisibility: data.priceVisibility,
+      stones: {
+        create: data.stones.map((s, i) => ({
+          diamondRateId: s.diamondRateId,
+          caratWeight: s.caratWeight,
+          count: s.count,
+          label: s.label || null,
+          sortOrder: i,
+        })),
+      },
       variants: {
         create: data.variants.map((v) => ({
           metalType: v.metalType,
@@ -98,7 +157,7 @@ export async function POST(req: NextRequest) {
         })),
       },
     },
-    include: { variants: true },
+    include: { variants: true, stones: { include: { diamondRate: true } } },
   })
 
   return NextResponse.json(product, { status: 201 })

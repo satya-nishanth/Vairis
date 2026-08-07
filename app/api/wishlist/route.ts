@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const items = await prisma.wishlist.findMany({
     where: { userId: user.id },
     include: {
@@ -19,14 +21,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { productId } = await req.json()
 
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 })
 
   // Any active product can be wishlisted — not just coming-soon
   const product = await prisma.product.findUnique({
-    where: { id: productId, isActive: true },
+    where: { id: productId, isActive: true, status: 'LIVE' },
     select: { id: true },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
@@ -40,7 +44,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const user = await requireUser()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(req.url)
   const productId = searchParams.get('productId')
 

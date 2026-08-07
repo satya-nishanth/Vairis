@@ -17,6 +17,15 @@ jest.mock('@/lib/prisma', () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    productVariant: {
+      findMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    orderItem: { count: jest.fn() },
+    cartItem: { deleteMany: jest.fn() },
+    $transaction: jest.fn(),
   },
 }))
 jest.mock('@/lib/auth', () => ({
@@ -206,7 +215,18 @@ describe('GET /api/admin/products/[id]', () => {
 describe('PATCH /api/admin/products/[id]', () => {
   it('updates name and returns updated product', async () => {
     const updated = fakeProduct({ name: 'Updated Ring' })
-    mockProduct.update.mockResolvedValue(updated as any)
+    const tx = {
+      productVariant: {
+        findMany: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      orderItem: { count: jest.fn() },
+      cartItem: { deleteMany: jest.fn() },
+      product: { update: jest.fn().mockResolvedValue(updated) },
+    }
+    ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 
     const req = makeReq('http://localhost/api/admin/products/p1', 'PATCH', { name: 'Updated Ring' })
     const res = await updateProduct(req, idParams())
@@ -215,25 +235,74 @@ describe('PATCH /api/admin/products/[id]', () => {
     expect(data.name).toBe('Updated Ring')
   })
 
-  it('replaces variants when variants array provided', async () => {
-    mockProduct.update.mockResolvedValue(fakeProduct() as any)
+  it('upserts variants by SKU inside a transaction (no deleteMany)', async () => {
+    const existingVariant = {
+      id: 'v1',
+      productId: 'p1',
+      sku: 'AJBR-74-G14K',
+      metalType: 'GOLD_14K',
+    }
+    const updated = fakeProduct()
+    const tx = {
+      productVariant: {
+        findMany: jest.fn().mockResolvedValue([existingVariant]),
+        update: jest.fn().mockResolvedValue(existingVariant),
+        create: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      orderItem: { count: jest.fn().mockResolvedValue(0) },
+      cartItem: { deleteMany: jest.fn() },
+      product: { update: jest.fn().mockResolvedValue(updated) },
+    }
+    ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
+
     const req = makeReq('http://localhost/api/admin/products/p1', 'PATCH', {
-      variants: [{ metalType: 'GOLD_14K', weightGrams: '9.0', makingChargePerGram: '350', stoneCharges: '0', miscCharges: '45', stock: '2', sku: 'AJBR-74-G14K' }],
+      variants: [
+        {
+          metalType: 'GOLD_14K',
+          weightGrams: '9.0',
+          makingChargePerGram: '350',
+          stoneCharges: '0',
+          miscCharges: '45',
+          stock: '2',
+          sku: 'AJBR-74-G14K',
+        },
+      ],
     })
-    await updateProduct(req, idParams())
-    const call = mockProduct.update.mock.calls[0][0]
-    expect(call.data.variants).toMatchObject({
-      deleteMany: {},
-      create: [expect.objectContaining({ metalType: 'GOLD_14K' })],
-    })
+    const res = await updateProduct(req, idParams())
+    expect(res.status).toBe(200)
+    expect(tx.productVariant.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'v1' },
+        data: expect.objectContaining({ metalType: 'GOLD_14K', weightGrams: 9 }),
+      }),
+    )
+    expect(tx.productVariant.create).not.toHaveBeenCalled()
+    expect(tx.productVariant.deleteMany).not.toHaveBeenCalled()
   })
 
-  it('skips variants key when not provided', async () => {
-    mockProduct.update.mockResolvedValue(fakeProduct() as any)
+  it('skips variant upsert when variants not provided', async () => {
+    const updated = fakeProduct({ name: 'New Name' })
+    const tx = {
+      productVariant: {
+        findMany: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+      orderItem: { count: jest.fn() },
+      cartItem: { deleteMany: jest.fn() },
+      product: { update: jest.fn().mockResolvedValue(updated) },
+    }
+    ;(prisma as any).$transaction = jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
+
     const req = makeReq('http://localhost/api/admin/products/p1', 'PATCH', { name: 'New Name' })
-    await updateProduct(req, idParams())
-    const call = mockProduct.update.mock.calls[0][0]
-    expect(call.data.variants).toBeUndefined()
+    const res = await updateProduct(req, idParams())
+    expect(res.status).toBe(200)
+    expect(tx.productVariant.findMany).not.toHaveBeenCalled()
+    expect(tx.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ name: 'New Name' }) }),
+    )
   })
 
   it('requires admin auth', async () => {

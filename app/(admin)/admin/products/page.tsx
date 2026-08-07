@@ -1,82 +1,185 @@
 import Link from 'next/link'
-import Image from 'next/image'
+import { Suspense } from 'react'
 import { prisma } from '@/lib/prisma'
+import type { Category } from '@prisma/client'
+import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminProductsPage() {
+const CATEGORIES: { key: Category | 'ALL'; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'RINGS', label: 'Rings' },
+  { key: 'EARRINGS', label: 'Earrings' },
+  { key: 'PENDANTS', label: 'Pendants' },
+  { key: 'BRACELETS', label: 'Bracelets' },
+  { key: 'NECKLACES', label: 'Necklaces' },
+]
+
+const ROW_OPTIONS = [10, 25, 50] as const
+
+type PageProps = {
+  searchParams: Promise<{ category?: string; status?: string; page?: string; rows?: string }>
+}
+
+export default async function AdminProductsPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const categoryParam = (params.category ?? 'ALL').toUpperCase()
+  const statusParam = (params.status ?? 'all').toLowerCase()
+
+  const rowsRaw = Number(params.rows ?? 10)
+  const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 10
+  const pageRaw = Math.max(1, Number(params.page ?? 1) || 1)
+
+  const activeCategory =
+    CATEGORIES.some((c) => c.key === categoryParam) ? (categoryParam as Category | 'ALL') : 'ALL'
+
+  const where = {
+    ...(activeCategory !== 'ALL' ? { category: activeCategory } : {}),
+    ...(statusParam === 'live' ? { status: 'LIVE' as const } : {}),
+    ...(statusParam === 'draft' ? { status: 'DRAFT' as const } : {}),
+    ...(statusParam === 'ai-draft' ? { status: 'AI_DRAFT' as const } : {}),
+  }
+
+  const [filteredTotal, counts] = await Promise.all([
+    prisma.product.count({ where }),
+    prisma.product.groupBy({
+      by: ['category'],
+      _count: { id: true },
+    }),
+  ])
+
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / rows))
+  const page = Math.min(pageRaw, totalPages)
+
   const products = await prisma.product.findMany({
-    orderBy: { createdAt: 'desc' },
+    where,
+    orderBy: [{ category: 'asc' }, { createdAt: 'desc' }],
     include: { variants: true },
+    skip: (page - 1) * rows,
+    take: rows,
   })
 
+  const countByCategory: Record<string, number> = Object.fromEntries(
+    counts.map((c) => [c.category, c._count.id]),
+  )
+  const totalCount = counts.reduce((n, c) => n + c._count.id, 0)
+
+  const baseQuery = () => {
+    const q = new URLSearchParams()
+    if (activeCategory !== 'ALL') q.set('category', activeCategory)
+    if (statusParam !== 'all') q.set('status', statusParam)
+    if (rows !== 10) q.set('rows', String(rows))
+    return q
+  }
+
+  const tabHref = (key: string) => {
+    const q = baseQuery()
+    if (key === 'ALL') q.delete('category')
+    else q.set('category', key)
+    q.delete('page')
+    const s = q.toString()
+    return s ? `/admin/products?${s}` : '/admin/products'
+  }
+
+  const statusHref = (status: string) => {
+    const q = baseQuery()
+    if (status === 'all') q.delete('status')
+    else q.set('status', status)
+    q.delete('page')
+    const s = q.toString()
+    return s ? `/admin/products?${s}` : '/admin/products'
+  }
+
+  const newProductHref =
+    activeCategory !== 'ALL'
+      ? `/admin/products/new?category=${activeCategory}`
+      : '/admin/products/new'
+
+  const rowsData = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    itemCode: p.itemCode,
+    images: p.images ?? [],
+    isActive: p.isActive,
+    status: p.status,
+    variantCount: p.variants.length,
+    mediaCount: (p.images ?? []).filter(Boolean).length,
+  }))
+
   return (
-    <div className="p-4 md:p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="font-display text-3xl text-gray-900">Products</h1>
-        <Link
-          href="/admin/products/new"
-          className="px-6 py-2.5 bg-brand-dark text-white text-sm tracking-widest uppercase hover:bg-brand-light transition-colors"
-        >
+    <div className="admin-page">
+      <div className="admin-page__header">
+        <div>
+          <h1 className="admin-page__title" style={{ marginBottom: '0.25rem' }}>
+            Products
+          </h1>
+          <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
+            {filteredTotal} in this view
+            {activeCategory !== 'ALL'
+              ? ` · ${activeCategory.charAt(0) + activeCategory.slice(1).toLowerCase()}`
+              : ''}
+            {' · '}
+            {totalCount} total
+          </p>
+        </div>
+        <Link href={newProductHref} className="admin-btn">
           + New Product
         </Link>
       </div>
 
-      {products.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="font-display text-2xl mb-2">No products yet</p>
-          <Link href="/admin/products/new" className="text-sm text-brand-gold hover:underline">
-            Add your first product →
+      <div className="admin-products__filters">
+        <div className="admin-products__tabs">
+          {CATEGORIES.map((cat) => {
+            const count = cat.key === 'ALL' ? totalCount : (countByCategory[cat.key] ?? 0)
+            const active = activeCategory === cat.key
+            return (
+              <Link
+                key={cat.key}
+                href={tabHref(cat.key)}
+                className={active ? 'admin-products__tab is-active' : 'admin-products__tab'}
+              >
+                {cat.label}
+                <span>{count}</span>
+              </Link>
+            )
+          })}
+        </div>
+
+        <div className="admin-products__status">
+          {[
+            { key: 'all', label: 'All statuses' },
+            { key: 'live', label: 'Live' },
+            { key: 'draft', label: 'Draft' },
+            { key: 'ai-draft', label: 'AI Draft' },
+          ].map((s) => {
+            const active = statusParam === s.key
+            return (
+              <Link
+                key={s.key}
+                href={statusHref(s.key)}
+                className={active ? 'admin-products__pill is-active' : 'admin-products__pill'}
+              >
+                {s.label}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {filteredTotal === 0 ? (
+        <div style={{ textAlign: 'center', padding: '5rem 0', color: '#9ca3af' }}>
+          <p style={{ fontSize: '1.5rem', fontWeight: 400, marginBottom: '0.5rem' }}>
+            No products in this view
+          </p>
+          <Link href={newProductHref} style={{ fontSize: '0.875rem', color: '#b8963e' }}>
+            Add a product →
           </Link>
         </div>
       ) : (
-        <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Product</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Category</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Item Code</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Variants</th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">Status</th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {products.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-brand-cream rounded flex-shrink-0 overflow-hidden relative">
-                        {p.images[0] ? (
-                          <Image src={p.images[0]} alt={p.name} fill className="object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-lg">V</div>
-                        )}
-                      </div>
-                      <span className="font-medium text-sm text-gray-900">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {p.category.charAt(0) + p.category.slice(1).toLowerCase()}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-400 font-mono">{p.itemCode ?? '—'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{p.variants.length}</td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${p.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {p.isActive ? 'Active' : 'Draft'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link href={`/admin/products/${p.id}/edit`} className="text-xs text-brand-gold hover:underline">
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Suspense fallback={<div className="admin-products__loading">Loading…</div>}>
+          <AdminProductsTable products={rowsData} total={filteredTotal} page={page} rows={rows} />
+        </Suspense>
       )}
     </div>
   )

@@ -1,26 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth'
+import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { calculatePrice } from '@/lib/pricing'
+import { getPricingConfig, getShowPricesGlobal, toStoneInputs, resolvePriceVisibility } from '@/lib/pricing-data'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const user = await requireUser()
-  const items = await prisma.cartItem.findMany({
-    where: { userId: user.id },
-    include: { variant: { include: { product: true } } },
-  })
-  return NextResponse.json(items)
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const [items, goldRates, pricingConfig] = await Promise.all([
+    prisma.cartItem.findMany({
+      where: { userId: user.id },
+      include: {
+        variant: {
+          include: {
+            product: {
+              include: {
+                stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
+  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+  const withPrice = items.map((item) => ({
+    ...item,
+    unitPrice: Math.round(
+      calculatePrice(
+        {
+          weightGrams: item.variant.weightGrams.toString(),
+          makingChargePerGram: item.variant.makingChargePerGram.toString(),
+          flatMakingCharge: item.variant.flatMakingCharge.toString(),
+          stoneCharges: item.variant.stoneCharges.toString(),
+          miscCharges: item.variant.miscCharges.toString(),
+        },
+        rateMap[item.variant.metalType] ?? 0,
+        {
+          stones: toStoneInputs(item.variant.product.stones),
+          withExchange: item.withExchange,
+          config: pricingConfig,
+        },
+      ).total,
+    ),
+  }))
+  return NextResponse.json(withPrice)
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireUser()
-  const { variantId, quantity } = await req.json()
+  const user = await getAppUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { variantId, quantity, withExchange = false } = await req.json()
+
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    select: { product: { select: { priceVisibility: true } } },
+  })
+  if (!variant) return NextResponse.json({ error: 'Variant not found' }, { status: 404 })
+  const showPricesGlobal = await getShowPricesGlobal()
+  if (!resolvePriceVisibility(variant.product.priceVisibility, showPricesGlobal)) {
+    return NextResponse.json({ error: 'This product is priced on request — enquire on WhatsApp' }, { status: 403 })
+  }
 
   const item = await prisma.cartItem.upsert({
-    where: { userId_variantId: { userId: user.id, variantId } },
+    where: {
+      userId_variantId_withExchange: {
+        userId: user.id,
+        variantId,
+        withExchange: Boolean(withExchange),
+      },
+    },
     update: { quantity: { increment: quantity } },
-    create: { userId: user.id, variantId, quantity },
+    create: { userId: user.id, variantId, quantity, withExchange: Boolean(withExchange) },
   })
   return NextResponse.json(item, { status: 201 })
 }

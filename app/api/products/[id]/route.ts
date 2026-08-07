@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { id } = await params
   const product = await prisma.product.findUnique({
-    where: { id, isActive: true },
+    where: { id, isActive: true, status: 'LIVE' },
     include: {
       variants: {
         select: {

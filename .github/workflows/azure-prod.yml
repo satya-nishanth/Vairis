@@ -1,0 +1,65 @@
+# Run when commits are pushed to master (prod)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+# Set up permissions for deploying with secretless Azure federated credentials
+# https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-portal%2Clinux#set-up-azure-login-with-openid-connect-authentication
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: Production
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_CONTAINER_REGISTRY_ENDPOINT: ${{ vars.AZURE_CONTAINER_REGISTRY_ENDPOINT }}
+      # Only real secret this pipeline needs — it sets an actual Postgres resource property
+      # (administratorLoginPassword), not just a container env var, so it can't be a Key Vault
+      # reference the way every other app secret is (see infra/main.bicep).
+      POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+      SITE_URL: ${{ vars.SITE_URL }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      # Docker build-args (baked into the client bundle / routes manifest at build time) — all
+      # non-secret by design (NEXT_PUBLIC_* is meant to be public; GOTRUE_INTERNAL_URL is just
+      # an internal hostname, not a credential).
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
+      NEXT_PUBLIC_CHECKOUT_ENABLED: ${{ vars.NEXT_PUBLIC_CHECKOUT_ENABLED }}
+      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+      NEXT_PUBLIC_SITE_THEME: ${{ vars.NEXT_PUBLIC_SITE_THEME }}
+      NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
+      NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
+      GOTRUE_INTERNAL_URL: ${{ vars.GOTRUE_INTERNAL_URL }}
+      # Custom domain binding — declared in infra/main.bicep so `azd provision` stops
+      # dropping it (see commit "Declare prod custom domain binding in Bicep"). Empty
+      # on staging, set here since prod is the only env with a bound custom domain.
+      CUSTOM_DOMAIN_FQDN: ${{ vars.CUSTOM_DOMAIN_FQDN }}
+      CUSTOM_CERTIFICATE_NAME: ${{ vars.CUSTOM_CERTIFICATE_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+      - name: Log in with Azure (Federated Credentials)
+        run: |
+          azd auth login `
+            --client-id "$Env:AZURE_CLIENT_ID" `
+            --federated-credential-provider "github" `
+            --tenant-id "$Env:AZURE_TENANT_ID"
+        shell: pwsh
+
+      - name: Provision Infrastructure
+        run: azd provision --no-prompt
+
+      - name: Deploy Application
+        run: azd deploy --no-prompt
