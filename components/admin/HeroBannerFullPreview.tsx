@@ -21,10 +21,12 @@ type Props = {
 export default function HeroBannerFullPreview({ variant, slides }: Props) {
   const [current, setCurrent] = useState(0)
   const isMobile = variant === 'mobile'
+  const slideKey = slides.map((s) => s.id).join(',')
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
     setCurrent(0)
-  }, [slides.map((s) => s.id).join(',')])
+  }, [slideKey])
 
   useEffect(() => {
     if (slides.length <= 1) return

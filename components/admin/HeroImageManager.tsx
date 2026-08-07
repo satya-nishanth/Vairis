@@ -57,13 +57,16 @@ export default function HeroImageManager() {
     const data = await parseJson(res)
     if (!res.ok) {
       alert(errorMessage(data, 'Failed to load hero images'))
+      setLoading(false)
       return
     }
     if (Array.isArray(data)) setImages(data as HeroImageRecord[])
+    setLoading(false)
   }, [])
 
   useEffect(() => {
-    loadImages().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset, pre-compiler pattern
+    loadImages()
   }, [loadImages])
 
   async function uploadFile(file: File): Promise<string | null> {
