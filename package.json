@@ -16,6 +16,7 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.33.0",
+    "@iconify/react": "^6.0.2",
     "@prisma/client": "^5.22.0",
     "@sentry/nextjs": "^10.68.0",
     "@supabase/ssr": "^0.10.2",
