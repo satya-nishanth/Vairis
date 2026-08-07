@@ -43,7 +43,11 @@ az containerapp update -g "$RG" -n "$APP" --min-replicas "$APP_MIN" -o none
 for CA in "$GOTRUE" "$APP"; do
   REV=$(az containerapp show -g "$RG" -n "$CA" --query properties.latestRevisionName -o tsv)
   echo "  activating + restarting $CA revision $REV"
-  az containerapp revision activate -g "$RG" -n "$CA" --revision "$REV" -o none
+  # activate errors (RevisionAlreadyInRequestedState) if the revision never
+  # actually flipped to inactive (e.g. gotrue, whose "active" flag stays
+  # true even at 0 replicas) — restart is what actually brings replicas up,
+  # so activate failing here isn't fatal.
+  az containerapp revision activate -g "$RG" -n "$CA" --revision "$REV" -o none || true
   az containerapp revision restart -g "$RG" -n "$CA" --revision "$REV" -o none
 done
 
