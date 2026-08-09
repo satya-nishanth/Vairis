@@ -3,9 +3,11 @@
 name: Gold rate sync
 
 on:
-  schedule:
-    # Every hour 03:00–14:00 UTC ≈ 08:30–19:30 IST
-    - cron: "0 3-14 * * *"
+  # PAUSED: repo secret APP_URL not set — schedule was firing hourly and
+  # failing (curl: no host part in URL). Re-add schedule once set.
+  # schedule:
+  #   # Every hour 03:00–14:00 UTC ≈ 08:30–19:30 IST
+  #   - cron: "0 3-14 * * *"
   workflow_dispatch:
 
 jobs:
