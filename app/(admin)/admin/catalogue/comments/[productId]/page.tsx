@@ -21,6 +21,37 @@ function formatWhen(d: Date) {
   })
 }
 
+const th: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '10px 16px',
+  fontSize: '0.625rem',
+  color: '#9ca3af',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  fontWeight: 500,
+  borderBottom: '1px solid #f3f4f6',
+  background: '#fafafa',
+  whiteSpace: 'nowrap',
+}
+
+const td: React.CSSProperties = {
+  padding: '12px 16px',
+  fontSize: '0.8125rem',
+  color: '#6b7280',
+  borderTop: '1px solid #f9fafb',
+  verticalAlign: 'top',
+}
+
+const emptyBox: React.CSSProperties = {
+  fontSize: '0.875rem',
+  color: '#9ca3af',
+  background: '#fff',
+  border: '1px solid #f3f4f6',
+  borderRadius: 8,
+  padding: '2rem 1.5rem',
+  margin: 0,
+}
+
 type Props = { params: Promise<{ productId: string }> }
 
 export default async function CatalogueProductFeedbackPage({ params }: Props) {
@@ -60,118 +91,97 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
   const dislikes = reactions.filter((r) => normReaction(r.reaction) === 'dislike')
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="admin-page">
       <Link
         href="/admin/catalogue/comments"
-        className="text-xs text-brand-gold hover:underline tracking-wide uppercase mb-4 inline-block"
+        style={{ display: 'inline-block', marginBottom: '1rem', fontSize: '0.75rem', color: '#b8963e', letterSpacing: '0.06em', textTransform: 'uppercase', textDecoration: 'none' }}
       >
         ← All catalogue feedback
       </Link>
 
-      <div className="flex flex-col md:flex-row gap-6 mb-8">
-        <div className="w-full md:w-40 h-40 bg-brand-cream rounded-lg overflow-hidden relative shrink-0">
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', width: 160, height: 160, background: '#050505', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
           {product.images[0] ? (
-             
-            <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+            <img src={product.images[0]} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-4xl">
-              V
-            </div>
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(184, 150, 62, 0.35)', fontSize: '2.5rem' }}>V</div>
           )}
         </div>
-        <div>
-          <p className="text-xs text-gray-400 tracking-widest uppercase">
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: '#9ca3af', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
             {CATEGORY_LABELS[product.category] ?? product.category}
             {!product.isActive && ' · Inactive'}
           </p>
-          <h1 className="font-display text-3xl text-gray-900 mt-1">{product.name}</h1>
+          <h1 className="admin-page__title" style={{ margin: '0.25rem 0 0' }}>{product.name}</h1>
           {product.itemCode && (
-            <p className="text-sm text-gray-400 font-mono mt-1">{product.itemCode}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{product.itemCode}</p>
           )}
           {product.stoneType && product.caratWeight != null && (
-            <p className="text-sm text-gray-500 mt-1">
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>
               {Number(product.caratWeight)}ctw · {product.stoneType}
             </p>
           )}
-          <p className="text-sm text-gray-500 mt-2 max-w-2xl line-clamp-2">{product.description}</p>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '0.8125rem', color: '#6b7280', maxWidth: 560, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            {product.description}
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Likes</p>
-          <p className="font-display text-3xl text-brand-gold">{likes.length}</p>
+      <div className="admin-stats">
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Likes</p>
+          <p className="admin-stat-card__value admin-stat-card__value--gold">{likes.length}</p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Dislikes</p>
-          <p className="font-display text-3xl text-gray-900">{dislikes.length}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Dislikes</p>
+          <p className="admin-stat-card__value">{dislikes.length}</p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Comments</p>
-          <p className="font-display text-3xl text-gray-900">{comments.length}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Comments</p>
+          <p className="admin-stat-card__value">{comments.length}</p>
         </div>
       </div>
 
-      <section className="mb-10">
-        <h2 className="text-sm font-medium text-gray-600 tracking-widest uppercase mb-4">
+      <section style={{ marginBottom: '2.5rem' }}>
+        <h2 style={{ fontSize: '0.75rem', fontWeight: 500, color: '#4b5563', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 1rem' }}>
           Comments ({comments.length})
         </h2>
         {comments.length === 0 ? (
-          <p className="text-sm text-gray-400 bg-white border border-gray-100 rounded-lg px-6 py-8">
-            No comments for this product yet.
-          </p>
+          <p style={emptyBox}>No comments for this product yet.</p>
         ) : (
-          <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
-            <table className="w-full min-w-[800px]">
+          <div className="admin-table-wrap">
+            <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Guest
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Contact
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Comment
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    When
-                  </th>
+                <tr>
+                  <th style={th}>Guest</th>
+                  <th style={th}>Contact</th>
+                  <th style={th}>Comment</th>
+                  <th style={th}>When</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {comments.map((c) => {
                   const guest = guestFromMap(guestMap, c.guestUserId)
                   return (
-                    <tr key={c.id} className="hover:bg-gray-50/50 align-top">
-                      <td className="px-6 py-4">
-                        <span className="font-medium text-sm text-gray-900">@{guest.username}</span>
+                    <tr key={c.id}>
+                      <td style={td}>
+                        <span style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#111827' }}>@{guest.username}</span>
                         {guest.createdAt.getTime() > 0 && (
-                          <span className="text-xs text-gray-400 block">
-                            Joined {formatWhen(guest.createdAt)}
-                          </span>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af' }}>Joined {formatWhen(guest.createdAt)}</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
+                      <td style={td}>
                         {guest.email !== '—' ? (
-                          <a href={`mailto:${guest.email}`} className="hover:text-brand-gold block">
-                            {guest.email}
-                          </a>
+                          <a href={`mailto:${guest.email}`} style={{ display: 'block', color: '#6b7280', textDecoration: 'none' }}>{guest.email}</a>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span style={{ color: '#9ca3af' }}>—</span>
                         )}
                         {guest.phone !== '—' && (
-                          <a href={`tel:${guest.phone}`} className="hover:text-brand-gold block mt-1">
-                            {guest.phone}
-                          </a>
+                          <a href={`tel:${guest.phone}`} style={{ display: 'block', marginTop: 2, color: '#6b7280', textDecoration: 'none' }}>{guest.phone}</a>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-800 max-w-md whitespace-pre-wrap">
-                        {c.body}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                        {formatWhen(c.createdAt)}
-                      </td>
+                      <td style={{ ...td, color: '#374151', maxWidth: 420, whiteSpace: 'pre-wrap' }}>{c.body}</td>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatWhen(c.createdAt)}</td>
                     </tr>
                   )
                 })}
@@ -182,58 +192,50 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
       </section>
 
       <section>
-        <h2 className="text-sm font-medium text-gray-600 tracking-widest uppercase mb-4">
+        <h2 style={{ fontSize: '0.75rem', fontWeight: 500, color: '#4b5563', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 1rem' }}>
           Reactions ({reactions.length}
           {reactions.length >= 500 ? ', showing latest 500' : ''})
         </h2>
         {reactions.length === 0 ? (
-          <p className="text-sm text-gray-400 bg-white border border-gray-100 rounded-lg px-6 py-8">
-            No likes or dislikes yet.
-          </p>
+          <p style={emptyBox}>No likes or dislikes yet.</p>
         ) : (
-          <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+          <div className="admin-table-wrap">
+            <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Guest
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Contact
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Reaction
-                  </th>
-                  <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                    Updated
-                  </th>
+                <tr>
+                  <th style={th}>Guest</th>
+                  <th style={th}>Contact</th>
+                  <th style={th}>Reaction</th>
+                  <th style={th}>Updated</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {reactions.map((r) => {
                   const guest = guestFromMap(guestMap, r.guestUserId)
                   const isLike = normReaction(r.reaction) === 'like'
                   return (
-                    <tr key={r.id} className="hover:bg-gray-50/50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        @{guest.username}
+                    <tr key={r.id}>
+                      <td style={{ ...td, fontWeight: 500, fontSize: '0.875rem', color: '#111827' }}>@{guest.username}</td>
+                      <td style={td}>
+                        <span style={{ display: 'block' }}>{guest.email}</span>
+                        <span style={{ display: 'block', color: '#9ca3af' }}>{guest.phone}</span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <span className="block">{guest.email}</span>
-                        <span className="block text-gray-400">{guest.phone}</span>
-                      </td>
-                      <td className="px-6 py-4">
+                      <td style={td}>
                         <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            isLike ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
-                          }`}
+                          style={{
+                            display: 'inline-flex',
+                            padding: '2px 10px',
+                            borderRadius: 999,
+                            fontSize: '0.6875rem',
+                            fontWeight: 500,
+                            background: isLike ? '#fdf8f0' : '#fef2f2',
+                            color: isLike ? '#b8963e' : '#dc2626',
+                          }}
                         >
                           {isLike ? 'Like' : 'Dislike'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                        {formatWhen(r.updatedAt)}
-                      </td>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>{formatWhen(r.updatedAt)}</td>
                     </tr>
                   )
                 })}
