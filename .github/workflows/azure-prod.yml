@@ -63,3 +63,41 @@ jobs:
 
       - name: Deploy Application
         run: azd deploy --no-prompt
+
+      - name: Log in with Azure CLI (for post-deploy checks)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Catches the failure mode from 2026-08-10: a bad revision (crash-looping
+      # container) can deploy "successfully" from azd's perspective — Container
+      # Apps just silently keeps the last healthy revision serving traffic while
+      # the new one loops, so nothing here or in uptime looks wrong. This step
+      # makes that loud instead of silent.
+      - name: Wait for new revision to be healthy
+        run: |
+          set -e
+          RG="rg-vairis-${{ vars.AZURE_ENV_NAME }}"
+          APP="vairis-app-${{ vars.AZURE_ENV_NAME }}"
+          for i in $(seq 1 24); do
+            LATEST=$(az containerapp revision list -g "$RG" -n "$APP" --query "[?properties.active]|[0].name" -o tsv)
+            HEALTH=$(az containerapp revision show -g "$RG" -n "$APP" --revision "$LATEST" --query "properties.healthState" -o tsv)
+            echo "Revision $LATEST health: $HEALTH (attempt $i/24)"
+            if [ "$HEALTH" = "Healthy" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::New revision did not become healthy within 4 minutes — check 'az containerapp logs show' / _prisma_migrations for a stuck migration."
+          exit 1
+
+      - name: Smoke test live site
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.SITE_URL }}")
+          echo "Homepage status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Smoke test failed — $STATUS from ${{ vars.SITE_URL }}"
+            exit 1
+          fi
