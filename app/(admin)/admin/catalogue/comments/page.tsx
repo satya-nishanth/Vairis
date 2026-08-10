@@ -11,6 +11,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   BRACELETS: 'Bracelets',
 }
 
+const th: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '10px 16px',
+  fontSize: '0.625rem',
+  color: '#9ca3af',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  fontWeight: 500,
+  borderBottom: '1px solid #f3f4f6',
+  background: '#fafafa',
+  whiteSpace: 'nowrap',
+}
+
+const td: React.CSSProperties = {
+  padding: '12px 16px',
+  fontSize: '0.8125rem',
+  color: '#6b7280',
+  borderTop: '1px solid #f9fafb',
+  verticalAlign: 'middle',
+}
+
 export default async function CatalogueCommentsPage() {
   const [products, { commentMap, likeMap, dislikeMap, totalComments, totalLikes, totalDislikes }] =
     await Promise.all([
@@ -26,147 +47,74 @@ export default async function CatalogueCommentsPage() {
   )
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-8">
-        <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Catalogue</p>
-        <h1 className="font-display text-3xl text-gray-900">Customer feedback</h1>
-        <p className="text-sm text-gray-500 mt-2 max-w-xl">
-          Likes, dislikes, and comments from catalogue guests. Open a product to see full customer
-          details.
-        </p>
+    <div className="admin-page">
+      <div className="admin-page__header">
+        <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Customer feedback</h1>
       </div>
+      <p style={{ fontSize: '0.875rem', color: '#6b7280', maxWidth: 560, marginTop: '-0.5rem', marginBottom: '1.5rem' }}>
+        Likes, dislikes, and comments from catalogue guests. Open a product to see full customer details.
+      </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Comments</p>
-          <p className="font-display text-3xl text-gray-900">{totalComments}</p>
+      <div className="admin-stats">
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Comments</p>
+          <p className="admin-stat-card__value">{totalComments}</p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Likes</p>
-          <p className="font-display text-3xl text-brand-gold">{totalLikes}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Likes</p>
+          <p className="admin-stat-card__value admin-stat-card__value--gold">{totalLikes}</p>
         </div>
-        <div className="bg-white border border-gray-100 rounded-lg p-5">
-          <p className="text-xs text-gray-400 tracking-widest uppercase mb-1">Dislikes</p>
-          <p className="font-display text-3xl text-gray-900">{totalDislikes}</p>
+        <div className="admin-stat-card">
+          <p className="admin-stat-card__label">Dislikes</p>
+          <p className="admin-stat-card__value">{totalDislikes}</p>
         </div>
       </div>
 
       {withFeedback.length === 0 ? (
-        <div className="bg-white border border-gray-100 rounded-lg p-12 text-center text-gray-400">
-          <p className="font-display text-xl mb-2">No catalogue feedback yet</p>
-          <p className="text-sm">Comments and reactions will appear here once guests use the catalogue.</p>
+        <div className="admin-panel" style={{ textAlign: 'center', padding: '3rem 1.25rem', color: '#9ca3af' }}>
+          <p style={{ fontSize: '1.125rem', margin: '0 0 0.5rem', color: '#374151' }}>No catalogue feedback yet</p>
+          <p style={{ fontSize: '0.875rem', margin: 0 }}>Comments and reactions will appear here once guests use the catalogue.</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+        <div className="admin-table-wrap" style={{ marginBottom: '2rem' }}>
+          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Product
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Likes
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Dislikes
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Comments
-                </th>
-                <th className="px-6 py-3" />
+              <tr>
+                <th style={th}>Product</th>
+                <th style={th}>Likes</th>
+                <th style={th}>Dislikes</th>
+                <th style={th}>Comments</th>
+                <th style={th} />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {products
-                .filter(
-                  (p) =>
-                    (commentMap[p.id] ?? 0) + (likeMap[p.id] ?? 0) + (dislikeMap[p.id] ?? 0) > 0
-                )
-                .map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-brand-cream rounded flex-shrink-0 overflow-hidden relative">
-                          {p.images[0] ? (
-                             
-                            <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-brand-gold/30 font-display text-lg">
-                              V
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <span className="font-medium text-sm text-gray-900 block">{p.name}</span>
-                          <span className="text-xs text-gray-400 font-mono">{p.itemCode ?? '—'}</span>
-                          <span className="text-xs text-gray-400 block">
-                            {CATEGORY_LABELS[p.category] ?? p.category}
-                            {!p.isActive && ' · Inactive'}
-                          </span>
-                        </div>
+            <tbody>
+              {withFeedback.map((p) => (
+                <tr key={p.id}>
+                  <td style={td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ position: 'relative', width: 48, height: 48, background: '#050505', flexShrink: 0, overflow: 'hidden', borderRadius: 4 }}>
+                        {p.images[0] ? (
+                          <img src={p.images[0]} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(184, 150, 62, 0.35)', fontSize: '1.125rem' }}>V</div>
+                        )}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm tabular-nums text-gray-700">{likeMap[p.id] ?? 0}</td>
-                    <td className="px-6 py-4 text-sm tabular-nums text-gray-700">
-                      {dislikeMap[p.id] ?? 0}
-                    </td>
-                    <td className="px-6 py-4 text-sm tabular-nums text-gray-700">
-                      {commentMap[p.id] ?? 0}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/admin/catalogue/comments/${p.id}`}
-                        className="text-xs text-brand-gold hover:underline font-medium"
-                      >
-                        View details →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="mt-8">
-        <h2 className="text-sm font-medium text-gray-600 tracking-widest uppercase mb-4">
-          All products ({products.length})
-        </h2>
-        <div className="bg-white border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
-          <table className="w-full min-w-[720px]">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Product
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Likes
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Dislikes
-                </th>
-                <th className="text-left px-6 py-3 text-xs text-gray-400 tracking-widest uppercase font-medium">
-                  Comments
-                </th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {products.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-4">
-                    <span className="font-medium text-sm text-gray-900">{p.name}</span>
-                    <span className="text-xs text-gray-400 font-mono block">{p.itemCode ?? '—'}</span>
+                      <div>
+                        <span style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#111827' }}>{p.name}</span>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{p.itemCode ?? '—'}</span>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af' }}>
+                          {CATEGORY_LABELS[p.category] ?? p.category}
+                          {!p.isActive && ' · Inactive'}
+                        </span>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 text-sm tabular-nums text-gray-500">{likeMap[p.id] ?? 0}</td>
-                  <td className="px-6 py-4 text-sm tabular-nums text-gray-500">{dislikeMap[p.id] ?? 0}</td>
-                  <td className="px-6 py-4 text-sm tabular-nums text-gray-500">{commentMap[p.id] ?? 0}</td>
-                  <td className="px-6 py-4 text-right">
-                    <Link
-                      href={`/admin/catalogue/comments/${p.id}`}
-                      className="text-xs text-gray-500 hover:text-brand-gold"
-                    >
-                      Open
+                  <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{likeMap[p.id] ?? 0}</td>
+                  <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{dislikeMap[p.id] ?? 0}</td>
+                  <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{commentMap[p.id] ?? 0}</td>
+                  <td style={{ ...td, textAlign: 'right' }}>
+                    <Link href={`/admin/catalogue/comments/${p.id}`} style={{ fontSize: '0.75rem', color: '#b8963e', fontWeight: 500, textDecoration: 'none' }}>
+                      View details →
                     </Link>
                   </td>
                 </tr>
@@ -174,6 +122,41 @@ export default async function CatalogueCommentsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      <h2 style={{ fontSize: '0.75rem', fontWeight: 500, color: '#4b5563', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 1rem' }}>
+        All products ({products.length})
+      </h2>
+      <div className="admin-table-wrap">
+        <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={th}>Product</th>
+              <th style={th}>Likes</th>
+              <th style={th}>Dislikes</th>
+              <th style={th}>Comments</th>
+              <th style={th} />
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td style={td}>
+                  <span style={{ display: 'block', fontWeight: 500, fontSize: '0.875rem', color: '#111827' }}>{p.name}</span>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{p.itemCode ?? '—'}</span>
+                </td>
+                <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{likeMap[p.id] ?? 0}</td>
+                <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{dislikeMap[p.id] ?? 0}</td>
+                <td style={{ ...td, fontVariantNumeric: 'tabular-nums' }}>{commentMap[p.id] ?? 0}</td>
+                <td style={{ ...td, textAlign: 'right' }}>
+                  <Link href={`/admin/catalogue/comments/${p.id}`} style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
+                    Open
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
