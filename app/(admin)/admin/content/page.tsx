@@ -10,6 +10,7 @@ import {
 import type { ShopCategory } from '@/lib/catalogue-ui'
 import { getCategoryHeroImages } from '@/lib/category-hero-images'
 import { getHeroSlides } from '@/lib/ui-data'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,10 +68,15 @@ export default async function AdminContentPage() {
   return (
     <div className="admin-page" style={{ maxWidth: 960 }}>
       <h1 className="admin-page__title">Site Content</h1>
-      <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: '0 0 1.5rem', maxWidth: 640 }}>
-        Edit category and home heroes. Click <strong>Edit</strong> to open the full page with live
-        storefront preview.
-      </p>
+      <AdminGuide
+        pageKey="content"
+        title="Content"
+        blurb="Homepage/PLP hero banners + category headline text."
+        tips={[
+          'Click Edit to open the full page with live storefront preview.',
+          'Changes go live immediately — no draft/preview beyond the built-in preview pane.',
+        ]}
+      />
 
       {dbMissing && (
         <div
