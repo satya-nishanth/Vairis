@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { OrderStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,6 +73,12 @@ export default async function AdminOrdersPage({
           + Manual Order
         </Link>
       </div>
+      <AdminGuide
+        pageKey="orders"
+        title="Orders"
+        blurb="Full order list + lifecycle (payment → delivery → returns/RTO). Manual Order creates one on a customer's behalf."
+        tips={['Status changes here can trigger customer emails — double-check before changing.']}
+      />
 
       {dbMissing && (
         <div
@@ -125,6 +132,32 @@ export default async function AdminOrdersPage({
       {dbMissing ? null : orders.length === 0 ? (
         <p style={{ color: '#6b7280', padding: '2rem 0' }}>No orders{filter ? ` in ${filter}` : ' yet'}.</p>
       ) : (
+        <>
+        <ul className="admin-cards">
+          {orders.map((order) => (
+            <li key={order.id} className="admin-card admin-card--no-media">
+              <div className="admin-card__body">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <Link href={`/admin/orders/${order.id}`} className="admin-card__title" style={{ color: '#032b24', textDecoration: 'none' }}>
+                    {order.id.slice(-8)}
+                  </Link>
+                  <span className="admin-card__meta">
+                    {order.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+                <p className="admin-card__meta">{order.user.email}</p>
+                <p className="admin-card__meta" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {order.items.map((i) => `${i.productName} ×${i.quantity}`).join(', ')}
+                </p>
+                <p className="admin-card__meta">
+                  {ORDER_STATUS_META[order.status]?.label ?? order.status}
+                  {' · '}Paid {inr(order.grandTotal)}
+                  {' · '}Deposit {Number(order.payment?.refundedAmount ?? 0) > 0 ? '↩ ' : ''}{inr(order.depositAmount)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
         <div className="admin-table-wrap">
         <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
           <thead>
@@ -166,6 +199,7 @@ export default async function AdminOrdersPage({
           </tbody>
         </table>
         </div>
+        </>
       )}
     </div>
   )
