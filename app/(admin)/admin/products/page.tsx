@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { prisma } from '@/lib/prisma'
 import type { Category } from '@prisma/client'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
 
 export const dynamic = 'force-dynamic'
@@ -127,6 +128,15 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
           + New Product
         </Link>
       </div>
+      <AdminGuide
+        pageKey="products"
+        title="Products"
+        blurb="Full catalogue CRUD — draft, AI-draft, or live."
+        tips={[
+          'Only live products show on the storefront.',
+          'Image order (front→left→right→back) controls PDP gallery order.',
+        ]}
+      />
 
       <div className="admin-products__filters">
         <div className="admin-products__tabs">
