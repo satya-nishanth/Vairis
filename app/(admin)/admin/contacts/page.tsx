@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { ContactStatusButtons } from './ContactStatusButtons'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,12 @@ export default async function AdminContactsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '1.5rem' }}>
         Contact Requests
       </h1>
+      <AdminGuide
+        pageKey="contacts"
+        title="Contacts"
+        blurb="Inbox for the storefront contact form."
+        tips={['No reply-from-here — copy the email/phone and respond externally.']}
+      />
       <div style={{ display: 'grid', gap: 12 }}>
         {requests.length === 0 && (
           <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>No contact requests yet.</p>
