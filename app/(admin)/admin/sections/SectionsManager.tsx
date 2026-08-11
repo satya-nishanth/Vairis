@@ -108,7 +108,7 @@ export function SectionsManager({
         style={{ display: 'grid', gap: 10, background: '#fff', border: '1px solid #f3f4f6', borderRadius: 8, padding: 16 }}
         data-testid="section-create"
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="admin-grid-2">
           <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
             Section type
             <select style={input} value={kind} onChange={(e) => setKind(e.target.value)}>
@@ -145,7 +145,7 @@ export function SectionsManager({
             </label>
           )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="admin-grid-2">
           <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
             Title (optional)
             <input style={input} value={title} onChange={(e) => setTitle(e.target.value)} />
