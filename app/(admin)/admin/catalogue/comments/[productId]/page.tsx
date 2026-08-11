@@ -149,6 +149,22 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
         {comments.length === 0 ? (
           <p style={emptyBox}>No comments for this product yet.</p>
         ) : (
+          <>
+          <ul className="admin-cards">
+            {comments.map((c) => {
+              const guest = guestFromMap(guestMap, c.guestUserId)
+              return (
+                <li key={c.id} className="admin-card admin-card--no-media">
+                  <div className="admin-card__body">
+                    <span className="admin-card__title">@{guest.username}</span>
+                    <p className="admin-card__meta">{c.body}</p>
+                    {guest.email !== '—' && <p className="admin-card__meta">{guest.email}</p>}
+                    <p className="admin-card__meta">{formatWhen(c.createdAt)}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
           <div className="admin-table-wrap">
             <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse' }}>
               <thead>
@@ -188,6 +204,7 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 
@@ -199,6 +216,23 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
         {reactions.length === 0 ? (
           <p style={emptyBox}>No likes or dislikes yet.</p>
         ) : (
+          <>
+          <ul className="admin-cards">
+            {reactions.map((r) => {
+              const guest = guestFromMap(guestMap, r.guestUserId)
+              const isLike = normReaction(r.reaction) === 'like'
+              return (
+                <li key={r.id} className="admin-card admin-card--no-media">
+                  <div className="admin-card__body">
+                    <span className="admin-card__title">@{guest.username}</span>
+                    <p className="admin-card__meta">
+                      {isLike ? 'Like' : 'Dislike'} · {formatWhen(r.updatedAt)}
+                    </p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
           <div className="admin-table-wrap">
             <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
               <thead>
@@ -242,6 +276,7 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

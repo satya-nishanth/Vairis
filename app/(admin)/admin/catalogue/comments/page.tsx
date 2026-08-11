@@ -76,6 +76,33 @@ export default async function CatalogueCommentsPage() {
           <p style={{ fontSize: '0.875rem', margin: 0 }}>Comments and reactions will appear here once guests use the catalogue.</p>
         </div>
       ) : (
+        <>
+        <ul className="admin-cards" style={{ marginBottom: '2rem' }}>
+          {withFeedback.map((p) => (
+            <li key={p.id} className="admin-card">
+              <div className="admin-card__media">
+                {p.images[0] ? (
+                  <img src={p.images[0]} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(184, 150, 62, 0.35)', fontSize: '1.125rem' }}>V</div>
+                )}
+              </div>
+              <div className="admin-card__body">
+                <span className="admin-card__title">{p.name}</span>
+                <p className="admin-card__meta">
+                  {CATEGORY_LABELS[p.category] ?? p.category}
+                  {!p.isActive && ' · Inactive'}
+                </p>
+                <p className="admin-card__meta">
+                  {likeMap[p.id] ?? 0} likes · {dislikeMap[p.id] ?? 0} dislikes · {commentMap[p.id] ?? 0} comments
+                </p>
+                <Link href={`/admin/catalogue/comments/${p.id}`} style={{ fontSize: '0.75rem', color: '#b8963e', fontWeight: 500, textDecoration: 'none' }}>
+                  View details →
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
         <div className="admin-table-wrap" style={{ marginBottom: '2rem' }}>
           <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
             <thead>
@@ -122,11 +149,28 @@ export default async function CatalogueCommentsPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <h2 style={{ fontSize: '0.75rem', fontWeight: 500, color: '#4b5563', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 1rem' }}>
         All products ({products.length})
       </h2>
+      <ul className="admin-cards">
+        {products.map((p) => (
+          <li key={p.id} className="admin-card admin-card--no-media">
+            <div className="admin-card__body">
+              <span className="admin-card__title">{p.name}</span>
+              <p className="admin-card__meta">{p.itemCode ?? '—'}</p>
+              <p className="admin-card__meta">
+                {likeMap[p.id] ?? 0} likes · {dislikeMap[p.id] ?? 0} dislikes · {commentMap[p.id] ?? 0} comments
+              </p>
+              <Link href={`/admin/catalogue/comments/${p.id}`} style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
+                Open
+              </Link>
+            </div>
+          </li>
+        ))}
+      </ul>
       <div className="admin-table-wrap">
         <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
           <thead>
