@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 import { CollectionsManager } from './CollectionsManager'
 
 export const dynamic = 'force-dynamic'
@@ -21,11 +22,16 @@ export default async function AdminCollectionsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Collections
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-        Curated product edits with their own landing page (/collections/slug).
-        &ldquo;Show in nav&rdquo; pins the collection into the storefront header.
-        Attach a collection rail to the home page from Content → Home Sections.
-      </p>
+      <AdminGuide
+        pageKey="collections"
+        title="Collections"
+        blurb="Curated product groupings shown on collection pages (/collections/slug)."
+        tips={[
+          '"Show in nav" pins the collection into the storefront header.',
+          'A product can belong to multiple collections.',
+          'Attach a collection rail to the home page from Home Sections.',
+        ]}
+      />
       <CollectionsManager
         collections={collections.map((c) => ({
           id: c.id,

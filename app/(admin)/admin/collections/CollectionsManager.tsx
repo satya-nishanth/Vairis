@@ -62,7 +62,7 @@ function CollectionForm({
 
   return (
     <div style={{ display: 'grid', gap: 10, background: '#fff', border: '1px solid #f3f4f6', borderRadius: 8, padding: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="admin-grid-2">
         <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
           Title*
           <input
