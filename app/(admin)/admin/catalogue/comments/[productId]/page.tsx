@@ -157,8 +157,12 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
                 <li key={c.id} className="admin-card admin-card--no-media">
                   <div className="admin-card__body">
                     <span className="admin-card__title">@{guest.username}</span>
-                    <p className="admin-card__meta">{c.body}</p>
+                    {guest.createdAt.getTime() > 0 && (
+                      <p className="admin-card__meta">Joined {formatWhen(guest.createdAt)}</p>
+                    )}
                     {guest.email !== '—' && <p className="admin-card__meta">{guest.email}</p>}
+                    {guest.phone !== '—' && <p className="admin-card__meta">{guest.phone}</p>}
+                    <p className="admin-card__meta" style={{ whiteSpace: 'pre-wrap' }}>{c.body}</p>
                     <p className="admin-card__meta">{formatWhen(c.createdAt)}</p>
                   </div>
                 </li>
@@ -225,6 +229,8 @@ export default async function CatalogueProductFeedbackPage({ params }: Props) {
                 <li key={r.id} className="admin-card admin-card--no-media">
                   <div className="admin-card__body">
                     <span className="admin-card__title">@{guest.username}</span>
+                    <p className="admin-card__meta">{guest.email}</p>
+                    <p className="admin-card__meta">{guest.phone}</p>
                     <p className="admin-card__meta">
                       {isLike ? 'Like' : 'Dislike'} · {formatWhen(r.updatedAt)}
                     </p>
