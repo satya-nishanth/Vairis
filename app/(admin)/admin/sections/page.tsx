@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { SectionsManager } from './SectionsManager'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,11 +19,15 @@ export default async function AdminSectionsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Home Sections
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-        Ordered blocks rendered on the home page below the hero. Schedule with
-        start/end dates for launches and festive edits. No sections = the
-        built-in home layout, unchanged.
-      </p>
+      <AdminGuide
+        pageKey="sections"
+        title="Home Sections"
+        blurb="Homepage feature blocks (collection rail, editorial, video, USP) — order + schedule them."
+        tips={[
+          'startsAt/endsAt let you schedule a section without deleting it — inactive sections are hidden, not deleted.',
+          'No sections configured = the built-in home layout is used, unchanged.',
+        ]}
+      />
       <SectionsManager
         sections={sections.map((s) => ({
           id: s.id,
