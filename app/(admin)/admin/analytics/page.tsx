@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,6 +109,12 @@ export default async function AdminAnalyticsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '1.5rem' }}>
         Analytics
       </h1>
+      <AdminGuide
+        pageKey="analytics"
+        title="Analytics"
+        blurb="Traffic, conversion funnel, top products from first-party + GA4."
+        tips={['First-party data only; GA4 numbers may lag by a day.']}
+      />
 
       <div className="admin-stats">
         {[
