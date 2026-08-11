@@ -359,7 +359,7 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
         <input style={input} required value={address.addressLine1} onChange={(e) => setAddress((a) => ({ ...a, addressLine1: e.target.value }))} />
         <label style={label}>Address line 2 (optional)</label>
         <input style={input} value={address.addressLine2} onChange={(e) => setAddress((a) => ({ ...a, addressLine2: e.target.value }))} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div className="admin-grid-3">
           <div>
             <label style={label}>City</label>
             <input style={input} required value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} />
