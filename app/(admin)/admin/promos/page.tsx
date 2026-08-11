@@ -1,3 +1,4 @@
+import { AdminGuide } from '@/components/admin/AdminGuide'
 import { prisma } from '@/lib/prisma'
 import { PromosManager } from './PromosManager'
 
@@ -14,10 +15,15 @@ export default async function AdminPromosPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Promo Codes
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-        Percent or flat discounts applied at checkout. Codes with redemptions are
-        deactivated instead of deleted so order history stays intact.
-      </p>
+      <AdminGuide
+        pageKey="promos"
+        title="Promos"
+        blurb="Create/disable promo codes, track redemptions."
+        tips={[
+          "Disabling a code doesn't refund carts that already applied it.",
+          'Codes with redemptions are deactivated instead of deleted, so order history stays intact.',
+        ]}
+      />
       <PromosManager
         initial={promos.map((p) => ({
           id: p.id,
