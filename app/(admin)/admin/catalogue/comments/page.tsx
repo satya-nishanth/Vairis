@@ -89,6 +89,7 @@ export default async function CatalogueCommentsPage() {
               </div>
               <div className="admin-card__body">
                 <span className="admin-card__title">{p.name}</span>
+                <p className="admin-card__meta" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{p.itemCode ?? '—'}</p>
                 <p className="admin-card__meta">
                   {CATEGORY_LABELS[p.category] ?? p.category}
                   {!p.isActive && ' · Inactive'}
