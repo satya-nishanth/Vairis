@@ -1,20 +1,20 @@
 {
   "planPath": "docs/superpowers/plans/2026-08-11-admin-ui-overhaul-phase2.md",
   "tasks": [
-    { "id": 57, "subject": "Task 1: AdminGuide component + CSS foundation", "status": "pending" },
-    { "id": 58, "subject": "Task 2: Dashboard guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 59, "subject": "Task 3: Analytics guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 60, "subject": "Task 4: Products guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 61, "subject": "Task 5: Orders guide box + mobile card fallback", "status": "pending", "blockedBy": [57] },
-    { "id": 62, "subject": "Task 6: Content guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 63, "subject": "Task 7: Collections guide box + responsive grid", "status": "pending", "blockedBy": [57] },
-    { "id": 64, "subject": "Task 8: Home Sections guide box + responsive grids", "status": "pending", "blockedBy": [57] },
-    { "id": 65, "subject": "Task 9: Pricing guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 66, "subject": "Task 10: Promos guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 67, "subject": "Task 11: Reviews guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 68, "subject": "Task 12: Contacts guide box", "status": "pending", "blockedBy": [57] },
-    { "id": 69, "subject": "Task 13: Catalogue/comments mobile card fallback", "status": "pending", "blockedBy": [57] },
-    { "id": 70, "subject": "Task 14: Order detail + Manual Order form responsive grids", "status": "pending", "blockedBy": [57] }
+    { "id": 57, "subject": "Task 1: AdminGuide component + CSS foundation", "status": "completed" },
+    { "id": 58, "subject": "Task 2: Dashboard guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 59, "subject": "Task 3: Analytics guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 60, "subject": "Task 4: Products guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 61, "subject": "Task 5: Orders guide box + mobile card fallback", "status": "completed", "blockedBy": [57] },
+    { "id": 62, "subject": "Task 6: Content guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 63, "subject": "Task 7: Collections guide box + responsive grid", "status": "completed", "blockedBy": [57] },
+    { "id": 64, "subject": "Task 8: Home Sections guide box + responsive grids", "status": "completed", "blockedBy": [57] },
+    { "id": 65, "subject": "Task 9: Pricing guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 66, "subject": "Task 10: Promos guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 67, "subject": "Task 11: Reviews guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 68, "subject": "Task 12: Contacts guide box", "status": "completed", "blockedBy": [57] },
+    { "id": 69, "subject": "Task 13: Catalogue/comments mobile card fallback", "status": "completed", "blockedBy": [57] },
+    { "id": 70, "subject": "Task 14: Order detail + Manual Order form responsive grids", "status": "completed", "blockedBy": [57] }
   ],
-  "lastUpdated": "2026-08-11T00:00:00Z"
+  "lastUpdated": "2026-08-12T00:00:00Z"
 }
