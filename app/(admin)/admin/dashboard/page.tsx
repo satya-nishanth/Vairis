@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,12 @@ export default async function AdminDashboard() {
   return (
     <div className="admin-page">
       <h1 className="admin-page__title">Dashboard</h1>
+      <AdminGuide
+        pageKey="dashboard"
+        title="Dashboard"
+        blurb="At-a-glance store health — orders, revenue, low stock."
+        tips={['Numbers refresh on page load, not live.']}
+      />
 
       <div className="admin-stats">
         {stats.map((s) => {
