@@ -162,7 +162,7 @@ export default async function AdminOrderDetailPage({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+      <div className="admin-grid-2">
         <div style={card}>
           <h3 style={heading}>Items</h3>
           {order.items.map((item) => (
