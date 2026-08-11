@@ -1445,3 +1445,163 @@
     text-decoration: none;
   }
 }
+
+/* —— Admin section guide box (phase 2) —— */
+.admin-guide {
+  background: #fdf8f0;
+  border: 1px solid #e8d5a8;
+  border-left: 3px solid #b8963e;
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-guide__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.admin-guide__eyebrow {
+  display: block;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b8963e;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.admin-guide__title {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.admin-guide__toggle {
+  flex-shrink: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.admin-guide__body {
+  margin-top: 0.6rem;
+  font-size: 0.8125rem;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.admin-guide__tips {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.admin-guide__tips li {
+  margin-bottom: 0.25rem;
+}
+
+/* —— Generic mobile card list (phase 2) —— */
+/* Pairs with .admin-table-wrap: table hidden <768px, cards hidden >=768px.
+   Content-agnostic (unlike .admin-products__* which is products-specific) —
+   reused by orders + catalogue/comments, which all share the same
+   thumb/name/meta-lines shape. */
+.admin-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.admin-card--no-media {
+  grid-template-columns: 1fr;
+}
+
+.admin-card__media {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #050505;
+  flex-shrink: 0;
+}
+
+.admin-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-card__title {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.admin-card__meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .admin-table-wrap {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .admin-cards {
+    display: none;
+  }
+}
+
+/* —— Responsive grid utilities (phase 2) —— */
+/* Replaces inline style={{display:'grid', gridTemplateColumns:...}} at fixed
+   column counts (which can't hold a media query) with a class that stacks to
+   1 column on mobile. Same 640px breakpoint .pform__grid--3 already uses. */
+.admin-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.admin-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .admin-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
