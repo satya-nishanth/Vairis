@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { ReviewModerationCard } from './ReviewModerationCard'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,10 +19,15 @@ export default async function AdminReviewsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Reviews
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-        New reviews are hidden until approved. Verified = reviewer has a delivered
-        order containing the piece.
-      </p>
+      <AdminGuide
+        pageKey="reviews"
+        title="Reviews"
+        blurb="Moderate customer reviews before they go public."
+        tips={[
+          'Unapproved reviews are invisible on the storefront — nothing auto-publishes.',
+          'Verified = reviewer has a delivered order containing the piece.',
+        ]}
+      />
       <div style={{ display: 'grid', gap: 12 }}>
         {reviews.length === 0 && (
           <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>No reviews yet.</p>
