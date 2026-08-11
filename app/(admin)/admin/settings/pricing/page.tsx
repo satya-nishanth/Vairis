@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
 import { PricingSettingsForm } from './PricingSettingsForm'
 
 export const dynamic = 'force-dynamic'
@@ -18,11 +19,15 @@ export default async function PricingSettingsPage() {
       <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
         Pricing Settings
       </h1>
-      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-        Value Addition is shown as its own line on every customer price breakup
-        (PDP, checkout, invoice). Diamond rates are per carat — customers choose
-        with-exchange or without-exchange pricing on the product page.
-      </p>
+      <AdminGuide
+        pageKey="pricing"
+        title="Pricing"
+        blurb="Gold rate, Value-Addition %, making charges, diamond rates — feeds the live pricing formula."
+        tips={[
+          'Changes apply to new price calculations only — existing orders keep their locked-in price.',
+          'Diamond rates are per carat; customers choose with-exchange or without-exchange pricing on the product page.',
+        ]}
+      />
       <PricingSettingsForm
         initial={{
           vaGoldPct: Number(settings?.vaGoldPct ?? 5),
