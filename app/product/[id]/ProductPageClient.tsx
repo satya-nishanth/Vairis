@@ -173,8 +173,13 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
   // remains the only CTA for price-hidden products, same as CHECKOUT_ENABLED=false.
   const canAddToCart = CHECKOUT_ENABLED && product.showPrice;
 
+  // Deterministic on server and client (unlike window.location.href, which
+  // differs between SSR and the browser and causes a hydration mismatch —
+  // the href would silently stick to the server-rendered value).
+  const productUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/product/${product.id}`;
+
   const whatsappText = encodeURIComponent(
-    `Hi! I'm interested in *${product.name}*${product.itemCode ? ` (Code: ${product.itemCode})` : ""} from VAIRIS.`,
+    `Hi! I'm interested in *${product.name}*${product.itemCode ? ` (Code: ${product.itemCode})` : ""} from VAIRIS.\n${productUrl}`,
   );
 
   const handleAddToCart = async () => {
@@ -521,6 +526,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
           onAddToCart={handleAddToCart}
           addingToCart={addingToCart}
           expertLabel="Enquire on WhatsApp"
+          whatsappHref={`https://wa.me/917075486464?text=${whatsappText}`}
           canPurchase={product.showPrice}
         />
       )}

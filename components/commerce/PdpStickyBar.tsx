@@ -11,6 +11,7 @@ type PdpStickyBarProps = {
   onAddToCart: () => void;
   addingToCart?: boolean;
   expertLabel?: string;
+  whatsappHref?: string;
   canPurchase?: boolean;
 };
 
@@ -19,6 +20,7 @@ export function PdpStickyBar({
   onAddToCart,
   addingToCart,
   expertLabel = "Talk to Expert",
+  whatsappHref = WHATSAPP_URL,
   canPurchase = true,
 }: PdpStickyBarProps) {
   useEffect(() => {
@@ -32,7 +34,7 @@ export function PdpStickyBar({
         {price != null && (
           <span className="pdp-sticky-bar__price">₹{price.toLocaleString("en-IN")}</span>
         )}
-        <Link href={WHATSAPP_URL} className="pdp-sticky-bar__expert-link">
+        <Link href={whatsappHref} className="pdp-sticky-bar__expert-link">
           <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
           {expertLabel}
         </Link>
