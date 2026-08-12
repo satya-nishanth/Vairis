@@ -19,13 +19,14 @@ const CATEGORIES: { key: Category | 'ALL'; label: string }[] = [
 const ROW_OPTIONS = [10, 25, 50] as const
 
 type PageProps = {
-  searchParams: Promise<{ category?: string; status?: string; page?: string; rows?: string }>
+  searchParams: Promise<{ category?: string; status?: string; page?: string; rows?: string; q?: string }>
 }
 
 export default async function AdminProductsPage({ searchParams }: PageProps) {
   const params = await searchParams
   const categoryParam = (params.category ?? 'ALL').toUpperCase()
   const statusParam = (params.status ?? 'all').toLowerCase()
+  const searchTerm = (params.q ?? '').trim()
 
   const rowsRaw = Number(params.rows ?? 10)
   const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 10
@@ -39,6 +40,14 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     ...(statusParam === 'live' ? { status: 'LIVE' as const } : {}),
     ...(statusParam === 'draft' ? { status: 'DRAFT' as const } : {}),
     ...(statusParam === 'ai-draft' ? { status: 'AI_DRAFT' as const } : {}),
+    ...(searchTerm
+      ? {
+          OR: [
+            { name: { contains: searchTerm, mode: 'insensitive' as const } },
+            { itemCode: { contains: searchTerm, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}),
   }
 
   const [filteredTotal, counts] = await Promise.all([
@@ -70,6 +79,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     if (activeCategory !== 'ALL') q.set('category', activeCategory)
     if (statusParam !== 'all') q.set('status', statusParam)
     if (rows !== 10) q.set('rows', String(rows))
+    if (searchTerm) q.set('q', searchTerm)
     return q
   }
 
@@ -175,6 +185,50 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
             )
           })}
         </div>
+
+        <form
+          method="GET"
+          action="/admin/products"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}
+        >
+          {activeCategory !== 'ALL' && <input type="hidden" name="category" value={activeCategory} />}
+          {statusParam !== 'all' && <input type="hidden" name="status" value={statusParam} />}
+          {rows !== 10 && <input type="hidden" name="rows" value={rows} />}
+          <input
+            type="search"
+            name="q"
+            defaultValue={searchTerm}
+            placeholder="Search by name or item code…"
+            style={{
+              flex: '1 1 260px',
+              maxWidth: 320,
+              padding: '8px 10px',
+              border: '1px solid #e5e7eb',
+              borderRadius: 6,
+              fontSize: '0.8125rem',
+            }}
+          />
+          <button
+            type="submit"
+            className="admin-btn"
+            style={{ padding: '8px 14px', fontSize: '0.75rem' }}
+          >
+            Search
+          </button>
+          {searchTerm && (
+            <Link
+              href={(() => {
+                const q = baseQuery()
+                q.delete('q')
+                const s = q.toString()
+                return s ? `/admin/products?${s}` : '/admin/products'
+              })()}
+              style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+            >
+              Clear
+            </Link>
+          )}
+        </form>
       </div>
 
       {filteredTotal === 0 ? (
