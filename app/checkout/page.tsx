@@ -17,8 +17,8 @@ import { track } from "@/lib/analytics-client";
 /**
  * Checkout — real order + gateway payment.
  *
- * Money model: customer pays exactly the displayed total (pricing v2 —
- * the breakup incl. Value Addition is computed server-side per line).
+ * Money model: customer pays exactly the displayed total
+ * (wastage + 3% GST, computed server-side per line).
  *
  * The server decides the gateway (lib/payments); this page receives
  * `{ gateway, clientParams }` from /api/checkout and hands clientParams to

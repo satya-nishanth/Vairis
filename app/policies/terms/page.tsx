@@ -10,7 +10,7 @@ export default function TermsPage() {
       <p>
         Every VAIRIS piece is described with its true gold weight, diamond type
         and carat weight. Prices are computed from live gold rates, per-carat
-        diamond rates, making charges, a disclosed Value Addition line and GST
+        diamond rates, making charges, a disclosed wastage line and GST
         — the full breakup is shown on each product page and at checkout.
         Prices refresh with market rates; the price you pay is locked when your
         order is placed.

@@ -176,13 +176,12 @@ model ProductStone {
   @@index([productId, sortOrder])
 }
 
-/// Singleton (id=1). VA = Value Addition — disclosed % line on the price
-/// breakup applied to gold value and stone value. Label admin-editable.
+/// Singleton (id=1). Wastage = disclosed % on gold value only. Label admin-editable.
 model PricingSettings {
   id         Int      @id @default(1)
-  vaGoldPct  Decimal  @default(5)
-  vaStonePct Decimal  @default(5)
-  vaLabel    String   @default("Value Addition")
+  vaGoldPct  Decimal  @default(10)
+  vaStonePct Decimal  @default(0)
+  vaLabel    String   @default("Wastage")
   /// Storefront-wide default for whether prices are shown at all. Many
   /// products (no finalized diamond/gold cost yet) should read
   /// "Price on Request" instead of a computed number — Product.priceVisibility
@@ -263,6 +262,7 @@ model Order {
   refunds       OrderRefund[]
   notes         OrderNote[]
   shipments     Shipment[]
+  invoices      Invoice[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 }
@@ -564,6 +564,29 @@ model CatalogueComment {
   productId   String
   body        String
   createdAt   DateTime  @default(now())
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  orderId      String?
+  order        Order?        @relation(fields: [orderId], references: [id])
+  status       InvoiceStatus @default(UNPAID)
+  /// Full document snapshot: seller, parties, lines, payment, notes.
+  payload      Json
+  taxableValue Decimal
+  gstAmount    Decimal
+  grandTotal   Decimal
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([createdAt])
 }
 
 model HeroImage {

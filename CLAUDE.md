@@ -87,22 +87,25 @@ Full store — see `docs/FEATURES.md` for the complete inventory. Highlights:
 
 ---
 
-## 4. Pricing Formula v2 (`lib/pricing.ts`)
+## 4. Pricing Formula (`lib/pricing.ts`)
+
+Estimator formula — same numbers on PDP, cart, checkout, and tax invoices:
 
 ```
 goldValue  = weight(size) × goldRatePerGram
-goldVA     = goldValue × vaGoldPct        (PricingSettings, default 5%)
+wastage    = goldValue × vaGoldPct        (PricingSettings, default 10%; gold only)
 making     = weight × makingChargePerGram + flatMakingCharge
 stoneValue = Σ stones(carat × DiamondRate[type][withExchange?]) + legacy flat stoneCharges
-stoneVA    = stoneValue × vaStonePct      (PricingSettings, default 5%)
-GST        = (goldValue + goldVA + stoneValue + stoneVA) × 3% + making × 5%
-total      = goldValue + goldVA + making + stoneValue + stoneVA + miscCharges + GST
+taxable    = goldValue + wastage + making + stoneValue + miscCharges
+GST        = taxable × 3%
+total      = taxable + GST
 ```
 
-VA = "Value Addition" — a **disclosed** breakup line (admin-editable label + %),
-shown on PDP/checkout/order/email. Weights and carats shown to the customer
-are always the true values — **never** silently inflated. The 105%/5%
-refundable-deposit model is retired (`depositAmount` stays 0 on new orders).
+Wastage is a **disclosed** breakup line (admin-editable label + % on gold value only).
+Weights and carats shown to the customer are always the true values — **never**
+silently inflated. The 105%/5% refundable-deposit model is retired
+(`depositAmount` stays 0 on new orders). Tax invoices split the 3% GST into
+CGST+SGST (Maharashtra) or IGST (other states).
 
 Diamond rates (`DiamondRate` table) are per-carat, two rates each
 (with/without exchange) — admin-editable at `/admin/settings/pricing`.

@@ -1,0 +1,380 @@
+.inv-doc {
+  font-family: var(--font-sans-loaded), Inter, Helvetica, sans-serif;
+  color: #1a1714;
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: #fff;
+}
+
+.inv-doc__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  border-bottom: 1px solid #e3dacb;
+  padding-bottom: 14px;
+}
+
+.inv-doc__logo {
+  width: 150px;
+  display: block;
+  margin: -10px 0 -4px -6px;
+}
+
+.inv-doc__seller {
+  font-size: 10px;
+  line-height: 1.55;
+  color: #5b5348;
+  margin-top: 4px;
+  white-space: pre-line;
+}
+
+.inv-doc__meta {
+  text-align: right;
+  flex: none;
+}
+
+.inv-doc__meta-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.inv-doc__badge {
+  border: 1px solid #c8a951;
+  color: #8a6a2b;
+  padding: 2px 10px;
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.inv-doc__title {
+  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-size: 24px;
+  letter-spacing: 0.14em;
+  color: #8a6a2b;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.inv-doc__rule {
+  height: 1px;
+  background: #d9c89b;
+  margin: 7px 0 9px;
+}
+
+.inv-doc__kv {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 12px;
+  justify-content: end;
+  font-size: 10.5px;
+}
+
+.inv-doc__kv span:nth-child(odd) {
+  color: #8b8172;
+}
+
+.inv-doc__kv--left {
+  justify-content: start;
+}
+
+.inv-doc__parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 22px;
+  margin-top: 14px;
+}
+
+.inv-doc__label {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #8b8172;
+  margin-bottom: 6px;
+}
+
+.inv-doc__name {
+  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-size: 17px;
+  letter-spacing: 0.02em;
+}
+
+.inv-doc__addr {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #5b5348;
+  margin-top: 2px;
+  white-space: pre-line;
+}
+
+.inv-doc__gold {
+  color: #8a6a2b;
+}
+
+.inv-doc__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 10.5px;
+}
+
+.inv-doc__table th {
+  background: #f7f2e8;
+  color: #5b5348;
+  text-align: right;
+  padding: 7px 6px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 9px;
+  border-bottom: 1px solid #e3dacb;
+}
+
+.inv-doc__table th:first-child {
+  text-align: left;
+  padding-left: 8px;
+}
+
+.inv-doc__table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #efe9de;
+  text-align: right;
+  vertical-align: top;
+}
+
+.inv-doc__table td:first-child {
+  text-align: left;
+  padding-left: 8px;
+}
+
+.inv-doc__item-name {
+  font-weight: 500;
+}
+
+.inv-doc__chip {
+  display: inline-block;
+  margin-left: 8px;
+  border: 1px solid #c8a951;
+  color: #8a6a2b;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.inv-doc__chip--mute {
+  border-color: #e3dacb;
+  color: #8b8172;
+}
+
+.inv-doc__muted {
+  color: #8b8172;
+  font-size: 9.5px;
+  margin-top: 1px;
+}
+
+.inv-doc__break {
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1px 10px;
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: #5b5348;
+}
+
+.inv-doc__break span {
+  display: contents;
+}
+
+.inv-doc__break em {
+  color: #8a6a2b;
+  font-style: normal;
+}
+
+.inv-doc__break b {
+  font-weight: 400;
+  text-align: right;
+}
+
+.inv-doc__strong {
+  font-weight: 500;
+}
+
+.inv-doc__foot {
+  display: grid;
+  grid-template-columns: 1fr 250px;
+  gap: 28px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.inv-doc__words {
+  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.inv-doc__notes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin-top: 12px;
+}
+
+.inv-doc__notes p,
+.inv-doc__note {
+  font-size: 9.8px;
+  line-height: 1.5;
+  color: #5b5348;
+  margin: 0;
+}
+
+.inv-doc__totals {
+  font-size: 11px;
+}
+
+.inv-doc__totals > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.inv-doc__totals > div span:first-child {
+  color: #5b5348;
+}
+
+.inv-doc__muted-row span {
+  color: #8b8172 !important;
+}
+
+.inv-doc__round {
+  border-top: 1px solid #efe9de;
+}
+
+.inv-doc__payable {
+  align-items: baseline;
+  margin-top: 8px;
+  padding: 9px 12px !important;
+  background: #f7f2e8;
+  border-top: 2px solid #c8a951;
+}
+
+.inv-doc__payable span {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a6a2b !important;
+}
+
+.inv-doc__payable strong {
+  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-size: 23px;
+  font-weight: 600;
+}
+
+.inv-doc__sign {
+  text-align: center;
+  margin-top: 38px;
+  border-top: 1px solid #c8a951;
+  padding-top: 6px;
+  font-size: 10px;
+  color: #5b5348;
+}
+
+.inv-doc__sign span {
+  color: #8b8172;
+}
+
+.inv-print-page {
+  min-height: 100vh;
+  background: #f7f2e8;
+  padding: 24px 16px 48px;
+}
+
+.inv-print-page__bar {
+  max-width: 210mm;
+  margin: 0 auto 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.inv-print-page__sheet {
+  max-width: 210mm;
+  margin: 0 auto;
+  background: #fff;
+  padding: 0.55in;
+  box-shadow: 0 8px 32px rgba(26, 23, 20, 0.08);
+}
+
+.inv-print-page__footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #a39885;
+  border-top: 1px solid #efe9de;
+  padding-top: 8px;
+  margin-top: 18px;
+}
+
+@media print {
+  .inv-print-page {
+    background: #fff;
+    padding: 0;
+  }
+  .inv-print-page__bar {
+    display: none;
+  }
+  .inv-print-page__sheet {
+    box-shadow: none;
+    max-width: none;
+    padding: 0;
+  }
+}
+
+.inv-composer textarea,
+.inv-composer input,
+.inv-composer select {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.inv-composer label {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.inv-composer__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.inv-composer__line {
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+.inv-composer__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
