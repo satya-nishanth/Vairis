@@ -1,4 +1,4 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, type PricingConfig } from '@/lib/pricing'
+import { calculatePrice, DEFAULT_PRICING_CONFIG, type PricingConfig, type StoneInput } from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
 import type { InvoiceStatus } from '@prisma/client'
@@ -38,9 +38,42 @@ export type InvoiceLine = {
   stoneValue: number
   leadIncentive: number
   miscCharges: number
+  /** Legacy flat stone cost when the product has no stone rows. */
+  legacyStoneCharges: number
   itemValue: number
   makingPlusWastage: number
   taxable: number
+}
+
+/** Product / cart / order-item input for `invoiceFromProducts`. */
+export type InvoiceProductInput = {
+  productName: string
+  itemCode?: string
+  sku?: string
+  metalType: string
+  quantity?: number
+  withExchange?: boolean
+  weightGrams: number | string
+  makingChargePerGram: number | string
+  flatMakingCharge?: number | string
+  miscCharges?: number | string
+  stoneCharges?: number | string
+  stones?: StoneInput[]
+  leadIncentive?: number
+  goldRatePerGram?: number
+  huid?: string
+  certs?: string
+}
+
+export type InvoiceFromProductsContext = {
+  billedTo?: InvoiceParty
+  shippedTo?: InvoiceParty
+  placeOfSupply?: string
+  payment?: Partial<InvoicePayload['payment']>
+  invoiceDate?: string
+  notes?: InvoicePayload['notes']
+  goldRates?: Record<string, number>
+  config?: PricingConfig
 }
 
 export type InvoicePayload = {
@@ -105,7 +138,7 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       weightGrams: line.weightGrams,
       makingChargePerGram: line.makingPerGram,
       flatMakingCharge: line.flatMaking,
-      stoneCharges: 0,
+      stoneCharges: Number(line.legacyStoneCharges) || 0,
       miscCharges: line.miscCharges,
     },
     Number(line.goldRatePerGram) || 0,
@@ -190,10 +223,95 @@ export function blankLine(): InvoiceLine {
     stoneValue: 0,
     leadIncentive: 0,
     miscCharges: 0,
+    legacyStoneCharges: 0,
     itemValue: 0,
     makingPlusWastage: 0,
     taxable: 0,
   }
+}
+
+const EMPTY_PARTY: InvoiceParty = { name: '', lines: '', phone: '' }
+
+function stoneRowsFromInputs(stones: StoneInput[], withExchange: boolean): InvoiceStoneRow[] {
+  return stones.map((s) => {
+    const rate = Number(withExchange ? s.ratePerCaratExchange : s.ratePerCarat)
+    const carat = Number(s.caratWeight)
+    return {
+      label: s.typeLabel ?? 'Diamond',
+      caratWeight: carat,
+      ratePerCarat: rate,
+      value: carat * rate,
+      exchange: withExchange,
+    }
+  })
+}
+
+export function lineFromProduct(
+  product: InvoiceProductInput,
+  rates: Record<string, number>,
+  config: PricingConfig,
+): InvoiceLine {
+  const metal = product.metalType
+  const withExchange = product.withExchange ?? false
+  const goldRate =
+    product.goldRatePerGram ?? rates[goldRateKey(metal)] ?? rates[metal] ?? 0
+  return recomputeLine(
+    {
+      ...blankLine(),
+      productName: product.productName,
+      itemCode: product.itemCode ?? '',
+      sku: product.sku ?? '',
+      metalLabel: metalLabel(metal),
+      huid: product.huid ?? '',
+      certs: product.certs ?? '',
+      withExchange,
+      quantity: product.quantity ?? 1,
+      weightGrams: Number(product.weightGrams),
+      goldRatePerGram: goldRate,
+      wastagePct: Number(config.vaGoldPct),
+      makingPerGram: Number(product.makingChargePerGram),
+      flatMaking: Number(product.flatMakingCharge) || 0,
+      miscCharges: Number(product.miscCharges) || 0,
+      legacyStoneCharges: Number(product.stoneCharges) || 0,
+      leadIncentive: Number(product.leadIncentive) || 0,
+      stones: stoneRowsFromInputs(product.stones ?? [], withExchange),
+    },
+    config.vaLabel,
+  )
+}
+
+/**
+ * Build a tax-invoice document from a product list (cart, checkout, or manual).
+ * Same `calculatePrice` formula as PDP / cart / checkout.
+ */
+export function invoiceFromProducts(
+  products: InvoiceProductInput[],
+  ctx: InvoiceFromProductsContext = {},
+): { payload: InvoicePayload; totals: ReturnType<typeof totalsFromPayload> } {
+  const config = ctx.config ?? DEFAULT_PRICING_CONFIG
+  const rates = ctx.goldRates ?? {}
+  const billedTo = ctx.billedTo ?? EMPTY_PARTY
+  const lines =
+    products.length > 0
+      ? products.map((p) => lineFromProduct(p, rates, config))
+      : [blankLine()]
+  const payload: InvoicePayload = {
+    seller: sellerDefaults(),
+    billedTo,
+    shippedTo: ctx.shippedTo ?? { ...billedTo },
+    payment: {
+      method: ctx.payment?.method ?? '',
+      reference: ctx.payment?.reference ?? '',
+      received: ctx.payment?.received ?? '',
+      status: ctx.payment?.status ?? 'Unpaid',
+    },
+    invoiceDate: ctx.invoiceDate ?? new Date().toISOString().slice(0, 10),
+    placeOfSupply: ctx.placeOfSupply || 'Maharashtra (27)',
+    notes: ctx.notes ?? { ...DEFAULT_INVOICE_NOTES },
+    lines,
+  }
+  const totals = totalsFromPayload(payload)
+  return { payload: { ...payload, lines: totals.lines }, totals }
 }
 
 export type PrefillOrder = {
@@ -220,6 +338,7 @@ export type PrefillOrder = {
       makingChargePerGram: { toString(): string } | number
       flatMakingCharge: { toString(): string } | number
       miscCharges: { toString(): string } | number
+      stoneCharges?: { toString(): string } | number
       product: {
         itemCode: string | null
         stones: StoneWithRate[]
@@ -260,57 +379,33 @@ export function payloadFromOrder(
     lines: addressBlock(order),
     phone: order.contactPhone ? `+91 ${order.contactPhone}` : '',
   }
-  const lines = flattenItems(order).map((item) => {
-    const metal = item.variant.metalType
-    const goldRate = rates[goldRateKey(metal)] ?? rates[metal] ?? 0
-    const stones = toStoneInputs(item.variant.product.stones)
-    const line = recomputeLine(
-      {
-        ...blankLine(),
-        productName: item.productName,
-        itemCode: item.variant.product.itemCode ?? '',
-        sku: item.variant.sku,
-        metalLabel: metalLabel(metal),
-        withExchange: item.withExchange,
-        quantity: item.quantity,
-        weightGrams: Number(item.variant.weightGrams),
-        goldRatePerGram: goldRate,
-        wastagePct: Number(config.vaGoldPct),
-        makingPerGram: Number(item.variant.makingChargePerGram),
-        flatMaking: Number(item.variant.flatMakingCharge),
-        miscCharges: Number(item.variant.miscCharges),
-        stones: stones.map((s) => {
-          const rate = Number(item.withExchange ? s.ratePerCaratExchange : s.ratePerCarat)
-          const carat = Number(s.caratWeight)
-          return {
-            label: s.typeLabel ?? 'Diamond',
-            caratWeight: carat,
-            ratePerCarat: rate,
-            value: carat * rate,
-            exchange: item.withExchange,
-          }
-        }),
-      },
-      config.vaLabel,
-    )
-    return line
-  })
-
-  return {
-    seller: sellerDefaults(),
+  const products: InvoiceProductInput[] = flattenItems(order).map((item) => ({
+    productName: item.productName,
+    itemCode: item.variant.product.itemCode ?? '',
+    sku: item.variant.sku,
+    metalType: item.variant.metalType,
+    withExchange: item.withExchange,
+    quantity: item.quantity,
+    weightGrams: item.variant.weightGrams,
+    makingChargePerGram: item.variant.makingChargePerGram,
+    flatMakingCharge: item.variant.flatMakingCharge,
+    miscCharges: item.variant.miscCharges,
+    stoneCharges: item.variant.stoneCharges,
+    stones: toStoneInputs(item.variant.product.stones),
+  }))
+  return invoiceFromProducts(products, {
     billedTo: party,
     shippedTo: { ...party },
+    goldRates: rates,
+    config,
+    placeOfSupply: /maharashtra/i.test(order.state) ? 'Maharashtra (27)' : order.state || 'Maharashtra (27)',
     payment: {
       method: order.payment ? 'Online' : '',
       reference: order.payment?.razorpayPaymentId || order.payment?.razorpayOrderId || '',
       received: order.payment ? order.payment.createdAt.toISOString().slice(0, 10) : '',
       status: paid ? 'Paid in full' : 'Unpaid',
     },
-    invoiceDate: new Date().toISOString().slice(0, 10),
-    placeOfSupply: /maharashtra/i.test(order.state) ? 'Maharashtra (27)' : order.state || 'Maharashtra (27)',
-    notes: { ...DEFAULT_INVOICE_NOTES },
-    lines: lines.length > 0 ? lines : [blankLine()],
-  }
+  }).payload
 }
 
 export function invoiceStatusFromPayload(payload: InvoicePayload): InvoiceStatus {

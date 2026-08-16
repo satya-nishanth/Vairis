@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { getPricingConfig } from '@/lib/pricing-data'
-import { blankPayload, payloadFromOrder, totalsFromPayload, type PrefillOrder } from '@/lib/invoice-document'
+import { blankPayload } from '@/lib/invoice-document'
+import { invoiceFromOrderId } from '@/lib/invoice-build'
 import { InvoiceComposer } from '@/components/admin/InvoiceComposer'
 
 export const dynamic = 'force-dynamic'
@@ -13,54 +13,8 @@ export default async function NewInvoicePage({
 }) {
   const { orderId } = await searchParams
 
-  let payload = blankPayload()
-  if (orderId) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        user: { select: { name: true, email: true } },
-        payment: true,
-        items: {
-          include: {
-            variant: {
-              include: {
-                product: {
-                  include: {
-                    stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        children: {
-          include: {
-            user: { select: { name: true, email: true } },
-            payment: true,
-            items: {
-              include: {
-                variant: {
-                  include: {
-                    product: {
-                      include: {
-                        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    })
-    if (order) {
-      const [goldRates, config] = await Promise.all([prisma.goldRate.findMany(), getPricingConfig()])
-      const rates = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
-      payload = payloadFromOrder(order as unknown as PrefillOrder, rates, config)
-      payload = { ...payload, lines: totalsFromPayload(payload).lines }
-    }
-  }
+  const built = orderId ? await invoiceFromOrderId(orderId) : null
+  const payload = built?.payload ?? blankPayload()
 
   const recentOrders = await prisma.order.findMany({
     where: { parentOrderId: null },

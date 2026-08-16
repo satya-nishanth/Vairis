@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { LOGO_SRC } from '@/lib/logo'
 import { formatINRGrouped } from '@/lib/invoice-tax'
 import type { InvoicePayload } from '@/lib/invoice-document'
@@ -86,7 +87,7 @@ export function InvoicePrintView({
         </thead>
         <tbody>
           {totals.lines.map((line, i) => (
-            <tr key={i}>
+            <tr key={i} className="inv-doc__row">
               <td>
                 <div className="inv-doc__item-name">
                   {line.productName || 'Untitled'}
@@ -102,16 +103,18 @@ export function InvoicePrintView({
                 </div>
                 <div className="inv-doc__break">
                   {line.stones.map((s, si) => (
-                    <span key={si}>
-                      {s.label} · {s.caratWeight.toFixed(2)} ct @ ₹{formatINRGrouped(s.ratePerCarat, 0)}{' '}
-                      <em>{s.exchange ? 'exch.' : 'std.'}</em>
-                      <b>{formatINRGrouped(s.value, 0)}</b>
-                    </span>
+                    <Fragment key={si}>
+                      <span>
+                        {s.label} · {Number(s.caratWeight).toFixed(2)} ct @ ₹{formatINRGrouped(s.ratePerCarat, 0)}{' '}
+                        <em className={s.exchange ? 'inv-doc__gold' : ''}>{s.exchange ? 'exch.' : 'std.'}</em>
+                      </span>
+                      <span className="inv-doc__amt">{formatINRGrouped(s.value, 0)}</span>
+                    </Fragment>
                   ))}
                   <span>
                     Gold · {Number(line.weightGrams).toFixed(3)} g @ ₹{formatINRGrouped(line.goldRatePerGram, 0)}
-                    <b>{formatINRGrouped(line.goldValue, 0)}</b>
                   </span>
+                  <span className="inv-doc__amt">{formatINRGrouped(line.goldValue, 0)}</span>
                 </div>
               </td>
               <td>
