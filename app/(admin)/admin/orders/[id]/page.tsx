@@ -111,6 +111,8 @@ export default async function AdminOrderDetailPage({
           }
           offline={!resolvedPayment}
           shippingSupportsBooking={provider.supportsBooking}
+          intlReviewRequired={order.intlReviewRequired}
+          intlReviewApproved={order.intlReviewApproved}
         />
       )}
 
@@ -196,6 +198,12 @@ export default async function AdminOrderDetailPage({
             {order.addressLine2 ? `, ${order.addressLine2}` : ''}
             <br />
             {order.city}, {order.state} — {order.pincode}
+            {order.country !== 'IN' && (
+              <>
+                <br />
+                <strong>{order.country}</strong>
+              </>
+            )}
           </p>
         </div>
 
