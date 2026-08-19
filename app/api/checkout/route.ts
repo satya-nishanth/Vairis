@@ -8,9 +8,14 @@ import { computeOrderAmounts } from '@/lib/orders'
 import { validatePromo } from '@/lib/promo'
 import { getPaymentGateway } from '@/lib/payments'
 import { checkPincodeServiceability } from '@/lib/shipping/sequel247-validate'
+import { checkIndiaFormat } from '@/lib/address-schema'
 
 export const dynamic = 'force-dynamic'
 
+// Mirrors lib/address-schema.ts's addressSchema shape but keeps checkout's
+// existing addressLine1/addressLine2 field names (vs line1/line2 there) —
+// the India-format check itself is shared via checkIndiaFormat so the two
+// schemas can't drift on what "valid" means.
 const checkoutAddressSchema = z.object({
   contactName: z.string().trim().min(2, 'Name is required'),
   contactPhone: z.string().trim().min(1, 'Phone number is required'),
@@ -21,15 +26,7 @@ const checkoutAddressSchema = z.object({
   pincode: z.string().trim().min(1, 'Pincode is required'),
   country: z.string().trim().min(2, 'Country is required').max(60).default('IN'),
   promoCode: z.string().trim().max(40).optional(),
-}).superRefine((data, ctx) => {
-  if (data.country !== 'IN') return
-  if (!/^\d{10}$/.test(data.contactPhone)) {
-    ctx.addIssue({ code: 'custom', path: ['contactPhone'], message: 'Enter a 10-digit mobile number' })
-  }
-  if (!/^\d{6}$/.test(data.pincode)) {
-    ctx.addIssue({ code: 'custom', path: ['pincode'], message: 'Enter a 6-digit pincode' })
-  }
-})
+}).superRefine(checkIndiaFormat)
 
 /**
  * POST /api/checkout — create an Order from the user's cart plus a matching

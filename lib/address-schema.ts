@@ -13,7 +13,15 @@ const baseAddressSchema = z.object({
   isDefault: z.boolean().optional(),
 })
 
-function checkIndiaFormat(data: { country: string; contactPhone: string; pincode: string }, ctx: z.RefinementCtx) {
+/**
+ * India ("IN") format checks (10-digit phone, 6-digit pincode) — shared
+ * between this file's `addressSchema` and checkout's own
+ * `checkoutAddressSchema` (app/api/checkout/route.ts), which can't reuse
+ * `addressSchema` directly since it uses different field names
+ * (`addressLine1`/`addressLine2` vs `line1`/`line2`). Exported so both call
+ * sites enforce the exact same rule instead of drifting out of sync.
+ */
+export function checkIndiaFormat(data: { country: string; contactPhone: string; pincode: string }, ctx: z.RefinementCtx) {
   if (data.country !== 'IN') return
   if (!/^\d{10}$/.test(data.contactPhone)) {
     ctx.addIssue({ code: 'custom', path: ['contactPhone'], message: 'Enter a 10-digit mobile number' })
@@ -35,9 +43,10 @@ export const addressSchema = baseAddressSchema.superRefine(checkIndiaFormat)
  * throws at runtime, not just a type error) — used for PATCH, where only
  * provided fields are validated. This intentionally does NOT re-run the
  * India strict-format check on partial updates. A country/pincode
- * serviceability check for PATCH is planned for a later task (see
+ * serviceability check for PATCH is applied separately in
+ * app/api/account/addresses/[id]/route.ts (see
  * docs/superpowers/plans/2026-08-19-sequel247-delivery-address-validation.md,
- * Task 4) — not implemented yet as of this schema change.
+ * Task 4).
  */
 export const partialAddressSchema = baseAddressSchema.partial()
 
