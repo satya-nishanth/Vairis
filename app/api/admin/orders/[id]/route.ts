@@ -89,6 +89,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     )
   }
 
+  // International orders need an explicit admin approval before
+  // fulfillment starts — Sequel247 is India-domestic only, so someone has
+  // to manually arrange delivery. A flag + banner alone wouldn't actually
+  // stop an admin from clicking through, so this blocks the transition.
+  if (nextStatus === 'PREPARING' && order.intlReviewRequired && !order.intlReviewApproved) {
+    return NextResponse.json(
+      { error: 'International order pending review — approve it first' },
+      { status: 409 },
+    )
+  }
+
   // Reason enforcement (lib/orders REASON_REQUIRED / REASON_REQUIRED_TARGETS)
   const reasonRequired =
     REASON_REQUIRED.some(([f, t]) => f === order.status && t === nextStatus) ||
