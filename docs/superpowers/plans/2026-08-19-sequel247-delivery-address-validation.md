@@ -1209,7 +1209,11 @@ const checkoutAddressSchema = z.object({
     )
   }
   const address = parsed.data
+```
 
+**Amended during implementation:** the plan originally placed the serviceability check immediately after `const address = parsed.data`, before the cart-loading `Promise.all` and the `EMPTY_CART` guard. The implementer moved it to right after the existing `if (cartItems.length === 0) return EMPTY_CART` check instead — cheapest/local checks (auth, address shape, empty cart) run before the external network call, and the given test `'returns EMPTY_CART before touching the address when cart is empty'` requires this ordering (with the original placement, an empty-cart request would call `checkPincodeServiceability` before that mock is configured in the test, throwing instead of returning `EMPTY_CART`). No change to correctness — the check still runs well before `order.create`, satisfying "unserviceable pincode is rejected before any Order row is created." The cart-loading `Promise.all` and everything through the `EMPTY_CART` guard stays exactly as it is today, unchanged; insert this block immediately after that guard:
+
+```typescript
   // India addresses are checked against Sequel247's serviceability API,
   // same as the address book (lib/shipping/sequel247-validate.ts).
   if (address.country === 'IN') {
@@ -1222,8 +1226,6 @@ const checkoutAddressSchema = z.object({
     }
   }
 ```
-
-Place this right after the existing `const address = parsed.data` line (keep the cart-loading `Promise.all` and everything after it unchanged).
 
 3. In the `prisma.order.create({ data: { ... } })` call, add `country` and `intlReviewRequired` alongside the existing address snapshot fields:
 
