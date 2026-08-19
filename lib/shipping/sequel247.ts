@@ -16,9 +16,11 @@ import type { ShipmentBooking, ShipmentRequest, ShippingProvider, TrackingUpdate
  *   POST /api/shipment/create        → docketNumber (AWB)
  *   POST /api/track                  → tracking_events[]
  *
- * India-only: callers must route non-India orders to the "manual" provider
- * instead (see app/api/admin/orders/[id]/route.ts) — Sequel247 cannot
- * fulfill international shipments.
+ * India-only: this adapter is never selected for a non-India order —
+ * getShippingProvider(order.country) in lib/shipping/index.ts forces
+ * "manual" for any country other than "IN", regardless of
+ * SHIPPING_PROVIDER, since Sequel247 cannot fulfill international
+ * shipments.
  */
 
 function baseUrl(): string {

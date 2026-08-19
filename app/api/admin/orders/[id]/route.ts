@@ -126,7 +126,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let shipTrackingUrl = trackingUrl
   let providerShipmentId: string | null = null
   if (nextStatus === 'SHIPPED') {
-    const provider = getShippingProvider()
+    const provider = getShippingProvider(order.country)
     if (!provider.supportsBooking && (!courierName || !awbCode)) {
       return NextResponse.json(
         { error: 'Courier name and AWB number are required to mark as shipped' },

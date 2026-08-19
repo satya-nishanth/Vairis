@@ -47,7 +47,7 @@ export default async function AdminOrderDetailPage({
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
-  const provider = getShippingProvider()
+  const provider = getShippingProvider(order.country)
 
   const card: React.CSSProperties = {
     background: '#fff',

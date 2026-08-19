@@ -3,10 +3,12 @@ import { PATCH as patchOrder } from '@/app/api/admin/orders/[id]/route'
 import { POST as approveInternational } from '@/app/api/admin/orders/[id]/approve-international/route'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
+import { getShippingProvider } from '@/lib/shipping'
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     order: { findUnique: jest.fn(), update: jest.fn() },
+    shipment: { create: jest.fn() },
     $transaction: jest.fn((cb) => cb(prisma)),
   },
 }))
@@ -16,16 +18,26 @@ jest.mock('@/lib/email', () => ({ sendOrderShippedEmail: jest.fn(), sendOrderDel
 
 const mockOrder = prisma.order as jest.Mocked<typeof prisma.order>
 const mockRequireAdmin = requireAdmin as jest.MockedFunction<typeof requireAdmin>
+const mockGetShippingProvider = getShippingProvider as jest.MockedFunction<typeof getShippingProvider>
 
 function baseOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: 'ord1',
     status: 'PAYMENT_CONFIRMED',
+    country: 'IN',
     intlReviewRequired: true,
     intlReviewApproved: false,
     shipments: [],
     payment: { status: 'CAPTURED' },
     parent: null,
+    contactName: 'Jane Doe',
+    contactPhone: '9876543210',
+    addressLine1: '1 Market St',
+    addressLine2: null,
+    city: 'Hyderabad',
+    state: 'Telangana',
+    pincode: '502300',
+    grandTotal: 18446,
     ...overrides,
   }
 }
@@ -104,6 +116,57 @@ describe('international order review gate', () => {
       { params: Promise.resolve({ id: 'ord1' }) },
     )
     expect(res.status).toBe(200)
+    expect(prisma.order.update).not.toHaveBeenCalled()
+  })
+
+  // Regression coverage for a cross-task gap found in final review: Task 3
+  // built the Sequel247 adapter, Task 7 built the intlReviewRequired gate,
+  // and neither task's own tests exercised the seam between them — the
+  // SHIPPED transition's provider selection. getShippingProvider(country)
+  // must be given the order's OWN country (fixed in lib/shipping/index.ts),
+  // not decided by SHIPPING_PROVIDER alone, or an approved international
+  // order would get auto-booked through Sequel247 (India-domestic only).
+  it('resolves the shipping provider using the order\'s own country on SHIPPED', async () => {
+    mockOrder.findUnique.mockResolvedValue(
+      baseOrder({ status: 'PREPARING', country: 'United States', intlReviewApproved: true }) as never,
+    )
+    mockOrder.update.mockResolvedValue({} as never)
+    mockGetShippingProvider.mockReturnValue({
+      name: 'manual',
+      supportsBooking: false,
+      bookShipment: jest.fn(),
+      trackShipment: jest.fn(),
+    })
+
+    await patchOrder(
+      patchReq({ status: 'SHIPPED', courierName: 'FedEx', awbCode: 'FX123' }),
+      { params: Promise.resolve({ id: 'ord1' }) },
+    )
+
+    expect(mockGetShippingProvider).toHaveBeenCalledWith('United States')
+  })
+
+  it('requires manual courier/AWB for an approved international order even when SHIPPING_PROVIDER is a booking partner', async () => {
+    mockOrder.findUnique.mockResolvedValue(
+      baseOrder({ status: 'PREPARING', country: 'United States', intlReviewApproved: true }) as never,
+    )
+    // Simulates the real getShippingProvider(country) behavior: any non-IN
+    // country always resolves to manual, regardless of SHIPPING_PROVIDER.
+    mockGetShippingProvider.mockReturnValue({
+      name: 'manual',
+      supportsBooking: false,
+      bookShipment: jest.fn(),
+      trackShipment: jest.fn(),
+    })
+
+    const res = await patchOrder(
+      patchReq({ status: 'SHIPPED' }), // no courierName/awbCode supplied
+      { params: Promise.resolve({ id: 'ord1' }) },
+    )
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/courier/i)
     expect(prisma.order.update).not.toHaveBeenCalled()
   })
 })
