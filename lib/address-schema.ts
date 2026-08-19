@@ -34,9 +34,10 @@ export const addressSchema = baseAddressSchema.superRefine(checkIndiaFormat)
  * zod 4 disallows `.partial()` on a schema carrying `.superRefine()` (it
  * throws at runtime, not just a type error) — used for PATCH, where only
  * provided fields are validated. This intentionally does NOT re-run the
- * India strict-format check on partial updates; the country/pincode
- * serviceability check for PATCH is applied separately where this schema
- * is used (see app/api/account/addresses/[id]/route.ts).
+ * India strict-format check on partial updates. A country/pincode
+ * serviceability check for PATCH is planned for a later task (see
+ * docs/superpowers/plans/2026-08-19-sequel247-delivery-address-validation.md,
+ * Task 4) — not implemented yet as of this schema change.
  */
 export const partialAddressSchema = baseAddressSchema.partial()
 

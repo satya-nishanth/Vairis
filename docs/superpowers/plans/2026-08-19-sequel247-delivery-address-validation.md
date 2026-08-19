@@ -129,7 +129,7 @@ git commit -m "feat: add country + international review fields to Address and Or
 Create `__tests__/lib/address-schema.test.ts`:
 
 ```typescript
-import { addressSchema } from '@/lib/address-schema'
+import { addressSchema, partialAddressSchema } from '@/lib/address-schema'
 
 const baseIndia = {
   contactName: 'Surya Teja',
@@ -187,6 +187,12 @@ describe('addressSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('partialAddressSchema accepts a partial payload without throwing', () => {
+    expect(() => partialAddressSchema.safeParse({ pincode: '502300' })).not.toThrow()
+    const result = partialAddressSchema.safeParse({ pincode: '502300' })
+    expect(result.success).toBe(true)
+  })
 })
 ```
 
@@ -196,6 +202,8 @@ Run: `npx jest __tests__/lib/address-schema.test.ts`
 Expected: FAIL — `country` doesn't exist on the schema yet, India-only regexes reject the international case.
 
 - [ ] **Step 3: Implement**
+
+**Amended during implementation:** zod 4 throws at runtime (`.partial() cannot be used on object schemas containing refinements`) if `.partial()` is called on a schema carrying `.superRefine()`. `app/api/account/addresses/[id]/route.ts` already calls `addressSchema.partial()` for PATCH — the original single-schema design below would have broken that live endpoint. Fixed by exporting a second, unrefined `partialAddressSchema` for PATCH to use instead (see the amended `[id]/route.ts` step folded into this task, below), and PATCH intentionally skips the India strict-format re-check on partial updates — Task 4's own serviceability check covers the pincode case with something stronger than a regex anyway.
 
 Replace the full contents of `lib/address-schema.ts`:
 
@@ -215,45 +223,57 @@ const baseAddressSchema = z.object({
   isDefault: z.boolean().optional(),
 })
 
-/**
- * India ("IN") addresses get the strict, courier-serviceable format checks
- * (10-digit phone, 6-digit pincode) that Sequel247 requires. Any other
- * country is manual/free-text — no delivery partner supports it yet, so
- * there's nothing to validate the format against (see
- * docs/superpowers/specs/2026-08-19-sequel247-delivery-address-validation-design.md).
- */
-export const addressSchema = baseAddressSchema.superRefine((data, ctx) => {
+function checkIndiaFormat(
+  data: { country: string; contactPhone: string; pincode: string },
+  ctx: z.RefinementCtx,
+) {
   if (data.country !== 'IN') return
-
   if (!/^\d{10}$/.test(data.contactPhone)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['contactPhone'],
-      message: 'Enter a 10-digit mobile number',
-    })
+    ctx.addIssue({ code: 'custom', path: ['contactPhone'], message: 'Enter a 10-digit mobile number' })
   }
   if (!/^\d{6}$/.test(data.pincode)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['pincode'],
-      message: 'Enter a 6-digit pincode',
-    })
+    ctx.addIssue({ code: 'custom', path: ['pincode'], message: 'Enter a 6-digit pincode' })
   }
-})
+}
+
+/**
+ * Full-object validation — used for creating an address (POST) and
+ * checkout. India ("IN") addresses get the strict, courier-serviceable
+ * format checks (10-digit phone, 6-digit pincode) that Sequel247 requires.
+ * Any other country is manual/free-text — no delivery partner supports it
+ * yet (see docs/superpowers/specs/2026-08-19-sequel247-delivery-address-validation-design.md).
+ */
+export const addressSchema = baseAddressSchema.superRefine(checkIndiaFormat)
+
+/**
+ * zod 4 disallows `.partial()` on a schema carrying `.superRefine()` (it
+ * throws at runtime). Used for PATCH, where only provided fields are
+ * validated — intentionally does NOT re-run the India strict-format check;
+ * see app/api/account/addresses/[id]/route.ts for where a country/pincode
+ * serviceability check is applied on top of this for partial updates.
+ */
+export const partialAddressSchema = baseAddressSchema.partial()
 
 export type AddressInput = z.infer<typeof baseAddressSchema>
 ```
 
+- [ ] **Step 3b: Fix the live PATCH caller (folded into this task, not Task 4)**
+
+In `app/api/account/addresses/[id]/route.ts`, change the import from `import { addressSchema } from '@/lib/address-schema'` to `import { partialAddressSchema } from '@/lib/address-schema'` (only `partialAddressSchema` is used in this file — `addressSchema` isn't referenced elsewhere here), and change line 20 from `const parsed = addressSchema.partial().safeParse(...)` to `const parsed = partialAddressSchema.safeParse(...)`. This is the only change to that file in this task — Task 4 does the fuller PATCH rework (serviceability check, country pass-through) on top of it.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx jest __tests__/lib/address-schema.test.ts`
-Expected: PASS, 6/6 tests
+Expected: PASS, 6/6 tests, plus a 7th test added during the amendment confirming `partialAddressSchema.safeParse(...)` doesn't throw on a partial payload.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/address-schema.ts __tests__/lib/address-schema.test.ts
-git commit -m "feat: make addressSchema country-aware (strict for IN, free-text otherwise)"
+git add lib/address-schema.ts __tests__/lib/address-schema.test.ts app/api/account/addresses/[id]/route.ts
+git commit -m "feat: make addressSchema country-aware (strict for IN, free-text otherwise)
+
+Splits out partialAddressSchema for PATCH — zod 4 disallows .partial()
+on a schema carrying .superRefine()."
 ```
 
 ---
@@ -917,7 +937,7 @@ In the `PATCH` handler, apply the same serviceability check and persist `country
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { addressSchema } from '@/lib/address-schema'
+import { partialAddressSchema } from '@/lib/address-schema'
 import { checkPincodeServiceability } from '@/lib/shipping/sequel247-validate'
 
 export const dynamic = 'force-dynamic'
@@ -934,7 +954,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const parsed = addressSchema.partial().safeParse(await req.json().catch(() => ({})))
+  // Task 1 already switched this route from addressSchema.partial() to
+  // partialAddressSchema — zod 4 throws at runtime if .partial() is called
+  // on a schema carrying .superRefine() (see lib/address-schema.ts).
+  const parsed = partialAddressSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? 'Invalid address' },
