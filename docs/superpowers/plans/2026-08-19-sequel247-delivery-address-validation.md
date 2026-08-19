@@ -848,8 +848,26 @@ describe('POST /api/account/addresses', () => {
     expect(mockCheck).not.toHaveBeenCalled()
     expect(res.status).toBe(201)
   })
+
+  it('autofills city/state from Sequel247 when serviceable', async () => {
+    mockCheck.mockResolvedValue({ ok: true, city: 'HYDERABAD', state: 'TELANGANA' })
+    await createAddress(req({ ...validIndiaBody, city: 'hyd', state: 'ts' }))
+    const createCall = mockAddress.create.mock.calls[0][0] as { data: { city: string; state: string } }
+    expect(createCall.data.city).toBe('HYDERABAD')
+    expect(createCall.data.state).toBe('TELANGANA')
+  })
+
+  it('does not autofill when the serviceability check was skipped (soft-fail)', async () => {
+    mockCheck.mockResolvedValue({ ok: true, skipped: true })
+    await createAddress(req({ ...validIndiaBody, city: 'Hyderabad', state: 'Telangana' }))
+    const createCall = mockAddress.create.mock.calls[0][0] as { data: { city: string; state: string } }
+    expect(createCall.data.city).toBe('Hyderabad')
+    expect(createCall.data.state).toBe('Telangana')
+  })
 })
 ```
+
+**Amended during implementation:** the plan's original code for this task checked `serviceability.ok` but never actually used `serviceability.city`/`serviceability.state` to override the submitted values — a real gap against this task's own "autofill" acceptance criterion, caught by the implementer and fixed as shown above (the `city`/`state` local-variable override in POST, and `autofilledCity`/`autofilledState` in PATCH).
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -894,11 +912,20 @@ export async function POST(req: NextRequest) {
 
   // India addresses are checked against Sequel247's serviceability API —
   // confirms both "is this pincode real" and "can our courier deliver
-  // there" in one free call (lib/shipping/sequel247-validate.ts).
+  // there" in one free call (lib/shipping/sequel247-validate.ts). When the
+  // check succeeds with real data (not soft-failed/skipped), the courier's
+  // city/state is authoritative and overrides whatever the customer typed
+  // — this is the "autofill" acceptance criterion.
+  let city = d.city
+  let state = d.state
   if (d.country === 'IN') {
     const serviceability = await checkPincodeServiceability(d.pincode)
     if (!serviceability.ok) {
       return NextResponse.json({ error: 'Enter a valid pincode' }, { status: 400 })
+    }
+    if (!('skipped' in serviceability)) {
+      city = serviceability.city
+      state = serviceability.state
     }
   }
 
@@ -917,8 +944,8 @@ export async function POST(req: NextRequest) {
         contactPhone: d.contactPhone,
         line1: d.line1,
         line2: d.line2 || null,
-        city: d.city,
-        state: d.state,
+        city,
+        state,
         pincode: d.pincode,
         country: d.country,
         isDefault: makeDefault,
@@ -968,10 +995,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
 
   const nextCountry = d.country ?? existing.country
   const nextPincode = d.pincode ?? existing.pincode
+  let autofilledCity: string | undefined
+  let autofilledState: string | undefined
   if (nextCountry === 'IN' && d.pincode !== undefined) {
     const serviceability = await checkPincodeServiceability(nextPincode)
     if (!serviceability.ok) {
       return NextResponse.json({ error: 'Enter a valid pincode' }, { status: 400 })
+    }
+    if (!('skipped' in serviceability)) {
+      autofilledCity = serviceability.city
+      autofilledState = serviceability.state
     }
   }
 
@@ -987,8 +1020,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
         ...(d.contactPhone !== undefined && { contactPhone: d.contactPhone }),
         ...(d.line1 !== undefined && { line1: d.line1 }),
         ...(d.line2 !== undefined && { line2: d.line2 || null }),
-        ...(d.city !== undefined && { city: d.city }),
-        ...(d.state !== undefined && { state: d.state }),
+        ...((autofilledCity ?? d.city) !== undefined && { city: autofilledCity ?? d.city }),
+        ...((autofilledState ?? d.state) !== undefined && { state: autofilledState ?? d.state }),
         ...(d.pincode !== undefined && { pincode: d.pincode }),
         ...(d.country !== undefined && { country: d.country }),
         ...(d.isDefault !== undefined && { isDefault: d.isDefault }),
@@ -1015,7 +1048,7 @@ export async function DELETE(_: NextRequest, { params }: { params: Params }) {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx jest __tests__/api/account/addresses.test.ts`
-Expected: PASS, 3/3 tests
+Expected: PASS, 5/5 tests (3 originally spec'd + 2 added during the autofill amendment)
 
 - [ ] **Step 6: Commit**
 
