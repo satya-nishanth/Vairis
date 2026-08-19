@@ -214,16 +214,7 @@ export function OrderActions({
         >
           <span>International address — fulfillment is blocked until reviewed.</span>
           <button
-            style={{
-              padding: '8px 16px',
-              fontSize: '0.75rem',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              border: '1px solid #92400e',
-              background: '#92400e',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
+            style={{ ...btn, border: '1px solid #92400e', background: '#92400e' }}
             disabled={approvingIntl}
             onClick={approveInternational}
           >

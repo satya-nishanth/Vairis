@@ -201,7 +201,7 @@ export default async function AdminOrderDetailPage({
             {order.country !== 'IN' && (
               <>
                 <br />
-                <strong>{order.country}</strong>
+                Country: <strong>{order.country}</strong>
               </>
             )}
           </p>
