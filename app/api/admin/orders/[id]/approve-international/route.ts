@@ -19,6 +19,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!order.intlReviewRequired) {
     return NextResponse.json({ error: 'This order does not require international review' }, { status: 400 })
   }
+  if (order.intlReviewApproved) return NextResponse.json({ ok: true })
 
   await prisma.order.update({
     where: { id },
