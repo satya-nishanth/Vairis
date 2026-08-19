@@ -40,3 +40,7 @@ images/
 .azure/
 
 .worktrees/
+
+# graphify
+graphify-out/
+*.graphify-bak
