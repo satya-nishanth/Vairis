@@ -4,72 +4,72 @@
     {
       "id": 0,
       "subject": "Task 0: Prisma schema — country + international review fields",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `country` to Address, and `country`/`intlReviewRequired`/`intlReviewApproved` to Order, with a migration.\n\n**Files:**\n- Modify: `prisma/schema.prisma`\n\n**Acceptance Criteria:**\n- [ ] Address.country exists, String @default(\"IN\")\n- [ ] Order.country exists, String @default(\"IN\")\n- [ ] Order.intlReviewRequired exists, Boolean @default(false)\n- [ ] Order.intlReviewApproved exists, Boolean @default(false)\n- [ ] Migration applies cleanly to the dev DB\n\n**Verify:** `npx prisma validate`\n\n```json:metadata\n{\"files\": [\"prisma/schema.prisma\"], \"verifyCommand\": \"npx prisma validate\", \"acceptanceCriteria\": [\"Address.country exists, default IN\", \"Order.country/intlReviewRequired/intlReviewApproved exist\", \"migration applies cleanly\"]}\n```"
     },
     {
       "id": 1,
       "subject": "Task 1: Shared address schema — country-aware validation, dedupe",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0],
       "description": "**Goal:** lib/address-schema.ts's addressSchema validates India addresses strictly and international addresses loosely.\n\n**Files:**\n- Modify: `lib/address-schema.ts`\n- Test: `__tests__/lib/address-schema.test.ts`\n\n**Acceptance Criteria:**\n- [ ] country defaults to \"IN\" when omitted\n- [ ] country \"IN\" enforces existing India regexes (10-digit phone, 6-digit pincode)\n- [ ] Other country values skip regexes, only non-empty checks apply\n- [ ] Existing India-only callers keep working unchanged\n\n**Verify:** `npx jest __tests__/lib/address-schema.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/address-schema.ts\", \"__tests__/lib/address-schema.test.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/address-schema.test.ts\", \"acceptanceCriteria\": [\"country defaults IN\", \"IN branch strict regex\", \"non-IN branch free text\", \"existing callers unaffected\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Sequel247 pincode-serviceability validation helper",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** checkPincodeServiceability(pincode) calls Sequel247's checkServiceability endpoint, soft-fails on network error, caches per pincode.\n\n**Files:**\n- Create: `lib/shipping/sequel247-validate.ts`\n- Test: `__tests__/lib/shipping/sequel247-validate.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Serviceable pincode returns {ok:true, city, state}\n- [ ] \"Pincode not found.\" returns {ok:false, reason:'not_found'}\n- [ ] Network error returns {ok:true, skipped:true} (soft-fail)\n- [ ] Same pincode cached, no repeat network call\n\n**Verify:** `npx jest __tests__/lib/shipping/sequel247-validate.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/shipping/sequel247-validate.ts\", \"__tests__/lib/shipping/sequel247-validate.test.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/shipping/sequel247-validate.test.ts\", \"acceptanceCriteria\": [\"serviceable pincode ok\", \"not_found rejected\", \"network error soft-fails\", \"per-pincode cache\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Sequel247 shipping adapter",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** lib/shipping/sequel247.ts implements ShippingProvider (book + track), registered in lib/shipping/index.ts.\n\n**Files:**\n- Create: `lib/shipping/sequel247.ts`\n- Modify: `lib/shipping/index.ts`\n- Test: `__tests__/lib/shipping/sequel247.test.ts`\n\n**Acceptance Criteria:**\n- [ ] name === \"sequel247\", supportsBooking === true\n- [ ] bookShipment posts to /api/shipment/create, maps docketNumber → awbCode/providerShipmentId\n- [ ] trackShipment posts to /api/track, maps tracking_events[] → TrackingUpdate[]\n- [ ] SHIPPING_MOCK=true returns fixtures, no network call\n- [ ] getShippingProvider() returns sequel247 provider when SHIPPING_PROVIDER=sequel247\n\n**Verify:** `npx jest __tests__/lib/shipping/sequel247.test.ts`\n\n```json:metadata\n{\"files\": [\"lib/shipping/sequel247.ts\", \"lib/shipping/index.ts\", \"__tests__/lib/shipping/sequel247.test.ts\"], \"verifyCommand\": \"npx jest __tests__/lib/shipping/sequel247.test.ts\", \"acceptanceCriteria\": [\"bookShipment maps docketNumber\", \"trackShipment maps events\", \"mock mode works\", \"registered in PROVIDERS\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Wire pincode validation into address book API",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** POST/PATCH /api/account/addresses call checkPincodeServiceability for India addresses, reject not_found, persist country.\n\n**Files:**\n- Modify: `app/api/account/addresses/route.ts`\n- Modify: `app/api/account/addresses/[id]/route.ts`\n- Test: `__tests__/api/account/addresses.test.ts`\n\n**Acceptance Criteria:**\n- [ ] India address with serviceable pincode saves\n- [ ] India address with not_found pincode rejected 400\n- [ ] International address skips serviceability call\n- [ ] country persisted on Address row\n\n**Verify:** `npx jest __tests__/api/account/addresses.test.ts`\n\n```json:metadata\n{\"files\": [\"app/api/account/addresses/route.ts\", \"app/api/account/addresses/[id]/route.ts\", \"__tests__/api/account/addresses.test.ts\"], \"verifyCommand\": \"npx jest __tests__/api/account/addresses.test.ts\", \"acceptanceCriteria\": [\"serviceable India address saves\", \"not_found rejected\", \"intl skips check\", \"country persisted\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: Checkout API — reuse validation, set country + review flag",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** app/api/checkout/route.ts gets its own India-aware checkoutAddressSchema (mirroring addressSchema's logic, keeping addressLine1/2 field names), validates India pincodes, sets country/intlReviewRequired on Order.\n\n**Files:**\n- Modify: `app/api/checkout/route.ts`\n- Test: `__tests__/api/checkout.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Checkout accepts same India-address payload shape as before\n- [ ] country != \"IN\" orders created with intlReviewRequired: true\n- [ ] country == \"IN\" goes through Sequel247 serviceability check\n- [ ] Unserviceable India pincode rejected before Order row created\n\n**Verify:** `npx jest __tests__/api/checkout.test.ts`\n\n```json:metadata\n{\"files\": [\"app/api/checkout/route.ts\", \"__tests__/api/checkout.test.ts\"], \"verifyCommand\": \"npx jest __tests__/api/checkout.test.ts\", \"acceptanceCriteria\": [\"existing India payload still works\", \"intl sets intlReviewRequired\", \"India goes through serviceability check\", \"unserviceable pincode blocks order creation\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Checkout UI — country toggle",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "**Goal:** Checkout page lets customer pick India (default) or International; International reveals free-text fields.\n\n**Files:**\n- Modify: `app/checkout/page.tsx`\n\n**Acceptance Criteria:**\n- [ ] AddressForm/EMPTY_ADDRESS/SavedAddress types include country\n- [ ] Country toggle (India/International) rendered above address fields\n- [ ] International reveals free-text Country input, relaxes phone hint\n- [ ] Save-to-address-book fetch call includes country\n\n**Verify:** Manual — npm run dev, open /checkout, toggle International, confirm field appears and form submits.\n\n```json:metadata\n{\"files\": [\"app/checkout/page.tsx\"], \"verifyCommand\": \"npm run dev (manual)\", \"acceptanceCriteria\": [\"types include country\", \"toggle renders\", \"intl reveals free-text field\", \"save-address call includes country\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: Admin — block PREPARING for unapproved international orders",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** Admin PATCH transition route refuses PAYMENT_CONFIRMED→PREPARING while intlReviewRequired && !intlReviewApproved; new approve-international endpoint clears it.\n\n**Files:**\n- Modify: `app/api/admin/orders/[id]/route.ts`\n- Create: `app/api/admin/orders/[id]/approve-international/route.ts`\n- Test: `__tests__/api/admin/orders-international.test.ts`\n\n**Acceptance Criteria:**\n- [ ] PATCH to PREPARING blocked (409) when unapproved intl order\n- [ ] Same PATCH succeeds after approval\n- [ ] approve-international sets intlReviewApproved + appends OrderEvent\n- [ ] Domestic orders unaffected\n\n**Verify:** `npx jest __tests__/api/admin/orders-international.test.ts`\n\n```json:metadata\n{\"files\": [\"app/api/admin/orders/[id]/route.ts\", \"app/api/admin/orders/[id]/approve-international/route.ts\", \"__tests__/api/admin/orders-international.test.ts\"], \"verifyCommand\": \"npx jest __tests__/api/admin/orders-international.test.ts\", \"acceptanceCriteria\": [\"PREPARING blocked when unapproved\", \"PREPARING succeeds after approval\", \"approve endpoint sets flag + event\", \"domestic orders unaffected\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Admin UI — international review banner + approve action",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** Admin order detail page shows order.country and, when unapproved intl review required, a banner with an approve button.\n\n**Files:**\n- Modify: `app/(admin)/admin/orders/[id]/page.tsx`\n- Modify: `app/(admin)/admin/orders/[id]/OrderActions.tsx`\n\n**Acceptance Criteria:**\n- [ ] Order detail shows country when != \"IN\"\n- [ ] Banner + approve button render while intlReviewRequired && !intlReviewApproved\n- [ ] Button calls POST approve-international, refreshes page\n- [ ] Banner disappears once approved\n\n**Verify:** Manual — npm run dev, open order with intlReviewRequired:true, confirm banner + approve flow.\n\n```json:metadata\n{\"files\": [\"app/(admin)/admin/orders/[id]/page.tsx\", \"app/(admin)/admin/orders/[id]/OrderActions.tsx\"], \"verifyCommand\": \"npm run dev (manual)\", \"acceptanceCriteria\": [\"country shown when non-IN\", \"banner renders when unapproved\", \"approve button works\", \"banner clears after approval\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Env vars + stage verification (Sequel247 UAT + Razorpay test)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6, 8],
       "description": "**Goal:** Document SEQUEL247_* env vars; manually verify full flow end-to-end on stage — domestic via real Sequel247 UAT, international via review gate, payment via Razorpay test keys. No push to master.\n\n**Files:**\n- Modify: `.env.local.example`\n\n**Acceptance Criteria:**\n- [ ] .env.local.example documents SEQUEL247_TOKEN/BASE_URL/STORE_CODE\n- [ ] Real stage checkout with SHIPPING_PROVIDER=sequel247 books + tracks a real UAT shipment\n- [ ] International address on stage creates intlReviewRequired order, gate blocks/unblocks correctly\n- [ ] Real Razorpay test-mode checkout completes end-to-end\n- [ ] Nothing pushed to master\n\n**Verify:** Manual end-to-end sign-off; `npx jest` full suite passes first.\n\n```json:metadata\n{\"files\": [\".env.local.example\"], \"verifyCommand\": \"npx jest && manual stage QA\", \"acceptanceCriteria\": [\"env vars documented\", \"real UAT booking works\", \"intl gate verified on stage\", \"razorpay test mode checkout completes\", \"no push to master\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-08-19T00:00:00Z"
+  "lastUpdated": "2026-08-19T17:30:00Z"
 }
