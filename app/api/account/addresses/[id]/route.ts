@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { addressSchema } from '@/lib/address-schema'
+import { partialAddressSchema } from '@/lib/address-schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const parsed = addressSchema.partial().safeParse(await req.json().catch(() => ({})))
+  const parsed = partialAddressSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? 'Invalid address' },
