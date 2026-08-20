@@ -1,10 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { InvoiceProductPicker } from '@/components/admin/InvoiceProductPicker'
+import { InvoiceDeleteButton } from '@/components/admin/InvoiceDeleteButton'
+import { clearInvoiceDraft, readInvoiceDraft, saveInvoiceDraft } from '@/lib/invoice-draft'
 import {
   applyInvoiceSeller,
+  lineFromCatalogueVariant,
   recomputeLine,
   sellerDefaults,
   totalsFromPayload,
@@ -31,13 +35,25 @@ type Props = {
   number?: string
   orderId?: string | null
   catalogue: CatalogueProps
+  /** Path to return to after creating a catalogue product. */
+  returnPath: string
+  addVariantId?: string | null
 }
 
 function sameParty(a: InvoiceParty, b: InvoiceParty) {
   return a.name === b.name && a.phone === b.phone && a.lines === b.lines
 }
 
-export function InvoiceComposer({ initial, invoiceId, number, orderId, catalogue }: Props) {
+export function InvoiceComposer({
+  initial,
+  invoiceId,
+  number,
+  orderId,
+  catalogue,
+  returnPath,
+  addVariantId,
+}: Props) {
+  const router = useRouter()
   const [payload, setPayload] = useState<InvoicePayload>(() => applyInvoiceSeller(initial))
   const [shipSameAsBill, setShipSameAsBill] = useState(() => sameParty(initial.billedTo, initial.shippedTo))
   const [variants, setVariants] = useState(catalogue.variants)
@@ -72,6 +88,52 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId, catalogue
       return { ...p, lines: onlyEmpty ? [line] : [...p.lines, line] }
     })
     setAddingLine(false)
+  }
+
+  useEffect(() => {
+    const fromProductForm =
+      Boolean(addVariantId) ||
+      (typeof document !== 'undefined' && document.referrer.includes('/admin/products/new'))
+    if (!fromProductForm) return
+
+    const draft = readInvoiceDraft(returnPath)
+    let nextPayload = draft ? applyInvoiceSeller(draft.payload) : applyInvoiceSeller(initial)
+    const sameShip = draft?.shipSameAsBill ?? sameParty(initial.billedTo, initial.shippedTo)
+
+    const picked = addVariantId
+      ? catalogue.variants.find((v) => v.variantId === addVariantId)
+      : undefined
+    const alreadyOnInvoice =
+      picked &&
+      nextPayload.lines.some((l) => l.sku === picked.sku && l.productName === picked.productName)
+    if (picked && !alreadyOnInvoice) {
+      const line = lineFromCatalogueVariant(picked, catalogue.goldRates, catalogue.config)
+      const onlyEmpty =
+        nextPayload.lines.length === 1 &&
+        !nextPayload.lines[0].productName &&
+        !nextPayload.lines[0].itemCode &&
+        !nextPayload.lines[0].sku
+      nextPayload = { ...nextPayload, lines: onlyEmpty ? [line] : [...nextPayload.lines, line] }
+      saveInvoiceDraft({ returnPath, payload: nextPayload, shipSameAsBill: sameShip })
+    }
+
+    // sessionStorage is client-only — restore after hydrate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional draft resume
+    setShipSameAsBill(sameShip)
+    setPayload(nextPayload)
+    setVariants(catalogue.variants)
+    setAddingLine(!nextPayload.lines.some((l) => l.productName || l.itemCode || l.sku))
+
+    if (addVariantId) {
+      router.replace(returnPath)
+    } else {
+      clearInvoiceDraft()
+    }
+  }, [addVariantId, catalogue, initial, returnPath, router])
+
+  function goCreateProduct() {
+    saveInvoiceDraft({ returnPath, payload, shipSameAsBill })
+    router.push(`/admin/products/new?returnTo=${encodeURIComponent(returnPath)}`)
   }
 
   async function save() {
@@ -111,6 +173,9 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId, catalogue
           <Link href={`/admin/invoices/${savedId}/print`} className="admin-btn" target="_blank">
             Print / PDF
           </Link>
+        )}
+        {savedId && savedNumber && (
+          <InvoiceDeleteButton id={savedId} number={savedNumber} redirectTo="/admin/invoices" variant="button" />
         )}
         <Link href="/admin/invoices" className="admin-btn">
           Back to list
@@ -233,14 +298,11 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId, catalogue
             variants={variants}
             goldRates={catalogue.goldRates}
             config={catalogue.config}
-            diamondRates={catalogue.diamondRates}
             onPick={(line, variant) => {
               setVariants((vs) => (vs.some((v) => v.variantId === variant.variantId) ? vs : [...vs, variant]))
               addOrReplaceLine(line)
             }}
-            onCreated={(variant) =>
-              setVariants((vs) => (vs.some((v) => v.variantId === variant.variantId) ? vs : [...vs, variant]))
-            }
+            onCreateNew={goCreateProduct}
           />
           <button type="button" className="admin-btn" style={{ marginTop: 8 }} onClick={() => setAddingLine(false)}>
             Cancel

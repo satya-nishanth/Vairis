@@ -7,8 +7,15 @@ import type { InvoicePayload } from '@/lib/invoice-document'
 
 export const dynamic = 'force-dynamic'
 
-export default async function EditInvoicePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditInvoicePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ addVariant?: string }>
+}) {
   const { id } = await params
+  const { addVariant } = await searchParams
   const [invoice, catalogue] = await Promise.all([
     prisma.invoice.findUnique({ where: { id } }),
     loadInvoiceCatalogue(),
@@ -29,6 +36,8 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
         number={invoice.number}
         orderId={invoice.orderId}
         catalogue={catalogue}
+        returnPath={`/admin/invoices/${invoice.id}`}
+        addVariantId={addVariant ?? null}
       />
     </div>
   )

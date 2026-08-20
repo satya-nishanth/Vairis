@@ -9,9 +9,9 @@ export const dynamic = 'force-dynamic'
 export default async function NewInvoicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ orderId?: string }>
+  searchParams: Promise<{ orderId?: string; addVariant?: string }>
 }) {
-  const { orderId } = await searchParams
+  const { orderId, addVariant } = await searchParams
 
   const [built, catalogue] = await Promise.all([
     orderId ? invoiceFromOrderId(orderId) : Promise.resolve(null),
@@ -55,6 +55,8 @@ export default async function NewInvoicePage({
         initial={payload}
         orderId={orderId ?? null}
         catalogue={catalogue}
+        returnPath={orderId ? `/admin/invoices/new?orderId=${orderId}` : '/admin/invoices/new'}
+        addVariantId={addVariant ?? null}
       />
     </div>
   )
