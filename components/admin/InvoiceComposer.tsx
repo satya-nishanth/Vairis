@@ -2,41 +2,86 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { InvoiceProductPicker } from '@/components/admin/InvoiceProductPicker'
 import {
-  blankLine,
+  applyInvoiceSeller,
   recomputeLine,
+  sellerDefaults,
   totalsFromPayload,
+  type InvoiceCatalogueVariant,
+  type InvoiceDiamondRateOption,
   type InvoiceLine,
+  type InvoiceParty,
   type InvoicePayload,
   type InvoiceStoneRow,
 } from '@/lib/invoice-document'
 import { formatINRGrouped } from '@/lib/invoice-tax'
+import type { PricingConfig } from '@/lib/pricing'
+
+type CatalogueProps = {
+  variants: InvoiceCatalogueVariant[]
+  goldRates: Record<string, number>
+  config: PricingConfig
+  diamondRates: InvoiceDiamondRateOption[]
+}
 
 type Props = {
   initial: InvoicePayload
   invoiceId?: string
   number?: string
   orderId?: string | null
+  catalogue: CatalogueProps
 }
 
-export function InvoiceComposer({ initial, invoiceId, number, orderId }: Props) {
-  const [payload, setPayload] = useState<InvoicePayload>(initial)
+function sameParty(a: InvoiceParty, b: InvoiceParty) {
+  return a.name === b.name && a.phone === b.phone && a.lines === b.lines
+}
+
+export function InvoiceComposer({ initial, invoiceId, number, orderId, catalogue }: Props) {
+  const [payload, setPayload] = useState<InvoicePayload>(() => applyInvoiceSeller(initial))
+  const [shipSameAsBill, setShipSameAsBill] = useState(() => sameParty(initial.billedTo, initial.shippedTo))
+  const [variants, setVariants] = useState(catalogue.variants)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedId, setSavedId] = useState(invoiceId)
   const [savedNumber, setSavedNumber] = useState(number)
+  const [addingLine, setAddingLine] = useState(
+    () => !initial.lines.some((l) => l.productName || l.itemCode || l.sku),
+  )
 
+  const seller = sellerDefaults()
   const totals = useMemo(() => totalsFromPayload(payload), [payload])
 
-  function setSeller<K extends keyof InvoicePayload['seller']>(key: K, value: string) {
-    setPayload((p) => ({ ...p, seller: { ...p.seller, [key]: value } }))
+  function setBilled<K extends keyof InvoiceParty>(key: K, value: string) {
+    setPayload((p) => {
+      const billedTo = { ...p.billedTo, [key]: value }
+      return { ...p, billedTo, shippedTo: shipSameAsBill ? billedTo : p.shippedTo }
+    })
+  }
+
+  function toggleShipSame(checked: boolean) {
+    setShipSameAsBill(checked)
+    if (checked) {
+      setPayload((p) => ({ ...p, shippedTo: { ...p.billedTo } }))
+    }
+  }
+
+  function addOrReplaceLine(line: InvoiceLine) {
+    setPayload((p) => {
+      const onlyEmpty = p.lines.length === 1 && !p.lines[0].productName && !p.lines[0].itemCode && !p.lines[0].sku
+      return { ...p, lines: onlyEmpty ? [line] : [...p.lines, line] }
+    })
+    setAddingLine(false)
   }
 
   async function save() {
     setSaving(true)
     setError('')
     try {
-      const body = { payload: { ...payload, lines: totals.lines }, orderId: orderId || undefined }
+      const body = {
+        payload: applyInvoiceSeller({ ...payload, lines: totals.lines }),
+        orderId: orderId || undefined,
+      }
       const res = await fetch(savedId ? `/api/admin/invoices/${savedId}` : '/api/admin/invoices', {
         method: savedId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -49,7 +94,7 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId }: Props) 
       }
       setSavedId(json.id)
       setSavedNumber(json.number)
-      setPayload(json.payload)
+      setPayload(applyInvoiceSeller(json.payload))
     } finally {
       setSaving(false)
     }
@@ -77,18 +122,15 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId }: Props) 
 
       <section className="inv-composer__line">
         <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>Seller</h3>
-        <div className="inv-composer__grid">
-          <Field label="Name" value={payload.seller.name} onChange={(v) => setSeller('name', v)} />
-          <Field label="GSTIN" value={payload.seller.gstin} onChange={(v) => setSeller('gstin', v)} />
-          <Field label="Email" value={payload.seller.email} onChange={(v) => setSeller('email', v)} />
-          <Field label="Phone" value={payload.seller.phone} onChange={(v) => setSeller('phone', v)} />
-        </div>
-        <Field
-          label="Address"
-          value={payload.seller.address}
-          onChange={(v) => setSeller('address', v)}
-          area
-        />
+        <p className="inv-composer__seller">
+          <strong>{seller.name}</strong>
+          {'\n'}
+          {seller.address}
+          {'\n'}
+          {seller.email} · {seller.phone}
+          {'\n'}
+          GSTIN: {seller.gstin}
+        </p>
       </section>
 
       <section className="inv-composer__line">
@@ -111,41 +153,36 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId }: Props) 
       <section className="inv-composer__line">
         <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>Parties & payment</h3>
         <div className="inv-composer__grid">
-          <Field
-            label="Billed to name"
-            value={payload.billedTo.name}
-            onChange={(v) => setPayload((p) => ({ ...p, billedTo: { ...p.billedTo, name: v } }))}
-          />
-          <Field
-            label="Billed to phone"
-            value={payload.billedTo.phone}
-            onChange={(v) => setPayload((p) => ({ ...p, billedTo: { ...p.billedTo, phone: v } }))}
-          />
+          <Field label="Billed to name" value={payload.billedTo.name} onChange={(v) => setBilled('name', v)} />
+          <Field label="Billed to phone" value={payload.billedTo.phone} onChange={(v) => setBilled('phone', v)} />
         </div>
-        <Field
-          label="Billed to address"
-          value={payload.billedTo.lines}
-          onChange={(v) => setPayload((p) => ({ ...p, billedTo: { ...p.billedTo, lines: v } }))}
-          area
-        />
-        <div className="inv-composer__grid">
-          <Field
-            label="Shipped to name"
-            value={payload.shippedTo.name}
-            onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, name: v } }))}
-          />
-          <Field
-            label="Shipped to phone"
-            value={payload.shippedTo.phone}
-            onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, phone: v } }))}
-          />
-        </div>
-        <Field
-          label="Shipped to address"
-          value={payload.shippedTo.lines}
-          onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, lines: v } }))}
-          area
-        />
+        <Field label="Billed to address" value={payload.billedTo.lines} onChange={(v) => setBilled('lines', v)} area />
+        <label className="inv-composer__check">
+          <input type="checkbox" checked={shipSameAsBill} onChange={(e) => toggleShipSame(e.target.checked)} />
+          Shipping details same as billing details
+        </label>
+        {!shipSameAsBill && (
+          <>
+            <div className="inv-composer__grid">
+              <Field
+                label="Shipped to name"
+                value={payload.shippedTo.name}
+                onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, name: v } }))}
+              />
+              <Field
+                label="Shipped to phone"
+                value={payload.shippedTo.phone}
+                onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, phone: v } }))}
+              />
+            </div>
+            <Field
+              label="Shipped to address"
+              value={payload.shippedTo.lines}
+              onChange={(v) => setPayload((p) => ({ ...p, shippedTo: { ...p.shippedTo, lines: v } }))}
+              area
+            />
+          </>
+        )}
         <div className="inv-composer__grid">
           <Field
             label="Payment method"
@@ -170,29 +207,50 @@ export function InvoiceComposer({ initial, invoiceId, number, orderId }: Props) 
         </div>
       </section>
 
-      {payload.lines.map((line, i) => (
-        <LineEditor
-          key={i}
-          line={line}
-          onChange={(next) =>
-            setPayload((p) => {
-              const lines = [...p.lines]
-              lines[i] = next
-              return { ...p, lines }
-            })
-          }
-          onRemove={() =>
-            setPayload((p) => ({ ...p, lines: p.lines.filter((_, j) => j !== i) }))
-          }
-        />
-      ))}
-      <button
-        type="button"
-        className="admin-btn"
-        onClick={() => setPayload((p) => ({ ...p, lines: [...p.lines, blankLine()] }))}
-      >
-        Add line
-      </button>
+      {payload.lines.map((line, i) => {
+        const empty = !line.productName && !line.itemCode && !line.sku
+        if (empty) return null
+        return (
+          <LineEditor
+            key={i}
+            line={line}
+            onChange={(next) =>
+              setPayload((p) => {
+                const lines = [...p.lines]
+                lines[i] = next
+                return { ...p, lines }
+              })
+            }
+            onRemove={() => setPayload((p) => ({ ...p, lines: p.lines.filter((_, j) => j !== i) }))}
+          />
+        )
+      })}
+
+      {addingLine ? (
+        <section className="inv-composer__line">
+          <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>Add product</h3>
+          <InvoiceProductPicker
+            variants={variants}
+            goldRates={catalogue.goldRates}
+            config={catalogue.config}
+            diamondRates={catalogue.diamondRates}
+            onPick={(line, variant) => {
+              setVariants((vs) => (vs.some((v) => v.variantId === variant.variantId) ? vs : [...vs, variant]))
+              addOrReplaceLine(line)
+            }}
+            onCreated={(variant) =>
+              setVariants((vs) => (vs.some((v) => v.variantId === variant.variantId) ? vs : [...vs, variant]))
+            }
+          />
+          <button type="button" className="admin-btn" style={{ marginTop: 8 }} onClick={() => setAddingLine(false)}>
+            Cancel
+          </button>
+        </section>
+      ) : (
+        <button type="button" className="admin-btn" onClick={() => setAddingLine(true)}>
+          Add product
+        </button>
+      )}
 
       <section className="inv-composer__line" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>Notes</h3>
@@ -294,8 +352,8 @@ function LineEditor({
         <Field label="Item code" value={line.itemCode} onChange={(v) => patch({ itemCode: v })} />
         <Field label="SKU" value={line.sku} onChange={(v) => patch({ sku: v })} />
         <Field label="Metal" value={line.metalLabel} onChange={(v) => patch({ metalLabel: v })} />
-        <Field label="HUID" value={line.huid} onChange={(v) => patch({ huid: v })} />
-        <Field label="Certificates" value={line.certs} onChange={(v) => patch({ certs: v })} />
+        <Field label="HUID (this invoice)" value={line.huid} onChange={(v) => patch({ huid: v })} />
+        <Field label="Certificates (this invoice)" value={line.certs} onChange={(v) => patch({ certs: v })} />
         <Field label="Qty" type="number" value={line.quantity} onChange={(v) => patch({ quantity: Number(v) })} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22 }}>
           <input
@@ -349,7 +407,7 @@ function LineEditor({
         />
       </div>
 
-      <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Diamonds</p>
+      <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Diamonds (from product)</p>
       {line.stones.map((s, i) => (
         <div key={i} className="inv-composer__grid">
           <Field label="Label" value={s.label} onChange={(v) => patchStone(i, { label: v })} />
@@ -380,7 +438,10 @@ function LineEditor({
         className="admin-btn"
         onClick={() =>
           patch({
-            stones: [...line.stones, { label: 'Diamond', caratWeight: 0, ratePerCarat: 0, value: 0, exchange: line.withExchange }],
+            stones: [
+              ...line.stones,
+              { label: 'Diamond', caratWeight: 0, ratePerCarat: 0, value: 0, exchange: line.withExchange },
+            ],
           })
         }
       >

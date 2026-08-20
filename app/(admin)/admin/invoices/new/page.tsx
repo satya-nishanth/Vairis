@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { blankPayload } from '@/lib/invoice-document'
-import { invoiceFromOrderId } from '@/lib/invoice-build'
+import { invoiceFromOrderId, loadInvoiceCatalogue } from '@/lib/invoice-build'
 import { InvoiceComposer } from '@/components/admin/InvoiceComposer'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +13,10 @@ export default async function NewInvoicePage({
 }) {
   const { orderId } = await searchParams
 
-  const built = orderId ? await invoiceFromOrderId(orderId) : null
+  const [built, catalogue] = await Promise.all([
+    orderId ? invoiceFromOrderId(orderId) : Promise.resolve(null),
+    loadInvoiceCatalogue(),
+  ])
   const payload = built?.payload ?? blankPayload()
 
   const recentOrders = await prisma.order.findMany({
@@ -48,7 +51,11 @@ export default async function NewInvoicePage({
         </div>
       )}
 
-      <InvoiceComposer initial={payload} orderId={orderId ?? null} />
+      <InvoiceComposer
+        initial={payload}
+        orderId={orderId ?? null}
+        catalogue={catalogue}
+      />
     </div>
   )
 }

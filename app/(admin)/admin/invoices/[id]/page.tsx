@@ -2,13 +2,17 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { InvoiceComposer } from '@/components/admin/InvoiceComposer'
+import { loadInvoiceCatalogue } from '@/lib/invoice-build'
 import type { InvoicePayload } from '@/lib/invoice-document'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EditInvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const invoice = await prisma.invoice.findUnique({ where: { id } })
+  const [invoice, catalogue] = await Promise.all([
+    prisma.invoice.findUnique({ where: { id } }),
+    loadInvoiceCatalogue(),
+  ])
   if (!invoice) notFound()
 
   return (
@@ -24,6 +28,7 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
         invoiceId={invoice.id}
         number={invoice.number}
         orderId={invoice.orderId}
+        catalogue={catalogue}
       />
     </div>
   )
