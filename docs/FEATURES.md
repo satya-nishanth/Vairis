@@ -70,6 +70,7 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Promo codes manager | ✅ | `/admin/promos` |
 | Reviews moderation (approve/hide, public reply) | ✅ | `/admin/reviews` |
 | Contact requests inbox | ✅ | `/admin/contacts` |
+| Finance audit (expenses, order CP/SP, monthwise P&L) | ✅ | `/admin/finance` — `FINANCE_EMAILS` only (Anil / Surya / Vasu). Hidden from other admins. |
 | Gold rate sync endpoint (Bearer-secret, rate-limited) | 🟡 | Needs GitHub Actions cron (workflow committed) + `METAL_PRICE_API_KEY` |
 | Dashboard order/revenue/ops stats | ✅ | Orders today/week, revenue, pending refunds, low stock, open returns, new contact requests, pending reviews |
 | Analytics dashboard | ✅ | `/admin/analytics` — funnel, conversion, top viewed/carted products, top + zero-result searches |

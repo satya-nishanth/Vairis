@@ -263,6 +263,7 @@ model Order {
   refunds       OrderRefund[]
   notes         OrderNote[]
   shipments     Shipment[]
+  finance       OrderFinance?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 }
@@ -575,4 +576,54 @@ model HeroImage {
   updatedAt DateTime @updatedAt
 
   @@map("hero_images")
+}
+
+enum FinancePaidThrough {
+  VAIRIS_BANK
+  PERSONAL_FUNDS
+}
+
+enum FinancePerson {
+  ANIL
+  SURYA
+  VASU
+}
+
+enum FinancePaidTo {
+  VAIRIS_BANK
+  ANIL
+  SURYA
+  VASU
+}
+
+/// Operating spend, not tied to an order. Contribution is derived: sum of
+/// PERSONAL_FUNDS rows per contributor (edits overwrite, never stack).
+model GeneralExpense {
+  id           String              @id @default(cuid())
+  date         DateTime
+  description  String
+  amount       Decimal
+  paidThrough  FinancePaidThrough
+  contributor  FinancePerson?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([date])
+}
+
+/// One CP/SP sheet per store Order. Profit = sellingPrice − (gold+diamond+stones).
+/// customerPaidTo is cash location, not profit.
+model OrderFinance {
+  id              String         @id @default(cuid())
+  orderId         String         @unique
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  goldCost        Decimal
+  diamondCost     Decimal
+  stonesCost      Decimal
+  sellingPrice    Decimal
+  customerPaidTo  FinancePaidTo
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([createdAt])
 }
