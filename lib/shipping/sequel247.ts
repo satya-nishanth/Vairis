@@ -83,6 +83,7 @@ export const sequel247Provider: ShippingProvider = {
 
     const docketNumber = data.data?.docketNumber;
     if (data.status !== "true" || !docketNumber) {
+      console.error("[sequel247] shipment/create unexpected response", JSON.stringify(data));
       throw new Error("Sequel247 shipment/create did not return a docket number");
     }
 
