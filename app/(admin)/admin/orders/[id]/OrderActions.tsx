@@ -104,12 +104,19 @@ export function OrderActions({
         body: JSON.stringify({
           status: next,
           note: reason.trim() || undefined,
-          ...(next === 'SHIPPED' ? shipForm : {}),
+          // Only send courier fields when the admin actually typed them
+          // (showShipForm true). Otherwise this always spread empty
+          // strings for booking-capable providers, which are falsy and
+          // trigger auto-booking anyway — harmless there, but on retry
+          // after a failed booking there was no way to submit manually
+          // entered values, since they'd be overwritten by blank ones.
+          ...(next === 'SHIPPED' && showShipForm ? shipForm : {}),
         }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Update failed')
+        if (next === 'SHIPPED' && shippingSupportsBooking) setShowShipForm(true)
         return
       }
       setShowShipForm(false)
