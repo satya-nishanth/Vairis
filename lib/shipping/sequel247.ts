@@ -76,7 +76,7 @@ export const sequel247Provider: ShippingProvider = {
         auth_receiver_phone: request.contactPhone,
       },
       net_weight: "10",
-      net_value: request.declaredValue,
+      net_value: String(request.declaredValue),
       no_of_packages: "1",
       remark: `VAIRIS order ${request.orderId}`,
     });

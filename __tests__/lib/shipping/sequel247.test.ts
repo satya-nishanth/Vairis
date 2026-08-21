@@ -54,7 +54,7 @@ describe('sequel247Provider', () => {
       pinCode: '502300',
       auth_receiver_phone: '9876543210',
     })
-    expect(body.net_value).toBe(45000)
+    expect(body.net_value).toBe('45000')
     expect(booking).toEqual({
       providerShipmentId: '0581094993',
       courierName: 'Sequel247',
