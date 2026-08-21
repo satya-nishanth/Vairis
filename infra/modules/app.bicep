@@ -12,6 +12,19 @@ param customDomainFqdn string = ''
 @description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued (DNS TXT/CNAME verified) before this deploys.')
 param customCertificateName string = ''
 
+// Payment/shipping toggles — default to the always-safe mocked values so any
+// future caller of this module that doesn't pass them explicitly gets today's
+// behavior, not a surprise. main.bicep drives these per-environment.
+param paymentGateway string = 'mock'
+param shippingProvider string = 'manual'
+param shippingMock string = 'true'
+param checkoutEnabled string = 'false'
+param razorpayKeyId string = ''
+param sequel247BaseUrl string = ''
+param sequel247StoreCode string = ''
+@description('True only when secretRefs actually contains razorpay-key-secret/razorpay-webhook-secret/sequel247-token — gates the matching env entries so they never reference a secret name absent from secretRefs (Container Apps fails validation otherwise).')
+param hasStagingSecrets bool = false
+
 var isProd = environmentName == 'prod'
 var certificateResourceId = !empty(customCertificateName) ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', 'cae-vairis-${environmentName}', customCertificateName) : ''
 var customDomains = !empty(customDomainFqdn) ? [{ name: customDomainFqdn, certificateId: certificateResourceId, bindingType: 'SniEnabled' }] : []
@@ -57,39 +70,49 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('1.0')
             memory: '2Gi'
           }
-          env: [
-            { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-            { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
-            { name: 'STORAGE_PROVIDER', value: 'azure' }
-            { name: 'DATABASE_URL', secretRef: 'database-url' }
-            // schema.prisma's directUrl exists for Supabase's pooler-vs-direct split —
-            // Azure Postgres Flexible Server has no such split, so this is just the
-            // same connection string again. Without it, `prisma migrate deploy` (now
-            // run on every container boot, see Dockerfile) fails schema validation
-            // before the app can even start: "Environment variable not found:
-            // DIRECT_DATABASE_URL" — took the whole app down, not just migrations.
-            { name: 'DIRECT_DATABASE_URL', secretRef: 'database-url' }
-            // GOTRUE_INTERNAL_URL is server-only — used by next.config.mjs's rewrite to proxy
-            // /auth-api/* to GoTrue from the Next.js server, not the browser. Bare self-hosted
-            // GoTrue's CORS layer rejects the `apikey` header supabase-js always sends (it expects
-            // Kong in front to have handled that), so the browser can never call GoTrue directly.
-            // NEXT_PUBLIC_SUPABASE_URL is therefore a same-origin path, set at build time — no
-            // runtime override here, since NEXT_PUBLIC_* values are baked into the client bundle.
-            { name: 'GOTRUE_INTERNAL_URL', secretRef: 'supabase-url' }
-            { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', secretRef: 'supabase-anon-key' }
-            { name: 'SUPABASE_SERVICE_ROLE_KEY', secretRef: 'supabase-service-role-key' }
-            { name: 'PAYMENT_GATEWAY', value: 'mock' }
-            { name: 'ALLOW_MOCK_PAYMENTS', value: 'true' }
-            { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: 'false' }
-            { name: 'SHIPPING_PROVIDER', value: 'manual' }
-            { name: 'SHIPPING_MOCK', value: 'true' }
-            { name: 'ADMIN_EMAILS', secretRef: 'admin-emails' }
-            { name: 'GOLD_SYNC_SECRET', secretRef: 'gold-sync-secret' }
-            { name: 'ORDER_SWEEP_SECRET', secretRef: 'order-sweep-secret' }
-            { name: 'METAL_PRICE_API_KEY', secretRef: 'metal-price-api-key' }
-            { name: 'RESEND_API_KEY', secretRef: 'resend-api-key' }
-            { name: 'RESEND_FROM_EMAIL', value: 'noreply@thevairis.com' }
-          ]
+          env: concat(
+            [
+              { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+              { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
+              { name: 'STORAGE_PROVIDER', value: 'azure' }
+              { name: 'DATABASE_URL', secretRef: 'database-url' }
+              // schema.prisma's directUrl exists for Supabase's pooler-vs-direct split —
+              // Azure Postgres Flexible Server has no such split, so this is just the
+              // same connection string again. Without it, `prisma migrate deploy` (now
+              // run on every container boot, see Dockerfile) fails schema validation
+              // before the app can even start: "Environment variable not found:
+              // DIRECT_DATABASE_URL" — took the whole app down, not just migrations.
+              { name: 'DIRECT_DATABASE_URL', secretRef: 'database-url' }
+              // GOTRUE_INTERNAL_URL is server-only — used by next.config.mjs's rewrite to proxy
+              // /auth-api/* to GoTrue from the Next.js server, not the browser. Bare self-hosted
+              // GoTrue's CORS layer rejects the `apikey` header supabase-js always sends (it expects
+              // Kong in front to have handled that), so the browser can never call GoTrue directly.
+              // NEXT_PUBLIC_SUPABASE_URL is therefore a same-origin path, set at build time — no
+              // runtime override here, since NEXT_PUBLIC_* values are baked into the client bundle.
+              { name: 'GOTRUE_INTERNAL_URL', secretRef: 'supabase-url' }
+              { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', secretRef: 'supabase-anon-key' }
+              { name: 'SUPABASE_SERVICE_ROLE_KEY', secretRef: 'supabase-service-role-key' }
+              { name: 'PAYMENT_GATEWAY', value: paymentGateway }
+              { name: 'ALLOW_MOCK_PAYMENTS', value: 'true' }
+              { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: checkoutEnabled }
+              { name: 'SHIPPING_PROVIDER', value: shippingProvider }
+              { name: 'SHIPPING_MOCK', value: shippingMock }
+              { name: 'RAZORPAY_KEY_ID', value: razorpayKeyId }
+              { name: 'SEQUEL247_BASE_URL', value: sequel247BaseUrl }
+              { name: 'SEQUEL247_STORE_CODE', value: sequel247StoreCode }
+              { name: 'ADMIN_EMAILS', secretRef: 'admin-emails' }
+              { name: 'GOLD_SYNC_SECRET', secretRef: 'gold-sync-secret' }
+              { name: 'ORDER_SWEEP_SECRET', secretRef: 'order-sweep-secret' }
+              { name: 'METAL_PRICE_API_KEY', secretRef: 'metal-price-api-key' }
+              { name: 'RESEND_API_KEY', secretRef: 'resend-api-key' }
+              { name: 'RESEND_FROM_EMAIL', value: 'noreply@thevairis.com' }
+            ],
+            hasStagingSecrets ? [
+              { name: 'RAZORPAY_KEY_SECRET', secretRef: 'razorpay-key-secret' }
+              { name: 'RAZORPAY_WEBHOOK_SECRET', secretRef: 'razorpay-webhook-secret' }
+              { name: 'SEQUEL247_TOKEN', secretRef: 'sequel247-token' }
+            ] : []
+          )
         }
       ]
       scale: {
