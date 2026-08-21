@@ -31,6 +31,10 @@ type OrderActionsProps = {
    * replace these fields with a "Book shipment" action.
    */
   shippingSupportsBooking: boolean
+  /** From order.intlReviewRequired — true when the delivery country isn't
+      "IN" and hasn't been approved yet (see PATCH .../route.ts gate). */
+  intlReviewRequired: boolean
+  intlReviewApproved: boolean
 }
 
 /** True when a from→to move (or the target alone) requires a reason note. */
@@ -52,9 +56,12 @@ export function OrderActions({
   paymentCaptured,
   offline,
   shippingSupportsBooking,
+  intlReviewRequired,
+  intlReviewApproved,
 }: OrderActionsProps) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+  const [approvingIntl, setApprovingIntl] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shipForm, setShipForm] = useState({ courierName: '', awbCode: '', trackingUrl: '' })
   const [showShipForm, setShowShipForm] = useState(false)
@@ -149,6 +156,22 @@ export function OrderActions({
     }
   }
 
+  async function approveInternational() {
+    setApprovingIntl(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/approve-international`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Approval failed')
+        return
+      }
+      router.refresh()
+    } finally {
+      setApprovingIntl(false)
+    }
+  }
+
   const btn: React.CSSProperties = {
     padding: '8px 16px',
     fontSize: '0.75rem',
@@ -174,6 +197,31 @@ export function OrderActions({
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1.25rem', marginBottom: '1rem' }}>
+      {intlReviewRequired && !intlReviewApproved && (
+        <div
+          style={{
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            padding: '0.75rem 1rem',
+            marginBottom: 12,
+            fontSize: '0.8125rem',
+            color: '#92400e',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span>International address — fulfillment is blocked until reviewed.</span>
+          <button
+            style={{ ...btn, border: '1px solid #92400e', background: '#92400e' }}
+            disabled={approvingIntl}
+            onClick={approveInternational}
+          >
+            Approve international order
+          </button>
+        </div>
+      )}
       <h3 style={{ fontSize: '0.75rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 12 }}>
         Actions
       </h3>
