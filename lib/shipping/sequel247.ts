@@ -61,7 +61,7 @@ export const sequel247Provider: ShippingProvider = {
 
     const data = await sequelFetch<{
       status: string;
-      data?: { docketNumber: string };
+      data?: { docket_number: string; tracking_link?: string };
     }>("/api/shipment/create", {
       location: "domestic",
       shipmentType: "D&J",
@@ -81,7 +81,7 @@ export const sequel247Provider: ShippingProvider = {
       remark: `VAIRIS order ${request.orderId}`,
     });
 
-    const docketNumber = data.data?.docketNumber;
+    const docketNumber = data.data?.docket_number;
     if (data.status !== "true" || !docketNumber) {
       console.error("[sequel247] shipment/create unexpected response", JSON.stringify(data));
       throw new Error("Sequel247 shipment/create did not return a docket number");
@@ -91,10 +91,7 @@ export const sequel247Provider: ShippingProvider = {
       providerShipmentId: docketNumber,
       courierName: "Sequel247",
       awbCode: docketNumber,
-      // No public tracking URL found in Sequel247's docs — see design doc
-      // "Open items". Customers see our own OrderEvent timeline instead,
-      // same as the manual provider.
-      trackingUrl: null,
+      trackingUrl: data.data?.tracking_link ?? null,
     };
   },
 

@@ -36,7 +36,11 @@ describe('sequel247Provider', () => {
       ok: true,
       json: async () => ({
         status: 'true',
-        data: { docketNumber: '0581094993', estimated_delivery: '14-06-2026 20:00' },
+        data: {
+          docket_number: '0581094993',
+          estimated_delivery: '14-06-2026 20:00',
+          tracking_link: 'https://test.sequel247.com/track/0581094993',
+        },
       }),
     })
     global.fetch = fetchMock as unknown as typeof fetch
@@ -59,7 +63,7 @@ describe('sequel247Provider', () => {
       providerShipmentId: '0581094993',
       courierName: 'Sequel247',
       awbCode: '0581094993',
-      trackingUrl: null,
+      trackingUrl: 'https://test.sequel247.com/track/0581094993',
     })
   })
 
