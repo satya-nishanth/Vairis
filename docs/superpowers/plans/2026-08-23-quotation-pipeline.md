@@ -3149,3 +3149,117 @@ git commit -m "feat: add internal API client for the quotation reminder poll"
 ```
 
 ---
+
+## Task 18: Bot — `quotationMap` (phone + thread caches)
+
+**Goal:** The bot's local, ephemeral view of open quotations — two maps built from the same poll snapshot: `byPhone` (WhatsApp message routing) and `byThread` (Discord command routing). See this plan's intro for why both are needed (manual quotations are frequently phoneless).
+
+**Files:**
+- Create: `[Bot] src/quotes/quotationMap.js`
+- Test: `[Bot] test/quotationMap.test.js`
+
+**Acceptance Criteria:**
+- [ ] `refresh(quotations)` clears and rebuilds both maps from scratch each call (pruning is "absence from the latest snapshot", not an explicit delete list — matches Task 7's GET contract).
+- [ ] A quotation with a `discordThreadId` but no `customerMobile` (a phoneless manual quote) appears in `byThread` but not `byPhone`.
+- [ ] A quotation with a `customerMobile` but no `discordThreadId` yet (Discord creation still pending/retrying) appears in `byPhone` with `threadId: null`.
+- [ ] `upsertOne(q)` updates both maps for a single quotation without touching any other entries — used for the ref-match one-off resolve (no 30-minute wait for the next poll).
+
+**Verify:** `npx jest test/quotationMap.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/quotationMap.test.js
+const quotationMap = require('../src/quotes/quotationMap');
+
+beforeEach(() => {
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+describe('refresh', () => {
+    it('populates byThread for a phoneless manual quotation', () => {
+        quotationMap.refresh([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: null },
+        ]);
+        expect(quotationMap.byThread.get('thread-1')).toEqual({ quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+        expect(quotationMap.byPhone.size).toBe(0);
+    });
+
+    it('populates byPhone with a null threadId when Discord creation is still pending', () => {
+        quotationMap.refresh([
+            { id: 'q2', status: 'REQUESTED', discordThreadId: null, customerMobile: '919876543210' },
+        ]);
+        expect(quotationMap.byPhone.get('919876543210')).toEqual({ quotationId: 'q2', threadId: null });
+    });
+
+    it('clears stale entries not present in the latest snapshot (prune-by-absence)', () => {
+        quotationMap.refresh([{ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: '919876543210' }]);
+        expect(quotationMap.byThread.has('thread-1')).toBe(true);
+        quotationMap.refresh([]); // q1 converted/cancelled — no longer in the open-quotations response
+        expect(quotationMap.byThread.has('thread-1')).toBe(false);
+        expect(quotationMap.byPhone.has('919876543210')).toBe(false);
+    });
+});
+
+describe('upsertOne', () => {
+    it('adds a single quotation to both maps without clearing existing entries', () => {
+        quotationMap.refresh([{ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: '919876543210' }]);
+        quotationMap.upsertOne({ id: 'q2', status: 'REQUESTED', discordThreadId: 'thread-2', customerMobile: '919876543211' });
+        expect(quotationMap.byThread.has('thread-1')).toBe(true);
+        expect(quotationMap.byThread.has('thread-2')).toBe(true);
+        expect(quotationMap.byPhone.has('919876543211')).toBe(true);
+    });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/quotationMap.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/quotationMap'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/quotationMap.js
+const byPhone = new Map(); // phone (bot-normalized, e.g. "919876543210") -> { quotationId, threadId }
+const byThread = new Map(); // discordThreadId -> { quotationId, status, customerMobile }
+
+function upsertOne(q) {
+    if (q.discordThreadId) {
+        byThread.set(q.discordThreadId, {
+            quotationId: q.id,
+            status: q.status,
+            customerMobile: q.customerMobile || null,
+        });
+    }
+    if (q.customerMobile) {
+        byPhone.set(q.customerMobile, { quotationId: q.id, threadId: q.discordThreadId || null });
+    }
+}
+
+/** Rebuilds both maps from the latest open-quotations snapshot. Absence = pruned. */
+function refresh(quotations) {
+    byPhone.clear();
+    byThread.clear();
+    for (const q of quotations) upsertOne(q);
+}
+
+module.exports = { byPhone, byThread, refresh, upsertOne };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/quotationMap.test.js -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/quotationMap.js test/quotationMap.test.js
+git commit -m "feat: add quotationMap phone/thread caches"
+```
+
+---
