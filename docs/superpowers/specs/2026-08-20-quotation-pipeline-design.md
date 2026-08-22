@@ -148,13 +148,20 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
     unchanged afterward; escalation doesn't replace them, it widens who's watching.
   The same poll response refreshes `quotationMap` (adds newly-seen REQUESTED/QUOTED entries,
   prunes anything that moved to CONVERTED/CANCELLED).
-- **`quotationMap.js`** — the phone → `{quotationId, threadId}` cache described in decision #5.
-  Also populated immediately (one-off resolve call, not waiting for the next poll cycle) the
-  first time a ref is seen in an incoming WhatsApp message, so there's no up-to-30-minute lag on
-  the very first attach.
+- **`quotationMap.js`** — maintains two maps from the same poll cycle: `byPhone` (phone →
+  `{quotationId, threadId}`, decision #5, used for WhatsApp message routing) and `byThread`
+  (`threadId → {quotationId, status}`, used by `/quoted`/`/close` below). `byThread` covers every
+  REQUESTED/QUOTED quotation regardless of whether it has a phone at all — manual/dashboard
+  quotations are frequently phoneless (mobile is optional for MANUAL source per the source spec),
+  so a thread-only index is required for those commands to resolve a quotation; `byPhone` alone
+  would silently miss them. `byPhone` is also populated immediately (one-off resolve call, not
+  waiting for the next poll cycle) the first time a ref is seen in an incoming WhatsApp message,
+  so there's no up-to-30-minute lag on the very first attach.
 - **`discordQuoteThreads.js`** — thin REST wrappers used by the new `/quoted` `/reply` `/close`
   handler for `#quote-requests-offline` (a new module, parallel to but separate from the existing
-  `bot/discordReplyHandler.js` — different data source, shouldn't be folded into one file).
+  `bot/discordReplyHandler.js` — different data source, shouldn't be folded into one file). The
+  handler looks up the incoming thread in `quotationMap`'s `byThread` index; a message in an
+  untracked thread is ignored, same shape as `discordReplyHandler.js`'s `activeTickets.has()` guard.
   `/quoted` is idempotent while status is QUOTED: calling it again overwrites `quotedAmount` /
   `quotedNotes` (last-write-wins) instead of erroring, so xperson can fix a typo without needing
   dashboard access. `/close` sets CANCELLED and calls `closeThread` (posts "Cancelled" + archives) —
@@ -220,7 +227,11 @@ handling of non-price tickets.
 `QUOTE_STALE_QUOTED_HOURS` (default 24), `DISCORD_BOT_TOKEN` on Vercel (thread creation; the
 bot already has its own copy for `/quoted`/`/reply`/`/close`), `INTERNAL_API_KEY` (reused, not
 new — see decision #1; needs to be set on both the Vairis Vercel/Azure deployment and the bot's
-Azure Container App if it isn't already).
+Azure Container App if it isn't already), `VAIRIS_API_BASE_URL` (bot-only, new — the bot has no
+existing way to know where the Next.js app is deployed; every other bot→store integration point
+is Postgres, not HTTP, so there's no base-URL env var to reuse. Production points at
+`https://vairis-ten.vercel.app`; stage/local points at a preview deployment URL or
+`http://localhost:3000`).
 
 **Stage isolation**: `DISCORD_QUOTE_CHANNEL_ID`, `DISCORD_QUOTE_ASSIGNEE_ID`, and
 `DISCORD_ESCALATION_ID` take different values per environment, not one hardcoded set. Production
