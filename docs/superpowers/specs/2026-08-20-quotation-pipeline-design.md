@@ -176,9 +176,13 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
 
 - Discord REST calls (thread create, ping, post) are wrapped in try/catch, logged, and **never
   block the underlying DB write** — a quotation row always gets created even if Discord is
-  briefly unavailable. The next reminder-poll cycle detects a quotation with no
-  `discordThreadId` and retries thread creation, matching the codebase's existing
-  resilience-over-perfection style (e.g. `sessionStore.js`'s `saveState`).
+  briefly unavailable. Thread creation only ever happens from Next.js (it holds
+  `DISCORD_BOT_TOKEN` for REST calls); the bot has no equivalent capability, so retry can't be
+  "the bot creates the thread itself" — instead, `reminderPoll.js` PATCHes
+  `{ retryThread: true }` to `/api/internal/quotations/[id]` for any polled quotation missing
+  `discordThreadId`, and the route re-runs `createQuoteThread` + `postToThread` server-side.
+  Matches the codebase's existing resilience-over-perfection style (e.g. `sessionStore.js`'s
+  `saveState`), just routed through the one side that actually holds the credential.
 - Internal API auth failure → 401; the bot logs and retries on its next poll interval — never
   crashes the loop, same shape as its existing Postgres/Discord error handling.
 - Duplicate-quotation race on the public endpoint (`app/api/quotations/route.ts`) is closed by
