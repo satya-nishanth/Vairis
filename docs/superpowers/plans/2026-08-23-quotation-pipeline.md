@@ -4175,3 +4175,91 @@ git commit -m "feat: route WhatsApp price enquiries into the quotation pipeline"
 ```
 
 ---
+
+## Task 22: Bot — wire up `index.js`
+
+**Goal:** Start the quote reminder poll and register the quote-thread Discord handler at boot, alongside (not inside) the existing WhatsApp bootstrap — the reminder poll only needs Discord + the internal API, never WhatsApp, so it doesn't need to wait for `waClient.on('ready')` the way the 24h ticket reminder does.
+
+**Files:**
+- Modify: `[Bot] index.js`
+
+**Acceptance Criteria:**
+- [ ] `registerQuoteThreadHandlers()` and `startQuoteReminderPoll()` are both called unconditionally at startup, not gated on WhatsApp readiness.
+- [ ] Existing startup behavior (WhatsApp init, Discord connect, session load) is unchanged.
+
+**Steps:**
+
+- [ ] **Step 1: Modify index.js**
+
+Add two requires near the top, alongside the existing ones:
+
+```javascript
+const { registerQuoteThreadHandlers } = require('./src/quotes/discordQuoteThreads');
+const { startQuoteReminderPoll } = require('./src/quotes/reminderPoll');
+```
+
+Add two calls right after the existing `registerDiscordReplyHandlers();` line:
+
+```javascript
+registerWhatsAppEvents();
+registerDiscordReplyHandlers();
+registerQuoteThreadHandlers();
+startQuoteReminderPoll();
+```
+
+No other change to `index.js`.
+
+- [ ] **Step 2: Manual verification**
+
+Run: `node index.js` locally (with a valid `.env` including the new quote vars from Task 16/23). Confirm the bot starts with no new errors, and check logs for the reminder poll's first (fetch-on-boot) run.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add index.js
+git commit -m "feat: wire up quotation reminder poll and Discord handler at boot"
+```
+
+---
+
+## Task 23: Bot env var documentation
+
+**Goal:** Document every new bot-side env var in `.env.example`, matching the file's existing comment style.
+
+**Files:**
+- Modify: `[Bot] .env.example`
+
+**Acceptance Criteria:**
+- [ ] Every var Task 16 added to `config.js` has a documented line here, marked optional (this feature degrades gracefully when unset).
+
+**Steps:**
+
+- [ ] **Step 1: Append to .env.example**
+
+```bash
+
+# Quotation pipeline (optional — bot degrades gracefully without these; see src/config.js)
+# Where the Vairis Next.js app is deployed — the bot has no other way to reach it (every other
+# bot<->store integration is direct Postgres, not HTTP).
+VAIRIS_API_BASE_URL=https://vairis-ten.vercel.app
+# Bearer token shared with Vairis's INTERNAL_API_KEY — must match exactly.
+INTERNAL_API_KEY=
+# #quote-requests-offline channel id, and the xperson (vendor-quote executive) snowflake to ping.
+DISCORD_QUOTE_CHANNEL_ID=
+DISCORD_QUOTE_ASSIGNEE_ID=
+# Pinged once, additionally, if the assignee hasn't responded after QUOTE_ESCALATION_AFTER_MISSES pings.
+DISCORD_ESCALATION_ID=
+# Reminder cadence in minutes: first ping fires sooner than the steady-state repeat interval.
+QUOTE_FIRST_REMINDER_MIN=10
+QUOTE_REMINDER_INTERVAL_MIN=30
+QUOTE_ESCALATION_AFTER_MISSES=3
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .env.example
+git commit -m "docs: document quotation pipeline bot env vars"
+```
+
+---
