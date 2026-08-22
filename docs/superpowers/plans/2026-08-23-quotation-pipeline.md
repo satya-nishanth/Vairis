@@ -2916,3 +2916,53 @@ git commit -m "feat: add PDP quote-enquiry modal ahead of WhatsApp handoff"
 ```
 
 ---
+
+## Task 15: Next.js env var documentation
+
+**Goal:** Document every env var the Vairis side of this feature reads, in `.env.local.example`, so a real deploy doesn't have to reverse-engineer them from the code.
+
+**Files:**
+- Modify: `[Vairis] .env.local.example`
+
+**Acceptance Criteria:**
+- [ ] Every var Next.js actually reads (`process.env.X`) across Tasks 1-14 has a line here.
+- [ ] Existing `INTERNAL_API_KEY` line (already present, line ~57) gets an updated comment noting it's now used — not left as "reserved, unused".
+
+**Steps:**
+
+- [ ] **Step 1: Add a new block to `.env.local.example`**
+
+Append near the existing `INTERNAL_API_KEY` line (update its comment too):
+
+```bash
+# Internal API (bot <-> store) — used by /api/internal/quotations*
+INTERNAL_API_KEY=
+
+# Quotation pipeline — Discord thread creation + assignee ping (Next.js side)
+DISCORD_BOT_TOKEN=
+DISCORD_QUOTE_CHANNEL_ID=
+DISCORD_QUOTE_ASSIGNEE_ID=
+# Server for the "View Discord thread" deep-link on /admin/quotations/[id] —
+# https://discord.com/channels/{guild}/{thread}. Optional: link is omitted if unset.
+DISCORD_GUILD_ID=
+# Dashboard-only staleness threshold for a QUOTED-but-not-converted quotation (hours). No pings —
+# visibility only, per the hardening pass in the design doc.
+QUOTE_STALE_QUOTED_HOURS=24
+```
+
+Update the existing `INTERNAL_API_KEY=` line's preceding comment from "Internal API (WhatsApp bot)" (if that's still the wording) to match the block above — don't leave two separate `INTERNAL_API_KEY=` lines; merge into one.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .env.local.example
+git commit -m "docs: document quotation pipeline env vars"
+```
+
+---
+
+# Part 2 — Vairis_Customer_Bot repo
+
+Every task below runs in the sibling `Vairis_Customer_Bot` repo, already on `feature/quotation-pipeline`. All file paths are relative to that repo's root, not Vairis's.
+
+---
