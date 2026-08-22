@@ -65,6 +65,39 @@ export type InvoiceProductInput = {
   certs?: string
 }
 
+/** Catalogue row for the invoice product picker (serialisable to the client). */
+export type InvoiceCatalogueStone = {
+  typeLabel: string
+  caratWeight: number
+  ratePerCarat: number
+  ratePerCaratExchange: number
+}
+
+export type InvoiceCatalogueVariant = {
+  variantId: string
+  productId: string
+  category: string
+  productName: string
+  itemCode: string
+  sku: string
+  metalType: string
+  size: string
+  label: string
+  weightGrams: number
+  makingChargePerGram: number
+  flatMakingCharge: number
+  miscCharges: number
+  stoneCharges: number
+  stones: InvoiceCatalogueStone[]
+}
+
+export type InvoiceDiamondRateOption = {
+  id: string
+  label: string
+  ratePerCarat: number
+  ratePerCaratExchange: number
+}
+
 export type InvoiceFromProductsContext = {
   billedTo?: InvoiceParty
   shippedTo?: InvoiceParty
@@ -108,17 +141,26 @@ export const DEFAULT_INVOICE_NOTES = {
   certification:
     'Every piece is BIS hallmarked with a unique HUID and ships with its IGI or SGL diamond grading report, quoted per item above. Certificates are enclosed with the parcel and mirrored in your account at thevairis.com.',
   returns:
-    'Unworn pieces may be returned within 15 days of delivery in their original packaging with all certificates for a full refund. Lifetime exchange is offered at prevailing metal and diamond rates, less making charges. Engraved and made-to-order pieces are final sale. Write to care@thevairis.com to raise a request.',
+    'Unworn pieces may be returned within 15 days of delivery in their original packaging with all certificates for a full refund. Lifetime exchange is offered at prevailing metal and diamond rates, less making charges. Engraved and made-to-order pieces are final sale. Write to contact@thevairis.com to raise a request.',
 }
 
-export function sellerDefaults() {
-  return {
-    name: process.env.INVOICE_SELLER_NAME || 'Vairis Jewels Private Limited',
-    address: process.env.INVOICE_SELLER_ADDRESS || '301, Panchratna Complex, Opera House, Mumbai 400004',
-    gstin: process.env.INVOICE_SELLER_GSTIN || '27AABCV1234K1ZP',
-    email: process.env.INVOICE_SELLER_EMAIL || 'care@thevairis.com',
-    phone: process.env.INVOICE_SELLER_PHONE || '+91 98200 00000',
-  }
+/** Legal seller on every tax invoice — not env-overridable, not editable in admin. */
+export const INVOICE_SELLER = {
+  name: 'Vairis Fine Jewellery Private Limited',
+  address:
+    'Sy.130p&115/1p, Nanakramguda Rd, M, Gachibowli, Serilingampalle (M), Hyderabad, Telangana 500032',
+  gstin: '36AALCV9240K1ZQ',
+  email: 'contact@thevairis.com',
+  phone: '+91 7075486464',
+} as const
+
+export function sellerDefaults(): InvoicePayload['seller'] {
+  return { ...INVOICE_SELLER }
+}
+
+/** Stamp the hardcoded seller so clients cannot override company details. */
+export function applyInvoiceSeller(payload: InvoicePayload): InvoicePayload {
+  return { ...payload, seller: sellerDefaults() }
 }
 
 export function metalLabel(metalType: string): string {
@@ -280,6 +322,85 @@ export function lineFromProduct(
   )
 }
 
+export function lineFromCatalogueVariant(
+  variant: InvoiceCatalogueVariant,
+  rates: Record<string, number>,
+  config: PricingConfig,
+  extras?: { huid?: string; certs?: string; quantity?: number; withExchange?: boolean },
+): InvoiceLine {
+  return lineFromProduct(
+    {
+      productName: variant.productName,
+      itemCode: variant.itemCode,
+      sku: variant.sku,
+      metalType: variant.metalType,
+      weightGrams: variant.weightGrams,
+      makingChargePerGram: variant.makingChargePerGram,
+      flatMakingCharge: variant.flatMakingCharge,
+      miscCharges: variant.miscCharges,
+      stoneCharges: variant.stoneCharges,
+      stones: variant.stones,
+      huid: extras?.huid,
+      certs: extras?.certs,
+      quantity: extras?.quantity,
+      withExchange: extras?.withExchange,
+    },
+    rates,
+    config,
+  )
+}
+
+type CreatedInvoiceProduct = {
+  id: string
+  name: string
+  category: string
+  itemCode: string | null
+  variants: Array<{
+    id: string
+    metalType: string
+    size: string | null
+    sku: string
+    weightGrams: unknown
+    makingChargePerGram: unknown
+    flatMakingCharge: unknown
+    miscCharges: unknown
+    stoneCharges: unknown
+  }>
+  stones?: Array<{
+    caratWeight: unknown
+    diamondRate?: { label: string; ratePerCarat: unknown; ratePerCaratExchange: unknown } | null
+  }>
+}
+
+export function catalogueVariantFromCreatedProduct(product: CreatedInvoiceProduct): InvoiceCatalogueVariant | null {
+  const v = product.variants[0]
+  if (!v) return null
+  return {
+    variantId: v.id,
+    productId: product.id,
+    category: product.category,
+    productName: product.name,
+    itemCode: product.itemCode ?? '',
+    sku: v.sku,
+    metalType: v.metalType,
+    size: v.size ?? '',
+    label: `${product.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
+    weightGrams: Number(v.weightGrams),
+    makingChargePerGram: Number(v.makingChargePerGram),
+    flatMakingCharge: Number(v.flatMakingCharge),
+    miscCharges: Number(v.miscCharges),
+    stoneCharges: Number(v.stoneCharges),
+    stones: (product.stones ?? [])
+      .filter((s) => s.diamondRate)
+      .map((s) => ({
+        typeLabel: s.diamondRate!.label,
+        caratWeight: Number(s.caratWeight),
+        ratePerCarat: Number(s.diamondRate!.ratePerCarat),
+        ratePerCaratExchange: Number(s.diamondRate!.ratePerCaratExchange),
+      })),
+  }
+}
+
 /**
  * Build a tax-invoice document from a product list (cart, checkout, or manual).
  * Same `calculatePrice` formula as PDP / cart / checkout.
@@ -386,11 +507,11 @@ export function payloadFromOrder(
     metalType: item.variant.metalType,
     withExchange: item.withExchange,
     quantity: item.quantity,
-    weightGrams: item.variant.weightGrams,
-    makingChargePerGram: item.variant.makingChargePerGram,
-    flatMakingCharge: item.variant.flatMakingCharge,
-    miscCharges: item.variant.miscCharges,
-    stoneCharges: item.variant.stoneCharges,
+    weightGrams: Number(item.variant.weightGrams),
+    makingChargePerGram: Number(item.variant.makingChargePerGram),
+    flatMakingCharge: Number(item.variant.flatMakingCharge),
+    miscCharges: Number(item.variant.miscCharges),
+    stoneCharges: Number(item.variant.stoneCharges ?? 0),
     stones: toStoneInputs(item.variant.product.stones),
   }))
   return invoiceFromProducts(products, {

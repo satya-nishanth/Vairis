@@ -1,15 +1,77 @@
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import type { PricingConfig } from '@/lib/pricing'
 import {
   blankPayload,
   invoiceFromProducts,
   payloadFromOrder,
   totalsFromPayload,
+  type InvoiceCatalogueVariant,
+  type InvoiceDiamondRateOption,
   type InvoiceFromProductsContext,
   type InvoicePayload,
   type InvoiceProductInput,
   type PrefillOrder,
 } from '@/lib/invoice-document'
+
+export type InvoiceCatalogue = {
+  variants: InvoiceCatalogueVariant[]
+  goldRates: Record<string, number>
+  config: PricingConfig
+  diamondRates: InvoiceDiamondRateOption[]
+}
+
+export async function loadInvoiceCatalogue(): Promise<InvoiceCatalogue> {
+  const [products, goldRateRows, config, diamondRows] = await Promise.all([
+    prisma.product.findMany({
+      where: { isActive: true },
+      include: {
+        variants: { orderBy: { metalType: 'asc' } },
+        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+    }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+    prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+  ])
+  const goldRates = Object.fromEntries(goldRateRows.map((r) => [r.metalType, Number(r.ratePerGram)]))
+  const variants: InvoiceCatalogueVariant[] = products.flatMap((p) =>
+    p.variants.map((v) => ({
+      variantId: v.id,
+      productId: p.id,
+      category: p.category,
+      productName: p.name,
+      itemCode: p.itemCode ?? '',
+      sku: v.sku,
+      metalType: v.metalType,
+      size: v.size ?? '',
+      label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
+      weightGrams: Number(v.weightGrams),
+      makingChargePerGram: Number(v.makingChargePerGram),
+      flatMakingCharge: Number(v.flatMakingCharge),
+      miscCharges: Number(v.miscCharges),
+      stoneCharges: Number(v.stoneCharges),
+      stones: toStoneInputs(p.stones).map((s) => ({
+        typeLabel: s.typeLabel ?? 'Diamond',
+        caratWeight: Number(s.caratWeight),
+        ratePerCarat: Number(s.ratePerCarat),
+        ratePerCaratExchange: Number(s.ratePerCaratExchange),
+      })),
+    })),
+  )
+  return {
+    variants,
+    goldRates,
+    config,
+    diamondRates: diamondRows.map((r) => ({
+      id: r.id,
+      label: r.label,
+      ratePerCarat: Number(r.ratePerCarat),
+      ratePerCaratExchange: Number(r.ratePerCaratExchange),
+    })),
+  }
+}
 
 export const INVOICE_ORDER_INCLUDE = {
   user: { select: { name: true, email: true } },
@@ -109,11 +171,11 @@ export async function invoiceFromVariants(
       metalType: v.metalType,
       quantity: item.quantity ?? 1,
       withExchange: item.withExchange ?? false,
-      weightGrams: v.weightGrams,
-      makingChargePerGram: v.makingChargePerGram,
-      flatMakingCharge: v.flatMakingCharge,
-      miscCharges: v.miscCharges,
-      stoneCharges: v.stoneCharges,
+      weightGrams: Number(v.weightGrams),
+      makingChargePerGram: Number(v.makingChargePerGram),
+      flatMakingCharge: Number(v.flatMakingCharge),
+      miscCharges: Number(v.miscCharges),
+      stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(v.product.stones),
     }
   })

@@ -392,3 +392,62 @@
   flex-wrap: wrap;
   margin: 16px 0;
 }
+
+.inv-composer__seller {
+  margin: 0;
+  white-space: pre-line;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #374151;
+}
+
+.inv-composer__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 16px;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.inv-composer__check input {
+  width: auto;
+}
+
+.inv-picker__list {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.inv-picker__list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.8125rem;
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+}
+
+.inv-picker__list button:hover {
+  background: #f9fafb;
+}
+
+.inv-picker__empty {
+  padding: 8px 10px;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.inv-create-product {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}

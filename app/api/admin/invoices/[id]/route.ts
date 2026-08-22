@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
+  applyInvoiceSeller,
   invoiceStatusFromPayload,
   totalsFromPayload,
   type InvoicePayload,
@@ -59,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await prisma.invoice.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const payload = parsed.data.payload as InvoicePayload
+  const payload = applyInvoiceSeller(parsed.data.payload as InvoicePayload)
   const totals = totalsFromPayload(payload)
   const invoice = await prisma.invoice.update({
     where: { id },

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import { invoiceReturnWithVariant, parseInvoiceReturnTo } from '@/lib/invoice-return'
 
 const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 const METAL_TYPES = [
@@ -93,6 +94,8 @@ type Props = {
   diamondRates: DiamondRateOption[]
   goldRates?: Record<string, number>
   pricingConfig?: PricingConfig
+  /** After create, return here instead of /admin/products (invoice flow). */
+  returnTo?: string | null
 }
 
 function emptyVariant(): Variant {
@@ -143,7 +146,14 @@ function initialForm(data?: Partial<FormData>): FormData {
   }
 }
 
-export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig }: Props) {
+export default function ProductForm({
+  initialData,
+  mode,
+  diamondRates,
+  goldRates,
+  pricingConfig,
+  returnTo,
+}: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
   const [saving, setSaving] = useState(false)
@@ -281,7 +291,16 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
       return
     }
 
-    router.push('/admin/products')
+    const created = await res.json().catch(() => ({}))
+    const safeReturn = parseInvoiceReturnTo(returnTo)
+    const variantId = created?.variants?.[0]?.id as string | undefined
+    if (mode === 'create' && safeReturn && variantId) {
+      router.push(invoiceReturnWithVariant(safeReturn, variantId))
+    } else if (mode === 'create' && safeReturn) {
+      router.push(safeReturn)
+    } else {
+      router.push('/admin/products')
+    }
     router.refresh()
   }
 
@@ -851,7 +870,15 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
         <button type="submit" disabled={saving} className="pform__submit">
           {saving ? 'Saving…' : mode === 'create' ? 'Create Product' : 'Save Changes'}
         </button>
-        <button type="button" onClick={() => router.back()} className="pform__cancel">
+        <button
+          type="button"
+          onClick={() => {
+            const back = parseInvoiceReturnTo(returnTo)
+            if (back) router.push(back)
+            else router.back()
+          }}
+          className="pform__cancel"
+        >
           Cancel
         </button>
       </div>

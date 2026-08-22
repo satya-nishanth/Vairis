@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { invoiceStatusFromPayload, totalsFromPayload, type InvoicePayload } from '@/lib/invoice-document'
+import {
+  applyInvoiceSeller,
+  invoiceStatusFromPayload,
+  totalsFromPayload,
+  type InvoicePayload,
+} from '@/lib/invoice-document'
 import { invoicePrefill } from '@/lib/invoice-build'
 import { nextInvoiceNumber } from '@/lib/invoice-number'
 
@@ -57,7 +62,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 })
   }
   try {
-    const payload = (parsed.data.payload as InvoicePayload | undefined) ?? (await invoicePrefill(parsed.data.orderId))
+    const payload = applyInvoiceSeller(
+      (parsed.data.payload as InvoicePayload | undefined) ?? (await invoicePrefill(parsed.data.orderId)),
+    )
     const totals = totalsFromPayload(payload)
     const number = await nextInvoiceNumber()
     const invoice = await prisma.invoice.create({
