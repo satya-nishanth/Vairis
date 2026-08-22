@@ -1,5 +1,5 @@
 import { DEFAULT_PRICING_CONFIG } from '@/lib/pricing'
-import { invoiceFromProducts } from '@/lib/invoice-document'
+import { applyInvoiceSeller, invoiceFromProducts, sellerDefaults } from '@/lib/invoice-document'
 
 describe('invoiceFromProducts', () => {
   it('builds a tax invoice from a product list using calculatePrice', () => {
@@ -60,5 +60,28 @@ describe('invoiceFromProducts', () => {
     expect(totals.taxable).toBe(67000)
     expect(totals.igst).toBe(67000 * 0.03)
     expect(totals.cgst).toBe(0)
+  })
+})
+
+describe('sellerDefaults', () => {
+  it('uses the Hyderabad company constants', () => {
+    expect(sellerDefaults()).toEqual({
+      name: 'Vairis Fine Jewellery Private Limited',
+      email: 'contact@thevairis.com',
+      phone: '+91 7075486464',
+      address:
+        'Sy.130p&115/1p, Nanakramguda Rd, M, Gachibowli, Serilingampalle (M), Hyderabad, Telangana 500032',
+      gstin: '36AALCV9240K1ZQ',
+    })
+  })
+
+  it('stamps seller even if the payload tried to override it', () => {
+    const { payload } = invoiceFromProducts(
+      [{ productName: 'Band', metalType: 'GOLD_18K', weightGrams: 5, makingChargePerGram: 100 }],
+      { goldRates: { GOLD_18K: 6000 } },
+    )
+    payload.seller.name = 'Someone Else'
+    expect(applyInvoiceSeller(payload).seller.name).toBe('Vairis Fine Jewellery Private Limited')
+    expect(applyInvoiceSeller(payload).seller.gstin).toBe('36AALCV9240K1ZQ')
   })
 })

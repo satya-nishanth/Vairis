@@ -255,6 +255,9 @@ model Order {
   city          String
   state         String
   pincode       String
+  country            String        @default("IN")
+  intlReviewRequired Boolean       @default(false)
+  intlReviewApproved Boolean       @default(false)
   payment       Payment?
   events        OrderEvent[]
   parentOrderId String?

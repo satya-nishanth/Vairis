@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { AdminGuide } from '@/components/admin/AdminGuide'
+import { InvoiceDeleteButton } from '@/components/admin/InvoiceDeleteButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,7 +80,10 @@ export default async function AdminInvoicesPage() {
                     <Link href={`/admin/invoices/${inv.id}`} style={{ marginRight: 12 }}>
                       Edit
                     </Link>
-                    <Link href={`/admin/invoices/${inv.id}/print`}>Print</Link>
+                    <Link href={`/admin/invoices/${inv.id}/print`} style={{ marginRight: 12 }}>
+                      Print
+                    </Link>
+                    <InvoiceDeleteButton id={inv.id} number={inv.number} />
                   </td>
                 </tr>
               )
