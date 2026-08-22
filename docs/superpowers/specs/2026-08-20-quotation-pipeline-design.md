@@ -85,7 +85,6 @@ model Quotation {
   productId           String?            // optional picker link, no relation enforced
   screenshotUrls      String[]           @default([])
   discordThreadId     String?
-  reminderIntervalMin Int                @default(30)
   lastReminderAt      DateTime?
   reminderCount       Int                @default(0) // pings sent while REQUESTED; drives escalation
   escalatedAt         DateTime?          // set once, when reminderCount crosses the threshold
@@ -119,7 +118,7 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
 |---|---|
 | `app/api/quotations/route.ts` | Public POST — website PDP modal + keyword-fallback intake. Ignores any client-supplied `orderType`, always writes `VAIRIS`. Dedup: looks up an open (REQUESTED/QUOTED) quotation for the given mobile inside the same transaction as a potential insert (`SELECT ... FOR UPDATE`-style guard) — returns the existing one instead of creating a duplicate under a burst of rapid submissions. |
 | `app/api/admin/quotations/route.ts` | Admin POST (manual intake, `orderType` required, no default) + GET (list, `?status=` filter) — mirrors `app/api/admin/orders/route.ts`'s `requireAdmin()` → zod `.safeParse()` → 400 on failure → `$transaction` shape exactly. |
-| `app/api/admin/quotations/[id]/route.ts` | GET detail; PATCH for dashboard "Mark quoted" / "Cancel" actions. |
+| `app/api/admin/quotations/[id]/route.ts` | GET detail; PATCH for dashboard "Mark quoted" / "Cancel" actions. "Mark quoted" sets `status = QUOTED` + `quotedAt` (+ optional `quotedAmount`/`quotedNotes` from the form) — same idempotent overwrite semantics as the bot's `/quoted`. "Cancel" sets `status = CANCELLED` and calls `closeThread`, same as the bot's `/close`. |
 | `app/api/internal/quotations/route.ts` | Bot-only. Auth: `Authorization: Bearer ${INTERNAL_API_KEY}`, 401 otherwise. GET returns all REQUESTED quotations (for the reminder poll) plus enough of QUOTED/CONVERTED/CANCELLED for map pruning. PATCH lets `reminderPoll.js` write back `lastReminderAt`/`reminderCount`/`escalatedAt` after each ping cycle, and lets the bot's `/quoted` and `/close` Discord commands update status (+ `quotedAmount`/`quotedNotes`, or CANCELLED). |
 | `app/(admin)/admin/quotations/page.tsx` | List — mirrors `orders/page.tsx`: server component, direct `prisma.findMany()`, status-chip filter via `searchParams.status`, plain table (no pagination lib, `take: 200` like the orders list), wrapped in `<AdminGuide>`. Default sort oldest-first (REQUESTED by `createdAt`, QUOTED by `quotedAt`). Each row shows an age column. Row flagged (red/amber) when `escalatedAt` is set (REQUESTED) or age past `QUOTE_STALE_QUOTED_HOURS` (QUOTED) — visibility only, no pings triggered from the dashboard. `?attention=true` is a second filter alongside `?status=`, returning exactly the flagged rows from both buckets. |
 | `app/(admin)/admin/quotations/new/page.tsx` | Manual intake form — mirrors `ManualOrderForm.tsx`'s inline-styled card-section structure. Required: order type radio (no default), details textarea. Optional: screenshots (via extended `/api/admin/upload`), customer name, mobile, product picker. |
@@ -175,8 +174,8 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
   resilience-over-perfection style (e.g. `sessionStore.js`'s `saveState`).
 - Internal API auth failure → 401; the bot logs and retries on its next poll interval — never
   crashes the loop, same shape as its existing Postgres/Discord error handling.
-- Duplicate-quotation race on the public endpoint is closed by the transaction-scoped guard in
-  decision/component #1 above, not by a best-effort check-then-insert.
+- Duplicate-quotation race on the public endpoint (`app/api/quotations/route.ts`) is closed by
+  its transaction-scoped dedup guard, not by a best-effort check-then-insert.
 - All POST bodies validated with zod (matching `manualOrderSchema`) — 400 with field errors on
   failure, never silent coercion. The public endpoint's `orderType` is always server-set; client
   input for it is ignored, not merely validated (explicit acceptance criterion in the source
@@ -187,12 +186,21 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
 - **Vairis**: route-level tests for `/api/quotations` (dedup logic, `orderType` override
   ignored, zod rejection paths) and `/api/internal/quotations` (auth gate) — following whatever
   test-runner convention `/api/admin/orders` already uses (confirm exact tooling during
-  plan-writing, not re-derived here).
-- **Bot**: extends the existing Jest suite from this session's refactor — `test/quotationMap.test.js`
-  (attach/prune logic against a mocked internal-API response) and an addition to
-  `test/handleMessage.test.js` covering the new global ref-check's ordering (an attached phone's
-  message forwards to the quote thread instead of triggering `isPriceEnquiry()`/ticket creation).
-  Same test-double patterns already established (`makeFakeDiscordClient`, etc.).
+  plan-writing, not re-derived here). Additional coverage for the hardening pass: the convert-to-
+  order route returns 409 and creates no order on a double-submit (quotation already
+  CONVERTED/CANCELLED when the transaction re-checks status); `closeThread` is called exactly
+  once on CONVERTED and once on dashboard-triggered CANCELLED; "Mark quoted" called twice
+  overwrites `quotedAmount`/`quotedNotes` without erroring.
+- **Bot**: extends the existing Jest suite (same test-double patterns already established, e.g.
+  `makeFakeDiscordClient`) — `test/quotationMap.test.js` (attach/prune logic against a mocked
+  internal-API response) and an addition to `test/handleMessage.test.js` covering the new global
+  ref-check's ordering (an attached phone's message forwards to the quote thread instead of
+  triggering `isPriceEnquiry()`/ticket creation). Additional coverage for the hardening pass:
+  `test/reminderPoll.test.js` — first ping fires at `QUOTE_FIRST_REMINDER_MIN` not
+  `QUOTE_REMINDER_INTERVAL_MIN`; escalation ping fires exactly once when `reminderCount` crosses
+  `QUOTE_ESCALATION_AFTER_MISSES` and never fires again on subsequent cycles; `/quoted` called
+  twice on the same quotation updates rather than errors; the poll runs once immediately at
+  module load (fetch-on-boot) in addition to the interval.
 - No new real-infra integration test is needed for this feature specifically — the existing real
   round-trip tests (Blob Storage, Postgres adapter) already cover those infrastructure layers;
   this feature is pure application logic layered on top of them.
