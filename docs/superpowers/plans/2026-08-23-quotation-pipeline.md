@@ -3263,3 +3263,271 @@ git commit -m "feat: add quotationMap phone/thread caches"
 ```
 
 ---
+
+## Task 19: Bot — `reminderPoll.js`
+
+**Goal:** The reminder/escalation loop: fetch-on-boot + `QUOTE_REMINDER_INTERVAL_MIN`-interval polling, first-ping-faster timing, one-time escalation, `retryThread` recovery for any open quotation missing a Discord thread, and refreshing `quotationMap` every cycle. Uses the bot's **existing live `discordClient` gateway connection** (`channels.fetch` → `.setArchived()` / `.send()`) — exactly like `tickets.js`'s `sendTicketReminder` already does for the 24h ticket system — not raw REST.
+
+**Files:**
+- Create: `[Bot] src/quotes/reminderPoll.js`
+- Test: `[Bot] test/reminderPoll.test.js`
+
+**Acceptance Criteria:**
+- [ ] A quotation with `lastReminderAt: null` gets its first ping once it's `QUOTE_FIRST_REMINDER_MIN` minutes old (not the full `QUOTE_REMINDER_INTERVAL_MIN`).
+- [ ] A quotation with a `lastReminderAt` gets its next ping only after `QUOTE_REMINDER_INTERVAL_MIN` minutes since then.
+- [ ] Escalation (`<@DISCORD_ESCALATION_ID>` mention + `escalatedAt` set) fires exactly once, on the cycle where `reminderCount` would cross `QUOTE_ESCALATION_AFTER_MISSES`, and never again once `escalatedAt` is already set.
+- [ ] An archived thread is unarchived before the reminder is sent.
+- [ ] Any open quotation (REQUESTED or QUOTED) with no `discordThreadId` gets `retryThread: true` PATCHed every cycle until one exists — independent of the ping-timing gate above, and skips the ping for that cycle (nothing to ping yet).
+- [ ] `quotationMap.refresh()` is called with the full poll response every cycle, regardless of whether any pings fired.
+- [ ] `startQuoteReminderPoll()` runs one poll cycle immediately (fetch-on-boot), then on the configured interval.
+
+**Verify:** `npx jest test/reminderPoll.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/reminderPoll.test.js
+jest.mock('../src/config', () => ({
+    QUOTE_REMINDER_INTERVAL_MIN: 30,
+    QUOTE_FIRST_REMINDER_MIN: 10,
+    QUOTE_ESCALATION_AFTER_MISSES: 3,
+    DISCORD_QUOTE_ASSIGNEE_ID: 'assignee-1',
+    DISCORD_ESCALATION_ID: 'escalation-1',
+}));
+
+const mockFetchOpenQuotations = jest.fn();
+const mockPatchQuotation = jest.fn().mockResolvedValue({});
+jest.mock('../src/quotes/internalApiClient', () => ({
+    fetchOpenQuotations: mockFetchOpenQuotations,
+    patchQuotation: mockPatchQuotation,
+}));
+
+function makeThread({ archived = false } = {}) {
+    return { isThread: () => true, archived, setArchived: jest.fn(async () => {}), send: jest.fn(async () => {}) };
+}
+const mockThread = makeThread();
+const mockChannelsFetch = jest.fn(async () => mockThread);
+jest.mock('../src/discord/client', () => ({
+    discordClient: { channels: { fetch: mockChannelsFetch } },
+}));
+
+const { runQuoteReminderPoll } = require('../src/quotes/reminderPoll');
+const quotationMap = require('../src/quotes/quotationMap');
+
+function minutesAgo(mins) {
+    return new Date(Date.now() - mins * 60 * 1000).toISOString();
+}
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    mockThread.archived = false;
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+describe('first ping timing', () => {
+    it('pings a never-reminded quotation once it is QUOTE_FIRST_REMINDER_MIN old', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(11), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledTimes(1);
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 1 }));
+    });
+
+    it('does not ping a never-reminded quotation younger than QUOTE_FIRST_REMINDER_MIN', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(5), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).not.toHaveBeenCalled();
+    });
+});
+
+describe('repeat ping timing', () => {
+    it('does not re-ping before QUOTE_REMINDER_INTERVAL_MIN has passed since lastReminderAt', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(50), lastReminderAt: minutesAgo(10), reminderCount: 1, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).not.toHaveBeenCalled();
+    });
+
+    it('pings again once QUOTE_REMINDER_INTERVAL_MIN has passed since lastReminderAt', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(80), lastReminderAt: minutesAgo(31), reminderCount: 1, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledTimes(1);
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 2 }));
+    });
+});
+
+describe('escalation', () => {
+    it('escalates exactly once when reminderCount would cross the threshold', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(80), lastReminderAt: minutesAgo(31), reminderCount: 2, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledWith(expect.stringContaining('<@escalation-1>'));
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 3, escalatedAt: expect.any(String) }));
+    });
+
+    it('does not escalate again once escalatedAt is already set', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(200), lastReminderAt: minutesAgo(31), reminderCount: 5, escalatedAt: minutesAgo(100) },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledWith(expect.not.stringContaining('<@escalation-1>'));
+        const patchArg = mockPatchQuotation.mock.calls[0][1];
+        expect(patchArg.escalatedAt).toBeUndefined();
+    });
+});
+
+describe('archived thread', () => {
+    it('unarchives before sending the reminder', async () => {
+        mockThread.archived = true;
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(11), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.setArchived).toHaveBeenCalledWith(false);
+    });
+});
+
+describe('retryThread', () => {
+    it('PATCHes retryThread for an open quotation with no discordThreadId, and skips the ping', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: null, createdAt: minutesAgo(50), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { retryThread: true });
+        expect(mockChannelsFetch).not.toHaveBeenCalled();
+    });
+
+    it('applies to QUOTED quotations too, not just REQUESTED', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'QUOTED', discordThreadId: null, createdAt: minutesAgo(50), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { retryThread: true });
+    });
+});
+
+describe('quotationMap refresh', () => {
+    it('refreshes the map every cycle regardless of whether anything was pinged', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1', customerMobile: '919876543210', createdAt: minutesAgo(1), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(quotationMap.byThread.get('thread-1')).toBeDefined();
+        expect(mockThread.send).not.toHaveBeenCalled(); // QUOTED never gets pinged
+    });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/reminderPoll.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/reminderPoll'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/reminderPoll.js
+const { discordClient } = require('../discord/client');
+const {
+    QUOTE_REMINDER_INTERVAL_MIN,
+    QUOTE_FIRST_REMINDER_MIN,
+    QUOTE_ESCALATION_AFTER_MISSES,
+    DISCORD_QUOTE_ASSIGNEE_ID,
+    DISCORD_ESCALATION_ID,
+} = require('../config');
+const { fetchOpenQuotations, patchQuotation } = require('./internalApiClient');
+const quotationMap = require('./quotationMap');
+
+function minutesSince(iso) {
+    return (Date.now() - new Date(iso).getTime()) / 60000;
+}
+
+function shouldPing(q) {
+    if (q.status !== 'REQUESTED') return false;
+    if (!q.lastReminderAt) return minutesSince(q.createdAt) >= QUOTE_FIRST_REMINDER_MIN;
+    return minutesSince(q.lastReminderAt) >= QUOTE_REMINDER_INTERVAL_MIN;
+}
+
+async function pingReminder(q) {
+    try {
+        const thread = await discordClient.channels.fetch(q.discordThreadId);
+        if (!thread || !thread.isThread()) return;
+        if (thread.archived) await thread.setArchived(false);
+
+        const nextCount = (q.reminderCount || 0) + 1;
+        const willEscalate = nextCount >= QUOTE_ESCALATION_AFTER_MISSES && !q.escalatedAt;
+
+        const mention = DISCORD_QUOTE_ASSIGNEE_ID ? `<@${DISCORD_QUOTE_ASSIGNEE_ID}>` : '';
+        const escalationMention = willEscalate && DISCORD_ESCALATION_ID ? ` <@${DISCORD_ESCALATION_ID}>` : '';
+        await thread.send(`${mention}${escalationMention} ⏰ Still waiting on this quote.`);
+
+        await patchQuotation(q.id, {
+            lastReminderAt: new Date().toISOString(),
+            reminderCount: nextCount,
+            ...(willEscalate ? { escalatedAt: new Date().toISOString() } : {}),
+        });
+    } catch (e) {
+        console.error(`❌ Reminder ping failed for ${q.id}:`, e.message);
+    }
+}
+
+async function runQuoteReminderPoll() {
+    let quotations;
+    try {
+        quotations = await fetchOpenQuotations();
+    } catch (e) {
+        console.error('❌ Quote reminder poll: failed to fetch open quotations:', e.message);
+        return;
+    }
+
+    quotationMap.refresh(quotations);
+
+    for (const q of quotations) {
+        if (!q.discordThreadId) {
+            // Thread creation failed (or is still catching up) at intake time — the bot has no
+            // DISCORD_BOT_TOKEN REST capability by design, so it asks Next.js to retry instead of
+            // creating the thread itself. Applies to REQUESTED and QUOTED alike; independent of
+            // the ping-timing gate below since it's a distinct concern (thread existence, not
+            // reminder cadence).
+            try {
+                await patchQuotation(q.id, { retryThread: true });
+            } catch (e) {
+                console.error(`❌ retryThread failed for ${q.id}:`, e.message);
+            }
+            continue;
+        }
+        if (shouldPing(q)) await pingReminder(q);
+    }
+}
+
+function startQuoteReminderPoll() {
+    runQuoteReminderPoll(); // fetch-on-boot — closes the cold-start blind spot on quotationMap
+    setInterval(runQuoteReminderPoll, QUOTE_REMINDER_INTERVAL_MIN * 60 * 1000);
+}
+
+module.exports = { startQuoteReminderPoll, runQuoteReminderPoll };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/reminderPoll.test.js -v`
+Expected: PASS (10 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/reminderPoll.js test/reminderPoll.test.js
+git commit -m "feat: add quotation reminder poll with escalation and retryThread"
+```
+
+---
