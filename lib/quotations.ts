@@ -64,3 +64,62 @@ export async function createWithUniqueDisplayId<T>(
   }
   throw new Error('unreachable')
 }
+
+// Discord REST helpers
+
+import type { NextRequest } from 'next/server'
+
+const DISCORD_API = 'https://discord.com/api/v10'
+
+function discordHeaders() {
+  return {
+    Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+async function discordFetch(path: string, init: RequestInit) {
+  const res = await fetch(`${DISCORD_API}${path}`, { ...init, headers: discordHeaders() })
+  if (!res.ok) {
+    throw new Error(`Discord API ${init.method ?? 'GET'} ${path} failed: ${res.status} ${await res.text()}`)
+  }
+  return res
+}
+
+/** Creates a public thread directly on the quote channel (no starter message needed). */
+export async function createQuoteThread(name: string): Promise<string> {
+  const channelId = process.env.DISCORD_QUOTE_CHANNEL_ID
+  const res = await discordFetch(`/channels/${channelId}/threads`, {
+    method: 'POST',
+    body: JSON.stringify({ name: name.slice(0, 100), auto_archive_duration: 60, type: 11 }),
+  })
+  const data = await res.json()
+  return data.id as string
+}
+
+export async function postToThread(threadId: string, content: string): Promise<void> {
+  await discordFetch(`/channels/${threadId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  })
+}
+
+/** `<@id>` mention for DISCORD_QUOTE_ASSIGNEE_ID, or '' if unset (never crashes thread creation). */
+export function mentionAssignee(): string {
+  const id = process.env.DISCORD_QUOTE_ASSIGNEE_ID
+  return id ? `<@${id}>` : ''
+}
+
+/** Posts a closing message and archives the thread — called on CONVERTED and CANCELLED. */
+export async function closeThread(threadId: string, message: string): Promise<void> {
+  await postToThread(threadId, message)
+  await discordFetch(`/channels/${threadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived: true }),
+  })
+}
+
+/** Shared Bearer-auth check for every /api/internal/quotations* route (bot-only). */
+export function isInternalApiAuthorized(req: NextRequest): boolean {
+  return req.headers.get('authorization') === `Bearer ${process.env.INTERNAL_API_KEY}`
+}
