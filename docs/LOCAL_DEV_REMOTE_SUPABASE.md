@@ -13,37 +13,45 @@ hosted) instead. Use this when:
 
 ## Before you run it, you need
 
-From whoever owns the Supabase project (Nishi/Anil) — a Supabase project
-that is **not** the production project unless you've been explicitly told
-to use it:
+1. **Supabase CLI + `jq`** installed (`brew install supabase/tap/supabase
+   jq`) — the script installs npm deps for you but expects these two
+   already on your machine.
+2. **Access to the Supabase project** — ask Nishi/Anil to invite your
+   Supabase account (by email) to the org/project first. Without that,
+   `supabase projects list` will just come back empty.
+3. **The database password** — the one thing that can't be fetched via the
+   API (Supabase never exposes it after project creation). Get it from
+   Nishi/Anil directly (password manager / secure channel, not chat).
 
-1. **Project URL** — `Settings → API → Project URL`
-   (`https://xxxx.supabase.co`)
-2. **Anon (publishable) key** — same page,
-   `Project API keys → anon public`
-3. **Service role (secret) key** — same page,
-   `Project API keys → service_role` — **treat this like a root password**,
-   never commit it, never share it outside a password manager / secure channel
-4. **Database connection string** — `Settings → Database → Connection
-   string`, **Session pooler** tab (port `5432`), not "Transaction pooler"
-   (port `6543`) — this project's Prisma setup breaks on the transaction
-   pooler (prepared statements aren't supported there). This repo's
-   `CLAUDE.md` calls this out explicitly — it's a real, previously-hit
-   footgun, not a theoretical one.
+That's it. The script handles login, project selection, and every API
+key/URL itself.
 
 ## What the script does
 
-1. Checks Node version, runs `npm install` — no Docker/Supabase-CLI checks,
-   since neither is needed for this path.
-2. Prompts for the four values above (or reads them from env vars if you
-   prefer to export them first — see the script header).
-3. Writes `.env.local` (backs up any existing one first, same as the
+1. Checks Node version, checks the Supabase CLI + `jq` are installed, runs
+   `npm install`. No Docker needed for this path.
+2. If you're not already logged in to the Supabase CLI, runs
+   `supabase login` for you (opens a browser once).
+3. Lists every Supabase project your account can see
+   (`supabase projects list`) — auto-picks it if there's only one,
+   otherwise asks you to pick a number.
+4. Fetches the project's anon key and service-role key automatically
+   (`supabase projects api-keys`) — nothing to copy-paste, no risk of
+   grabbing the wrong key.
+5. Prompts for **only** the database password, then builds the full
+   Session-pooler connection string itself (port `5432`, region taken
+   straight from the project's own metadata — never the Transaction
+   pooler on port `6543`, which this project's Prisma setup is known to
+   break on — see `CLAUDE.md`). The password is percent-encoded
+   automatically, same gotcha `infra/main.bicep` already documents for the
+   Azure side.
+6. Writes `.env.local` (backs up any existing one first, same as the
    Docker script).
-4. **Asks for explicit confirmation before running `prisma migrate
+7. **Asks for explicit confirmation before running `prisma migrate
    deploy`** — unlike the local-Docker path, this targets a real shared
    database. Migrations are additive/safe by Prisma convention, but you
    should still know what you're pointing at before it runs.
-5. Prints next steps (`npm run dev`, admin signup).
+8. Prints next steps (`npm run dev`, admin signup).
 
 ## What it does NOT do
 

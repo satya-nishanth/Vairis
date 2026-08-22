@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Local dev setup against a REMOTE/cloud Supabase project — no Docker, no
-# `supabase start`. See docs/LOCAL_DEV_REMOTE_SUPABASE.md for what you need
-# before running this and why (Session Pooler port, where to find keys).
+# Local dev setup against a REMOTE/cloud Supabase project — no Docker.
+# Auto-fetches project URL + API keys via the Supabase CLI (once logged in)
+# instead of copy-pasting them from the dashboard. Only the DB password
+# can't be fetched this way (Supabase never exposes it after creation) —
+# that's the one thing you need handed to you separately.
 #
 # Usage:
 #   ./scripts/setup-local-remote.sh [admin-email]
 #
-# Values can be pre-set via env vars to skip the prompts (e.g. for a
-# scripted/CI setup): SUPABASE_URL, SUPABASE_ANON_KEY,
-# SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL
+# First time: this will prompt you to run `supabase login` if you aren't
+# already authenticated — that opens a browser once, nothing to copy-paste.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,36 +30,71 @@ if [ "$NODE_MAJOR" -lt 20 ] || { [ "$NODE_MAJOR" -eq 20 ] && [ "$NODE_MINOR" -lt
   fail "Node $(node -v) too old. Need 20.9+: nvm install 20.9.0 && nvm use 20.9.0"
 fi
 
-info "Prerequisites OK (node $(node -v)) — no Docker/Supabase CLI needed for this path"
+command -v supabase >/dev/null 2>&1 || fail "Supabase CLI not found: brew install supabase/tap/supabase"
+command -v jq >/dev/null 2>&1 || fail "jq not found: brew install jq"
+
+info "Prerequisites OK (node $(node -v)) — no Docker needed for this path"
 
 # --- 2. Install dependencies --------------------------------------------
 info "Installing npm dependencies"
 npm install
 
-# --- 3. Collect remote Supabase credentials -------------------------------
-info "Remote Supabase project details (see docs/LOCAL_DEV_REMOTE_SUPABASE.md)"
+# --- 3. Supabase login ----------------------------------------------------
+if ! supabase projects list >/dev/null 2>&1; then
+  info "Not logged in to Supabase CLI — opening browser login"
+  supabase login
+fi
 
-prompt_if_unset() {
-  local varname="$1" label="$2" secret="${3:-}"
-  if [ -z "${!varname:-}" ]; then
-    if [ "$secret" = "secret" ]; then
-      read -r -s -p "$label: " value; echo
-    else
-      read -r -p "$label: " value
-    fi
-    printf -v "$varname" '%s' "$value"
-  fi
-}
+# --- 4. Pick the project ---------------------------------------------------
+info "Fetching your Supabase projects"
+PROJECTS_JSON=$(supabase projects list -o json 2>/dev/null)
+COUNT=$(echo "$PROJECTS_JSON" | jq 'length')
 
-prompt_if_unset SUPABASE_URL "Project URL (https://xxxx.supabase.co)"
-prompt_if_unset SUPABASE_ANON_KEY "Anon/publishable key"
-prompt_if_unset SUPABASE_SERVICE_ROLE_KEY "Service role key" secret
-prompt_if_unset SUPABASE_DB_URL "Database connection string — Session pooler, port 5432 (Settings > Database)"
+[ "$COUNT" -gt 0 ] || fail "No Supabase projects visible on this account. Ask Nishi/Anil to invite you to the project, then re-run this script."
 
-[[ "$SUPABASE_DB_URL" == *:6543/* ]] && \
-  fail "That connection string uses port 6543 (Transaction pooler). This project needs the Session pooler (port 5432) — Prisma's prepared statements break on the transaction pooler. Go back to Settings > Database > Session pooler tab."
+if [ "$COUNT" -eq 1 ]; then
+  PROJECT_REF=$(echo "$PROJECTS_JSON" | jq -r '.[0].ref')
+  PROJECT_NAME=$(echo "$PROJECTS_JSON" | jq -r '.[0].name')
+  PROJECT_REGION=$(echo "$PROJECTS_JSON" | jq -r '.[0].region')
+  info "Using project: $PROJECT_NAME ($PROJECT_REF)"
+else
+  echo "$PROJECTS_JSON" | jq -r 'to_entries[] | "\(.key+1)) \(.value.name)  [\(.value.ref)]  \(.value.region)"'
+  read -r -p "Pick a project number: " PICK
+  IDX=$((PICK - 1))
+  PROJECT_REF=$(echo "$PROJECTS_JSON" | jq -r ".[$IDX].ref")
+  PROJECT_NAME=$(echo "$PROJECTS_JSON" | jq -r ".[$IDX].name")
+  PROJECT_REGION=$(echo "$PROJECTS_JSON" | jq -r ".[$IDX].region")
+fi
 
-# --- 4. Write .env.local --------------------------------------------------
+[ "$PROJECT_REF" != "null" ] || fail "Invalid selection."
+
+# --- 5. Fetch API keys ------------------------------------------------------
+info "Fetching API keys for $PROJECT_NAME"
+KEYS_JSON=$(supabase projects api-keys --project-ref "$PROJECT_REF" -o json 2>/dev/null)
+SUPABASE_ANON_KEY=$(echo "$KEYS_JSON" | jq -r '.[] | select(.name=="anon") | .api_key')
+SUPABASE_SERVICE_ROLE_KEY=$(echo "$KEYS_JSON" | jq -r '.[] | select(.name=="service_role") | .api_key')
+SUPABASE_URL="https://${PROJECT_REF}.supabase.co"
+
+[ -n "$SUPABASE_ANON_KEY" ] && [ "$SUPABASE_ANON_KEY" != "null" ] || \
+  fail "Couldn't fetch the anon key — you may not have owner/admin access on this project."
+
+# --- 6. DB password (the one thing that can't be fetched) ------------------
+info "Everything else is automatic. One manual step left:"
+echo "  DB password — get it from Nishi/Anil (or Settings > Database in the"
+echo "  dashboard if you set the project up yourself)."
+read -r -s -p "Database password: " DB_PASSWORD; echo
+
+# Percent-encode — the password can contain characters (/, +, =) that break
+# a raw connection string otherwise (same gotcha documented in infra/main.bicep).
+DB_PASSWORD_ENCODED=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$DB_PASSWORD")
+
+# Session pooler, port 5432 — NOT the transaction pooler (6543). This
+# project's Prisma setup breaks on the transaction pooler (prepared
+# statements aren't supported there). Region comes straight from the
+# project metadata, so this is never guessed.
+SUPABASE_DB_URL="postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD_ENCODED}@aws-1-${PROJECT_REGION}.pooler.supabase.com:5432/postgres"
+
+# --- 7. Write .env.local --------------------------------------------------
 info "Writing .env.local"
 
 if [ -f .env.local ]; then
@@ -90,9 +126,9 @@ set_env "ADMIN_EMAILS" "$ADMIN_EMAIL"
 
 info ".env.local ready"
 
-# --- 5. Apply database schema (confirm first — this is a shared remote DB) -
+# --- 8. Apply database schema (confirm first — this is a shared remote DB) -
 warn "About to run 'prisma migrate deploy' against:"
-echo "    $SUPABASE_URL"
+echo "    $PROJECT_NAME ($SUPABASE_URL)"
 read -r -p "This targets a REMOTE database, not a local throwaway one. Continue? [y/N] " CONFIRM
 [[ "$CONFIRM" =~ ^[Yy]$ ]] || fail "Aborted before touching the remote database. .env.local is already written if you want to run this manually later."
 
@@ -103,7 +139,7 @@ npx prisma migrate deploy
 cat <<EOF
 
 Setup complete — pointed at remote Supabase project:
-  $SUPABASE_URL
+  $PROJECT_NAME ($SUPABASE_URL)
 
   npm run dev
 
