@@ -3531,3 +3531,647 @@ git commit -m "feat: add quotation reminder poll with escalation and retryThread
 ```
 
 ---
+
+## Task 20: Bot — `discordQuoteThreads.js` (`/quoted`, `/close`, `/reply`)
+
+**Goal:** The `#quote-requests-offline` command handler — parallel in shape to the existing `discordReplyHandler.js` (same `messageCreate` + thread-tracking-map pattern) but a separate file since the data source differs (HTTP to Next.js via `quotationMap`/`internalApiClient`, not local Postgres via `activeTickets`).
+
+**Files:**
+- Create: `[Bot] src/quotes/discordQuoteThreads.js`
+- Test: `[Bot] test/discordQuoteThreads.test.js`
+
+**Acceptance Criteria:**
+- [ ] A message in a thread not tracked in `quotationMap.byThread` is ignored (no reaction, no API call) — same as `discordReplyHandler.js`'s untracked-thread behavior.
+- [ ] A message from a bot author is ignored.
+- [ ] `/quoted 45000 discussed a discount` PATCHes `{status:'QUOTED', quotedAmount:45000, quotedNotes:'discussed a discount'}` and reacts ✅.
+- [ ] `/quoted` alone (no amount/notes) PATCHes `{status:'QUOTED', quotedAmount:undefined, quotedNotes:undefined}` and still reacts ✅ — amount/notes are optional per the source spec.
+- [ ] `/close` PATCHes `{status:'CANCELLED'}`, replies "Cancelled", and archives the thread.
+- [ ] `/reply <text>` on a quotation with a `customerMobile` sends the text over WhatsApp (via the existing `sendWhatsAppSafe` from `tickets.js`) and reacts ✅/❌ based on delivery.
+- [ ] `/reply <text>` on a phoneless quotation (no `customerMobile`) does NOT call `sendWhatsAppSafe` — replies with a warning instead.
+- [ ] A failed PATCH (internal API error) reacts ❌ instead of throwing.
+
+**Verify:** `npx jest test/discordQuoteThreads.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/discordQuoteThreads.test.js
+const mockPatchQuotation = jest.fn();
+jest.mock('../src/quotes/internalApiClient', () => ({ patchQuotation: mockPatchQuotation }));
+
+const mockSendWhatsAppSafe = jest.fn();
+jest.mock('../src/bot/tickets', () => ({ sendWhatsAppSafe: mockSendWhatsAppSafe }));
+
+const mockDiscordClient = { on: jest.fn() };
+jest.mock('../src/discord/client', () => ({ discordClient: mockDiscordClient }));
+
+const { registerQuoteThreadHandlers } = require('../src/quotes/discordQuoteThreads');
+const quotationMap = require('../src/quotes/quotationMap');
+
+registerQuoteThreadHandlers();
+function getHandler() {
+    return mockDiscordClient.on.mock.calls.find(([name]) => name === 'messageCreate')[1];
+}
+
+function makeMsg({ channelId, content, isThread = true }) {
+    return {
+        author: { bot: false },
+        channelId,
+        channel: { isThread: () => isThread, setArchived: jest.fn(async () => {}) },
+        content,
+        react: jest.fn(async () => {}),
+        reply: jest.fn(async () => {}),
+    };
+}
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    quotationMap.byThread.clear();
+});
+
+test('a message in an untracked thread is ignored', async () => {
+    const handler = getHandler();
+    await handler(makeMsg({ channelId: 'unknown-thread', content: '/quoted 100' }));
+    expect(mockPatchQuotation).not.toHaveBeenCalled();
+});
+
+test('a message from a bot author is ignored', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    const handler = getHandler();
+    const msg = { ...makeMsg({ channelId: 'thread-1', content: '/close' }), author: { bot: true } };
+    await handler(msg);
+    expect(mockPatchQuotation).not.toHaveBeenCalled();
+});
+
+test('/quoted with amount and notes patches and reacts', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted 45000 discussed a discount' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'QUOTED', quotedAmount: 45000, quotedNotes: 'discussed a discount' });
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/quoted with no arguments still patches and reacts', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'QUOTED', quotedAmount: undefined, quotedNotes: undefined });
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/close patches CANCELLED, replies, and archives', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'QUOTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/close' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'CANCELLED' });
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Cancelled'));
+    expect(msg.channel.setArchived).toHaveBeenCalledWith(true);
+});
+
+test('/reply sends to WhatsApp when a customerMobile exists', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'QUOTED', customerMobile: '919876543210' });
+    mockSendWhatsAppSafe.mockResolvedValue(true);
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/reply Ready in 3 days' });
+    await handler(msg);
+    expect(mockSendWhatsAppSafe).toHaveBeenCalledWith('919876543210@c.us', expect.stringContaining('Ready in 3 days'));
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/reply on a phoneless quotation warns instead of sending', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/reply Ready in 3 days' });
+    await handler(msg);
+    expect(mockSendWhatsAppSafe).not.toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No WhatsApp phone'));
+});
+
+test('a failed PATCH reacts with ❌ instead of throwing', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockRejectedValue(new Error('500'));
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted 100' });
+    await expect(handler(msg)).resolves.not.toThrow();
+    expect(msg.react).toHaveBeenCalledWith('❌');
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/discordQuoteThreads.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/discordQuoteThreads'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/discordQuoteThreads.js
+const { discordClient } = require('../discord/client');
+const { sendWhatsAppSafe } = require('../bot/tickets');
+const { patchQuotation } = require('./internalApiClient');
+const quotationMap = require('./quotationMap');
+
+function parseQuotedCommand(text) {
+    // "/quoted 45000 discussed a discount" -> { amount: 45000, notes: 'discussed a discount' }
+    // "/quoted" alone -> { amount: undefined, notes: undefined } — both optional per the source spec.
+    const rest = text.replace(/^\/quoted\s*/i, '').trim();
+    if (!rest) return { amount: undefined, notes: undefined };
+    const match = rest.match(/^(\d+)\s*(.*)$/);
+    if (!match) return { amount: undefined, notes: rest };
+    return { amount: Number(match[1]), notes: match[2].trim() || undefined };
+}
+
+/** Agent-side commands typed into a tracked #quote-requests-offline thread. */
+function registerQuoteThreadHandlers() {
+    discordClient.on('messageCreate', async (discordMsg) => {
+        if (discordMsg.author.bot) return;
+        if (!discordMsg.channel.isThread()) return;
+
+        const tracked = quotationMap.byThread.get(discordMsg.channelId);
+        if (!tracked) return;
+
+        const text = discordMsg.content.trim();
+
+        if (/^\/quoted\b/i.test(text)) {
+            const { amount, notes } = parseQuotedCommand(text);
+            try {
+                await patchQuotation(tracked.quotationId, { status: 'QUOTED', quotedAmount: amount, quotedNotes: notes });
+                await discordMsg.react('✅');
+            } catch (e) {
+                console.error('❌ /quoted failed:', e.message);
+                await discordMsg.react('❌');
+            }
+            return;
+        }
+
+        if (/^\/close\b/i.test(text)) {
+            try {
+                await patchQuotation(tracked.quotationId, { status: 'CANCELLED' });
+                await discordMsg.reply('❌ Cancelled.');
+                await discordMsg.channel.setArchived(true);
+            } catch (e) {
+                console.error('❌ /close failed:', e.message);
+                await discordMsg.react('❌');
+            }
+            return;
+        }
+
+        if (text.startsWith('/reply ')) {
+            const answer = text.replace(/^\/reply\s+/i, '').trim();
+            if (!tracked.customerMobile) {
+                await discordMsg.reply('⚠️ No WhatsApp phone on this quotation — nothing to reply to.');
+                return;
+            }
+            try {
+                const sent = await sendWhatsAppSafe(`${tracked.customerMobile}@c.us`, `💎 *Vairis:*\n\n${answer}`);
+                await discordMsg.react(sent ? '✅' : '❌');
+            } catch (e) {
+                console.error('❌ /reply failed:', e.message);
+                await discordMsg.react('❌');
+            }
+        }
+    });
+}
+
+module.exports = { registerQuoteThreadHandlers };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/discordQuoteThreads.test.js -v`
+Expected: PASS (8 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/discordQuoteThreads.js test/discordQuoteThreads.test.js
+git commit -m "feat: add /quoted /close /reply handler for quote-requests-offline"
+```
+
+---
+
+## Task 21: Bot — `handleMessage.js` integration (the biggest behavior change)
+
+**Goal:** Wire WhatsApp price enquiries into the quotation pipeline instead of the old `#whatsapp-support-bot` "Enquiry: Pricing" ticket, and forward any message from an attached/ref-matched phone straight into its quote thread — before `isPriceEnquiry()` ever runs.
+
+**This replaces existing behavior, it doesn't just add to it.** Per the source spec's isolation rule ("non-price WhatsApp tickets still go only to #whatsapp-support-bot"), a price enquiry must no longer ALSO create an old-style ticket — otherwise the same message would spawn both a quotation thread and a ticket thread. Grounding this plan found **one existing test that asserts the old behavior and will need updating, not just new tests added alongside it**: `test/handleMessage.test.js:73-81` ("a price-related keyword raises a price enquiry ticket straight from MENU").
+
+**Files:**
+- Create: `[Bot] src/quotes/quoteIntake.js`
+- Test: `[Bot] test/quoteIntake.test.js`
+- Modify: `[Bot] src/bot/handleMessage.js`
+- Modify: `[Bot] test/handleMessage.test.js`
+
+**Acceptance Criteria:**
+- [ ] A price-enquiry-shaped message from a brand-new phone calls `createOrAttachQuotation`, NOT `createTicket` — no thread is created in the support channel, and the session never enters `WAITING`.
+- [ ] `createOrAttachQuotation` POSTs to `${VAIRIS_API_BASE_URL}/api/quotations` with `customerMobile` set to the bot's own normalized `phoneReadable` (not the WA-suffixed sender id) and updates `quotationMap` on success.
+- [ ] `createOrAttachQuotation` no-ops (returns `null`, doesn't throw) when `VAIRIS_API_BASE_URL` is unset.
+- [ ] A phone already in `quotationMap.byPhone` has its messages forwarded straight into the quote thread and returns early — before `isPriceEnquiry()` runs, and without calling `createOrAttachQuotation` again.
+- [ ] A message containing `Ref Q-XXXX` for an unattached phone resolves that quotation via `fetchOpenQuotations`, attaches it (`quotationMap.upsertOne`, keyed by the bot's own `phoneReadable`, not whatever `customerMobile` the server has on file — see the code comment on why these can legitimately differ), and forwards the message — without creating a duplicate quotation.
+- [ ] The one existing test whose behavior changes is updated to match, not deleted or ignored.
+
+**Verify:** `npx jest test/quoteIntake.test.js test/handleMessage.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing quoteIntake tests**
+
+```javascript
+// test/quoteIntake.test.js
+jest.mock('../src/config', () => ({ VAIRIS_API_BASE_URL: 'https://vairis.example.com' }));
+
+const { createOrAttachQuotation } = require('../src/quotes/quoteIntake');
+const quotationMap = require('../src/quotes/quotationMap');
+
+const originalFetch = global.fetch;
+afterEach(() => {
+    global.fetch = originalFetch;
+});
+beforeEach(() => {
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+test('POSTs to the public quotations route with the bot-normalized phone and updates quotationMap', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', discordThreadId: 'thread-1' }),
+    });
+
+    const result = await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: 'Asha', details: 'price question' });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+        'https://vairis.example.com/api/quotations',
+        expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ customerName: 'Asha', customerMobile: '919876543210', details: 'price question' }),
+        }),
+    );
+    expect(result.id).toBe('q1');
+    expect(quotationMap.byPhone.get('919876543210')).toEqual({ quotationId: 'q1', threadId: 'thread-1' });
+});
+
+test('defaults customerName to "WhatsApp customer" when none is known yet', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+        ok: true, json: async () => ({ id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', discordThreadId: null }),
+    });
+    await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.customerName).toBe('WhatsApp customer');
+});
+
+test('returns null and does not call fetch when VAIRIS_API_BASE_URL is unset', async () => {
+    jest.resetModules();
+    jest.doMock('../src/config', () => ({ VAIRIS_API_BASE_URL: null }));
+    const { createOrAttachQuotation: unconfigured } = require('../src/quotes/quoteIntake');
+    global.fetch = jest.fn();
+    const result = await unconfigured({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    expect(result).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('returns null (not a throw) on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    const result = await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    expect(result).toBeNull();
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/quoteIntake.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/quoteIntake'`
+
+- [ ] **Step 3: Write src/quotes/quoteIntake.js**
+
+```javascript
+// src/quotes/quoteIntake.js
+const { VAIRIS_API_BASE_URL } = require('../config');
+const quotationMap = require('./quotationMap');
+
+/**
+ * WhatsApp keyword-fallback price enquiries (no "Ref Q-..." in the message) create or reuse a
+ * VAIRIS quotation via the same public /api/quotations endpoint the PDP modal uses — its own
+ * one-open-quotation-per-mobile dedup means calling this on every enquiry from the same phone is
+ * safe, not just on the first one.
+ *
+ * customerMobile sent here is the bot's own normalized `phoneReadable` (no "@c.us"/"@lid" suffix)
+ * — self-consistent with how quotationMap looks phones up locally. This is unrelated to how a
+ * website-typed mobile number is stored for a WEBSITE-sourced quotation (that's an opaque string
+ * the customer typed on the PDP form) — the two are never compared to each other; ref-matching
+ * (not phone-matching) is what links a WEBSITE quotation to WhatsApp.
+ */
+async function createOrAttachQuotation({ phoneReadable, customerName, details }) {
+    if (!VAIRIS_API_BASE_URL) {
+        console.warn('⚠️ VAIRIS_API_BASE_URL not set — skipping quotation creation.');
+        return null;
+    }
+    try {
+        const res = await fetch(`${VAIRIS_API_BASE_URL}/api/quotations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customerName: customerName || 'WhatsApp customer',
+                customerMobile: phoneReadable,
+                details,
+            }),
+        });
+        if (!res.ok) {
+            console.error(`❌ Quotation create failed: ${res.status}`);
+            return null;
+        }
+        const quotation = await res.json();
+        quotationMap.upsertOne({ ...quotation, customerMobile: phoneReadable });
+        return quotation;
+    } catch (e) {
+        console.error('❌ Failed to create quotation from WhatsApp:', e.message);
+        return null;
+    }
+}
+
+module.exports = { createOrAttachQuotation };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/quoteIntake.test.js -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Modify src/bot/handleMessage.js**
+
+Add these three requires at the top, alongside the existing ones:
+
+```javascript
+const quotationMap = require('../quotes/quotationMap');
+const { fetchOpenQuotations } = require('../quotes/internalApiClient');
+const { createOrAttachQuotation } = require('../quotes/quoteIntake');
+```
+
+Add `phoneReadable` right after `const sender = getNormalizedSender(msg.from);`:
+
+```javascript
+    const sender = getNormalizedSender(msg.from);
+    const phoneReadable = sender.split('@')[0];
+```
+
+Insert this new global block right after the existing "GLOBAL: RAISE TICKET" block (after its closing `}` and blank line) and before the "GLOBAL: PRICE ENQUIRY" comment:
+
+```javascript
+    // --- GLOBAL: QUOTATION (attached/ref-matched phone forwards; runs before isPriceEnquiry()) ---
+    async function forwardToQuoteThread(threadId) {
+        try {
+            const thread = await discordClient.channels.fetch(threadId);
+            if (!thread || !thread.isThread()) return false;
+            if (thread.archived) await thread.setArchived(false);
+            await thread.send(`💬 **Message from customer:**\n${incomingText}`);
+            await msg.reply('✅ Got it — our team will follow up on your quotation shortly.');
+            return true;
+        } catch (e) {
+            console.error('❌ Failed to forward WhatsApp message to quote thread:', e.message);
+            return false;
+        }
+    }
+
+    const attachedQuotation = quotationMap.byPhone.get(phoneReadable);
+    if (attachedQuotation && attachedQuotation.threadId && (await forwardToQuoteThread(attachedQuotation.threadId))) {
+        return;
+    }
+
+    if (!attachedQuotation) {
+        const refMatch = incomingText.match(/Ref\s+(Q-[0-9A-Z]{4})/i);
+        if (refMatch) {
+            try {
+                const open = await fetchOpenQuotations();
+                const match = open.find((q) => q.displayId.toUpperCase() === refMatch[1].toUpperCase());
+                if (match) {
+                    quotationMap.upsertOne({ ...match, customerMobile: phoneReadable });
+                    if (match.discordThreadId && (await forwardToQuoteThread(match.discordThreadId))) {
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('❌ Failed to resolve quotation ref:', e.message);
+            }
+        }
+    }
+```
+
+Now replace the three price-enquiry `createTicket(...)` call sites. First, the non-WAITING branch — replace:
+
+```javascript
+    if (isPriceEnquiry(incomingText) && session.state !== 'WAITING') {
+        console.log(`🔍 Pricing inquiry detected from ${sender}.`);
+        await msg.reply(getPriceThankYouMessage());
+        const customerPhoneReadable = sender.split('@')[0];
+        await createTicket(
+            sender, session, incomingText,
+            'Pricing enquiry - team will respond with details.',
+            `Enquiry: Pricing (+${customerPhoneReadable})`,
+            'enquiry',
+            msg,
+            { category: 'price_enquiry' }
+        );
+        return;
+    }
+```
+
+with:
+
+```javascript
+    if (isPriceEnquiry(incomingText) && session.state !== 'WAITING') {
+        console.log(`🔍 Pricing inquiry detected from ${sender}.`);
+        await msg.reply(getPriceThankYouMessage());
+        await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+        return;
+    }
+```
+
+Second, the WAITING branch — replace just its tail (the part from `session.state = 'MENU';` through the `createTicket` call and `return;`):
+
+```javascript
+        session.state = 'MENU';
+        delete session.threadId;
+        delete session.ticketCreatedAt;
+        delete session.reminderSent;
+        await saveState(sender);
+        await msg.reply(getPriceThankYouMessage());
+        const customerPhoneReadable = sender.split('@')[0];
+        await createTicket(
+            sender, session, incomingText,
+            'Pricing enquiry - team will respond with details.',
+            `Enquiry: Pricing (+${customerPhoneReadable})`,
+            'enquiry',
+            msg,
+            { category: 'price_enquiry' }
+        );
+        return;
+    }
+```
+
+with:
+
+```javascript
+        session.state = 'MENU';
+        delete session.threadId;
+        delete session.ticketCreatedAt;
+        delete session.reminderSent;
+        await saveState(sender);
+        await msg.reply(getPriceThankYouMessage());
+        await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+        return;
+    }
+```
+
+(Leave the block above it — the `if (session.threadId) { try { ... forward into existing ticket thread ... } }` part — untouched. That's for a customer still mid-conversation on an unrelated open ticket; only the fallthrough when there's no such open thread redirects to quotation creation.)
+
+Third, the `AWAITING_PRICE_DETAILS` case — replace:
+
+```javascript
+        case 'AWAITING_PRICE_DETAILS': {
+            if (isMenuOptionOnly(incomingText)) {
+                await msg.reply(`↩️ Looks like you picked a menu option by mistake.\nReply *0* or *back* for the main menu.\nOr send your product details / link to continue the price enquiry.`);
+                break;
+            }
+            await msg.reply(getPriceThankYouMessage());
+            const customerPhoneReadable = sender.split('@')[0];
+            await createTicket(
+                sender, session, incomingText,
+                'Pricing enquiry via menu option 2.',
+                `Enquiry: Pricing (+${customerPhoneReadable})`,
+                'enquiry',
+                msg,
+                { category: 'price_enquiry' }
+            );
+            break;
+        }
+```
+
+with:
+
+```javascript
+        case 'AWAITING_PRICE_DETAILS': {
+            if (isMenuOptionOnly(incomingText)) {
+                await msg.reply(`↩️ Looks like you picked a menu option by mistake.\nReply *0* or *back* for the main menu.\nOr send your product details / link to continue the price enquiry.`);
+                break;
+            }
+            await msg.reply(getPriceThankYouMessage());
+            await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+            break;
+        }
+```
+
+- [ ] **Step 6: Update test/handleMessage.test.js**
+
+Add these two mocks near the top, alongside the existing `jest.mock` calls:
+
+```javascript
+jest.mock('../src/quotes/internalApiClient', () => ({ fetchOpenQuotations: jest.fn() }));
+jest.mock('../src/quotes/quoteIntake', () => ({ createOrAttachQuotation: jest.fn() }));
+```
+
+Add these requires alongside the existing `const { handleIncomingMessage } = ...` line:
+
+```javascript
+const { fetchOpenQuotations } = require('../src/quotes/internalApiClient');
+const { createOrAttachQuotation } = require('../src/quotes/quoteIntake');
+const quotationMap = require('../src/quotes/quotationMap');
+```
+
+Add cleanup to the existing `beforeEach`:
+
+```javascript
+beforeEach(() => {
+    userSessions.clear();
+    activeTickets.clear();
+    mockDiscordClient._reset();
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+    fetchOpenQuotations.mockReset();
+    createOrAttachQuotation.mockReset();
+});
+```
+
+Replace the now-outdated test (originally at lines 73-81):
+
+```javascript
+test('a price-related keyword raises a price enquiry ticket straight from MENU', async () => {
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'how much for a gold ring?' });
+    await handleIncomingMessage(msg);
+
+    expect(mockDiscordClient._supportChannel.threads.create).toHaveBeenCalledTimes(1);
+    const [[createArgs]] = mockDiscordClient._supportChannel.threads.create.mock.calls;
+    expect(createArgs.name).toMatch(/Enquiry: Pricing/);
+    expect(userSessions.get(SENDER).state).toBe('WAITING');
+});
+```
+
+with:
+
+```javascript
+test('a price-related keyword creates a quotation instead of a support ticket, and does not enter WAITING', async () => {
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'how much for a gold ring?' });
+    await handleIncomingMessage(msg);
+
+    expect(createOrAttachQuotation).toHaveBeenCalledWith(
+        expect.objectContaining({ phoneReadable: SENDER.split('@')[0], details: 'how much for a gold ring?' }),
+    );
+    expect(mockDiscordClient._supportChannel.threads.create).not.toHaveBeenCalled();
+    expect(userSessions.get(SENDER)?.state ?? 'MENU').not.toBe('WAITING');
+});
+
+test('an attached phone forwards messages to its quote thread instead of creating a ticket', async () => {
+    mockDiscordClient._channels.set('quote-thread-1', {
+        id: 'quote-thread-1', isThread: () => true, archived: false,
+        send: jest.fn(async () => {}), setArchived: jest.fn(async () => {}),
+    });
+    quotationMap.byPhone.set(SENDER.split('@')[0], { quotationId: 'q1', threadId: 'quote-thread-1' });
+
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'any update on my quote?' });
+    await handleIncomingMessage(msg);
+
+    const thread = mockDiscordClient._channels.get('quote-thread-1');
+    expect(thread.send).toHaveBeenCalledWith(expect.stringContaining('any update on my quote?'));
+    expect(createOrAttachQuotation).not.toHaveBeenCalled();
+    expect(mockDiscordClient._supportChannel.threads.create).not.toHaveBeenCalled();
+});
+
+test('a message containing "Ref Q-XXXX" attaches to that quotation and forwards, without creating a new one', async () => {
+    mockDiscordClient._channels.set('quote-thread-2', {
+        id: 'quote-thread-2', isThread: () => true, archived: false,
+        send: jest.fn(async () => {}), setArchived: jest.fn(async () => {}),
+    });
+    fetchOpenQuotations.mockResolvedValue([
+        { id: 'q2', displayId: 'Q-7K2M', status: 'REQUESTED', discordThreadId: 'quote-thread-2', customerMobile: '9876500000' },
+    ]);
+
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'Following up — Ref Q-7K2M' });
+    await handleIncomingMessage(msg);
+
+    const thread = mockDiscordClient._channels.get('quote-thread-2');
+    expect(thread.send).toHaveBeenCalledWith(expect.stringContaining('Ref Q-7K2M'));
+    expect(createOrAttachQuotation).not.toHaveBeenCalled();
+    expect(quotationMap.byPhone.get(SENDER.split('@')[0])).toEqual({ quotationId: 'q2', threadId: 'quote-thread-2' });
+});
+```
+
+- [ ] **Step 7: Run to verify it passes**
+
+Run: `npx jest test/quoteIntake.test.js test/handleMessage.test.js -v`
+Expected: PASS (all tests, including the ones untouched by this task)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/quotes/quoteIntake.js test/quoteIntake.test.js src/bot/handleMessage.js test/handleMessage.test.js
+git commit -m "feat: route WhatsApp price enquiries into the quotation pipeline"
+```
+
+---
