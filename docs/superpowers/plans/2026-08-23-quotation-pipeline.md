@@ -1631,12 +1631,11 @@ export async function POST(req: NextRequest) {
   let result: { order: { id: string }; childOrderIds: string[] }
   try {
     result = await prisma.$transaction(async (tx) => {
-      let quotation: { id: string; discordThreadId: string | null } | null = null
-      if (d.quotationId) {
-        quotation = await tx.quotation.findUnique({ where: { id: d.quotationId } })
-        if (!quotation || (quotation as { status: string }).status !== 'QUOTED') {
-          throw new ConvertConflictError()
-        }
+      const quotation = d.quotationId
+        ? await tx.quotation.findUnique({ where: { id: d.quotationId } })
+        : null
+      if (d.quotationId && (!quotation || quotation.status !== 'QUOTED')) {
+        throw new ConvertConflictError()
       }
 
       const created = await tx.order.create({
@@ -4261,5 +4260,16 @@ QUOTE_ESCALATION_AFTER_MISSES=3
 git add .env.example
 git commit -m "docs: document quotation pipeline bot env vars"
 ```
+
+---
+
+## Deployment note: stage/prod channel isolation (no code — env values only)
+
+The design doc's hardening pass calls for test traffic to never reach real staff: `DISCORD_QUOTE_CHANNEL_ID`, `DISCORD_QUOTE_ASSIGNEE_ID`, and `DISCORD_ESCALATION_ID` should hold **different values** in non-production environments, not the same production channel/people. There's no code task for this — Tasks 15 and 23 already parameterize everything through env vars — but it's easy to silently skip at deploy time, so spelling it out here:
+
+- [ ] Create a `stage-quote-requests-offline` Discord channel (or reuse one you already use for testing).
+- [ ] Set `DISCORD_QUOTE_ASSIGNEE_ID` and `DISCORD_ESCALATION_ID` to test snowflakes (e.g. your own Discord user id) in every non-production `.env` — local dev, and the bot's `.env.stage`/`.env.local` if one exists — so test quotations never ping xperson or Anil.
+- [ ] Keep production values (`.env.prod` on the bot; the Vercel Production environment on Vairis) pointed at the real channel and people.
+- [ ] Set `VAIRIS_API_BASE_URL` on the bot to match whichever Vairis deployment it's polling — a local dev bot pointed at `http://localhost:3000`, a staging bot pointed at a Vercel preview URL, production at `https://vairis-ten.vercel.app`.
 
 ---
