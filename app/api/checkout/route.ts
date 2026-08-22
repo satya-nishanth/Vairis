@@ -7,19 +7,26 @@ import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { computeOrderAmounts } from '@/lib/orders'
 import { validatePromo } from '@/lib/promo'
 import { getPaymentGateway } from '@/lib/payments'
+import { checkPincodeServiceability } from '@/lib/shipping/sequel247-validate'
+import { checkIndiaFormat } from '@/lib/address-schema'
 
 export const dynamic = 'force-dynamic'
 
-const checkoutSchema = z.object({
+// Mirrors lib/address-schema.ts's addressSchema shape but keeps checkout's
+// existing addressLine1/addressLine2 field names (vs line1/line2 there) —
+// the India-format check itself is shared via checkIndiaFormat so the two
+// schemas can't drift on what "valid" means.
+const checkoutAddressSchema = z.object({
   contactName: z.string().trim().min(2, 'Name is required'),
-  contactPhone: z.string().trim().regex(/^\d{10}$/, 'Enter a 10-digit mobile number'),
+  contactPhone: z.string().trim().min(1, 'Phone number is required'),
   addressLine1: z.string().trim().min(5, 'Address is required'),
   addressLine2: z.string().trim().optional(),
   city: z.string().trim().min(2, 'City is required'),
   state: z.string().trim().min(2, 'State is required'),
-  pincode: z.string().trim().regex(/^\d{6}$/, 'Enter a 6-digit pincode'),
+  pincode: z.string().trim().min(1, 'Pincode is required'),
+  country: z.string().trim().min(2, 'Country is required').max(60).default('IN'),
   promoCode: z.string().trim().max(40).optional(),
-})
+}).superRefine(checkIndiaFormat)
 
 /**
  * POST /api/checkout — create an Order from the user's cart plus a matching
@@ -49,7 +56,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const parsed = checkoutSchema.safeParse(await req.json().catch(() => ({})))
+  const parsed = checkoutAddressSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'VALIDATION', message: parsed.error.issues[0]?.message ?? 'Invalid address' },
@@ -79,6 +86,19 @@ export async function POST(req: NextRequest) {
 
   if (cartItems.length === 0) {
     return NextResponse.json({ error: 'EMPTY_CART', message: 'Your cart is empty' }, { status: 400 })
+  }
+
+  // India addresses are checked against Sequel247's serviceability API,
+  // same as the address book (lib/shipping/sequel247-validate.ts). Run
+  // this before any pricing work or Order row is created.
+  if (address.country === 'IN') {
+    const serviceability = await checkPincodeServiceability(address.pincode)
+    if (!serviceability.ok) {
+      return NextResponse.json(
+        { error: 'VALIDATION', message: 'Enter a valid pincode' },
+        { status: 400 },
+      )
+    }
   }
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
@@ -155,6 +175,8 @@ export async function POST(req: NextRequest) {
       city: address.city,
       state: address.state,
       pincode: address.pincode,
+      country: address.country,
+      intlReviewRequired: address.country !== 'IN',
       items: {
         create: lines.map((l) => ({
           variantId: l.variantId,

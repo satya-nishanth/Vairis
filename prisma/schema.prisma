@@ -90,18 +90,19 @@ model User {
 }
 
 model Address {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  user         User    @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
   label        String? // "Home", "Office"
-  contactName  String  @default("")
-  contactPhone String  @default("")
+  contactName  String   @default("")
+  contactPhone String   @default("")
   line1        String
   line2        String?
   city         String
   state        String
   pincode      String
-  isDefault    Boolean @default(false)
+  country      String   @default("IN") // "IN" = domestic; free text otherwise
+  isDefault    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   @@index([userId])
@@ -234,15 +235,15 @@ model CartItem {
 }
 
 model Order {
-  id             String       @id @default(cuid())
-  userId         String
-  user           User         @relation(fields: [userId], references: [id])
-  items          OrderItem[]
-  status         OrderStatus  @default(PAYMENT_PENDING)
-  promoCodeId    String?
-  promoCode      PromoCode?   @relation(fields: [promoCodeId], references: [id])
-  discountAmount Decimal      @default(0)
-  totalAmount   Decimal
+  id                 String        @id @default(cuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  items              OrderItem[]
+  status             OrderStatus   @default(PAYMENT_PENDING)
+  promoCodeId        String?
+  promoCode          PromoCode?    @relation(fields: [promoCodeId], references: [id])
+  discountAmount     Decimal       @default(0)
+  totalAmount        Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
   depositAmount Decimal      @default(0)
