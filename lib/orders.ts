@@ -7,7 +7,7 @@ import type { OrderStatus } from "@prisma/client";
  * ─── MONEY MODEL (pricing v2) ────────────────────────────────────────────
  * Customer pays exactly the displayed total:
  *   totalAmount = Σ line prices (GST-inclusive, from lib/pricing.ts —
- *                 includes the disclosed Value Addition line)
+ *                 includes the disclosed wastage line)
  *   grandTotal  = totalAmount            ← what the gateway captures
  * The 105%/5% refundable-deposit model is retired. depositAmount stays 0 on
  * new orders; DEPOSIT_REFUNDED remains a valid historical status so legacy

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 
 jest.mock('@/lib/supabase-server')
 jest.mock('@/lib/prisma', () => ({
-  prisma: { user: { findUnique: jest.fn() } },
+  prisma: { user: { upsert: jest.fn() } },
 }))
 jest.mock('next/navigation', () => ({
   redirect: jest.fn().mockImplementation((url: string) => {
@@ -54,9 +54,9 @@ describe('requireUser', () => {
     await expect(requireUser()).rejects.toThrow('REDIRECT:/auth/login')
   })
 
-  it('redirects to /auth/login when user not found in DB', async () => {
+  it('redirects to /auth/login when the DB upsert fails (e.g. DB unreachable)', async () => {
     mockCreateClient.mockResolvedValue(mockSupabase(fakeUser()))
-    mockUser.findUnique.mockResolvedValue(null)
+    mockUser.upsert.mockRejectedValue(new Error('P1001: DB unreachable'))
     await expect(requireUser()).rejects.toThrow('REDIRECT:/auth/login')
   })
 
@@ -64,19 +64,19 @@ describe('requireUser', () => {
     const session = fakeUser('user@test.com')
     const dbUser = fakeDbUser('user@test.com')
     mockCreateClient.mockResolvedValue(mockSupabase(session))
-    mockUser.findUnique.mockResolvedValue(dbUser as any)
+    mockUser.upsert.mockResolvedValue(dbUser as any)
     const result = await requireUser()
     expect(result).toEqual(dbUser)
   })
 
-  it('queries DB by session email', async () => {
+  it('upserts by session email', async () => {
     const session = fakeUser('specific@test.com')
     mockCreateClient.mockResolvedValue(mockSupabase(session))
-    mockUser.findUnique.mockResolvedValue(fakeDbUser('specific@test.com') as any)
+    mockUser.upsert.mockResolvedValue(fakeDbUser('specific@test.com') as any)
     await requireUser()
-    expect(mockUser.findUnique).toHaveBeenCalledWith({
-      where: { email: 'specific@test.com' },
-    })
+    expect(mockUser.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { email: 'specific@test.com' } })
+    )
   })
 })
 

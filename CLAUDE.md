@@ -71,8 +71,8 @@ Full store — see `docs/FEATURES.md` for the complete inventory. Highlights:
 ## 3. Tech Constraints — DO NOT VIOLATE
 
 **Supabase DB connection**
-- Use Session Pooler: `aws-1-ap-south-1.pooler.supabase.com:5432`
-- NOT port 6543 (Transaction Pooler) — breaks Prisma prepared statements
+- Runtime (`DATABASE_URL`): Transaction Pooler, port 6543, `?pgbouncer=true` appended — required so Prisma skips server-side prepared statements (that flag is what makes 6543 safe; without it, breaks). Switched 2026-07-21 — Session Pooler (5432) exhausted its dedicated-connection-per-client pool under Vercel Fluid Compute concurrency (EMAXCONNSESSION even at pool_size 40).
+- Migrations (`DIRECT_DATABASE_URL` / `directUrl` in schema.prisma): stays Session Pooler, port 5432, no pgbouncer flag.
 - No direct IPv6 on free tier
 
 **Vercel**
@@ -87,22 +87,25 @@ Full store — see `docs/FEATURES.md` for the complete inventory. Highlights:
 
 ---
 
-## 4. Pricing Formula v2 (`lib/pricing.ts`)
+## 4. Pricing Formula (`lib/pricing.ts`)
+
+Estimator formula — same numbers on PDP, cart, checkout, and tax invoices:
 
 ```
 goldValue  = weight(size) × goldRatePerGram
-goldVA     = goldValue × vaGoldPct        (PricingSettings, default 5%)
+wastage    = goldValue × vaGoldPct        (PricingSettings, default 10%; gold only)
 making     = weight × makingChargePerGram + flatMakingCharge
 stoneValue = Σ stones(carat × DiamondRate[type][withExchange?]) + legacy flat stoneCharges
-stoneVA    = stoneValue × vaStonePct      (PricingSettings, default 5%)
-GST        = (goldValue + goldVA + stoneValue + stoneVA) × 3% + making × 5%
-total      = goldValue + goldVA + making + stoneValue + stoneVA + miscCharges + GST
+taxable    = goldValue + wastage + making + stoneValue + miscCharges
+GST        = taxable × 3%
+total      = taxable + GST
 ```
 
-VA = "Value Addition" — a **disclosed** breakup line (admin-editable label + %),
-shown on PDP/checkout/order/email. Weights and carats shown to the customer
-are always the true values — **never** silently inflated. The 105%/5%
-refundable-deposit model is retired (`depositAmount` stays 0 on new orders).
+Wastage is a **disclosed** breakup line (admin-editable label + % on gold value only).
+Weights and carats shown to the customer are always the true values — **never**
+silently inflated. The 105%/5% refundable-deposit model is retired
+(`depositAmount` stays 0 on new orders). Tax invoices split the 3% GST into
+CGST+SGST (Maharashtra) or IGST (other states).
 
 Diamond rates (`DiamondRate` table) are per-carat, two rates each
 (with/without exchange) — admin-editable at `/admin/settings/pricing`.
