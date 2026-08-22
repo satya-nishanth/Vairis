@@ -5,8 +5,12 @@ import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
+import { closeThread } from '@/lib/quotations'
 
 export const dynamic = 'force-dynamic'
+
+/** Thrown inside the transaction when a supplied quotationId isn't in a convertible state. */
+class ConvertConflictError extends Error {}
 
 /** GET /api/admin/orders?status=SHIPPED — admin order list (all statuses when omitted). */
 export async function GET(req: NextRequest) {
@@ -42,6 +46,8 @@ const manualOrderSchema = z.object({
   initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
   /** e.g. "Paid via GPay ref 12345" — lands in the order timeline. */
   paymentNote: z.string().trim().max(300).optional(),
+  /** When set, this order converts the quotation (must be QUOTED) inside the same transaction. */
+  quotationId: z.string().trim().optional(),
   items: z
     .array(
       z.object({
@@ -96,54 +102,88 @@ export async function POST(req: NextRequest) {
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
-  const { order, childOrderIds } = await prisma.$transaction(async (tx) => {
-    const created = await tx.order.create({
-      data: {
-        userId: user.id,
-        status: d.initialStatus,
-        totalAmount,
-        depositAmount,
-        grandTotal,
-        contactName: d.contactName,
-        contactPhone: d.contactPhone,
-        addressLine1: d.addressLine1,
-        addressLine2: d.addressLine2 || null,
-        city: d.city,
-        state: d.state,
-        pincode: d.pincode,
-        items: {
-          create: d.items.map((i) => ({
-            variantId: i.variantId,
-            quantity: i.quantity,
-            price: Math.round(i.unitPrice),
-            productName: variantMap.get(i.variantId)!.product.name,
-          })),
-        },
-        events: {
-          create: [
-            { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
-            ...(d.initialStatus === 'PAYMENT_CONFIRMED'
-              ? [
-                  {
-                    status: 'PAYMENT_CONFIRMED' as const,
-                    note: d.paymentNote || 'Payment received offline',
-                  },
-                ]
-              : []),
-          ],
-        },
-      },
-    })
+  let quotationThreadId: string | null = null
+  let result: { order: { id: string }; childOrderIds: string[] }
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const quotation = d.quotationId
+        ? await tx.quotation.findUnique({ where: { id: d.quotationId } })
+        : null
+      if (d.quotationId && (!quotation || quotation.status !== 'QUOTED')) {
+        throw new ConvertConflictError()
+      }
 
-    // Multi-item manual orders auto-split into one child per line item too
-    // (same rule as online checkout, just triggered at creation instead of
-    // at payment confirmation — see lib/split.ts).
-    const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
-    return { order: created, childOrderIds }
-  })
+      const created = await tx.order.create({
+        data: {
+          userId: user.id,
+          status: d.initialStatus,
+          totalAmount,
+          depositAmount,
+          grandTotal,
+          contactName: d.contactName,
+          contactPhone: d.contactPhone,
+          addressLine1: d.addressLine1,
+          addressLine2: d.addressLine2 || null,
+          city: d.city,
+          state: d.state,
+          pincode: d.pincode,
+          quotationId: d.quotationId || null,
+          items: {
+            create: d.items.map((i) => ({
+              variantId: i.variantId,
+              quantity: i.quantity,
+              price: Math.round(i.unitPrice),
+              productName: variantMap.get(i.variantId)!.product.name,
+            })),
+          },
+          events: {
+            create: [
+              { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
+              ...(d.initialStatus === 'PAYMENT_CONFIRMED'
+                ? [
+                    {
+                      status: 'PAYMENT_CONFIRMED' as const,
+                      note: d.paymentNote || 'Payment received offline',
+                    },
+                  ]
+                : []),
+            ],
+          },
+        },
+      })
+
+      // Multi-item manual orders auto-split into one child per line item too
+      // (same rule as online checkout, just triggered at creation instead of
+      // at payment confirmation — see lib/split.ts).
+      const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
+
+      if (quotation) {
+        await tx.quotation.update({
+          where: { id: quotation.id },
+          data: { status: 'CONVERTED', orderId: created.id },
+        })
+        quotationThreadId = quotation.discordThreadId
+      }
+
+      return { order: created, childOrderIds }
+    })
+  } catch (err) {
+    if (err instanceof ConvertConflictError) {
+      return NextResponse.json({ error: 'Quotation already converted or cancelled' }, { status: 409 })
+    }
+    throw err
+  }
+
+  if (quotationThreadId) {
+    try {
+      await closeThread(quotationThreadId, `✅ Converted → Order #${result.order.id.slice(-8)}`)
+    } catch (err) {
+      console.error('[api/admin/orders] closeThread on convert failed', err)
+    }
+  }
 
   return NextResponse.json(
-    { orderId: order.id, ...(childOrderIds.length ? { childOrderIds } : {}) },
+    { orderId: result.order.id, ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}) },
     { status: 201 },
   )
 }
