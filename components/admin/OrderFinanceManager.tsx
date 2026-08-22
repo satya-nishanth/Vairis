@@ -1,18 +1,30 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { orderCost, orderProfit, PERSON_LABEL } from '@/lib/finance'
-import type { FinancePaidTo } from '@prisma/client'
+import { FINANCE_LINE_KINDS, LINE_KIND_LABEL, PERSON_LABEL, sheetTotals } from '@/lib/finance'
+import type { FinanceLineKind, FinancePaidTo } from '@prisma/client'
+
+type Line = {
+  id: string
+  kind: FinanceLineKind
+  costPrice: number
+  sellingPrice: number
+}
+
+type DraftLine = {
+  key: string
+  kind: FinanceLineKind
+  costPrice: string
+  sellingPrice: string
+}
 
 type Sheet = {
   id: string
   orderId: string
-  goldCost: number
-  diamondCost: number
-  stonesCost: number
-  sellingPrice: number
   customerPaidTo: FinancePaidTo
+  lines: Line[]
   order?: { contactName: string; grandTotal: number }
 }
 
@@ -32,6 +44,10 @@ const input: React.CSSProperties = {
   fontSize: '0.8125rem',
 }
 
+function newDraft(kind: FinanceLineKind = 'GOLD'): DraftLine {
+  return { key: `${Date.now()}-${Math.random().toString(16).slice(2)}`, kind, costPrice: '', sellingPrice: '' }
+}
+
 export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
   const router = useRouter()
   const [rows, setRows] = useState(initial)
@@ -39,20 +55,21 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
   const [hits, setHits] = useState<Hit[]>([])
   const [orderId, setOrderId] = useState('')
   const [orderLabel, setOrderLabel] = useState('')
-  const [goldCost, setGoldCost] = useState('')
-  const [diamondCost, setDiamondCost] = useState('')
-  const [stonesCost, setStonesCost] = useState('')
-  const [sellingPrice, setSellingPrice] = useState('')
+  const [lines, setLines] = useState<DraftLine[]>([])
   const [customerPaidTo, setCustomerPaidTo] = useState<FinancePaidTo>('VAIRIS_BANK')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const gold = Number(goldCost) || 0
-  const diamond = Number(diamondCost) || 0
-  const stones = Number(stonesCost) || 0
-  const sp = Number(sellingPrice) || 0
-  const cp = orderCost(gold, diamond, stones)
-  const profit = orderProfit(sp, cp)
+  const parsedLines = lines.map((l) => ({
+    kind: l.kind,
+    costPrice: Number(l.costPrice) || 0,
+    sellingPrice: Number(l.sellingPrice) || 0,
+  }))
+  const totals = sheetTotals(parsedLines)
+
+  function setLine(key: string, patch: Partial<DraftLine>) {
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  }
 
   async function search(q: string) {
     setQuery(q)
@@ -71,23 +88,32 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
     setQuery(h.contactName || h.id)
     const existing = rows.find((r) => r.orderId === h.id)
     if (existing) {
-      setGoldCost(String(existing.goldCost))
-      setDiamondCost(String(existing.diamondCost))
-      setStonesCost(String(existing.stonesCost))
-      setSellingPrice(String(existing.sellingPrice))
+      setLines(
+        existing.lines.map((l) => ({
+          key: l.id,
+          kind: l.kind,
+          costPrice: String(l.costPrice),
+          sellingPrice: String(l.sellingPrice),
+        })),
+      )
       setCustomerPaidTo(existing.customerPaidTo)
     } else {
-      setSellingPrice(String(h.grandTotal))
+      setLines([])
     }
   }
 
   function load(row: Sheet) {
     setOrderId(row.orderId)
     setOrderLabel(row.order?.contactName || row.orderId)
-    setGoldCost(String(row.goldCost))
-    setDiamondCost(String(row.diamondCost))
-    setStonesCost(String(row.stonesCost))
-    setSellingPrice(String(row.sellingPrice))
+    setQuery(row.order?.contactName || row.orderId)
+    setLines(
+      row.lines.map((l) => ({
+        key: l.id,
+        kind: l.kind,
+        costPrice: String(l.costPrice),
+        sellingPrice: String(l.sellingPrice),
+      })),
+    )
     setCustomerPaidTo(row.customerPaidTo)
   }
 
@@ -95,6 +121,10 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
     e.preventDefault()
     if (!orderId) {
       setError('Pick an order')
+      return
+    }
+    if (lines.length === 0) {
+      setError('Add at least one line')
       return
     }
     setSaving(true)
@@ -105,11 +135,8 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId,
-          goldCost: gold,
-          diamondCost: diamond,
-          stonesCost: stones,
-          sellingPrice: sp,
           customerPaidTo,
+          lines: parsedLines,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -121,6 +148,16 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
         const rest = rs.filter((r) => r.orderId !== json.orderId)
         return [json, ...rest]
       })
+      if (json.lines) {
+        setLines(
+          json.lines.map((l: Line) => ({
+            key: l.id,
+            kind: l.kind,
+            costPrice: String(l.costPrice),
+            sellingPrice: String(l.sellingPrice),
+          })),
+        )
+      }
       router.refresh()
     } finally {
       setSaving(false)
@@ -142,16 +179,40 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
     <div>
       <form onSubmit={save} style={{ background: '#fff', border: '1px solid #e5e7eb', padding: 16, marginBottom: 20 }}>
         <strong style={{ fontSize: '0.875rem' }}>Order finance sheet</strong>
-        <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
-          One sheet per order. Saving overwrites. Selling price is entered (not taken from store pricing).
+        <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: '4px 0 12px' }}>
+          One sheet per order. Find an existing order or create a new order to attach a finance sheet. Saving overwrites. Each line has its own cost and selling price.
         </p>
         {error && <p style={{ color: '#b91c1c', fontSize: '0.8125rem' }}>{error}</p>}
-        <label>
-          Find order (name, phone, email, id)
-          <input style={input} value={query} onChange={(e) => void search(e.target.value)} />
-        </label>
+        
+        <div>
+          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8125rem', fontWeight: 500 }}>
+            Find order or create order (name, phone, email, id)
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              style={{ ...input, flex: 1 }}
+              placeholder="Search by customer name, phone, email or order ID..."
+              value={query}
+              onChange={(e) => void search(e.target.value)}
+            />
+            <Link
+              href="/admin/orders/new"
+              className="admin-btn"
+              style={{
+                whiteSpace: 'nowrap',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '8px 14px',
+                fontSize: '0.75rem',
+                textDecoration: 'none',
+              }}
+            >
+              Create order
+            </Link>
+          </div>
+        </div>
         {hits.length > 0 && (
-          <div style={{ border: '1px solid #e5e7eb', borderTop: 'none' }}>
+          <div style={{ border: '1px solid #e5e7eb', borderTop: 'none', background: '#fff' }}>
             {hits.map((h) => (
               <button
                 key={h.id}
@@ -173,33 +234,128 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
                 {h.hasSheet ? ' · sheet exists' : ''}
               </button>
             ))}
+            <div
+              style={{
+                padding: '8px 10px',
+                background: '#f9fafb',
+                fontSize: '0.75rem',
+                color: '#6b7280',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>Can&apos;t find the order?</span>
+              <Link href="/admin/orders/new" style={{ color: '#032b24', fontWeight: 600, textDecoration: 'underline' }}>
+                + Create new order
+              </Link>
+            </div>
+          </div>
+        )}
+        {query.trim().length >= 2 && hits.length === 0 && !orderId && (
+          <div
+            style={{
+              border: '1px solid #e5e7eb',
+              borderTop: 'none',
+              padding: '10px',
+              background: '#f9fafb',
+              fontSize: '0.8125rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <span style={{ color: '#6b7280' }}>No matching orders found.</span>
+            <Link
+              href="/admin/orders/new"
+              className="admin-btn"
+              style={{ fontSize: '0.7rem', padding: '4px 10px', textDecoration: 'none' }}
+            >
+              + Create order
+            </Link>
           </div>
         )}
         {orderId && (
-          <p style={{ fontSize: '0.8125rem', color: '#15803d' }}>
+          <p style={{ fontSize: '0.8125rem', color: '#15803d', marginTop: 8 }}>
             ✓ {orderLabel} ({orderId.slice(0, 8)}…)
           </p>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-          <label>
-            Gold cost
-            <input style={input} type="number" min="0" step="0.01" value={goldCost} onChange={(e) => setGoldCost(e.target.value)} required />
-          </label>
-          <label>
-            Diamond (our price)
-            <input style={input} type="number" min="0" step="0.01" value={diamondCost} onChange={(e) => setDiamondCost(e.target.value)} required />
-          </label>
-          <label>
-            Stones price
-            <input style={input} type="number" min="0" step="0.01" value={stonesCost} onChange={(e) => setStonesCost(e.target.value)} required />
-          </label>
-          <label>
-            Selling price
-            <input style={input} type="number" min="0" step="0.01" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} required />
-          </label>
+
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(140px, 1.4fr) 1fr 1fr 40px',
+              gap: 8,
+              fontSize: '0.75rem',
+              color: '#6b7280',
+              marginBottom: 6,
+            }}
+          >
+            <span>Line</span>
+            <span>Cost price</span>
+            <span>Selling price</span>
+            <span />
+          </div>
+          {lines.map((l) => (
+            <div
+              key={l.key}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(140px, 1.4fr) 1fr 1fr 40px',
+                gap: 8,
+                marginBottom: 8,
+                alignItems: 'center',
+              }}
+            >
+              <select
+                style={input}
+                value={l.kind}
+                onChange={(e) => setLine(l.key, { kind: e.target.value as FinanceLineKind })}
+              >
+                {FINANCE_LINE_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {LINE_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+              <input
+                style={input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={l.costPrice}
+                onChange={(e) => setLine(l.key, { costPrice: e.target.value })}
+                required
+              />
+              <input
+                style={input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={l.sellingPrice}
+                onChange={(e) => setLine(l.key, { sellingPrice: e.target.value })}
+                required
+              />
+              <button
+                type="button"
+                className="admin-btn"
+                aria-label="Remove line"
+                onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
+                style={{ padding: '8px 0' }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button type="button" className="admin-btn" onClick={() => setLines((ls) => [...ls, newDraft()])}>
+            + Add line
+          </button>
         </div>
+
         <p style={{ fontSize: '0.875rem' }}>
-          CP ₹{cp.toLocaleString('en-IN')} · Profit ₹{profit.toLocaleString('en-IN')}
+          CP ₹{totals.cost.toLocaleString('en-IN')} · SP ₹{totals.selling.toLocaleString('en-IN')} · Profit ₹
+          {totals.profit.toLocaleString('en-IN')}
         </p>
         <label>
           Customer paid to
@@ -236,15 +392,13 @@ export function OrderFinanceManager({ initial }: { initial: Sheet[] }) {
             </tr>
           )}
           {rows.map((r) => {
-            const c = orderCost(r.goldCost, r.diamondCost, r.stonesCost)
+            const t = sheetTotals(r.lines ?? [])
             return (
               <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                 <td style={{ padding: 10 }}>{r.order?.contactName || r.orderId.slice(0, 8)}</td>
-                <td style={{ padding: 10, textAlign: 'right' }}>₹{c.toLocaleString('en-IN')}</td>
-                <td style={{ padding: 10, textAlign: 'right' }}>₹{r.sellingPrice.toLocaleString('en-IN')}</td>
-                <td style={{ padding: 10, textAlign: 'right' }}>
-                  ₹{orderProfit(r.sellingPrice, c).toLocaleString('en-IN')}
-                </td>
+                <td style={{ padding: 10, textAlign: 'right' }}>₹{t.cost.toLocaleString('en-IN')}</td>
+                <td style={{ padding: 10, textAlign: 'right' }}>₹{t.selling.toLocaleString('en-IN')}</td>
+                <td style={{ padding: 10, textAlign: 'right' }}>₹{t.profit.toLocaleString('en-IN')}</td>
                 <td style={{ padding: 10 }}>
                   {r.customerPaidTo === 'VAIRIS_BANK' ? 'Vairis bank' : PERSON_LABEL[r.customerPaidTo]}
                 </td>

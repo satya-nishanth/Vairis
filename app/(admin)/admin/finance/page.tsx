@@ -6,8 +6,7 @@ import {
   istMonthUtcRange,
   istYearMonth,
   toDateInput,
-  orderCost,
-  orderProfit,
+  sheetTotals,
 } from '@/lib/finance'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +31,7 @@ export default async function FinanceDashboardPage({
   const [expenses, sheets] = await Promise.all([
     prisma.generalExpense.findMany(),
     prisma.orderFinance.findMany({
-      include: { order: { select: { createdAt: true, contactName: true } } },
+      include: { order: { select: { createdAt: true, contactName: true } }, lines: true },
     }),
   ])
 
@@ -43,14 +42,21 @@ export default async function FinanceDashboardPage({
       paidThrough: e.paidThrough,
       contributor: e.contributor,
     })),
-    sheets.map((s) => ({
-      orderCreatedAt: s.order.createdAt,
-      goldCost: Number(s.goldCost),
-      diamondCost: Number(s.diamondCost),
-      stonesCost: Number(s.stonesCost),
-      sellingPrice: Number(s.sellingPrice),
-      customerPaidTo: s.customerPaidTo,
-    })),
+    sheets.map((s) => {
+      const totals = sheetTotals(
+        s.lines.map((l) => ({
+          kind: l.kind,
+          costPrice: Number(l.costPrice),
+          sellingPrice: Number(l.sellingPrice),
+        })),
+      )
+      return {
+        orderCreatedAt: s.order.createdAt,
+        cost: totals.cost,
+        sellingPrice: totals.selling,
+        customerPaidTo: s.customerPaidTo,
+      }
+    }),
     range,
   )
 
@@ -178,15 +184,20 @@ export default async function FinanceDashboardPage({
             </tr>
           )}
           {monthSheets.map((s) => {
-            const cp = orderCost(Number(s.goldCost), Number(s.diamondCost), Number(s.stonesCost))
-            const sp = Number(s.sellingPrice)
+            const t = sheetTotals(
+              s.lines.map((l) => ({
+                kind: l.kind,
+                costPrice: Number(l.costPrice),
+                sellingPrice: Number(l.sellingPrice),
+              })),
+            )
             return (
               <tr key={s.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                 <td style={td}>{s.order.contactName || s.orderId.slice(0, 8)}</td>
                 <td style={td}>{toDateInput(s.order.createdAt)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{inr(cp)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{inr(sp)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{inr(orderProfit(sp, cp))}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{inr(t.cost)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{inr(t.selling)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{inr(t.profit)}</td>
                 <td style={td}>
                   {s.customerPaidTo === 'VAIRIS_BANK' ? 'Vairis bank' : PERSON_LABEL[s.customerPaidTo]}
                 </td>
@@ -250,7 +261,17 @@ export default async function FinanceDashboardPage({
               <td style={td}>
                 {s.customerPaidTo === 'VAIRIS_BANK' ? 'Vairis bank' : PERSON_LABEL[s.customerPaidTo]}
               </td>
-              <td style={{ ...td, textAlign: 'right' }}>{inr(Number(s.sellingPrice))}</td>
+              <td style={{ ...td, textAlign: 'right' }}>
+                {inr(
+                  sheetTotals(
+                    s.lines.map((l) => ({
+                      kind: l.kind,
+                      costPrice: Number(l.costPrice),
+                      sellingPrice: Number(l.sellingPrice),
+                    })),
+                  ).selling,
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

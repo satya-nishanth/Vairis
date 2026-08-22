@@ -611,19 +611,37 @@ model GeneralExpense {
   @@index([date])
 }
 
-/// One CP/SP sheet per store Order. Profit = sellingPrice − (gold+diamond+stones).
+/// One CP/SP sheet per store Order. Totals = sum of line items.
 /// customerPaidTo is cash location, not profit.
 model OrderFinance {
-  id              String         @id @default(cuid())
-  orderId         String         @unique
-  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  goldCost        Decimal
-  diamondCost     Decimal
-  stonesCost      Decimal
-  sellingPrice    Decimal
+  id              String             @id @default(cuid())
+  orderId         String             @unique
+  order           Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   customerPaidTo  FinancePaidTo
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  lines           OrderFinanceLine[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@index([createdAt])
+}
+
+enum FinanceLineKind {
+  DELIVERY
+  GOLD
+  STONES
+  DIAMONDS
+  MAKING_CHARGES
+  WASTAGE_CHARGES
+}
+
+model OrderFinanceLine {
+  id            String           @id @default(cuid())
+  sheetId       String
+  sheet         OrderFinance     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  kind          FinanceLineKind
+  costPrice     Decimal
+  sellingPrice  Decimal
+  sortOrder     Int              @default(0)
+
+  @@index([sheetId])
 }

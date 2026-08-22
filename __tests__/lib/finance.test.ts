@@ -1,8 +1,13 @@
-import { istMonthUtcRange, istYearMonth, orderCost, orderProfit, summarizeFinance } from '@/lib/finance'
+import { istMonthUtcRange, istYearMonth, orderProfit, sheetTotals, summarizeFinance } from '@/lib/finance'
 
-describe('orderCost / orderProfit', () => {
-  it('adds gold + diamond + stones', () => {
-    expect(orderCost(10000, 4000, 500)).toBe(14500)
+describe('sheetTotals / orderProfit', () => {
+  it('sums line cost and selling prices', () => {
+    expect(
+      sheetTotals([
+        { kind: 'GOLD', costPrice: 8000, sellingPrice: 12000 },
+        { kind: 'DIAMONDS', costPrice: 3000, sellingPrice: 6000 },
+      ]),
+    ).toEqual({ cost: 11000, selling: 18000, profit: 7000 })
   })
 
   it('allows negative profit', () => {
@@ -54,17 +59,13 @@ describe('summarizeFinance', () => {
   const sheets = [
     {
       orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
-      goldCost: 8000,
-      diamondCost: 2000,
-      stonesCost: 0,
+      cost: 10000,
       sellingPrice: 15000,
       customerPaidTo: 'ANIL' as const,
     },
     {
       orderCreatedAt: new Date('2026-08-20T10:00:00+05:30'),
-      goldCost: 1000,
-      diamondCost: 0,
-      stonesCost: 0,
+      cost: 1000,
       sellingPrice: 3000,
       customerPaidTo: 'VAIRIS_BANK' as const,
     },

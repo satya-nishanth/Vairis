@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
-import { istMonthUtcRange, summarizeFinance, type ExpenseRow, type OrderSheetRow } from '@/lib/finance'
+import { istMonthUtcRange, summarizeFinance, sheetTotals, type ExpenseRow, type OrderSheetRow } from '@/lib/finance'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const [expenses, sheets] = await Promise.all([
     prisma.generalExpense.findMany(),
-    prisma.orderFinance.findMany({ include: { order: { select: { createdAt: true } } } }),
+    prisma.orderFinance.findMany({ include: { order: { select: { createdAt: true } }, lines: true } }),
   ])
 
   const expenseRows: ExpenseRow[] = expenses.map((e) => ({
@@ -28,14 +28,21 @@ export async function GET(req: NextRequest) {
     paidThrough: e.paidThrough,
     contributor: e.contributor,
   }))
-  const sheetRows: OrderSheetRow[] = sheets.map((s) => ({
-    orderCreatedAt: s.order.createdAt,
-    goldCost: Number(s.goldCost),
-    diamondCost: Number(s.diamondCost),
-    stonesCost: Number(s.stonesCost),
-    sellingPrice: Number(s.sellingPrice),
-    customerPaidTo: s.customerPaidTo,
-  }))
+  const sheetRows: OrderSheetRow[] = sheets.map((s) => {
+    const totals = sheetTotals(
+      s.lines.map((l) => ({
+        kind: l.kind,
+        costPrice: Number(l.costPrice),
+        sellingPrice: Number(l.sellingPrice),
+      })),
+    )
+    return {
+      orderCreatedAt: s.order.createdAt,
+      cost: totals.cost,
+      sellingPrice: totals.selling,
+      customerPaidTo: s.customerPaidTo,
+    }
+  })
 
   return NextResponse.json(summarizeFinance(expenseRows, sheetRows, range))
 }

@@ -1,4 +1,4 @@
-import type { FinancePaidTo, FinancePaidThrough, FinancePerson } from '@prisma/client'
+import type { FinanceLineKind, FinancePaidTo, FinancePaidThrough, FinancePerson } from '@prisma/client'
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 
@@ -9,8 +9,34 @@ export const PERSON_LABEL: Record<FinancePerson, string> = {
   VASU: 'Vasu',
 }
 
-export function orderCost(gold: number, diamond: number, stones: number): number {
-  return roundMoney(gold + diamond + stones)
+export const FINANCE_LINE_KINDS = [
+  'DELIVERY',
+  'GOLD',
+  'STONES',
+  'DIAMONDS',
+  'MAKING_CHARGES',
+  'WASTAGE_CHARGES',
+] as const
+
+export const LINE_KIND_LABEL: Record<FinanceLineKind, string> = {
+  DELIVERY: 'Delivery',
+  GOLD: 'Gold',
+  STONES: 'Stones',
+  DIAMONDS: 'Diamonds',
+  MAKING_CHARGES: 'Making charges',
+  WASTAGE_CHARGES: 'Wastage charges',
+}
+
+export type FinanceLineInput = {
+  kind: FinanceLineKind
+  costPrice: number
+  sellingPrice: number
+}
+
+export function sheetTotals(lines: FinanceLineInput[]): { cost: number; selling: number; profit: number } {
+  const cost = roundMoney(lines.reduce((s, l) => s + l.costPrice, 0))
+  const selling = roundMoney(lines.reduce((s, l) => s + l.sellingPrice, 0))
+  return { cost, selling, profit: orderProfit(selling, cost) }
 }
 
 export function orderProfit(sellingPrice: number, cost: number): number {
@@ -55,9 +81,7 @@ export type ExpenseRow = {
 
 export type OrderSheetRow = {
   orderCreatedAt: Date
-  goldCost: number
-  diamondCost: number
-  stonesCost: number
+  cost: number
   sellingPrice: number
   customerPaidTo: FinancePaidTo
 }
@@ -87,10 +111,8 @@ export function summarizeFinance(
 
   const generalExpenses = roundMoney(ex.reduce((s, e) => s + e.amount, 0))
   const income = roundMoney(sh.reduce((s, r) => s + r.sellingPrice, 0))
-  const cp = roundMoney(sh.reduce((s, r) => s + orderCost(r.goldCost, r.diamondCost, r.stonesCost), 0))
-  const orderProfitSum = roundMoney(sh.reduce((s, r) => {
-    return s + orderProfit(r.sellingPrice, orderCost(r.goldCost, r.diamondCost, r.stonesCost))
-  }, 0))
+  const cp = roundMoney(sh.reduce((s, r) => s + r.cost, 0))
+  const orderProfitSum = roundMoney(sh.reduce((s, r) => s + orderProfit(r.sellingPrice, r.cost), 0))
 
   const byPerson: PersonTotals[] = FINANCE_PERSONS.map((person) => ({
     person,
