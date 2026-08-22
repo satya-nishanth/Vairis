@@ -1326,3 +1326,413 @@ git commit -m "feat: add internal bot-facing quotation API with retryThread reco
 ```
 
 ---
+
+## Task 8: Upload route — optional `folder` param
+
+**Goal:** Let quote screenshots land under `quotations/screenshots/...` instead of the hardcoded `products/...` prefix, without changing default behavior for existing product-image callers.
+
+**Files:**
+- Modify: `[Vairis] app/api/admin/upload/route.ts`
+- Test: `[Vairis] __tests__/api/admin/upload.test.ts`
+
+**Acceptance Criteria:**
+- [ ] Omitting `folder` in the form data keeps the existing `products/images/...` / `products/videos/...` paths (no behavior change for product image uploads).
+- [ ] Passing `folder=quotations/screenshots` produces a path starting with `quotations/screenshots/images/...`.
+
+**Verify:** `npx jest __tests__/api/admin/upload.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/upload.test.ts
+import { NextRequest } from 'next/server'
+import { POST } from '@/app/api/admin/upload/route'
+import { requireAdmin } from '@/lib/auth'
+
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('sharp', () => () => ({
+  resize: () => ({ jpeg: () => ({ toBuffer: async () => Buffer.from('fake-jpeg') }) }),
+}))
+
+const mockUpload = jest.fn().mockResolvedValue({ error: null })
+const mockGetPublicUrl = jest.fn().mockReturnValue({ data: { publicUrl: 'https://cdn/x.jpg' } })
+const mockCreateBucket = jest.fn().mockResolvedValue({ error: null })
+jest.mock('@/lib/supabase-admin', () => ({
+  getSupabaseAdmin: jest.fn(() => ({
+    storage: {
+      createBucket: mockCreateBucket,
+      from: () => ({ upload: mockUpload, getPublicUrl: mockGetPublicUrl }),
+    },
+  })),
+}))
+
+function uploadReq(fields: Record<string, string | File>) {
+  const formData = new FormData()
+  for (const [k, v] of Object.entries(fields)) formData.append(k, v)
+  return new NextRequest('http://localhost/api/admin/upload', { method: 'POST', body: formData })
+}
+
+describe('POST /api/admin/upload', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('defaults to the products/ path when folder is omitted', async () => {
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    await POST(uploadReq({ file }))
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^products\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+
+  it('uses the given folder for quote screenshots', async () => {
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    await POST(uploadReq({ file, folder: 'quotations/screenshots' }))
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^quotations\/screenshots\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/upload.test.ts -v`
+Expected: FAIL — current route always uses `products/images/`, never reads a `folder` field.
+
+- [ ] **Step 3: Modify the route**
+
+In `app/api/admin/upload/route.ts`, add right after the `if (!file) return ...` line:
+
+```typescript
+  const folder = (formData.get('folder') as string) || 'products'
+```
+
+Then change the video path line from:
+
+```typescript
+    const path = `products/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+```
+to:
+```typescript
+    const path = `${folder}/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+```
+
+And the image path line from:
+
+```typescript
+  const path = `products/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+```
+to:
+```typescript
+  const path = `${folder}/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+```
+
+No other lines in the file change.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/upload.test.ts -v`
+Expected: PASS (2 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/upload/route.ts __tests__/api/admin/upload.test.ts
+git commit -m "feat: support an optional folder param on the admin upload route"
+```
+
+---
+
+## Task 9: Orders route — Convert-to-order (quotationId → CONVERTED) + race guard
+
+**Goal:** `POST /api/admin/orders` accepts an optional `quotationId`; on success it sets that quotation `CONVERTED` + `orderId` in the same transaction, guards against double-submit with a 409, and closes the Discord thread post-commit.
+
+**Files:**
+- Modify: `[Vairis] app/api/admin/orders/route.ts`
+- Test: `[Vairis] __tests__/api/admin/orders-quotation-convert.test.ts`
+
+**Acceptance Criteria:**
+- [ ] `quotationId` omitted → behavior is byte-for-byte unchanged from today (existing manual-order tests, if any, still pass).
+- [ ] `quotationId` present + quotation status QUOTED → order created, quotation set to CONVERTED with `orderId`, `closeThread` called post-commit with a message containing the order id.
+- [ ] `quotationId` present + quotation status NOT QUOTED (already CONVERTED/CANCELLED, or still REQUESTED) → 409, no order created, no quotation mutation.
+- [ ] `quotationId` pointing at a nonexistent quotation → 409 (same "not QUOTED" path — nothing to convert).
+
+**Verify:** `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/orders-quotation-convert.test.ts
+import { NextRequest } from 'next/server'
+import { POST } from '@/app/api/admin/orders/route'
+import { prisma } from '@/lib/prisma'
+import { requireAdmin } from '@/lib/auth'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: { findUnique: jest.fn() },
+    productVariant: { findMany: jest.fn() },
+    order: { create: jest.fn() },
+    quotation: { findUnique: jest.fn(), update: jest.fn() },
+    $transaction: jest.fn((cb) => cb(prisma)),
+  },
+}))
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/split', () => ({ autoSplitOrder: jest.fn().mockResolvedValue([]) }))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  closeThread: jest.fn(),
+}))
+
+function baseBody(overrides: Record<string, unknown> = {}) {
+  return {
+    userId: 'user-1',
+    contactName: 'Asha',
+    contactPhone: '9876543210',
+    addressLine1: '1 MG Road',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560001',
+    initialStatus: 'PAYMENT_PENDING',
+    items: [{ variantId: 'v1', quantity: 1, unitPrice: 45000 }],
+    ...overrides,
+  }
+}
+
+function req(body: unknown) {
+  return new NextRequest('http://localhost/api/admin/orders', { method: 'POST', body: JSON.stringify(body) })
+}
+
+describe('POST /api/admin/orders — quotation conversion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ id: 'user-1' })
+    ;(prisma.productVariant.findMany as jest.Mock).mockResolvedValue([
+      { id: 'v1', product: { name: 'Bracelet' } },
+    ])
+  })
+
+  it('converts a QUOTED quotation and closes its thread', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
+    })
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123' })
+
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(201)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'q1' }, data: { status: 'CONVERTED', orderId: 'order-123' } }),
+    )
+    expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('order-123'.slice(-8)))
+  })
+
+  it('409s and creates no order when the quotation is already CONVERTED', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(409)
+    expect(prisma.order.create).not.toHaveBeenCalled()
+  })
+
+  it('409s when the quotation is still REQUESTED (not yet QUOTED)', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(409)
+    expect(prisma.order.create).not.toHaveBeenCalled()
+  })
+
+  it('works unchanged with no quotationId at all', async () => {
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-456' })
+    const res = await POST(req(baseBody()))
+    expect(res.status).toBe(201)
+    expect(prisma.quotation.findUnique).not.toHaveBeenCalled()
+    expect(quotations.closeThread).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v`
+Expected: FAIL — route doesn't accept/handle `quotationId` yet.
+
+- [ ] **Step 3: Modify app/api/admin/orders/route.ts**
+
+Add `quotationId` to the schema:
+
+```typescript
+const manualOrderSchema = z.object({
+  userId: z.string().min(1),
+  contactName: z.string().trim().min(2),
+  contactPhone: z.string().trim().regex(/^\d{10}$/, '10-digit mobile required'),
+  addressLine1: z.string().trim().min(5),
+  addressLine2: z.string().trim().optional(),
+  city: z.string().trim().min(2),
+  state: z.string().trim().min(2),
+  pincode: z.string().trim().regex(/^\d{6}$/, '6-digit pincode required'),
+  applyDeposit: z.boolean().optional(),
+  initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
+  paymentNote: z.string().trim().max(300).optional(),
+  quotationId: z.string().trim().optional(),
+  items: z
+    .array(
+      z.object({
+        variantId: z.string().min(1),
+        quantity: z.number().int().min(1).max(20),
+        unitPrice: z.number().positive().max(10000000),
+      }),
+    )
+    .min(1),
+})
+```
+
+Add this import near the top:
+
+```typescript
+import { closeThread } from '@/lib/quotations'
+```
+
+Replace the whole `export async function POST` body with:
+
+```typescript
+export async function POST(req: NextRequest) {
+  await requireAdmin()
+
+  const parsed = manualOrderSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? 'Invalid order' },
+      { status: 400 },
+    )
+  }
+  const d = parsed.data
+
+  const user = await prisma.user.findUnique({ where: { id: d.userId } })
+  if (!user) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: d.items.map((i) => i.variantId) } },
+    include: { product: true },
+  })
+  const variantMap = new Map(variants.map((v) => [v.id, v]))
+  for (const item of d.items) {
+    if (!variantMap.has(item.variantId)) {
+      return NextResponse.json({ error: `Variant ${item.variantId} not found` }, { status: 400 })
+    }
+  }
+
+  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+
+  let quotationThreadId: string | null = null
+  let result: { order: { id: string }; childOrderIds: string[] }
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      let quotation: { id: string; discordThreadId: string | null } | null = null
+      if (d.quotationId) {
+        quotation = await tx.quotation.findUnique({ where: { id: d.quotationId } })
+        if (!quotation || (quotation as { status: string }).status !== 'QUOTED') {
+          throw new ConvertConflictError()
+        }
+      }
+
+      const created = await tx.order.create({
+        data: {
+          userId: user.id,
+          status: d.initialStatus,
+          totalAmount,
+          depositAmount,
+          grandTotal,
+          contactName: d.contactName,
+          contactPhone: d.contactPhone,
+          addressLine1: d.addressLine1,
+          addressLine2: d.addressLine2 || null,
+          city: d.city,
+          state: d.state,
+          pincode: d.pincode,
+          quotationId: d.quotationId || null,
+          items: {
+            create: d.items.map((i) => ({
+              variantId: i.variantId,
+              quantity: i.quantity,
+              price: Math.round(i.unitPrice),
+              productName: variantMap.get(i.variantId)!.product.name,
+            })),
+          },
+          events: {
+            create: [
+              { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
+              ...(d.initialStatus === 'PAYMENT_CONFIRMED'
+                ? [
+                    {
+                      status: 'PAYMENT_CONFIRMED' as const,
+                      note: d.paymentNote || 'Payment received offline',
+                    },
+                  ]
+                : []),
+            ],
+          },
+        },
+      })
+
+      const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
+
+      if (quotation) {
+        await tx.quotation.update({
+          where: { id: quotation.id },
+          data: { status: 'CONVERTED', orderId: created.id },
+        })
+        quotationThreadId = quotation.discordThreadId
+      }
+
+      return { order: created, childOrderIds }
+    })
+  } catch (err) {
+    if (err instanceof ConvertConflictError) {
+      return NextResponse.json({ error: 'Quotation already converted or cancelled' }, { status: 409 })
+    }
+    throw err
+  }
+
+  if (quotationThreadId) {
+    try {
+      await closeThread(quotationThreadId, `✅ Converted → Order #${result.order.id.slice(-8)}`)
+    } catch (err) {
+      console.error('[api/admin/orders] closeThread on convert failed', err)
+    }
+  }
+
+  return NextResponse.json(
+    { orderId: result.order.id, ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}) },
+    { status: 201 },
+  )
+}
+```
+
+Add this small class near the top of the file, alongside the other declarations (after the imports, before `manualOrderSchema`):
+
+```typescript
+/** Thrown inside the transaction when a supplied quotationId isn't in a convertible state. */
+class ConvertConflictError extends Error {}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v`
+Expected: PASS (4 tests)
+
+Also run the pre-existing order tests to confirm nothing else broke:
+Run: `npx jest __tests__/api/admin/orders-international.test.ts -v`
+Expected: PASS (unchanged)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/orders/route.ts __tests__/api/admin/orders-quotation-convert.test.ts
+git commit -m "feat: convert quotation to order with race guard and thread close"
+```
+
+---
