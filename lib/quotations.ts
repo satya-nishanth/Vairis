@@ -4,7 +4,8 @@ import { createHash, randomBytes } from 'crypto'
 /** Admin/bot-driven quotation transitions. CONVERTED and CANCELLED are terminal. */
 export const QUOTATION_TRANSITIONS: Partial<Record<QuotationStatus, QuotationStatus[]>> = {
   REQUESTED: ['QUOTED', 'CANCELLED'],
-  QUOTED: ['CONVERTED', 'CANCELLED'],
+  // QUOTED allows idempotent re-quoting so typos in amount/notes can be corrected without cancellation
+  QUOTED: ['QUOTED', 'CONVERTED', 'CANCELLED'],
 }
 
 function slugPart(v: string | null | undefined, fallback: string, max = 12): string {

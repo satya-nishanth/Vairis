@@ -67,8 +67,8 @@ describe('QUOTATION_TRANSITIONS', () => {
     expect(QUOTATION_TRANSITIONS.REQUESTED).toEqual(['QUOTED', 'CANCELLED'])
   })
 
-  it('allows QUOTED to move to CONVERTED or CANCELLED only', () => {
-    expect(QUOTATION_TRANSITIONS.QUOTED).toEqual(['CONVERTED', 'CANCELLED'])
+  it('allows QUOTED to move to QUOTED (idempotent re-quoting), CONVERTED, or CANCELLED', () => {
+    expect(QUOTATION_TRANSITIONS.QUOTED).toEqual(['QUOTED', 'CONVERTED', 'CANCELLED'])
   })
 
   it('has no transitions out of terminal states', () => {
