@@ -118,14 +118,14 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
 |---|---|
 | `app/api/quotations/route.ts` | Public POST — website PDP modal + keyword-fallback intake. Ignores any client-supplied `orderType`, always writes `VAIRIS`. Dedup: looks up an open (REQUESTED/QUOTED) quotation for the given mobile inside the same transaction as a potential insert (`SELECT ... FOR UPDATE`-style guard) — returns the existing one instead of creating a duplicate under a burst of rapid submissions. |
 | `app/api/admin/quotations/route.ts` | Admin POST (manual intake, `orderType` required, no default) + GET (list, `?status=` filter) — mirrors `app/api/admin/orders/route.ts`'s `requireAdmin()` → zod `.safeParse()` → 400 on failure → `$transaction` shape exactly. |
-| `app/api/admin/quotations/[id]/route.ts` | GET detail; PATCH for dashboard "Mark quoted" / "Cancel" actions. "Mark quoted" sets `status = QUOTED` + `quotedAt` (+ optional `quotedAmount`/`quotedNotes` from the form) — same idempotent overwrite semantics as the bot's `/quoted`. "Cancel" sets `status = CANCELLED` and calls `closeThread`, same as the bot's `/close`. |
+| `app/api/admin/quotations/[id]/route.ts` | GET detail; PATCH for dashboard "Mark quoted" / "Cancel" actions. "Mark quoted" sets `status = QUOTED` + `quotedAt` (+ optional `quotedAmount`/`quotedNotes` from the form) — same idempotent overwrite semantics as the bot's `/quoted`. "Cancel" sets `status = CANCELLED` then (post-commit) calls `closeThread`, same as the bot's `/close`. |
 | `app/api/internal/quotations/route.ts` | Bot-only. Auth: `Authorization: Bearer ${INTERNAL_API_KEY}`, 401 otherwise. GET returns all REQUESTED quotations (for the reminder poll) plus enough of QUOTED/CONVERTED/CANCELLED for map pruning. PATCH lets `reminderPoll.js` write back `lastReminderAt`/`reminderCount`/`escalatedAt` after each ping cycle, and lets the bot's `/quoted` and `/close` Discord commands update status (+ `quotedAmount`/`quotedNotes`, or CANCELLED). |
 | `app/(admin)/admin/quotations/page.tsx` | List — mirrors `orders/page.tsx`: server component, direct `prisma.findMany()`, status-chip filter via `searchParams.status`, plain table (no pagination lib, `take: 200` like the orders list), wrapped in `<AdminGuide>`. Default sort oldest-first (REQUESTED by `createdAt`, QUOTED by `quotedAt`). Each row shows an age column. Row flagged (red/amber) when `escalatedAt` is set (REQUESTED) or age past `QUOTE_STALE_QUOTED_HOURS` (QUOTED) — visibility only, no pings triggered from the dashboard. `?attention=true` is a second filter alongside `?status=`, returning exactly the flagged rows from both buckets. |
 | `app/(admin)/admin/quotations/new/page.tsx` | Manual intake form — mirrors `ManualOrderForm.tsx`'s inline-styled card-section structure. Required: order type radio (no default), details textarea. Optional: screenshots (via extended `/api/admin/upload`), customer name, mobile, product picker. |
 | `app/(admin)/admin/quotations/[id]/page.tsx` | Detail — shows thread link, status, quoted amount/notes. "Convert to order" button visible only when QUOTED, linking to `/admin/orders/new?quotationId=...`; shows a link to the order instead once CONVERTED. |
 | `lib/quotations.ts` | `QUOTATION_TRANSITIONS` map (mirrors `lib/orders.ts`'s `ADMIN_TRANSITIONS` shape), `displayId` generator, Discord REST helpers (`createQuoteThread`, `postToThread`, `mentionAssignee`, `closeThread(threadId, message)` — posts a closing message then `PATCH` archived=true) — all plain `fetch` calls to `discord.com/api/v10/...` with `Authorization: Bot ${DISCORD_BOT_TOKEN}`. `closeThread` is called on both CONVERTED (from the orders route, see below) and dashboard-triggered CANCELLED. |
 | `app/(admin)/admin/orders/new/ManualOrderForm.tsx` | Extended (not replaced) to read `?quotationId=` via `useSearchParams` (new usage — none exists in this file today) and prefill customer/details fields; still fully editable, save still goes through the existing order-creation path unchanged. |
-| `app/api/admin/orders/route.ts` | Extended: on successful order creation when a `quotationId` was supplied, the transaction first re-reads that quotation and checks `status === 'QUOTED'` — if it's already CONVERTED/CANCELLED (double-submit from two tabs, or two admins), aborts with 409 and creates no order. Otherwise sets `status = CONVERTED` + `orderId` inside the same transaction, then (post-commit) calls `closeThread`. No other change to existing manual-order behavior. |
+| `app/api/admin/orders/route.ts` | Extended: on successful order creation when a `quotationId` was supplied, the transaction first re-reads that quotation and requires `status === 'QUOTED'` — anything else (already CONVERTED/CANCELLED from a double-submit, or, defensively, still REQUESTED) aborts with 409 and creates no order. Otherwise sets `status = CONVERTED` + `orderId` inside the same transaction, then (post-commit) calls `closeThread`. No other change to existing manual-order behavior. |
 | `app/api/admin/upload/route.ts` | Extended with an optional `folder` form field (defaults to current `products` behavior) so quote screenshots can specify `quotations/screenshots`. |
 | `app/product/[id]/ProductPageClient.tsx` | Both "Enquire on WhatsApp" call sites change from a bare `<a href="wa.me/...">` to a button opening a small modal (name + mobile required, prefilled if logged in; optional note). On submit: POST `/api/quotations`, then navigate to the `wa.me` link with a ref-including prefilled text. |
 
@@ -187,8 +187,9 @@ short display form `Q-{4char}` shown in the UI and Discord thread names.
   ignored, zod rejection paths) and `/api/internal/quotations` (auth gate) — following whatever
   test-runner convention `/api/admin/orders` already uses (confirm exact tooling during
   plan-writing, not re-derived here). Additional coverage for the hardening pass: the convert-to-
-  order route returns 409 and creates no order on a double-submit (quotation already
-  CONVERTED/CANCELLED when the transaction re-checks status); `closeThread` is called exactly
+  order route returns 409 and creates no order whenever the transaction re-check finds
+  `status !== 'QUOTED'` (already CONVERTED/CANCELLED from a double-submit, or still REQUESTED);
+  `closeThread` is called exactly
   once on CONVERTED and once on dashboard-triggered CANCELLED; "Mark quoted" called twice
   overwrites `quotedAmount`/`quotedNotes` without erroring.
 - **Bot**: extends the existing Jest suite (same test-double patterns already established, e.g.
@@ -253,6 +254,9 @@ time" question implicit. This session's changes, in one place:
    leave already-attached phones misrouted until the next poll cycle.
 8. **Stage/prod channel + assignee separation** — test traffic never reaches real staff.
 
-All of the above are additive to the 2026-08-20 design — no schema field or component described
-there is removed or reshaped, only extended (new Quotation fields: `reminderCount`,
-`escalatedAt`, `quotedAt`).
+All of the above are additive to the 2026-08-20 design — no component described there is removed
+or reshaped, only extended (new Quotation fields: `reminderCount`, `escalatedAt`, `quotedAt`).
+One field is removed as dead weight: the per-row `reminderIntervalMin` from the original schema
+was never read by anything in Components — cadence is fully governed by the global
+`QUOTE_REMINDER_INTERVAL_MIN`/`QUOTE_FIRST_REMINDER_MIN` env vars, so the unused column was
+dropped rather than kept "for later."
