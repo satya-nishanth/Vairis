@@ -158,37 +158,17 @@ module app 'modules/app.bicep' = {
     storageAccountName: storage.outputs.storageAccountName
     customDomainFqdn: customDomainFqdn
     customCertificateName: customCertificateName
-    paymentGateway: paymentGatewayValue
-    shippingProvider: shippingProviderValue
-    shippingMock: shippingMockValue
-    checkoutEnabled: checkoutEnabledValue
-    razorpayKeyId: razorpayKeyIdValue
-    sequel247BaseUrl: sequel247BaseUrlValue
-    sequel247StoreCode: sequel247StoreCodeValue
-    hasStagingSecrets: stagingLiveTest
-    secretRefs: concat(
-      [
-        { name: 'database-url', value: 'postgresql://vairisadmin:${uriComponent(postgresAdminPassword)}@${database.outputs.postgresHost}:5432/postgres?sslmode=require&schema=public' } // vairisadmin's default search_path is auth-first (for GoTrue) — pin Prisma to public explicitly or its migrations/queries land in the wrong schema
-        { name: 'supabase-url', value: gotrue.outputs.gotrueUrl }
-        { name: 'supabase-anon-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-anon-key', identity: identity.outputs.identityId }
-        { name: 'supabase-service-role-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-service-role-key', identity: identity.outputs.identityId }
-        { name: 'admin-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/admin-emails', identity: identity.outputs.identityId }
-        { name: 'gold-sync-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/gold-sync-secret', identity: identity.outputs.identityId }
-        { name: 'order-sweep-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/order-sweep-secret', identity: identity.outputs.identityId }
-        { name: 'metal-price-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/metal-price-api-key', identity: identity.outputs.identityId }
-        { name: 'resend-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/resend-api-key', identity: identity.outputs.identityId }
-      ],
-      // Staging-only — these three KV secrets only exist in kv-vairis-staging
-      // right now (set out-of-band via `az keyvault secret set`, same as every
-      // other app secret here). Keeping the refs out of the array entirely for
-      // non-staging environments means prod's `azd provision` never tries to
-      // resolve a keyVaultUrl that doesn't exist in its own vault.
-      stagingLiveTest ? [
-        { name: 'razorpay-key-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/razorpay-key-secret', identity: identity.outputs.identityId }
-        { name: 'razorpay-webhook-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/razorpay-webhook-secret', identity: identity.outputs.identityId }
-        { name: 'sequel247-token', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/sequel247-token', identity: identity.outputs.identityId }
-      ] : []
-    )
+    secretRefs: [
+      { name: 'database-url', value: 'postgresql://vairisadmin:${uriComponent(postgresAdminPassword)}@${database.outputs.postgresHost}:5432/postgres?sslmode=require&schema=public' } // vairisadmin's default search_path is auth-first (for GoTrue) — pin Prisma to public explicitly or its migrations/queries land in the wrong schema
+      { name: 'supabase-url', value: gotrue.outputs.gotrueUrl }
+      { name: 'supabase-anon-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-anon-key', identity: identity.outputs.identityId }
+      { name: 'supabase-service-role-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-service-role-key', identity: identity.outputs.identityId }
+      { name: 'admin-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/admin-emails', identity: identity.outputs.identityId }
+      { name: 'gold-sync-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/gold-sync-secret', identity: identity.outputs.identityId }
+      { name: 'order-sweep-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/order-sweep-secret', identity: identity.outputs.identityId }
+      { name: 'metal-price-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/metal-price-api-key', identity: identity.outputs.identityId }
+      { name: 'resend-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/resend-api-key', identity: identity.outputs.identityId }
+    ]
   }
 }
 

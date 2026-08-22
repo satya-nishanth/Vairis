@@ -19,7 +19,7 @@ const mockGetPublicUrl = jest.fn()
 const mockCreateBucket = jest.fn()
 
 jest.mock('@/lib/supabase-admin', () => ({
-  supabaseAdmin: {
+  getSupabaseAdmin: () => ({
     storage: {
       createBucket: (...args: any[]) => mockCreateBucket(...args),
       from: () => ({
@@ -28,7 +28,7 @@ jest.mock('@/lib/supabase-admin', () => ({
         remove: jest.fn().mockResolvedValue({ error: null }),
       }),
     },
-  },
+  }),
 }))
 
 const fakeSession = { user: { email: 'admin@vairis.com', id: 'uid-1' } }

@@ -16,6 +16,7 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.33.0",
+    "@iconify/react": "^6.0.2",
     "@prisma/client": "^5.22.0",
     "@sentry/nextjs": "^10.68.0",
     "@supabase/ssr": "^0.10.2",
@@ -33,13 +34,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
     "prisma": "^5.22.0",
+    "ts-jest": "^29.4.12",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

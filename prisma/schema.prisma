@@ -177,13 +177,12 @@ model ProductStone {
   @@index([productId, sortOrder])
 }
 
-/// Singleton (id=1). VA = Value Addition — disclosed % line on the price
-/// breakup applied to gold value and stone value. Label admin-editable.
+/// Singleton (id=1). Wastage = disclosed % on gold value only. Label admin-editable.
 model PricingSettings {
   id         Int      @id @default(1)
-  vaGoldPct  Decimal  @default(5)
-  vaStonePct Decimal  @default(5)
-  vaLabel    String   @default("Value Addition")
+  vaGoldPct  Decimal  @default(10)
+  vaStonePct Decimal  @default(0)
+  vaLabel    String   @default("Wastage")
   /// Storefront-wide default for whether prices are shown at all. Many
   /// products (no finalized diamond/gold cost yet) should read
   /// "Price on Request" instead of a computed number — Product.priceVisibility
@@ -247,28 +246,26 @@ model Order {
   totalAmount        Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
-  depositAmount      Decimal       @default(0)
-  grandTotal         Decimal       @default(0)
-  contactName        String        @default("")
-  contactPhone       String        @default("")
-  addressLine1       String
-  addressLine2       String?
-  city               String
-  state              String
-  pincode            String
-  country            String        @default("IN") // "IN" = domestic; free text otherwise
-  intlReviewRequired Boolean       @default(false) // true when country != "IN" at order creation
-  intlReviewApproved Boolean       @default(false) // admin must approve before PREPARING
-  payment            Payment?
-  events             OrderEvent[]
-  parentOrderId      String?
-  parent             Order?        @relation("OrderSplit", fields: [parentOrderId], references: [id])
-  children           Order[]       @relation("OrderSplit")
-  refunds            OrderRefund[]
-  notes              OrderNote[]
-  shipments          Shipment[]
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  depositAmount Decimal      @default(0)
+  grandTotal    Decimal      @default(0)
+  contactName   String       @default("")
+  contactPhone  String       @default("")
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  state         String
+  pincode       String
+  payment       Payment?
+  events        OrderEvent[]
+  parentOrderId String?
+  parent        Order?       @relation("OrderSplit", fields: [parentOrderId], references: [id])
+  children      Order[]      @relation("OrderSplit")
+  refunds       OrderRefund[]
+  notes         OrderNote[]
+  shipments     Shipment[]
+  invoices      Invoice[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 }
 
 model OrderEvent {
@@ -568,4 +565,38 @@ model CatalogueComment {
   productId   String
   body        String
   createdAt   DateTime  @default(now())
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  orderId      String?
+  order        Order?        @relation(fields: [orderId], references: [id])
+  status       InvoiceStatus @default(UNPAID)
+  /// Full document snapshot: seller, parties, lines, payment, notes.
+  payload      Json
+  taxableValue Decimal
+  gstAmount    Decimal
+  grandTotal   Decimal
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model HeroImage {
+  id        String   @id @default(cuid())
+  url       String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hero_images")
 }
