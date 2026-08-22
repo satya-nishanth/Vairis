@@ -2966,3 +2966,186 @@ git commit -m "docs: document quotation pipeline env vars"
 Every task below runs in the sibling `Vairis_Customer_Bot` repo, already on `feature/quotation-pipeline`. All file paths are relative to that repo's root, not Vairis's.
 
 ---
+
+## Task 16: Bot config — quotation env vars
+
+**Goal:** Add the quotation-feature env vars to `src/config.js`, following the file's existing `requireEnv`/optional-with-warning conventions. None of these join `REQUIRED_ENV` — the bot must still boot cleanly in any environment where this feature isn't configured yet (matches how `DISCORD_BOT_TOKEN` itself degrades gracefully in `discord/client.js` today).
+
+**Files:**
+- Modify: `[Bot] src/config.js`
+
+**Acceptance Criteria:**
+- [ ] The bot still starts with none of the new vars set (no crash, no addition to `REQUIRED_ENV`).
+- [ ] `QUOTE_REMINDER_INTERVAL_MIN`, `QUOTE_FIRST_REMINDER_MIN`, `QUOTE_ESCALATION_AFTER_MISSES` parse to numbers with the documented defaults (30 / 10 / 3) when unset.
+- [ ] `VAIRIS_API_BASE_URL`, `DISCORD_QUOTE_CHANNEL_ID`, `DISCORD_QUOTE_ASSIGNEE_ID`, `DISCORD_ESCALATION_ID` are `null` when unset (not `undefined`, not an empty string — consistent with `requireEnv`'s existing return shape).
+
+**Verify:** `node -e "require('./src/config')"` (with a valid `.env` for the existing required vars) → exits 0, no errors.
+
+**Steps:**
+
+- [ ] **Step 1: Add the new exports to `src/config.js`**
+
+Insert after the existing `const VAIRIS_RETURNS_URL = ...` line, before `module.exports`:
+
+```javascript
+// Quotation pipeline — bot side. None of these are in REQUIRED_ENV: the bot must keep working
+// (WhatsApp/ticket flows) even before this feature is configured in a given environment.
+const VAIRIS_API_BASE_URL = requireEnv('VAIRIS_API_BASE_URL');
+const INTERNAL_API_KEY = requireEnv('INTERNAL_API_KEY');
+const DISCORD_QUOTE_CHANNEL_ID = requireEnv('DISCORD_QUOTE_CHANNEL_ID');
+const DISCORD_QUOTE_ASSIGNEE_ID = requireEnv('DISCORD_QUOTE_ASSIGNEE_ID');
+const DISCORD_ESCALATION_ID = requireEnv('DISCORD_ESCALATION_ID');
+const QUOTE_REMINDER_INTERVAL_MIN = Number(process.env.QUOTE_REMINDER_INTERVAL_MIN || 30);
+const QUOTE_FIRST_REMINDER_MIN = Number(process.env.QUOTE_FIRST_REMINDER_MIN || 10);
+const QUOTE_ESCALATION_AFTER_MISSES = Number(process.env.QUOTE_ESCALATION_AFTER_MISSES || 3);
+```
+
+Then add all eight names to the `module.exports` object at the bottom of the file (it currently ends with `VAIRIS_RETURNS_URL,` before the closing `};` — add the new names as additional lines right after it).
+
+- [ ] **Step 2: Verify**
+
+Run: `node -e "require('./src/config')"` from the bot repo root (with your local `.env` in place for the pre-existing required vars).
+Expected: no output, exit code 0.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/config.js
+git commit -m "feat: add quotation pipeline env vars to bot config"
+```
+
+---
+
+## Task 17: Bot — internal API client
+
+**Goal:** Thin fetch wrappers around `/api/internal/quotations*` — the only place in the bot that talks HTTP to Next.js (everything else the bot does with the store is direct Postgres via `postgresClient.js`, which quotations deliberately don't use — see the design doc's rationale for keeping Prisma-owned data behind the internal API).
+
+**Files:**
+- Create: `[Bot] src/quotes/internalApiClient.js`
+- Test: `[Bot] test/internalApiClient.test.js`
+
+**Acceptance Criteria:**
+- [ ] `fetchOpenQuotations()` returns `[]` (not a throw) when `VAIRIS_API_BASE_URL` or `INTERNAL_API_KEY` isn't configured — matches config.js's graceful-degradation stance from Task 16.
+- [ ] `fetchOpenQuotations()` sends `Authorization: Bearer ${INTERNAL_API_KEY}` and throws on a non-ok response.
+- [ ] `patchQuotation(id, body)` PATCHes with the same header and the given JSON body; throws on a non-ok response.
+
+**Verify:** `npx jest test/internalApiClient.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/internalApiClient.test.js
+jest.mock('../src/config', () => ({
+  VAIRIS_API_BASE_URL: 'https://vairis.example.com',
+  INTERNAL_API_KEY: 'test-key',
+}));
+
+const { fetchOpenQuotations, patchQuotation } = require('../src/quotes/internalApiClient');
+
+const originalFetch = global.fetch;
+afterEach(() => {
+  global.fetch = originalFetch;
+  jest.resetModules();
+});
+
+describe('fetchOpenQuotations', () => {
+  it('sends the Bearer token and returns the parsed list', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 'q1' }] });
+    const result = await fetchOpenQuotations();
+    expect(result).toEqual([{ id: 'q1' }]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://vairis.example.com/api/internal/quotations',
+      expect.objectContaining({ headers: { Authorization: 'Bearer test-key' } }),
+    );
+  });
+
+  it('throws on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    await expect(fetchOpenQuotations()).rejects.toThrow(/500/);
+  });
+});
+
+describe('patchQuotation', () => {
+  it('PATCHes with the Bearer token and the given body', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'q1' }) });
+    await patchQuotation('q1', { reminderCount: 2 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://vairis.example.com/api/internal/quotations/q1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer test-key', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reminderCount: 2 }),
+      }),
+    );
+  });
+
+  it('throws on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 409 });
+    await expect(patchQuotation('q1', {})).rejects.toThrow(/409/);
+  });
+});
+
+describe('graceful degradation when unconfigured', () => {
+  it('fetchOpenQuotations returns [] instead of throwing when config is missing', async () => {
+    jest.doMock('../src/config', () => ({ VAIRIS_API_BASE_URL: null, INTERNAL_API_KEY: null }));
+    jest.resetModules();
+    const { fetchOpenQuotations: fetchUnconfigured } = require('../src/quotes/internalApiClient');
+    global.fetch = jest.fn();
+    const result = await fetchUnconfigured();
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/internalApiClient.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/internalApiClient'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/internalApiClient.js
+const { VAIRIS_API_BASE_URL, INTERNAL_API_KEY } = require('../config');
+
+/** GET /api/internal/quotations — every open (REQUESTED/QUOTED) quotation. */
+async function fetchOpenQuotations() {
+    if (!VAIRIS_API_BASE_URL || !INTERNAL_API_KEY) return [];
+    const res = await fetch(`${VAIRIS_API_BASE_URL}/api/internal/quotations`, {
+        headers: { Authorization: `Bearer ${INTERNAL_API_KEY}` },
+    });
+    if (!res.ok) throw new Error(`internal quotations GET failed: ${res.status}`);
+    return res.json();
+}
+
+/** PATCH /api/internal/quotations/[id] — reminder bookkeeping, /quoted, /close, retryThread. */
+async function patchQuotation(id, body) {
+    if (!VAIRIS_API_BASE_URL || !INTERNAL_API_KEY) return null;
+    const res = await fetch(`${VAIRIS_API_BASE_URL}/api/internal/quotations/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${INTERNAL_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`internal quotations PATCH ${id} failed: ${res.status}`);
+    return res.json();
+}
+
+module.exports = { fetchOpenQuotations, patchQuotation };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/internalApiClient.test.js -v`
+Expected: PASS (5 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/internalApiClient.js test/internalApiClient.test.js
+git commit -m "feat: add internal API client for the quotation reminder poll"
+```
+
+---
