@@ -2181,3 +2181,430 @@ git commit -m "feat: add admin manual quotation intake form"
 ```
 
 ---
+
+## Task 12: Admin quotation detail page + actions
+
+**Goal:** `/admin/quotations/[id]` — shows details, thread link, quoted amount/notes; "Mark quoted" and "Cancel" buttons while actionable; "Convert to order" only when QUOTED; a link to the order once CONVERTED.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/[id]/page.tsx`
+- Create: `[Vairis] app/(admin)/admin/quotations/[id]/QuotationActions.tsx`
+
+**Acceptance Criteria:**
+- [ ] Unknown id → Next.js `notFound()` (404 page), matching the codebase's existing pattern for missing detail records.
+- [ ] "Convert to order" link is rendered only when `status === 'QUOTED'`, and points to `/admin/orders/new?quotationId={id}`.
+- [ ] Once `status === 'CONVERTED'`, a link to `/admin/orders/{orderId}` renders instead of any action buttons.
+- [ ] "Mark quoted" opens inline amount/notes inputs before submitting the PATCH.
+- [ ] "Cancel" is hidden once CONVERTED or CANCELLED.
+
+**Steps:**
+
+- [ ] **Step 1: Write the server component page**
+
+```tsx
+// app/(admin)/admin/quotations/[id]/page.tsx
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { prisma } from '@/lib/prisma'
+import { QuotationActions } from './QuotationActions'
+
+export const dynamic = 'force-dynamic'
+
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID
+
+export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const quotation = await prisma.quotation.findUnique({ where: { id } })
+  if (!quotation) notFound()
+
+  const threadUrl =
+    quotation.discordThreadId && DISCORD_GUILD_ID
+      ? `https://discord.com/channels/${DISCORD_GUILD_ID}/${quotation.discordThreadId}`
+      : null
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 720 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.25rem' }}>
+        {quotation.displayId}
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        {quotation.orderType} · {quotation.source} · {quotation.status}
+      </p>
+
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1.25rem', marginBottom: '1rem' }}>
+        <p><strong>Details:</strong> {quotation.details || '—'}</p>
+        {quotation.customerName && <p><strong>Customer:</strong> {quotation.customerName}</p>}
+        {quotation.customerMobile && <p><strong>Mobile:</strong> {quotation.customerMobile}</p>}
+        {quotation.quotedAmount != null && (
+          <p><strong>Quoted amount:</strong> ₹{quotation.quotedAmount.toLocaleString('en-IN')}</p>
+        )}
+        {quotation.quotedNotes && <p><strong>Quoted notes:</strong> {quotation.quotedNotes}</p>}
+        {quotation.screenshotUrls.length > 0 && (
+          <div>
+            <strong>Screenshots:</strong>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {quotation.screenshotUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="Quote screenshot" style={{ width: 100, height: 100, objectFit: 'cover' }} />
+              ))}
+            </div>
+          </div>
+        )}
+        {threadUrl && (
+          <p>
+            <a href={threadUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
+              View Discord thread ↗
+            </a>
+          </p>
+        )}
+      </div>
+
+      {quotation.status === 'CONVERTED' && quotation.orderId ? (
+        <Link href={`/admin/orders/${quotation.orderId}`} className="admin-btn">
+          View Order
+        </Link>
+      ) : (
+        <QuotationActions id={quotation.id} status={quotation.status} />
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Write the client actions component**
+
+```tsx
+// app/(admin)/admin/quotations/[id]/QuotationActions.tsx
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import type { QuotationStatus } from '@prisma/client'
+
+export function QuotationActions({ id, status }: { id: string; status: QuotationStatus }) {
+  const router = useRouter()
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function patch(body: Record<string, unknown>) {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/quotations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Action failed')
+        return
+      }
+      router.refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {status === 'QUOTED' && (
+        <Link href={`/admin/orders/new?quotationId=${id}`} className="admin-btn">
+          Convert to Order
+        </Link>
+      )}
+
+      {status === 'REQUESTED' && !showQuoteForm && (
+        <button type="button" className="admin-btn" onClick={() => setShowQuoteForm(true)}>
+          Mark Quoted
+        </button>
+      )}
+
+      {status === 'REQUESTED' && showQuoteForm && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1rem', minWidth: 260 }}>
+          <label style={{ display: 'block', fontSize: '0.6875rem', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>
+            Quoted amount (₹, optional)
+          </label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            style={{ width: '100%', border: '1px solid #d1d5db', padding: '6px 8px', marginBottom: 8 }}
+          />
+          <label style={{ display: 'block', fontSize: '0.6875rem', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>
+            Notes (optional)
+          </label>
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ width: '100%', border: '1px solid #d1d5db', padding: '6px 8px', marginBottom: 8 }}
+          />
+          <button
+            type="button"
+            disabled={saving}
+            className="admin-btn"
+            onClick={() =>
+              patch({
+                action: 'mark_quoted',
+                quotedAmount: amount ? Number(amount) : undefined,
+                quotedNotes: notes || undefined,
+              })
+            }
+          >
+            {saving ? 'Saving…' : 'Confirm Quoted'}
+          </button>
+        </div>
+      )}
+
+      {(status === 'REQUESTED' || status === 'QUOTED') && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => patch({ action: 'cancel' })}
+          style={{ border: '1px solid #b91c1c', color: '#b91c1c', background: '#fff', padding: '8px 16px', cursor: 'pointer' }}
+        >
+          Cancel
+        </button>
+      )}
+
+      {error && <p style={{ color: '#b91c1c', fontSize: '0.8125rem' }}>{error}</p>}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`. Create a quotation (Task 11), open its detail page: confirm "Mark Quoted" flow sets status to QUOTED and reveals "Convert to Order"; confirm "Cancel" sets CANCELLED and hides both buttons; confirm visiting an unknown id 404s.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/[id]"
+git commit -m "feat: add admin quotation detail page with mark-quoted/cancel/convert actions"
+```
+
+---
+
+## Task 13: ManualOrderForm — prefill from `?quotationId=`
+
+**Goal:** `/admin/orders/new?quotationId=...` prefills the manual order form's contact name/phone from the quotation and shows a read-only reference panel — everything stays fully editable, matching the source spec's "prefilled, editable" requirement.
+
+**Important constraint discovered while grounding this plan:** `ManualOrderForm` requires selecting an existing `User` account (search by email/name → `userId`) — order creation has always required a real customer account (the page copy already says so: "The customer must have an account"). A quotation's `customerName`/`customerMobile` are **not** a `User` record, so they can only prefill the `contactName`/`contactPhone` address fields — they cannot auto-select a customer. The admin still searches/picks the actual `User` account normally. Do not attempt to auto-create or auto-match a `User` from the quotation's name/mobile — that's out of scope and error-prone (name/mobile don't uniquely identify an account).
+
+**Files:**
+- Modify: `[Vairis] app/(admin)/admin/orders/new/page.tsx`
+- Modify: `[Vairis] app/(admin)/admin/orders/new/ManualOrderForm.tsx`
+
+**Acceptance Criteria:**
+- [ ] Visiting `/admin/orders/new` with no `quotationId` behaves exactly as today (no prop, no prefill, no reference panel).
+- [ ] Visiting with `?quotationId=X` for a real quotation prefills `contactName`/`contactPhone` from it and shows a reference panel (order type, details, screenshots) above the form.
+- [ ] Visiting with `?quotationId=X` for a nonexistent quotation silently falls back to the no-quotation behavior (no crash, no reference panel) — matches the existing page's general resilience style rather than a hard error for a bad/stale link.
+- [ ] Saving the order still calls `POST /api/admin/orders` and now includes `quotationId` in the body when one was prefilled (Task 9 already handles the server side).
+
+**Steps:**
+
+- [ ] **Step 1: Modify page.tsx to read the query param and fetch the quotation**
+
+Add `searchParams` to the page's signature and a quotation fetch:
+
+```tsx
+// app/(admin)/admin/orders/new/page.tsx
+import { prisma } from '@/lib/prisma'
+import { calculatePrice } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { ManualOrderForm } from './ManualOrderForm'
+
+export const dynamic = 'force-dynamic'
+
+export default async function NewManualOrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ quotationId?: string }>
+}) {
+  const { quotationId } = await searchParams
+
+  const [products, goldRates, pricingConfig, quotation] = await Promise.all([
+    prisma.product.findMany({
+      where: { isActive: true },
+      include: {
+        variants: { orderBy: { metalType: 'asc' } },
+        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+    }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+    quotationId ? prisma.quotation.findUnique({ where: { id: quotationId } }) : Promise.resolve(null),
+  ])
+
+  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+
+  const variantOptions = products.flatMap((p) =>
+    p.variants.map((v) => {
+      const rate = rateMap[v.metalType]
+      const suggested = rate
+        ? Math.round(
+            calculatePrice(
+              {
+                weightGrams: v.weightGrams.toString(),
+                makingChargePerGram: v.makingChargePerGram.toString(),
+                flatMakingCharge: v.flatMakingCharge.toString(),
+                stoneCharges: v.stoneCharges.toString(),
+                miscCharges: v.miscCharges.toString(),
+              },
+              rate,
+              { stones: toStoneInputs(p.stones), withExchange: false, config: pricingConfig },
+            ).total,
+          )
+        : 0
+      return {
+        variantId: v.id,
+        productId: p.id,
+        category: p.category,
+        productName: p.name,
+        itemCode: p.itemCode ?? '',
+        sku: v.sku,
+        label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
+        suggestedPrice: suggested,
+      }
+    }),
+  )
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 860 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
+        New Manual Order
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        For WhatsApp / offline sales. The customer must have an account (same email they&apos;ll
+        use on the site) — the order then appears in their My Orders and on Track Order.
+        Prices default to today&apos;s gold rate; override them with the negotiated amount.
+      </p>
+      <ManualOrderForm variantOptions={variantOptions} quotation={quotation} />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Modify ManualOrderForm.tsx to accept and use the quotation prop**
+
+Change the component signature and add a `quotationId` field to the submit body, plus a reference panel. Replace:
+
+```tsx
+export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOption[] }) {
+  const router = useRouter()
+
+  // Customer search
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Customer[]>([])
+  const [customer, setCustomer] = useState<Customer | null>(null)
+
+  // Address / contact
+  const [address, setAddress] = useState({
+    contactName: '',
+    contactPhone: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
+  })
+```
+
+with:
+
+```tsx
+type Quotation = {
+  id: string
+  displayId: string
+  orderType: string
+  details: string | null
+  customerName: string | null
+  customerMobile: string | null
+  screenshotUrls: string[]
+} | null
+
+export function ManualOrderForm({
+  variantOptions,
+  quotation = null,
+}: {
+  variantOptions: VariantOption[]
+  quotation?: Quotation
+}) {
+  const router = useRouter()
+
+  // Customer search
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Customer[]>([])
+  const [customer, setCustomer] = useState<Customer | null>(null)
+
+  // Address / contact — prefilled from the quotation when converting one, still fully editable.
+  // The quotation's customerName/customerMobile are NOT a User account (see Task 13) — only the
+  // contact fields prefill; the admin still searches/picks the real customer account above.
+  const [address, setAddress] = useState({
+    contactName: quotation?.customerName ?? '',
+    contactPhone: quotation?.customerMobile ?? '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
+  })
+```
+
+Then find the `submit` function's `fetch('/api/admin/orders', ...)` call and add `quotationId` to its body:
+
+```tsx
+        body: JSON.stringify({
+          userId: customer.id,
+          ...address,
+          initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
+          paymentNote: paymentNote || undefined,
+          items: lines,
+          quotationId: quotation?.id,
+        }),
+```
+
+Finally, add the reference panel right after the opening `<form onSubmit={submit}>` tag:
+
+```tsx
+      {quotation && (
+        <div style={{ ...card, background: '#f8fafc', borderStyle: 'dashed' }}>
+          <strong style={{ fontSize: '0.875rem' }}>Converting {quotation.displayId}</strong>
+          <p style={{ fontSize: '0.8125rem', margin: '8px 0 0' }}>
+            <strong>Type:</strong> {quotation.orderType}
+          </p>
+          {quotation.details && (
+            <p style={{ fontSize: '0.8125rem', margin: '4px 0 0' }}>
+              <strong>Details:</strong> {quotation.details}
+            </p>
+          )}
+          {quotation.screenshotUrls.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {quotation.screenshotUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="Quote screenshot" style={{ width: 80, height: 80, objectFit: 'cover' }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`. Mark a quotation QUOTED (Task 12), click "Convert to Order", confirm the address contact name/phone are prefilled, the reference panel shows, everything is still editable, and saving creates the order + converts the quotation (Task 9). Then visit `/admin/orders/new` directly (no query param) and confirm it's unchanged from before this task.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/orders/new/page.tsx" "app/(admin)/admin/orders/new/ManualOrderForm.tsx"
+git commit -m "feat: prefill manual order form from a converting quotation"
+```
+
+---
