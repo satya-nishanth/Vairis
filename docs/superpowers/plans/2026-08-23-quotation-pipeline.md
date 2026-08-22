@@ -1736,3 +1736,448 @@ git commit -m "feat: convert quotation to order with race guard and thread close
 ```
 
 ---
+
+## Task 10: Admin quotations list page
+
+**Goal:** `/admin/quotations` — status chips (mirrors `orders/page.tsx`), an "Attention" chip, an age column, and a red/amber flag on rows that need attention.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/page.tsx`
+
+**Acceptance Criteria:**
+- [ ] Default view (no filter) lists all quotations oldest-`createdAt`-first with an age column (e.g. "2h 15m").
+- [ ] Status chips: ALL, REQUESTED, QUOTED, CONVERTED, CANCELLED, plus a separate "Needs attention" chip using `?attention=true`.
+- [ ] A REQUESTED row with `escalatedAt` set, or a QUOTED row older than `QUOTE_STALE_QUOTED_HOURS` since `quotedAt`, renders with a red/amber background.
+- [ ] Each row links to `/admin/quotations/[id]`.
+- [ ] "+ New Quotation" link to `/admin/quotations/new`.
+
+**Steps:**
+
+- [ ] **Step 1: Write the page**
+
+```tsx
+// app/(admin)/admin/quotations/page.tsx
+import Link from 'next/link'
+import type { QuotationStatus } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
+
+export const dynamic = 'force-dynamic'
+
+const FILTERS: (QuotationStatus | 'ALL')[] = ['ALL', 'REQUESTED', 'QUOTED', 'CONVERTED', 'CANCELLED']
+const STALE_QUOTED_HOURS = Number(process.env.QUOTE_STALE_QUOTED_HOURS ?? 24)
+
+function formatAge(from: Date): string {
+  const ms = Date.now() - from.getTime()
+  const hours = Math.floor(ms / (60 * 60 * 1000))
+  const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000))
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+function isFlagged(q: { status: QuotationStatus; escalatedAt: Date | null; quotedAt: Date | null }): boolean {
+  if (q.status === 'REQUESTED') return q.escalatedAt != null
+  if (q.status === 'QUOTED') {
+    return q.quotedAt != null && Date.now() - q.quotedAt.getTime() > STALE_QUOTED_HOURS * 60 * 60 * 1000
+  }
+  return false
+}
+
+async function loadQuotations(filter: QuotationStatus | null, attention: boolean) {
+  const staleThreshold = new Date(Date.now() - STALE_QUOTED_HOURS * 60 * 60 * 1000)
+  const where = attention
+    ? {
+        OR: [
+          { status: 'REQUESTED' as const, escalatedAt: { not: null } },
+          { status: 'QUOTED' as const, quotedAt: { lt: staleThreshold } },
+        ],
+      }
+    : filter
+      ? { status: filter }
+      : undefined
+
+  return prisma.quotation.findMany({
+    where,
+    orderBy: filter === 'QUOTED' ? { quotedAt: 'asc' } : { createdAt: 'asc' },
+    take: 200,
+  })
+}
+
+export default async function AdminQuotationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; attention?: string }>
+}) {
+  const { status, attention: attentionParam } = await searchParams
+  const filter = FILTERS.includes(status as QuotationStatus) ? (status as QuotationStatus) : null
+  const attention = attentionParam === 'true'
+
+  const quotations = await loadQuotations(filter, attention)
+
+  return (
+    <div className="admin-page">
+      <div className="admin-page__header">
+        <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Quotations</h1>
+        <Link href="/admin/quotations/new" className="admin-btn">
+          + New Quotation
+        </Link>
+      </div>
+      <AdminGuide
+        pageKey="quotations"
+        title="Quotations"
+        blurb="Vendor-quote pipeline for offline/WhatsApp deals. Reminders ping the assignee on Discord while REQUESTED; Convert to order once QUOTED."
+        tips={['Rows flagged red/amber have been escalated (REQUESTED) or sat QUOTED too long — check the Attention filter.']}
+      />
+
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        {FILTERS.map((f) => {
+          const active = !attention && ((f === 'ALL' && !filter) || f === filter)
+          return (
+            <Link
+              key={f}
+              href={f === 'ALL' ? '/admin/quotations' : `/admin/quotations?status=${f}`}
+              style={{
+                fontSize: '0.6875rem',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                padding: '6px 12px',
+                borderRadius: '999px',
+                textDecoration: 'none',
+                border: '1px solid',
+                borderColor: active ? '#032b24' : '#e5e7eb',
+                background: active ? '#032b24' : '#fff',
+                color: active ? '#fff' : '#4b5563',
+              }}
+            >
+              {f === 'ALL' ? 'All' : f}
+            </Link>
+          )
+        })}
+        <Link
+          href="/admin/quotations?attention=true"
+          style={{
+            fontSize: '0.6875rem',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            padding: '6px 12px',
+            borderRadius: '999px',
+            textDecoration: 'none',
+            border: '1px solid',
+            borderColor: attention ? '#b91c1c' : '#fecaca',
+            background: attention ? '#b91c1c' : '#fef2f2',
+            color: attention ? '#fff' : '#b91c1c',
+          }}
+        >
+          Needs Attention
+        </Link>
+      </div>
+
+      {quotations.length === 0 ? (
+        <p style={{ color: '#6b7280', padding: '2rem 0' }}>No quotations{filter ? ` in ${filter}` : ''}.</p>
+      ) : (
+        <div className="admin-table-wrap">
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left', color: '#6b7280' }}>
+                <th style={{ padding: '10px 12px' }}>Ref</th>
+                <th style={{ padding: '10px 12px' }}>Type</th>
+                <th style={{ padding: '10px 12px' }}>Customer</th>
+                <th style={{ padding: '10px 12px' }}>Age</th>
+                <th style={{ padding: '10px 12px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotations.map((q) => {
+                const flagged = isFlagged(q)
+                const age = q.status === 'QUOTED' && q.quotedAt ? q.quotedAt : q.createdAt
+                return (
+                  <tr
+                    key={q.id}
+                    style={{
+                      borderBottom: '1px solid #f3f4f6',
+                      background: flagged ? '#fef2f2' : undefined,
+                    }}
+                  >
+                    <td style={{ padding: '10px 12px' }}>
+                      <Link href={`/admin/quotations/${q.id}`} style={{ color: '#032b24', fontWeight: 600 }}>
+                        {q.displayId}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{q.orderType}</td>
+                    <td style={{ padding: '10px 12px' }}>{q.customerName || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {formatAge(age)}
+                      {flagged && <span style={{ marginLeft: 6, color: '#b91c1c' }}>⚠</span>}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{q.status}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Manual verification (no automated test — matches `orders/page.tsx`'s own untested convention)**
+
+Run: `npm run dev`, visit `/admin/quotations` while logged in as an admin. Confirm the filter chips, "Needs Attention" chip, and (once Task 5's route + Task 11's form exist) that a created quotation appears in the list with a correct age.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/page.tsx"
+git commit -m "feat: add admin quotations list page with age/attention flagging"
+```
+
+---
+
+## Task 11: Admin manual quotation intake — page + form
+
+**Goal:** `/admin/quotations/new` — order type radio (required, no default), details textarea (required), optional screenshots/customer name/mobile/product picker.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/new/page.tsx`
+- Create: `[Vairis] app/(admin)/admin/quotations/new/QuotationForm.tsx`
+
+**Acceptance Criteria:**
+- [ ] Submit with no order type selected is blocked client-side (native radio `required`) and server-side (Task 5's 400).
+- [ ] Screenshot files upload via `POST /api/admin/upload` with `folder=quotations/screenshots` before the quotation itself is submitted, and their returned URLs are included in the quotation POST body.
+- [ ] On success, navigates to `/admin/quotations/[id]`.
+
+**Steps:**
+
+- [ ] **Step 1: Write the server component page**
+
+```tsx
+// app/(admin)/admin/quotations/new/page.tsx
+import { prisma } from '@/lib/prisma'
+import { QuotationForm } from './QuotationForm'
+
+export const dynamic = 'force-dynamic'
+
+export default async function NewQuotationPage() {
+  const products = await prisma.product.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, itemCode: true },
+    orderBy: { name: 'asc' },
+  })
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 720 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
+        New Quotation
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        For an offline/WhatsApp quote request. This creates a Discord thread in
+        #quote-requests-offline and starts reminding the assignee until it&apos;s marked quoted.
+      </p>
+      <QuotationForm products={products} />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Write the client form**
+
+```tsx
+// app/(admin)/admin/quotations/new/QuotationForm.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+type Product = { id: string; name: string; itemCode: string | null }
+
+const input: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid #d1d5db',
+  padding: '8px 10px',
+  fontSize: '0.8125rem',
+}
+const label: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.6875rem',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#6b7280',
+  margin: '12px 0 4px',
+}
+const card: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  padding: '1.25rem',
+  marginBottom: '1rem',
+}
+
+export function QuotationForm({ products }: { products: Product[] }) {
+  const router = useRouter()
+  const [orderType, setOrderType] = useState<'VAIRIS' | 'CUSTOMISATION' | ''>('')
+  const [details, setDetails] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [customerMobile, setCustomerMobile] = useState('')
+  const [productId, setProductId] = useState('')
+  const [screenshots, setScreenshots] = useState<File[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function uploadScreenshots(): Promise<string[]> {
+    const urls: string[] = []
+    for (const file of screenshots) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'quotations/screenshots')
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Screenshot upload failed')
+      urls.push(data.url)
+    }
+    return urls
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!orderType) {
+      setError('Select an order type')
+      return
+    }
+    if (!details.trim()) {
+      setError('Details are required')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const screenshotUrls = await uploadScreenshots()
+      const res = await fetch('/api/admin/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderType,
+          details,
+          customerName: customerName || undefined,
+          customerMobile: customerMobile || undefined,
+          productId: productId || undefined,
+          screenshotUrls,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Could not create quotation')
+        return
+      }
+      router.push(`/admin/quotations/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <div style={card}>
+        <strong style={{ fontSize: '0.875rem' }}>Order type</strong>
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+            <input
+              type="radio"
+              name="orderType"
+              required
+              checked={orderType === 'VAIRIS'}
+              onChange={() => setOrderType('VAIRIS')}
+            />
+            Vairis
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+            <input
+              type="radio"
+              name="orderType"
+              required
+              checked={orderType === 'CUSTOMISATION'}
+              onChange={() => setOrderType('CUSTOMISATION')}
+            />
+            Customisation
+          </label>
+        </div>
+      </div>
+
+      <div style={card}>
+        <strong style={{ fontSize: '0.875rem' }}>Details</strong>
+        <label style={label}>What does the customer want? (required)</label>
+        <textarea
+          style={{ ...input, minHeight: 100 }}
+          required
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          placeholder="e.g. Kurnool bracelet quotation — customer wants 22K gold, ~15g, plain design"
+        />
+
+        <label style={label}>Screenshots (optional)</label>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => setScreenshots(Array.from(e.target.files ?? []))}
+        />
+
+        <label style={label}>Customer name (optional)</label>
+        <input style={input} value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+
+        <label style={label}>Mobile (optional)</label>
+        <input style={input} value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} placeholder="9876543210" />
+
+        <label style={label}>Product reference (optional)</label>
+        <select style={input} value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <option value="">— None —</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.itemCode ? ` (${p.itemCode})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && (
+        <p style={{ fontSize: '0.8125rem', color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', border: '1px solid #fecaca', marginBottom: 12 }}>
+          {error}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={saving}
+        style={{
+          padding: '10px 28px',
+          fontSize: '0.75rem',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          background: '#032b24',
+          color: '#fff',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        {saving ? 'Creating…' : 'Create Quotation'}
+      </button>
+    </form>
+  )
+}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`, visit `/admin/quotations/new`. Confirm: submitting with no order type shows the browser's native "please select one of these options" validation; submitting with order type + details creates a row visible at `/admin/quotations` and redirects to the detail page (Task 12).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/new"
+git commit -m "feat: add admin manual quotation intake form"
+```
+
+---
