@@ -27,8 +27,8 @@ describe('GET /api/admin/quotations/[id]', () => {
 describe('PATCH /api/admin/quotations/[id]', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  it('mark_quoted is rejected from a non-REQUESTED status', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
+  it('mark_quoted is rejected from a terminal status', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
     const res = await PATCH(patchReq({ action: 'mark_quoted' }), { params: Promise.resolve({ id: 'q1' }) })
     expect(res.status).toBe(409)
     expect(prisma.quotation.update).not.toHaveBeenCalled()
@@ -50,10 +50,13 @@ describe('PATCH /api/admin/quotations/[id]', () => {
   })
 
   it('mark_quoted can be called again while still QUOTED to overwrite amount/notes', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
     ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
     const res = await PATCH(patchReq({ action: 'mark_quoted', quotedAmount: 50000 }), { params: Promise.resolve({ id: 'q1' }) })
     expect(res.status).toBe(200)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'QUOTED', quotedAmount: 50000 }) }),
+    )
   })
 
   it('cancel closes the Discord thread when one exists', async () => {
