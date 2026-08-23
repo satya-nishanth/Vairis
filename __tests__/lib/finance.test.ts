@@ -11,7 +11,17 @@ import {
   summarizeDashboardKpis,
   findSheetInflowMismatches,
   summarizeTransactionReport,
+  toFinanceCategoryDirection,
+  type FinanceTransactionDirection,
 } from '@/lib/finance'
+
+describe('toFinanceCategoryDirection', () => {
+  it('maps INFLOW and defaults unknown values to OUTFLOW', () => {
+    expect(toFinanceCategoryDirection('INFLOW')).toBe('INFLOW')
+    expect(toFinanceCategoryDirection('OUTFLOW')).toBe('OUTFLOW')
+    expect(toFinanceCategoryDirection('TRANSFER')).toBe('OUTFLOW')
+  })
+})
 
 describe('sheetTotals / orderProfit', () => {
   it('sums line cost and selling prices', () => {

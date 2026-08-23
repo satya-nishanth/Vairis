@@ -3,15 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toDateInput, shortFinanceId } from '@/lib/finance'
+import { toDateInput, shortFinanceId, type FinanceCategoryDirection, type FinanceTransactionDirection } from '@/lib/finance'
 
 export type TxAccount = { id: string; name: string }
 export type TxContact = { id: string; name: string; type: string }
-export type TxCategory = { id: string; name: string; direction: 'INFLOW' | 'OUTFLOW' }
+export type TxCategory = { id: string; name: string; direction: FinanceCategoryDirection }
 export type TxRow = {
   id: string
   date: string
-  direction: 'INFLOW' | 'OUTFLOW' | 'TRANSFER'
+  direction: FinanceTransactionDirection
   amount: number
   description: string
   accountId: string
@@ -138,7 +138,7 @@ export function FinanceTransactionsManager({
   const [editingId, setEditingId] = useState<string | null>(editId)
   const formRef = useRef<HTMLElement>(null)
   const [date, setDate] = useState(() => toDateInput(new Date()))
-  const [direction, setDirection] = useState<'INFLOW' | 'OUTFLOW' | 'TRANSFER'>('OUTFLOW')
+  const [direction, setDirection] = useState<FinanceTransactionDirection>('OUTFLOW')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [accountId, setAccountId] = useState(fallbackAccountId)
@@ -186,7 +186,7 @@ export function FinanceTransactionsManager({
     return categories.filter((c) => c.direction === dirFilter)
   }, [categories, dirFilter])
 
-  function changeDirection(next: 'INFLOW' | 'OUTFLOW' | 'TRANSFER') {
+  function changeDirection(next: FinanceTransactionDirection) {
     setDirection(next)
     setCategoryId((prev) => {
       if (!prev || next === 'TRANSFER') return ''

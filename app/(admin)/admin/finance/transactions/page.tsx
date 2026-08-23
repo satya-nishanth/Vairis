@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { defaultFinanceAccountId, requireFinance } from '@/lib/finance-auth'
+import { toFinanceCategoryDirection } from '@/lib/finance'
 import { FinanceTransactionsManager } from '@/components/admin/FinanceTransactionsManager'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,13 @@ export default async function FinanceTransactionsPage({
       defaultAccountId={defaultAccountId}
       accounts={accounts}
       contacts={contacts}
-      categories={categories}
+      categories={categories
+        .filter((c) => c.direction === 'INFLOW' || c.direction === 'OUTFLOW')
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          direction: toFinanceCategoryDirection(c.direction),
+        }))}
       compose={compose}
       editId={editId}
       initial={rows.map((r) => ({

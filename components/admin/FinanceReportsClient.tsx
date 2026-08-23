@@ -7,6 +7,7 @@ import {
   istMonthUtcRange,
   istQuarterUtcRange,
   type CategorySlice,
+  type FinanceTransactionDirection,
   type MonthBucket,
   type TransactionReport,
 } from '@/lib/finance'
@@ -199,7 +200,7 @@ const MONTH_OPTIONS = [
 
 export type ReportTx = {
   date: string
-  direction: 'INFLOW' | 'OUTFLOW'
+  direction: FinanceTransactionDirection
   amount: number
   categoryId: string | null
   categoryName: string | null

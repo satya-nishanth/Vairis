@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { toFinanceCategoryDirection } from '@/lib/finance'
 import { FinanceConfigClient } from '@/components/admin/FinanceConfigClient'
 
 export const dynamic = 'force-dynamic'
@@ -29,13 +30,15 @@ export default async function FinanceConfigPage() {
         notes: c.notes,
         active: c.active,
       }))}
-      categories={categories.map((c) => ({
-        id: c.id,
-        name: c.name,
-        direction: c.direction,
-        active: c.active,
-        sortOrder: c.sortOrder,
-      }))}
+      categories={categories
+        .filter((c) => c.direction === 'INFLOW' || c.direction === 'OUTFLOW')
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          direction: toFinanceCategoryDirection(c.direction),
+          active: c.active,
+          sortOrder: c.sortOrder,
+        }))}
     />
   )
 }

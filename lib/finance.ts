@@ -27,6 +27,15 @@ export const ACCOUNT_TYPE_LABEL: Record<FinanceAccountType, string> = {
   OTHER: 'Other',
 }
 
+/** Category config — inflow/outflow only (TRANSFER is for transactions, not categories). */
+export type FinanceCategoryDirection = 'INFLOW' | 'OUTFLOW'
+
+export type FinanceTransactionDirection = 'INFLOW' | 'OUTFLOW' | 'TRANSFER'
+
+export function toFinanceCategoryDirection(value: string): FinanceCategoryDirection {
+  return value === 'INFLOW' ? 'INFLOW' : 'OUTFLOW'
+}
+
 export type FinanceLineInput = {
   kind: FinanceLineKind
   costPrice: number
@@ -397,7 +406,7 @@ export function summarizeFinance(
 
 export type ReportTxRow = {
   date: Date
-  direction: 'INFLOW' | 'OUTFLOW'
+  direction: FinanceTransactionDirection
   amount: number
   categoryId: string | null
   categoryName: string | null
@@ -482,7 +491,7 @@ export function summarizeTransactionReport(
         net: 0,
       } satisfies MonthBucket)
     if (t.direction === 'INFLOW') cur.inflow += t.amount
-    else cur.outflow += t.amount
+    else if (t.direction === 'OUTFLOW') cur.outflow += t.amount
     monthMap.set(key, cur)
   }
   const byMonth = [...monthMap.values()]

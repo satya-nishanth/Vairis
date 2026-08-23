@@ -3,11 +3,12 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FinanceCollapsible } from '@/components/admin/FinanceCollapsible'
+import type { FinanceCategoryDirection } from '@/lib/finance'
 
 export type CategoryRow = {
   id: string
   name: string
-  direction: 'INFLOW' | 'OUTFLOW'
+  direction: FinanceCategoryDirection
   active: boolean
   sortOrder: number
 }
@@ -71,7 +72,7 @@ export function FinanceCategoriesManager({ initial }: { initial: CategoryRow[] }
   const [rows, setRows] = useState(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState('')
-  const [direction, setDirection] = useState<'INFLOW' | 'OUTFLOW'>('OUTFLOW')
+  const [direction, setDirection] = useState<FinanceCategoryDirection>('OUTFLOW')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -152,7 +153,7 @@ export function FinanceCategoriesManager({ initial }: { initial: CategoryRow[] }
             <select
               style={input}
               value={direction}
-              onChange={(e) => setDirection(e.target.value as 'INFLOW' | 'OUTFLOW')}
+              onChange={(e) => setDirection(e.target.value as FinanceCategoryDirection)}
             >
               <option value="OUTFLOW">Outflow</option>
               <option value="INFLOW">Inflow</option>

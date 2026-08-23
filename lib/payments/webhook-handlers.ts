@@ -83,13 +83,20 @@ export async function confirmPayment(
       // Multi-item orders split into one child order per line item,
       // atomically with confirmation (lib/split.ts).
       await autoSplitOrder(tx, payment.orderId);
-      // Cashbook INFLOW (Vairis Bank / Customer payment) — order grandTotal,
-      // not order-sheet selling. Linked to the payment parent order.
-      await createAutoOrderPaymentInflow(tx, {
-        orderId: payment.orderId,
-        amount: Number(payment.order.grandTotal),
-        contactName: payment.order.contactName,
-      });
+      // Cashbook INFLOW — best-effort; never block payment confirmation if
+      // finance tables are missing or seeds aren't ready yet.
+      try {
+        await createAutoOrderPaymentInflow(tx, {
+          orderId: payment.orderId,
+          amount: Number(payment.order.grandTotal),
+          contactName: payment.order.contactName,
+        });
+      } catch (err) {
+        console.error("[finance] auto-inflow failed — payment still confirmed", {
+          orderId: payment.orderId,
+          err,
+        });
+      }
     });
     // Fire-and-forget — the idempotency guard above means exactly one send
     // even when verify and the webhook race.
