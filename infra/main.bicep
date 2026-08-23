@@ -154,6 +154,11 @@ module app 'modules/app.bicep' = {
       { name: 'order-sweep-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/order-sweep-secret', identity: identity.outputs.identityId }
       { name: 'metal-price-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/metal-price-api-key', identity: identity.outputs.identityId }
       { name: 'resend-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/resend-api-key', identity: identity.outputs.identityId }
+      // Same physical Discord bot app as Vairis_Customer_Bot — that repo holds the gateway
+      // connection, this one does raw REST (thread creation, pings) since it has no persistent
+      // connection of its own. Shared bearer secret with the bot's INTERNAL_API_KEY below.
+      { name: 'discord-bot-token', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/discord-bot-token', identity: identity.outputs.identityId }
+      { name: 'internal-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/internal-api-key', identity: identity.outputs.identityId }
     ]
   }
 }

@@ -93,6 +93,14 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'METAL_PRICE_API_KEY', secretRef: 'metal-price-api-key' }
             { name: 'RESEND_API_KEY', secretRef: 'resend-api-key' }
             { name: 'RESEND_FROM_EMAIL', value: 'noreply@thevairis.com' }
+            // Quotation pipeline — Discord thread creation + assignee ping (REST side; see
+            // Vairis_Customer_Bot for the gateway side and the reminder/escalation poller).
+            { name: 'DISCORD_BOT_TOKEN', secretRef: 'discord-bot-token' }
+            { name: 'INTERNAL_API_KEY', secretRef: 'internal-api-key' }
+            { name: 'DISCORD_QUOTE_CHANNEL_ID', value: '1541151654236389508' }
+            { name: 'DISCORD_QUOTE_ASSIGNEE_ID', value: '596759028995063818' }
+            { name: 'DISCORD_GUILD_ID', value: '1528950987757195298' }
+            { name: 'QUOTE_STALE_QUOTED_HOURS', value: '24' }
           ]
         }
       ]
