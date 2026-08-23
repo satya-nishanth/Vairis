@@ -46,7 +46,23 @@ const card: React.CSSProperties = {
   marginBottom: '1rem',
 }
 
-export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOption[] }) {
+type Quotation = {
+  id: string
+  displayId: string
+  orderType: string
+  details: string | null
+  customerName: string | null
+  customerMobile: string | null
+  screenshotUrls: string[]
+} | null
+
+export function ManualOrderForm({
+  variantOptions,
+  quotation = null,
+}: {
+  variantOptions: VariantOption[]
+  quotation?: Quotation
+}) {
   const router = useRouter()
 
   // Customer search
@@ -54,10 +70,12 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
   const [results, setResults] = useState<Customer[]>([])
   const [customer, setCustomer] = useState<Customer | null>(null)
 
-  // Address / contact
+  // Address / contact — prefilled from the quotation when converting one, still fully editable.
+  // The quotation's customerName/customerMobile are NOT a User account (see Task 13) — only the
+  // contact fields prefill; the admin still searches/picks the real customer account above.
   const [address, setAddress] = useState({
-    contactName: '',
-    contactPhone: '',
+    contactName: quotation?.customerName ?? '',
+    contactPhone: quotation?.customerMobile ?? '',
     addressLine1: '',
     addressLine2: '',
     city: '',
@@ -160,6 +178,7 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
           initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
           paymentNote: paymentNote || undefined,
           items: lines,
+          quotationId: quotation?.id,
         }),
       })
       const data = await res.json()
@@ -175,6 +194,28 @@ export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOpt
 
   return (
     <form onSubmit={submit}>
+      {quotation && (
+        <div style={{ ...card, background: '#f8fafc', borderStyle: 'dashed' }}>
+          <strong style={{ fontSize: '0.875rem' }}>Converting {quotation.displayId}</strong>
+          <p style={{ fontSize: '0.8125rem', margin: '8px 0 0' }}>
+            <strong>Type:</strong> {quotation.orderType}
+          </p>
+          {quotation.details && (
+            <p style={{ fontSize: '0.8125rem', margin: '4px 0 0' }}>
+              <strong>Details:</strong> {quotation.details}
+            </p>
+          )}
+          {quotation.screenshotUrls.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {quotation.screenshotUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="Quote screenshot" style={{ width: 80, height: 80, objectFit: 'cover' }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>1 · Customer</strong>
         <label style={label}>Search by email or name</label>
