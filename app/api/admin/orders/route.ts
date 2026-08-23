@@ -158,10 +158,19 @@ export async function POST(req: NextRequest) {
       const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
 
       if (quotation) {
-        await tx.quotation.update({
-          where: { id: quotation.id },
+        // Re-check status atomically at write time: the findUnique above is an
+        // unlocked SELECT under READ COMMITTED, so two concurrent converts of
+        // the same quotation can both pass that check. This conditional
+        // updateMany only flips QUOTED -> CONVERTED; if another transaction
+        // already moved it, count is 0 and we abort (rolling back the order
+        // we just created) instead of leaving two orders / an orphaned order.
+        const converted = await tx.quotation.updateMany({
+          where: { id: quotation.id, status: 'QUOTED' },
           data: { status: 'CONVERTED', orderId: created.id },
         })
+        if (converted.count === 0) {
+          throw new ConvertConflictError()
+        }
         quotationThreadId = quotation.discordThreadId
       }
 
