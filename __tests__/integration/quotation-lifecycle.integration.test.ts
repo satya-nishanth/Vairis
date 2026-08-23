@@ -326,4 +326,95 @@ describeIfConfigured('Quotation pipeline — real-database integration', () => {
     expect(dbRow?.reminderCount).toBe(3)
     expect(dbRow?.lastReminderAt?.toISOString()).toBe(lastReminderAt)
   })
+
+  // --- Step 6: TRUE concurrency — the race the claim-before-create fix closes ------------
+  //
+  // Everything above exercises the route sequentially, one await at a time — including "convert
+  // the same now-CONVERTED quotation again" in step 4, which is really "convert, THEN convert
+  // again" and can never observe two transactions genuinely overlapping mid-flight. That's
+  // exactly the gap: the original bug was that app/api/admin/orders/route.ts ran a fast unlocked
+  // quotation.findUnique, THEN order.create() (inserting a row with the @unique
+  // Order.quotationId), and only THEN the atomic updateMany guard. Under real simultaneous
+  // requests both transactions' findUnique could see QUOTED before either committed, so both
+  // proceeded to order.create() — the second insert would block on the unique index until the
+  // first committed, then fail with a raw Prisma P2002 (uncaught -> 500), not the clean
+  // ConvertConflictError -> 409 this test proves instead. The fix reorders the transaction so the
+  // conditional updateMany (the atomic claim) runs FIRST, before order.create() ever executes.
+  describe('convert-to-order race guard under real concurrency', () => {
+    // Own throwaway quotation fixture — reuses the User/ProductVariant fixtures created in the
+    // outer beforeAll, since this scenario only concerns the convert step, not intake.
+    let concurrencyQuotationId: string
+    let concurrencyOrderId: string | undefined
+
+    beforeAll(async () => {
+      const quotation = await prisma.quotation.create({
+        data: {
+          displayId: `Q-RACE-${RUN_ID}`,
+          source: 'MANUAL',
+          status: 'QUOTED',
+          orderType: 'CUSTOMISATION',
+          details: '[integration-test] concurrency race fixture — safe to delete',
+          quotedAmount: 40000,
+          quotedAt: new Date(),
+        },
+      })
+      concurrencyQuotationId = quotation.id
+    })
+
+    afterAll(async () => {
+      if (concurrencyOrderId) {
+        await prisma.orderItem.deleteMany({ where: { orderId: concurrencyOrderId } })
+        await prisma.order.deleteMany({ where: { id: concurrencyOrderId } })
+      }
+      await prisma.quotation.deleteMany({ where: { id: concurrencyQuotationId } })
+    })
+
+    function concurrencyOrderPayload() {
+      return {
+        userId: fixtureUserId,
+        contactName: 'Integration Test Customer (race)',
+        contactPhone: '9876543211',
+        addressLine1: '2 Integration Test Lane',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
+        initialStatus: 'PAYMENT_CONFIRMED' as const,
+        paymentNote: '[integration-test] race scenario',
+        quotationId: concurrencyQuotationId,
+        items: [{ variantId: fixtureVariantId, quantity: 1, unitPrice: 40000 }],
+      }
+    }
+
+    it('exactly one of two truly concurrent converts succeeds (201); the other gets a clean 409, never a 500', async () => {
+      // Fired via Promise.all — NOT sequential awaits — so both POST handlers' transactions are
+      // genuinely in flight at once against the real Postgres connection pool.
+      const [resA, resB] = await Promise.all([
+        postAdminOrder(jsonReq('http://localhost/api/admin/orders', 'POST', concurrencyOrderPayload())),
+        postAdminOrder(jsonReq('http://localhost/api/admin/orders', 'POST', concurrencyOrderPayload())),
+      ])
+
+      const statuses = [resA.status, resB.status].sort()
+      expect(statuses).toEqual([201, 409])
+
+      const winner = resA.status === 201 ? resA : resB
+      const loser = resA.status === 201 ? resB : resA
+
+      const winnerBody = await winner.json()
+      expect(winnerBody.orderId).toBeTruthy()
+      concurrencyOrderId = winnerBody.orderId
+
+      const loserBody = await loser.json()
+      expect(loserBody.orderId).toBeUndefined()
+
+      // No duplicate/orphan order: exactly one Order row references this quotationId.
+      const orders = await prisma.order.findMany({ where: { quotationId: concurrencyQuotationId } })
+      expect(orders).toHaveLength(1)
+      expect(orders[0].id).toBe(concurrencyOrderId)
+
+      // Quotation ended up CONVERTED, linked to the winning order — not left mid-limbo.
+      const dbQuotation = await prisma.quotation.findUnique({ where: { id: concurrencyQuotationId } })
+      expect(dbQuotation?.status).toBe('CONVERTED')
+      expect(dbQuotation?.orderId).toBe(concurrencyOrderId)
+    })
+  })
 })

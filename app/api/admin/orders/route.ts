@@ -106,11 +106,23 @@ export async function POST(req: NextRequest) {
   let result: { order: { id: string }; childOrderIds: string[] }
   try {
     result = await prisma.$transaction(async (tx) => {
-      const quotation = d.quotationId
-        ? await tx.quotation.findUnique({ where: { id: d.quotationId } })
-        : null
-      if (d.quotationId && (!quotation || quotation.status !== 'QUOTED')) {
-        throw new ConvertConflictError()
+      let quotation = null
+      if (d.quotationId) {
+        // Atomically claim the quotation FIRST, before creating the order. This must happen
+        // before order.create() — otherwise two truly concurrent requests can both pass a fast
+        // unlocked check and both attempt to insert an Order row, racing on Order.quotationId's
+        // unique constraint instead of failing cleanly here with a proper 409. Only one
+        // concurrent transaction can ever win this conditional update (Postgres serializes
+        // UPDATEs on the same row); the loser gets count===0 and throws before ever touching
+        // order creation.
+        const claimed = await tx.quotation.updateMany({
+          where: { id: d.quotationId, status: 'QUOTED' },
+          data: { status: 'CONVERTED' },
+        })
+        if (claimed.count === 0) {
+          throw new ConvertConflictError()
+        }
+        quotation = await tx.quotation.findUniqueOrThrow({ where: { id: d.quotationId } })
       }
 
       const created = await tx.order.create({
@@ -158,19 +170,12 @@ export async function POST(req: NextRequest) {
       const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
 
       if (quotation) {
-        // Re-check status atomically at write time: the findUnique above is an
-        // unlocked SELECT under READ COMMITTED, so two concurrent converts of
-        // the same quotation can both pass that check. This conditional
-        // updateMany only flips QUOTED -> CONVERTED; if another transaction
-        // already moved it, count is 0 and we abort (rolling back the order
-        // we just created) instead of leaving two orders / an orphaned order.
-        const converted = await tx.quotation.updateMany({
-          where: { id: quotation.id, status: 'QUOTED' },
-          data: { status: 'CONVERTED', orderId: created.id },
+        // status is already CONVERTED from the claim above — just link the orderId now that we
+        // have it.
+        await tx.quotation.update({
+          where: { id: quotation.id },
+          data: { orderId: created.id },
         })
-        if (converted.count === 0) {
-          throw new ConvertConflictError()
-        }
         quotationThreadId = quotation.discordThreadId
       }
 

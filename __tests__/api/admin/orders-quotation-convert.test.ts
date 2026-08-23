@@ -9,7 +9,12 @@ jest.mock('@/lib/prisma', () => ({
     user: { findUnique: jest.fn() },
     productVariant: { findMany: jest.fn() },
     order: { create: jest.fn() },
-    quotation: { findUnique: jest.fn(), updateMany: jest.fn() },
+    quotation: {
+      findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn((cb) => cb(prisma)),
   },
 }))
@@ -49,55 +54,59 @@ describe('POST /api/admin/orders — quotation conversion', () => {
   })
 
   it('converts a QUOTED quotation and closes its thread', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
-      id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
-    })
+    // The claim (updateMany) happens first now, before order.create — see
+    // app/api/admin/orders/route.ts. Once it reports count: 1 the transaction re-reads the row
+    // (now CONVERTED) to get discordThreadId, THEN creates the order, THEN links orderId back
+    // onto the quotation with a plain update.
     ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 1 })
+    ;(prisma.quotation.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+      id: 'q1', status: 'CONVERTED', discordThreadId: 'thread-1',
+    })
     ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123' })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(201)
+
+    // Claim happens BEFORE order.create — assert the call order, not just that both were called.
+    const updateManyOrder = (prisma.quotation.updateMany as jest.Mock).mock.invocationCallOrder[0]
+    const orderCreateOrder = (prisma.order.create as jest.Mock).mock.invocationCallOrder[0]
+    expect(updateManyOrder).toBeLessThan(orderCreateOrder)
+
     expect(prisma.quotation.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'q1', status: 'QUOTED' },
-        data: { status: 'CONVERTED', orderId: 'order-123' },
+        data: { status: 'CONVERTED' },
+      }),
+    )
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'q1' },
+        data: { orderId: 'order-123' },
       }),
     )
     expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('order-123'.slice(-8)))
   })
 
-  it('409s and rolls back when the quotation is converted by someone else between the read and the write', async () => {
-    // Fast-path check passes (still QUOTED at read time) ...
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
-      id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
-    })
-    // ... but a concurrent request already flipped it to CONVERTED before our
-    // updateMany runs, so the conditional write matches 0 rows.
+  it('409s and creates no order when the claim fails because the quotation is already CONVERTED', async () => {
+    // The conditional updateMany (where status: 'QUOTED') matches 0 rows for a quotation that's
+    // no longer QUOTED — this is now the ONLY status check; there's no separate unlocked read
+    // beforehand to race against, which is exactly the fix (see route.ts comment).
     ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 0 })
-    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-should-not-be-returned' })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(409)
     const data = await res.json()
     expect(data.orderId).toBeUndefined()
-    expect(prisma.quotation.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'q1', status: 'QUOTED' },
-        data: { status: 'CONVERTED', orderId: 'order-should-not-be-returned' },
-      }),
-    )
+    expect(prisma.quotation.findUniqueOrThrow).not.toHaveBeenCalled()
+    expect(prisma.order.create).not.toHaveBeenCalled()
     expect(quotations.closeThread).not.toHaveBeenCalled()
   })
 
-  it('409s and creates no order when the quotation is already CONVERTED', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
-    const res = await POST(req(baseBody({ quotationId: 'q1' })))
-    expect(res.status).toBe(409)
-    expect(prisma.order.create).not.toHaveBeenCalled()
-  })
+  it('409s and creates no order when the quotation is still REQUESTED (not yet QUOTED)', async () => {
+    // Same code path as the already-CONVERTED case: the where: { status: 'QUOTED' } clause on
+    // the claim simply doesn't match a REQUESTED row either, so count is 0.
+    ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 0 })
 
-  it('409s when the quotation is still REQUESTED (not yet QUOTED)', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(409)
     expect(prisma.order.create).not.toHaveBeenCalled()
@@ -107,7 +116,9 @@ describe('POST /api/admin/orders — quotation conversion', () => {
     ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-456' })
     const res = await POST(req(baseBody()))
     expect(res.status).toBe(201)
-    expect(prisma.quotation.findUnique).not.toHaveBeenCalled()
+    expect(prisma.quotation.updateMany).not.toHaveBeenCalled()
+    expect(prisma.quotation.findUniqueOrThrow).not.toHaveBeenCalled()
+    expect(prisma.quotation.update).not.toHaveBeenCalled()
     expect(quotations.closeThread).not.toHaveBeenCalled()
   })
 })
