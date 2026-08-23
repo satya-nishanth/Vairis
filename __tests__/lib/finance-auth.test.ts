@@ -1,7 +1,14 @@
-import { defaultFinancePerson, isFinanceEmail, requireFinance, requireFinanceApi } from '@/lib/finance-auth'
+import { isFinanceEmail, requireFinance, requireFinanceApi } from '@/lib/finance-auth'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 jest.mock('@/lib/supabase-server')
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    financeAccount: {
+      findFirst: jest.fn(),
+    },
+  },
+}))
 jest.mock('next/navigation', () => ({
   redirect: jest.fn().mockImplementation((url: string) => {
     throw new Error(`REDIRECT:${url}`)
@@ -32,14 +39,6 @@ describe('isFinanceEmail', () => {
   it('allows listed finance emails only', () => {
     expect(isFinanceEmail('anil@thevairis.com')).toBe(true)
     expect(isFinanceEmail('nishi@thevairis.com')).toBe(false)
-  })
-})
-
-describe('defaultFinancePerson', () => {
-  it('maps local-part to partner', () => {
-    expect(defaultFinancePerson('surya@thevairis.com')).toBe('SURYA')
-    expect(defaultFinancePerson('vasu@example.com')).toBe('VASU')
-    expect(defaultFinancePerson('anil@thevairis.com')).toBe('ANIL')
   })
 })
 

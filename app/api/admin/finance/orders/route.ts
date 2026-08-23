@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
-import { FINANCE_LINE_KINDS, sheetTotals } from '@/lib/finance'
+import { financeActorFromSession, logFinanceAudit } from '@/lib/finance-audit'
+import { FINANCE_LINE_KINDS, sheetTotals, shortFinanceId } from '@/lib/finance'
 import type { FinanceLineKind } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
-
-const PAID_TO = ['VAIRIS_BANK', 'ANIL', 'SURYA', 'VASU'] as const
 
 const lineSchema = z.object({
   kind: z.enum(FINANCE_LINE_KINDS),
@@ -17,14 +16,14 @@ const lineSchema = z.object({
 
 const upsertSchema = z.object({
   orderId: z.string().min(1),
-  customerPaidTo: z.enum(PAID_TO),
+  paidToAccountId: z.string().min(1, 'Paid-to account is required'),
   lines: z.array(lineSchema).min(1, 'Add at least one line'),
 })
 
 function serialize(row: {
   id: string
   orderId: string
-  customerPaidTo: string
+  paidToAccountId: string
   createdAt: Date
   updatedAt: Date
   lines: {
@@ -34,6 +33,7 @@ function serialize(row: {
     sellingPrice: { toString(): string } | number
     sortOrder: number
   }[]
+  paidToAccount?: { id: string; name: string }
   order?: { contactName: string; createdAt: Date; grandTotal: { toString(): string } | number }
 }) {
   const lines = [...row.lines]
@@ -48,7 +48,10 @@ function serialize(row: {
   return {
     id: row.id,
     orderId: row.orderId,
-    customerPaidTo: row.customerPaidTo,
+    paidToAccountId: row.paidToAccountId,
+    paidToAccountName: row.paidToAccount?.name ?? null,
+    // legacy alias for older clients during transition
+    customerPaidTo: row.paidToAccountId,
     lines,
     cost: totals.cost,
     sellingPrice: totals.selling,
@@ -67,12 +70,24 @@ function serialize(row: {
 
 const sheetInclude = {
   lines: true,
+  paidToAccount: { select: { id: true, name: true } },
   order: { select: { contactName: true, createdAt: true, grandTotal: true } },
 } as const
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const gate = await requireFinanceApi()
   if (gate.error) return gate.error
+
+  const orderId = req.nextUrl.searchParams.get('orderId')?.trim()
+  if (orderId) {
+    const row = await prisma.orderFinance.findUnique({
+      where: { orderId },
+      include: sheetInclude,
+    })
+    if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json(serialize(row))
+  }
+
   const rows = await prisma.orderFinance.findMany({
     orderBy: { updatedAt: 'desc' },
     include: sheetInclude,
@@ -90,12 +105,21 @@ export async function POST(req: NextRequest) {
   const d = parsed.data
   const order = await prisma.order.findUnique({ where: { id: d.orderId }, select: { id: true } })
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  const account = await prisma.financeAccount.findFirst({
+    where: { id: d.paidToAccountId, active: true },
+  })
+  if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 400 })
+
+  const prior = await prisma.orderFinance.findUnique({
+    where: { orderId: d.orderId },
+    include: sheetInclude,
+  })
 
   const row = await prisma.$transaction(async (tx) => {
     const sheet = await tx.orderFinance.upsert({
       where: { orderId: d.orderId },
-      create: { orderId: d.orderId, customerPaidTo: d.customerPaidTo },
-      update: { customerPaidTo: d.customerPaidTo },
+      create: { orderId: d.orderId, paidToAccountId: d.paidToAccountId },
+      update: { paidToAccountId: d.paidToAccountId },
     })
     await tx.orderFinanceLine.deleteMany({ where: { sheetId: sheet.id } })
     await tx.orderFinanceLine.createMany({
@@ -112,5 +136,19 @@ export async function POST(req: NextRequest) {
       include: sheetInclude,
     })
   })
-  return NextResponse.json(serialize(row))
+  const after = serialize(row)
+  await logFinanceAudit({
+    actor: financeActorFromSession(gate.session),
+    action: prior ? 'UPDATE' : 'CREATE',
+    entityType: 'ORDER_SHEET',
+    entityId: row.id,
+    objectLabel: shortFinanceId(after.orderId || d.orderId),
+    objectHref: `/admin/finance/orders?orderId=${encodeURIComponent(d.orderId)}`,
+    summary: prior
+      ? `Updated order sheet ${shortFinanceId(d.orderId)} (SP ₹${after.sellingPrice.toLocaleString('en-IN')})`
+      : `Created order sheet ${shortFinanceId(d.orderId)} (SP ₹${after.sellingPrice.toLocaleString('en-IN')})`,
+    before: prior ? serialize(prior) : undefined,
+    after,
+  })
+  return NextResponse.json(after)
 }

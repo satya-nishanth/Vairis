@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { initiateRefund, statusAfterRefund } from "@/lib/refunds";
 import { autoSplitOrder } from "@/lib/split";
+import { createAutoOrderPaymentInflow } from "@/lib/finance-auto-inflow";
 import type { Prisma } from "@prisma/client";
 import type { PaymentWebhookEvent } from "./types";
 
@@ -82,6 +83,13 @@ export async function confirmPayment(
       // Multi-item orders split into one child order per line item,
       // atomically with confirmation (lib/split.ts).
       await autoSplitOrder(tx, payment.orderId);
+      // Cashbook INFLOW (Vairis Bank / Customer payment) — order grandTotal,
+      // not order-sheet selling. Linked to the payment parent order.
+      await createAutoOrderPaymentInflow(tx, {
+        orderId: payment.orderId,
+        amount: Number(payment.order.grandTotal),
+        contactName: payment.order.contactName,
+      });
     });
     // Fire-and-forget — the idempotency guard above means exactly one send
     // even when verify and the webhook race.

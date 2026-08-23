@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getSession, requireAdmin } from './auth'
 import { NextResponse } from 'next/server'
-import type { FinancePerson } from '@prisma/client'
+import { prisma } from './prisma'
 
 export function financeEmails(): string[] {
   return (process.env.FINANCE_EMAILS ?? '')
@@ -15,12 +15,14 @@ export function isFinanceEmail(email: string | null | undefined): boolean {
   return financeEmails().includes(email.toLowerCase())
 }
 
-/** Map login email to Anil / Surya / Vasu for the default contributor. */
-export function defaultFinancePerson(email: string): FinancePerson {
-  const local = email.split('@')[0]?.toLowerCase() ?? ''
-  if (local.includes('surya')) return 'SURYA'
-  if (local.includes('vasu')) return 'VASU'
-  return 'ANIL'
+/** Resolve Config Account for this login email (partner default). */
+export async function defaultFinanceAccountId(email: string | null | undefined): Promise<string | null> {
+  if (!email) return null
+  const account = await prisma.financeAccount.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' }, active: true },
+    select: { id: true },
+  })
+  return account?.id ?? null
 }
 
 export async function requireFinance() {

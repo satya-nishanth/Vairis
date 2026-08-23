@@ -50,10 +50,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       data-theme={DEFAULT_SITE_THEME}
       suppressHydrationWarning
     >
-      <head>
-        <ThemeInitScript />
-      </head>
       <body suppressHydrationWarning>
+        {/* beforeInteractive — Next injects into <head>; avoids React 19 raw <script> warning */}
+        <ThemeInitScript />
         {GA_ID && (
           <>
             <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />

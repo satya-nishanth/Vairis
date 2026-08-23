@@ -1,0 +1,41 @@
+import { prisma } from '@/lib/prisma'
+import { FinanceConfigClient } from '@/components/admin/FinanceConfigClient'
+
+export const dynamic = 'force-dynamic'
+
+export default async function FinanceConfigPage() {
+  const [accounts, contacts, categories] = await Promise.all([
+    prisma.financeAccount.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.financeContact.findMany({ orderBy: { name: 'asc' } }),
+    prisma.financeCategory.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+  ])
+
+  return (
+    <FinanceConfigClient
+      accounts={accounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        type: a.type,
+        active: a.active,
+        sortOrder: a.sortOrder,
+      }))}
+      contacts={contacts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        email: c.email,
+        phone: c.phone,
+        notes: c.notes,
+        active: c.active,
+      }))}
+      categories={categories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        direction: c.direction,
+        active: c.active,
+        sortOrder: c.sortOrder,
+      }))}
+    />
+  )
+}

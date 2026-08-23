@@ -17,16 +17,17 @@ export async function GET(req: NextRequest) {
     range = istMonthUtcRange(Number(m[1]), Number(m[2]))
   }
 
-  const [expenses, sheets] = await Promise.all([
+  const [expenses, sheets, accounts] = await Promise.all([
     prisma.generalExpense.findMany(),
     prisma.orderFinance.findMany({ include: { order: { select: { createdAt: true } }, lines: true } }),
+    prisma.financeAccount.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
   ])
 
   const expenseRows: ExpenseRow[] = expenses.map((e) => ({
     date: e.date,
     amount: Number(e.amount),
     paidThrough: e.paidThrough,
-    contributor: e.contributor,
+    accountId: e.accountId,
   }))
   const sheetRows: OrderSheetRow[] = sheets.map((s) => {
     const totals = sheetTotals(
@@ -40,9 +41,16 @@ export async function GET(req: NextRequest) {
       orderCreatedAt: s.order.createdAt,
       cost: totals.cost,
       sellingPrice: totals.selling,
-      customerPaidTo: s.customerPaidTo,
+      paidToAccountId: s.paidToAccountId,
     }
   })
 
-  return NextResponse.json(summarizeFinance(expenseRows, sheetRows, range))
+  return NextResponse.json(
+    summarizeFinance(
+      expenseRows,
+      sheetRows,
+      accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
+      range,
+    ),
+  )
 }

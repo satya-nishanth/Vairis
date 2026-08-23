@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PERSON_LABEL, toDateInput } from '@/lib/finance'
-import type { FinancePerson } from '@prisma/client'
+import { toDateInput } from '@/lib/finance'
+
+type AccountOpt = { id: string; name: string }
 
 type Expense = {
   id: string
@@ -11,7 +12,8 @@ type Expense = {
   description: string
   amount: number
   paidThrough: 'VAIRIS_BANK' | 'PERSONAL_FUNDS'
-  contributor: FinancePerson | null
+  accountId: string | null
+  accountName: string | null
 }
 
 const input: React.CSSProperties = {
@@ -23,10 +25,12 @@ const input: React.CSSProperties = {
 
 export function ExpenseManager({
   initial,
-  defaultPerson,
+  accounts,
+  defaultAccountId,
 }: {
   initial: Expense[]
-  defaultPerson: FinancePerson
+  accounts: AccountOpt[]
+  defaultAccountId: string | null
 }) {
   const router = useRouter()
   const [rows, setRows] = useState(initial)
@@ -35,7 +39,7 @@ export function ExpenseManager({
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [paidThrough, setPaidThrough] = useState<'VAIRIS_BANK' | 'PERSONAL_FUNDS'>('VAIRIS_BANK')
-  const [contributor, setContributor] = useState<FinancePerson>(defaultPerson)
+  const [accountId, setAccountId] = useState(defaultAccountId ?? accounts[0]?.id ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -47,7 +51,7 @@ export function ExpenseManager({
     setDescription(row.description)
     setAmount(String(row.amount))
     setPaidThrough(row.paidThrough)
-    setContributor(row.contributor ?? defaultPerson)
+    setAccountId(row.accountId ?? defaultAccountId ?? accounts[0]?.id ?? '')
   }
 
   function reset() {
@@ -56,7 +60,7 @@ export function ExpenseManager({
     setDescription('')
     setAmount('')
     setPaidThrough('VAIRIS_BANK')
-    setContributor(defaultPerson)
+    setAccountId(defaultAccountId ?? accounts[0]?.id ?? '')
     setError('')
   }
 
@@ -69,7 +73,8 @@ export function ExpenseManager({
       description,
       amount: Number(amount),
       paidThrough,
-      contributor: paidThrough === 'PERSONAL_FUNDS' ? contributor : null,
+      // Account = who is accountable; allowed with company bank ("I paid through company")
+      accountId: accountId || null,
     }
     try {
       const res = await fetch(
@@ -126,24 +131,26 @@ export function ExpenseManager({
           <input style={input} value={description} onChange={(e) => setDescription(e.target.value)} required />
         </label>
         <label style={{ display: 'block', marginTop: 12 }}>
-          Paid through
+          Account (who is accountable)
+          <select style={input} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="">— None —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'block', marginTop: 12 }}>
+          Paid through (which wallet moved)
           <select style={input} value={paidThrough} onChange={(e) => setPaidThrough(e.target.value as typeof paidThrough)}>
-            <option value="VAIRIS_BANK">Vairis bank</option>
+            <option value="VAIRIS_BANK">Company bank</option>
             <option value="PERSONAL_FUNDS">Personal funds</option>
           </select>
         </label>
-        {paidThrough === 'PERSONAL_FUNDS' && (
-          <label style={{ display: 'block', marginTop: 12 }}>
-            Contributor
-            <select style={input} value={contributor} onChange={(e) => setContributor(e.target.value as FinancePerson)}>
-              {(['ANIL', 'SURYA', 'VASU'] as const).map((p) => (
-                <option key={p} value={p}>
-                  {PERSON_LABEL[p]}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '8px 0 0' }}>
+          Example: Account = you, Paid through = company bank → you arranged it, company paid.
+        </p>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <button type="submit" className="admin-btn" disabled={saving}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add expense'}
@@ -162,14 +169,15 @@ export function ExpenseManager({
             <th style={{ textAlign: 'left', padding: 10 }}>Date</th>
             <th style={{ textAlign: 'left', padding: 10 }}>Description</th>
             <th style={{ textAlign: 'right', padding: 10 }}>Amount</th>
-            <th style={{ textAlign: 'left', padding: 10 }}>Paid through</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Account</th>
+            <th style={{ textAlign: 'left', padding: 10 }}>Through</th>
             <th style={{ padding: 10 }} />
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>
+              <td colSpan={6} style={{ padding: 16, color: '#6b7280' }}>
                 No expenses yet.
               </td>
             </tr>
@@ -179,11 +187,8 @@ export function ExpenseManager({
               <td style={{ padding: 10 }}>{toDateInput(new Date(r.date))}</td>
               <td style={{ padding: 10 }}>{r.description}</td>
               <td style={{ padding: 10, textAlign: 'right' }}>₹{r.amount.toLocaleString('en-IN')}</td>
-              <td style={{ padding: 10 }}>
-                {r.paidThrough === 'PERSONAL_FUNDS'
-                  ? `Personal · ${r.contributor ? PERSON_LABEL[r.contributor] : '—'}`
-                  : 'Vairis bank'}
-              </td>
+              <td style={{ padding: 10 }}>{r.accountName ?? '—'}</td>
+              <td style={{ padding: 10 }}>{r.paidThrough === 'PERSONAL_FUNDS' ? 'Personal' : 'Company'}</td>
               <td style={{ padding: 10, whiteSpace: 'nowrap' }}>
                 <button type="button" className="admin-btn" onClick={() => load(r)} style={{ marginRight: 8 }}>
                   Edit

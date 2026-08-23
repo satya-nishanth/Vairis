@@ -73,6 +73,7 @@ export function AdminSidebar({ showFinance = false }: { showFinance?: boolean })
           className="admin-shell__menu-btn"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
+          aria-controls="admin-shell-drawer"
           onClick={() => setOpen((v) => !v)}
         >
           <span className={open ? 'admin-shell__burger is-open' : 'admin-shell__burger'} />
@@ -96,7 +97,10 @@ export function AdminSidebar({ showFinance = false }: { showFinance?: boolean })
       )}
 
       {/* Sidebar / drawer */}
-      <aside className={open ? 'admin-shell__sidebar is-open' : 'admin-shell__sidebar'}>
+      <aside
+        id="admin-shell-drawer"
+        className={open ? 'admin-shell__sidebar is-open' : 'admin-shell__sidebar'}
+      >
         <div className="admin-shell__brand">
           <Link href="/">
             <img src="/images/vairius_logo.png" alt="VAIRIS" />
