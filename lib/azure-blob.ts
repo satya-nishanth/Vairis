@@ -10,7 +10,11 @@ function getBlobServiceClient() {
   const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME!
   blobServiceClient = new BlobServiceClient(
     `https://${accountName}.blob.core.windows.net`,
-    new DefaultAzureCredential()
+    // Explicit managedIdentityClientId required: the container app has only a
+    // user-assigned identity (no system-assigned one), which DefaultAzureCredential
+    // can't disambiguate on its own — it fails the whole chain with
+    // CredentialUnavailableError otherwise.
+    new DefaultAzureCredential({ managedIdentityClientId: process.env.AZURE_CLIENT_ID })
   )
   return blobServiceClient
 }
