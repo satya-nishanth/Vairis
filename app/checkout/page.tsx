@@ -17,8 +17,8 @@ import { track } from "@/lib/analytics-client";
 /**
  * Checkout — real order + gateway payment.
  *
- * Money model: customer pays exactly the displayed total (pricing v2 —
- * the breakup incl. Value Addition is computed server-side per line).
+ * Money model: customer pays exactly the displayed total
+ * (wastage + 3% GST, computed server-side per line).
  *
  * The server decides the gateway (lib/payments); this page receives
  * `{ gateway, clientParams }` from /api/checkout and hands clientParams to
@@ -44,6 +44,7 @@ type AddressForm = {
   city: string;
   state: string;
   pincode: string;
+  country: string;
 };
 
 const EMPTY_ADDRESS: AddressForm = {
@@ -54,6 +55,7 @@ const EMPTY_ADDRESS: AddressForm = {
   city: "",
   state: "",
   pincode: "",
+  country: "IN",
 };
 
 type CheckoutResponse = {
@@ -73,6 +75,7 @@ type SavedAddress = {
   city: string;
   state: string;
   pincode: string;
+  country: string;
   isDefault: boolean;
 };
 
@@ -130,6 +133,7 @@ export default function CheckoutPage() {
       city: a.city,
       state: a.state,
       pincode: a.pincode,
+      country: a.country,
     });
   }
 
@@ -241,6 +245,7 @@ export default function CheckoutPage() {
             city: address.city,
             state: address.state,
             pincode: address.pincode,
+            country: address.country,
           }),
         }).catch(() => {});
       }
@@ -386,6 +391,42 @@ export default function CheckoutPage() {
                 </div>
               )}
 
+              <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+                <label>
+                  <input
+                    type="radio"
+                    name="co-country-mode"
+                    checked={address.country === "IN"}
+                    onChange={() => setAddress((a) => ({ ...a, country: "IN" }))}
+                  />{" "}
+                  India
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="co-country-mode"
+                    checked={address.country !== "IN"}
+                    onChange={() => setAddress((a) => ({ ...a, country: a.country === "IN" ? "" : a.country }))}
+                  />{" "}
+                  International
+                </label>
+              </div>
+              {address.country !== "IN" && (
+                <div className="form-group">
+                  <label htmlFor="co-country">Country</label>
+                  <input
+                    className="form-input"
+                    id="co-country"
+                    type="text"
+                    required
+                    minLength={2}
+                    value={address.country}
+                    onChange={set("country")}
+                    autoComplete="country-name"
+                  />
+                </div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="co-name">Full Name</label>
                 <input
@@ -407,8 +448,8 @@ export default function CheckoutPage() {
                     id="co-phone"
                     type="tel"
                     required
-                    pattern="\d{10}"
-                    title="10-digit mobile number"
+                    pattern={address.country === "IN" ? "\\d{10}" : undefined}
+                    title={address.country === "IN" ? "10-digit mobile number" : undefined}
                     value={address.contactPhone}
                     onChange={set("contactPhone")}
                     autoComplete="tel-national"
@@ -421,8 +462,8 @@ export default function CheckoutPage() {
                     id="co-pin"
                     type="text"
                     required
-                    pattern="\d{6}"
-                    title="6-digit pincode"
+                    pattern={address.country === "IN" ? "\\d{6}" : undefined}
+                    title={address.country === "IN" ? "6-digit pincode" : undefined}
                     value={address.pincode}
                     onChange={set("pincode")}
                     autoComplete="postal-code"

@@ -30,6 +30,21 @@ param customCertificateName string = ''
 @description('True when deploying the prod environment — lets modules size themselves differently per environment')
 var isProd = environmentName == 'prod'
 
+// Staging-only rehearsal toggle: real Sequel247 UAT + real Razorpay test-mode
+// keys, so a real checkout can be verified end-to-end before going live.
+// Purely a bicep-internal conditional on environmentName — no azd env var
+// dependency, so prod's `azd provision` can never break because of this.
+// Flip stagingLiveTest back to false (or delete this block) once the
+// rehearsal is done and staging should go back to fully mocked.
+var stagingLiveTest = environmentName == 'staging'
+var paymentGatewayValue = stagingLiveTest ? 'razorpay' : 'mock'
+var shippingProviderValue = stagingLiveTest ? 'sequel247' : 'manual'
+var shippingMockValue = stagingLiveTest ? 'false' : 'true'
+var checkoutEnabledValue = stagingLiveTest ? 'true' : 'false'
+var razorpayKeyIdValue = stagingLiveTest ? 'rzp_test_TS6pvxxHDPCyqm' : ''
+var sequel247BaseUrlValue = stagingLiveTest ? 'https://test.sequel247.com' : ''
+var sequel247StoreCodeValue = stagingLiveTest ? 'HYDVFJ' : ''
+
 var resourceGroupName = 'rg-vairis-${environmentName}'
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {

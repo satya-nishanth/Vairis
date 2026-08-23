@@ -10,6 +10,7 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Products', href: '/admin/products' },
   { label: 'Orders', href: '/admin/orders' },
   { label: 'Finance', href: '/admin/finance', financeOnly: true },
+  { label: 'Invoices', href: '/admin/invoices' },
   { label: 'Content', href: '/admin/content' },
   { label: 'Collections', href: '/admin/collections' },
   { label: 'Home Sections', href: '/admin/sections' },

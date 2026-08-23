@@ -1,20 +1,23 @@
 /**
- * Pricing v2 — single source of truth for retail price computation.
+ * Pricing — single source of truth for retail price computation.
  *
- * total = goldValue + goldVA + making + stoneValue + stoneVA + misc + GST
+ * Matches the jewellery estimator (wastage on gold only, 3% GST on full taxable):
  *
- *   goldValue  = weight × goldRatePerGram          (true weight, always)
- *   goldVA     = goldValue × vaGoldPct             (disclosed Value Addition line)
+ *   goldValue  = weight × goldRatePerGram
+ *   wastage    = goldValue × vaGoldPct            (gold only; default 10%)
  *   making     = weight × makingChargePerGram + flatMakingCharge
- *   stoneValue = Σ stones(carat × per-carat rate[exchange]) + legacy flat stoneCharges
- *   stoneVA    = stoneValue × vaStonePct           (disclosed)
- *   GST        = (goldValue + goldVA + stoneValue + stoneVA) × 3% + making × 5%
+ *   stoneValue = Σ stones(carat × per-carat rate[exchange]) + legacy stoneCharges [+ leadIncentive]
+ *   taxable    = goldValue + wastage + making + stoneValue + misc
+ *   GST        = taxable × 3%
+ *   total      = taxable + GST
  *
- * VA percentages + label come from PricingSettings (admin-editable).
+ * goldVA on the breakdown IS wastage (same field). stoneVA is always 0.
+ * Wastage % + label come from PricingSettings (admin-editable).
  * Diamond per-carat rates come from DiamondRate (with/without exchange).
- * Every number shown to the customer is real — weights and carats are never
- * adjusted. VA is a visible line on the breakup.
+ * Weights and carats shown to the customer are always the true values.
  */
+
+export const GST_RATE = 0.03
 
 export interface PricingConfig {
   vaGoldPct: number
@@ -23,9 +26,9 @@ export interface PricingConfig {
 }
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
-  vaGoldPct: 5,
-  vaStonePct: 5,
-  vaLabel: 'Value Addition',
+  vaGoldPct: 10,
+  vaStonePct: 0,
+  vaLabel: 'Wastage',
 }
 
 export interface StoneInput {
@@ -48,14 +51,17 @@ export interface StoneLine {
 
 export interface PriceBreakdown {
   goldValue: number
+  /** Wastage on gold value (legacy field name goldVA). */
   goldVA: number
   making: number
   stoneValue: number
   stoneLines: StoneLine[]
+  /** Always 0 — stone VA is not part of the estimator formula. */
   stoneVA: number
   vaTotal: number
   vaLabel: string
   miscCharges: number
+  taxable: number
   gst: number
   total: number
   withExchange: boolean
@@ -77,11 +83,13 @@ export function calculatePrice(
     stones?: StoneInput[]
     withExchange?: boolean
     config?: PricingConfig
+    leadIncentive?: number
   },
 ): PriceBreakdown {
   const config = options?.config ?? DEFAULT_PRICING_CONFIG
   const withExchange = options?.withExchange ?? false
   const stones = options?.stones ?? []
+  const leadIncentive = Number(options?.leadIncentive ?? 0)
 
   const weight = Number(variant.weightGrams)
   const goldValue = weight * goldRatePerGram
@@ -99,11 +107,13 @@ export function calculatePrice(
     }
   })
   const legacyStones = Number(variant.stoneCharges)
-  const stoneValue = stoneLines.reduce((sum, l) => sum + l.value, 0) + legacyStones
-  const stoneVA = stoneValue * (Number(config.vaStonePct) / 100)
+  const stoneValue =
+    stoneLines.reduce((sum, l) => sum + l.value, 0) + legacyStones + leadIncentive
 
   const misc = Number(variant.miscCharges)
-  const gst = (goldValue + goldVA + stoneValue + stoneVA) * 0.03 + making * 0.05
+  const stoneVA = 0
+  const taxable = goldValue + goldVA + making + stoneValue + misc
+  const gst = taxable * GST_RATE
 
   return {
     goldValue,
@@ -112,11 +122,12 @@ export function calculatePrice(
     stoneValue,
     stoneLines,
     stoneVA,
-    vaTotal: goldVA + stoneVA,
-    vaLabel: config.vaLabel,
+    vaTotal: goldVA,
+    vaLabel: config.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
     miscCharges: misc,
+    taxable,
     gst,
-    total: goldValue + goldVA + making + stoneValue + stoneVA + misc + gst,
+    total: taxable + gst,
     withExchange,
   }
 }

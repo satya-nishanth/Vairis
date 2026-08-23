@@ -12,6 +12,19 @@ param customDomainFqdn string = ''
 @description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued (DNS TXT/CNAME verified) before this deploys.')
 param customCertificateName string = ''
 
+// Payment/shipping toggles — default to the always-safe mocked values so any
+// future caller of this module that doesn't pass them explicitly gets today's
+// behavior, not a surprise. main.bicep drives these per-environment.
+param paymentGateway string = 'mock'
+param shippingProvider string = 'manual'
+param shippingMock string = 'true'
+param checkoutEnabled string = 'false'
+param razorpayKeyId string = ''
+param sequel247BaseUrl string = ''
+param sequel247StoreCode string = ''
+@description('True only when secretRefs actually contains razorpay-key-secret/razorpay-webhook-secret/sequel247-token — gates the matching env entries so they never reference a secret name absent from secretRefs (Container Apps fails validation otherwise).')
+param hasStagingSecrets bool = false
+
 var isProd = environmentName == 'prod'
 var certificateResourceId = !empty(customCertificateName) ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', 'cae-vairis-${environmentName}', customCertificateName) : ''
 var customDomains = !empty(customDomainFqdn) ? [{ name: customDomainFqdn, certificateId: certificateResourceId, bindingType: 'SniEnabled' }] : []

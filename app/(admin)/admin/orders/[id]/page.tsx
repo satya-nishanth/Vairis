@@ -47,7 +47,7 @@ export default async function AdminOrderDetailPage({
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
-  const provider = getShippingProvider()
+  const provider = getShippingProvider(order.country)
 
   const card: React.CSSProperties = {
     background: '#fff',
@@ -77,6 +77,9 @@ export default async function AdminOrderDetailPage({
         <span style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#032b24' }}>
           {ORDER_STATUS_META[order.status].label}
         </span>
+        <Link href={`/admin/invoices/new?orderId=${order.id}`} className="admin-btn">
+          Generate invoice
+        </Link>
       </div>
 
       {order.parentOrderId && (
@@ -111,6 +114,8 @@ export default async function AdminOrderDetailPage({
           }
           offline={!resolvedPayment}
           shippingSupportsBooking={provider.supportsBooking}
+          intlReviewRequired={order.intlReviewRequired}
+          intlReviewApproved={order.intlReviewApproved}
         />
       )}
 
@@ -196,6 +201,12 @@ export default async function AdminOrderDetailPage({
             {order.addressLine2 ? `, ${order.addressLine2}` : ''}
             <br />
             {order.city}, {order.state} — {order.pincode}
+            {order.country !== 'IN' && (
+              <>
+                <br />
+                Country: <strong>{order.country}</strong>
+              </>
+            )}
           </p>
         </div>
 

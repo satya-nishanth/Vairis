@@ -11,7 +11,7 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Collections `/collections/[slug]` | ✅ | Curated product edits with own landing page, hero, SEO copy; `/admin/collections`; optional nav pin |
 | Product detail page (gallery incl. video, variant selector, live gold-rate pricing) | ✅ | Sticky gallery, mobile swipe + sticky buy bar, size selector, metal selector |
 | Multi-diamond products with per-carat pricing | ✅ | Any number of stones per product (type + carat, count/label optional); with/without-exchange toggle on PDP |
-| GST-correct dynamic pricing from live gold rates + disclosed Value Addition | ✅ | `lib/pricing.ts` — locked formula; VA % (gold + stone) admin-editable at `/admin/settings/pricing`, always shown as its own breakup line |
+| GST-correct dynamic pricing from live gold rates + disclosed wastage | ✅ | `lib/pricing.ts` — wastage % on gold (default 10%) + 3% GST on taxable; admin-editable at `/admin/settings/pricing` |
 | Live search | ✅ | `/api/search`; debounced results in header overlay, zero-result queries logged for merchandising |
 | Light/dark theme | ✅ | Token CSS system, audited both themes |
 | Wishlist (guest localStorage + synced server-side when logged in) | ✅ | |
@@ -59,12 +59,13 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Product CRUD (variants incl. size, diamonds, status DRAFT/AI_DRAFT/LIVE) | ✅ | Draft/AI Draft only require a title; going LIVE enforces ≥1 variant; live price estimate incl. VA + diamonds |
-| Pricing settings (VA %, diamond per-carat rates with/without exchange) | ✅ | `/admin/settings/pricing` |
+| Product CRUD (variants incl. size, diamonds, status DRAFT/AI_DRAFT/LIVE) | ✅ | Draft/AI Draft only require a title; going LIVE enforces ≥1 variant; live price estimate incl. wastage + diamonds |
+| Pricing settings (wastage % on gold, diamond per-carat rates with/without exchange) | ✅ | `/admin/settings/pricing` |
 | Collections manager | ✅ | `/admin/collections` |
 | Home sections manager (ordered, schedulable blocks) | ✅ | `/admin/sections` — collection rail, editorial banner, video, USP strip |
 | Order management (filterable list, guarded status transitions, manual shipping entry, auto-booking) | ✅ | |
 | Manual order entry for WhatsApp/offline sales | ✅ | /admin/orders/new |
+| Tax invoices (from order or blank, print/PDF, CGST/SGST/IGST) | ✅ | `/admin/invoices` |
 | Refund buttons (deposit legacy / full) | 🟡 | Needs Razorpay keys (mock works today) |
 | Site content editor (promo bar w/ rotating messages, home hero, category heroes) | ✅ | |
 | Promo codes manager | ✅ | `/admin/promos` |
