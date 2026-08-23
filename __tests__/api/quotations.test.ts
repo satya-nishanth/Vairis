@@ -63,6 +63,47 @@ describe('POST /api/quotations', () => {
     expect(mockPrisma.quotation.create).not.toHaveBeenCalled()
   })
 
+  it('posts a second (different-product) enquiry into the existing thread and appends details', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([{ id: 'existing-2' }])
+    ;(prisma as any).quotation.findUniqueOrThrow = jest.fn().mockResolvedValue({
+      id: 'existing-2', displayId: 'Q-EXST', status: 'REQUESTED', customerName: 'Asha', customerMobile: '919876543210',
+      discordThreadId: 'thread-old', details: 'Interested in Pavé Solitaire Ring',
+    })
+    mockPrisma.quotation.update.mockResolvedValue({})
+
+    const res = await POST(req({
+      customerName: 'Asha', customerMobile: '919876543210', details: 'Interested in Blue Topaz Heart Ring',
+    }))
+
+    expect(res.status).toBe(200)
+    expect(quotations.postToThread).toHaveBeenCalledWith(
+      'thread-old',
+      expect.stringContaining('Blue Topaz Heart Ring'),
+    )
+    expect(mockPrisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'existing-2' },
+        data: expect.objectContaining({ details: expect.stringContaining('Blue Topaz Heart Ring') }),
+      }),
+    )
+  })
+
+  it('does not try Discord for a second enquiry when the existing quotation has no thread yet, but still records details', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([{ id: 'existing-3' }])
+    ;(prisma as any).quotation.findUniqueOrThrow = jest.fn().mockResolvedValue({
+      id: 'existing-3', displayId: 'Q-NOTH', status: 'REQUESTED', customerMobile: '919876543210', discordThreadId: null, details: null,
+    })
+    mockPrisma.quotation.update.mockResolvedValue({})
+
+    const res = await POST(req({ customerName: 'Asha', customerMobile: '919876543210', details: 'second product' }))
+
+    expect(res.status).toBe(200)
+    expect(quotations.postToThread).not.toHaveBeenCalled()
+    expect(mockPrisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ details: expect.stringContaining('second product') }) }),
+    )
+  })
+
   it('still returns 201 when Discord thread creation fails', async () => {
     mockPrisma.$queryRaw.mockResolvedValue([])
     mockPrisma.quotation.create.mockResolvedValue({

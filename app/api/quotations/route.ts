@@ -69,6 +69,27 @@ export async function POST(req: NextRequest) {
       // Never blocks the response — reminderPoll retries thread creation (a later task).
       console.error('[api/quotations] Discord thread creation failed', err)
     }
+  } else if (d.details) {
+    // Dedup returned an already-open quotation (one per mobile) — this is a second enquiry,
+    // possibly for a different product. Record it instead of silently dropping it: append to
+    // the quotation's details and, if the thread exists, post it there too so the assignee sees
+    // both. Doesn't create a second quotation/thread — that stays one-per-mobile per spec.
+    const appendedDetails = [result.quotation.details, d.details].filter(Boolean).join('\n---\n')
+    try {
+      await prisma.quotation.update({
+        where: { id: result.quotation.id },
+        data: { details: appendedDetails },
+      })
+      result.quotation = { ...result.quotation, details: appendedDetails }
+      if (result.quotation.discordThreadId) {
+        await postToThread(
+          result.quotation.discordThreadId,
+          `${mentionAssignee()} Additional enquiry from ${result.quotation.customerName ?? d.customerName}\n**Details:** ${d.details}`,
+        )
+      }
+    } catch (err) {
+      console.error('[api/quotations] Failed to record additional enquiry on existing quotation', err)
+    }
   }
 
   return NextResponse.json(
