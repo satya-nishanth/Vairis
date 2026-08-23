@@ -4,6 +4,7 @@ param containerAppsEnvironmentId string
 param containerRegistryEndpoint string
 param userAssignedIdentityId string
 param userAssignedIdentityPrincipalId string
+param userAssignedIdentityClientId string
 param appInsightsConnectionString string
 param storageAccountName string
 param secretRefs array
@@ -74,6 +75,9 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
             { name: 'AZURE_STORAGE_ACCOUNT_NAME', value: storageAccountName }
             { name: 'STORAGE_PROVIDER', value: 'azure' }
+            // Container app has only a user-assigned identity (no system-assigned one) —
+            // lib/azure-blob.ts's DefaultAzureCredential needs this to pick the right one.
+            { name: 'AZURE_CLIENT_ID', value: userAssignedIdentityClientId }
             { name: 'DATABASE_URL', secretRef: 'database-url' }
             // schema.prisma's directUrl exists for Supabase's pooler-vs-direct split —
             // Azure Postgres Flexible Server has no such split, so this is just the

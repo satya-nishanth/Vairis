@@ -154,6 +154,7 @@ module app 'modules/app.bicep' = {
     containerRegistryEndpoint: containerRegistryEndpoint
     userAssignedIdentityId: identity.outputs.identityId
     userAssignedIdentityPrincipalId: identity.outputs.principalId
+    userAssignedIdentityClientId: identity.outputs.clientId
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     storageAccountName: storage.outputs.storageAccountName
     customDomainFqdn: customDomainFqdn
