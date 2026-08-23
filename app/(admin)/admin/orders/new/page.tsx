@@ -13,8 +13,14 @@ export const dynamic = 'force-dynamic'
  * Server side prepares the variant catalogue with a suggested price from
  * the current gold rate; the admin can override per line (negotiated deals).
  */
-export default async function NewManualOrderPage() {
-  const [products, goldRates, pricingConfig] = await Promise.all([
+export default async function NewManualOrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ quotationId?: string }>
+}) {
+  const { quotationId } = await searchParams
+
+  const [products, goldRates, pricingConfig, quotation] = await Promise.all([
     prisma.product.findMany({
       where: { isActive: true },
       include: {
@@ -25,6 +31,7 @@ export default async function NewManualOrderPage() {
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    quotationId ? prisma.quotation.findUnique({ where: { id: quotationId } }) : Promise.resolve(null),
   ])
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
@@ -70,7 +77,7 @@ export default async function NewManualOrderPage() {
         use on the site) — the order then appears in their My Orders and on Track Order.
         Prices default to today&apos;s gold rate; override them with the negotiated amount.
       </p>
-      <ManualOrderForm variantOptions={variantOptions} />
+      <ManualOrderForm variantOptions={variantOptions} quotation={quotation} />
     </div>
   )
 }
