@@ -12,6 +12,7 @@ type PdpStickyBarProps = {
   addingToCart?: boolean;
   expertLabel?: string;
   whatsappHref?: string;
+  onExpertClick?: () => void;
   canPurchase?: boolean;
 };
 
@@ -21,6 +22,7 @@ export function PdpStickyBar({
   addingToCart,
   expertLabel = "Talk to Expert",
   whatsappHref = WHATSAPP_URL,
+  onExpertClick,
   canPurchase = true,
 }: PdpStickyBarProps) {
   useEffect(() => {
@@ -34,10 +36,17 @@ export function PdpStickyBar({
         {price != null && (
           <span className="pdp-sticky-bar__price">₹{price.toLocaleString("en-IN")}</span>
         )}
-        <Link href={whatsappHref} className="pdp-sticky-bar__expert-link">
-          <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
-          {expertLabel}
-        </Link>
+        {onExpertClick ? (
+          <button type="button" onClick={onExpertClick} className="pdp-sticky-bar__expert-link">
+            <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
+            {expertLabel}
+          </button>
+        ) : (
+          <Link href={whatsappHref} className="pdp-sticky-bar__expert-link">
+            <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
+            {expertLabel}
+          </Link>
+        )}
       </div>
       {/* Cart/Buy hidden until CHECKOUT_ENABLED (Razorpay go-live), or when
           this product's price is hidden — the expert WhatsApp link above
