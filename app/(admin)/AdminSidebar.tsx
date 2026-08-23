@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const NAV = [
+const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Analytics', href: '/admin/analytics' },
   { label: 'Products', href: '/admin/products' },
   { label: 'Orders', href: '/admin/orders' },
+  { label: 'Finance', href: '/admin/finance', financeOnly: true },
   { label: 'Invoices', href: '/admin/invoices' },
   { label: 'Content', href: '/admin/content' },
   { label: 'Collections', href: '/admin/collections' },
@@ -26,7 +27,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({ showFinance = false }: { showFinance?: boolean }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
@@ -48,7 +49,7 @@ export function AdminSidebar() {
 
   const nav = (
     <nav className="admin-shell__nav" aria-label="Admin">
-      {NAV.map((item) => {
+      {NAV.filter((item) => !item.financeOnly || showFinance).map((item) => {
         const active = isActive(pathname, item.href)
         return (
           <Link
@@ -72,6 +73,7 @@ export function AdminSidebar() {
           className="admin-shell__menu-btn"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
+          aria-controls="admin-shell-drawer"
           onClick={() => setOpen((v) => !v)}
         >
           <span className={open ? 'admin-shell__burger is-open' : 'admin-shell__burger'} />
@@ -95,7 +97,10 @@ export function AdminSidebar() {
       )}
 
       {/* Sidebar / drawer */}
-      <aside className={open ? 'admin-shell__sidebar is-open' : 'admin-shell__sidebar'}>
+      <aside
+        id="admin-shell-drawer"
+        className={open ? 'admin-shell__sidebar is-open' : 'admin-shell__sidebar'}
+      >
         <div className="admin-shell__brand">
           <Link href="/">
             <img src="/images/vairius_logo.png" alt="VAIRIS" />
