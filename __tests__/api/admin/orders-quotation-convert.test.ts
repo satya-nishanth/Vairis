@@ -9,7 +9,7 @@ jest.mock('@/lib/prisma', () => ({
     user: { findUnique: jest.fn() },
     productVariant: { findMany: jest.fn() },
     order: { create: jest.fn() },
-    quotation: { findUnique: jest.fn(), update: jest.fn() },
+    quotation: { findUnique: jest.fn(), updateMany: jest.fn() },
     $transaction: jest.fn((cb) => cb(prisma)),
   },
 }))
@@ -52,14 +52,41 @@ describe('POST /api/admin/orders — quotation conversion', () => {
     ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
       id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
     })
+    ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 1 })
     ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123' })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(201)
-    expect(prisma.quotation.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'q1' }, data: { status: 'CONVERTED', orderId: 'order-123' } }),
+    expect(prisma.quotation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'q1', status: 'QUOTED' },
+        data: { status: 'CONVERTED', orderId: 'order-123' },
+      }),
     )
     expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('order-123'.slice(-8)))
+  })
+
+  it('409s and rolls back when the quotation is converted by someone else between the read and the write', async () => {
+    // Fast-path check passes (still QUOTED at read time) ...
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
+    })
+    // ... but a concurrent request already flipped it to CONVERTED before our
+    // updateMany runs, so the conditional write matches 0 rows.
+    ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 0 })
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-should-not-be-returned' })
+
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.orderId).toBeUndefined()
+    expect(prisma.quotation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'q1', status: 'QUOTED' },
+        data: { status: 'CONVERTED', orderId: 'order-should-not-be-returned' },
+      }),
+    )
+    expect(quotations.closeThread).not.toHaveBeenCalled()
   })
 
   it('409s and creates no order when the quotation is already CONVERTED', async () => {
