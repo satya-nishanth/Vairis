@@ -19,11 +19,14 @@ export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, prod
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Prefill from saved addresses
   useEffect(() => {
     if (!open || !isLoggedIn) return
+    let ignore = false
     fetch('/api/account/addresses')
       .then((res) => (res.ok ? res.json() : []))
       .then((addresses: { contactName: string; contactPhone: string }[]) => {
+        if (ignore) return
         const first = addresses[0]
         if (first) {
           setName((n) => n || first.contactName)
@@ -34,7 +37,24 @@ export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, prod
         // Prefill is a convenience only — an unauthenticated 401 or network error
         // just leaves the fields blank for manual entry.
       })
+    return () => {
+      ignore = true
+    }
   }, [open, isLoggedIn])
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open, onClose])
 
   if (!open) return null
 
@@ -85,23 +105,26 @@ export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, prod
         style={{ background: '#fff', padding: '1.5rem', maxWidth: 360, width: '90%', borderRadius: 4 }}
       >
         <h2 style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: 12 }}>Enquire on WhatsApp</h2>
-        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Name</label>
+        <label htmlFor="quote-name" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Name</label>
         <input
+          id="quote-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
         />
-        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Mobile</label>
+        <label htmlFor="quote-mobile" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Mobile</label>
         <input
+          id="quote-mobile"
           value={mobile}
           onChange={(e) => setMobile(e.target.value)}
           required
           placeholder="9876543210"
           style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
         />
-        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Note (optional)</label>
+        <label htmlFor="quote-note" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Note (optional)</label>
         <input
+          id="quote-note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 12 }}
