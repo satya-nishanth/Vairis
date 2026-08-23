@@ -265,10 +265,12 @@ model Order {
   children      Order[]      @relation("OrderSplit")
   refunds       OrderRefund[]
   notes         OrderNote[]
-  shipments     Shipment[]
-  invoices      Invoice[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  shipments            Shipment[]
+  finance              OrderFinance?
+  financeTransactions  FinanceTransactionOrder[]
+  invoices             Invoice[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 }
 
 model OrderEvent {
@@ -602,4 +604,202 @@ model HeroImage {
   updatedAt DateTime @updatedAt
 
   @@map("hero_images")
+}
+
+enum FinancePaidThrough {
+  VAIRIS_BANK
+  PERSONAL_FUNDS
+}
+
+enum FinanceAccountType {
+  PARTNER
+  COMPANY_BANK
+  CASH
+  OTHER
+}
+
+enum FinanceContactType {
+  CUSTOMER
+  VENDOR
+  OTHER
+}
+
+enum FinanceTransactionDirection {
+  INFLOW
+  OUTFLOW
+  TRANSFER
+}
+
+/// Config: wallets / people money can sit with. Email ties login → default account.
+model FinanceAccount {
+  id        String             @id @default(cuid())
+  name      String
+  email     String?            @unique
+  type      FinanceAccountType
+  active    Boolean            @default(true)
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  expensesAsAccount GeneralExpense[]     @relation("ExpenseAccount")
+  orderSheetsPaidTo OrderFinance[]       @relation("OrderPaidToAccount")
+  transactionsHandled FinanceTransaction[] @relation("TxHandledBy")
+  transactionsPaidThrough FinanceTransaction[] @relation("TxPaidThrough")
+  transactionsTransferTo FinanceTransaction[] @relation("TxTransferTo")
+}
+
+/// Config: customers / vendors / other counterparties on transactions.
+model FinanceContact {
+  id        String             @id @default(cuid())
+  name      String
+  type      FinanceContactType @default(OTHER)
+  email     String?
+  phone     String?
+  notes     String?
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  transactions FinanceTransaction[]
+}
+
+/// Config: expense/income categories for cashbook transactions.
+model FinanceCategory {
+  id        String                       @id @default(cuid())
+  name      String
+  direction FinanceTransactionDirection
+  active    Boolean                      @default(true)
+  sortOrder Int                          @default(0)
+  createdAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
+
+  transactions FinanceTransaction[]
+
+  @@unique([name, direction])
+  @@index([direction, active])
+}
+
+/// Operating spend, not tied to an order.
+/// account = who is accountable; paidThrough = which wallet actually moved.
+model GeneralExpense {
+  id          String              @id @default(cuid())
+  date        DateTime
+  description String
+  amount      Decimal
+  paidThrough FinancePaidThrough
+  accountId   String?
+  account     FinanceAccount?     @relation("ExpenseAccount", fields: [accountId], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([date])
+  @@index([accountId])
+}
+
+/// One CP/SP sheet per store Order. Totals = sum of line items.
+/// paidToAccount = where customer cash landed (not profit).
+model OrderFinance {
+  id             String             @id @default(cuid())
+  orderId        String             @unique
+  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paidToAccountId String
+  paidToAccount  FinanceAccount     @relation("OrderPaidToAccount", fields: [paidToAccountId], references: [id])
+  lines          OrderFinanceLine[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([createdAt])
+  @@index([paidToAccountId])
+}
+
+enum FinanceLineKind {
+  DELIVERY
+  GOLD
+  STONES
+  DIAMONDS
+  MAKING_CHARGES
+  WASTAGE_CHARGES
+}
+
+model OrderFinanceLine {
+  id            String           @id @default(cuid())
+  sheetId       String
+  sheet         OrderFinance     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  kind          FinanceLineKind
+  costPrice     Decimal
+  sellingPrice  Decimal
+  sortOrder     Int              @default(0)
+
+  @@index([sheetId])
+}
+
+/// Cashbook row: inflow, outflow, or transfer between wallets.
+/// account = who handled; paidThroughAccount = wallet used (From on transfer).
+/// transferToAccount = To wallet when direction is TRANSFER.
+/// contactId optional; contactName stores selected contact name or free text.
+model FinanceTransaction {
+  id                   String                       @id @default(cuid())
+  date                 DateTime
+  direction            FinanceTransactionDirection
+  amount               Decimal
+  description          String                       @default("")
+  accountId            String
+  account              FinanceAccount               @relation("TxHandledBy", fields: [accountId], references: [id])
+  paidThroughAccountId String
+  paidThroughAccount   FinanceAccount               @relation("TxPaidThrough", fields: [paidThroughAccountId], references: [id])
+  transferToAccountId  String?
+  transferToAccount    FinanceAccount?              @relation("TxTransferTo", fields: [transferToAccountId], references: [id])
+  categoryId           String?
+  category             FinanceCategory?             @relation(fields: [categoryId], references: [id])
+  contactId            String?
+  contact              FinanceContact?              @relation(fields: [contactId], references: [id])
+  contactName          String                       @default("")
+  /// Set when created from payment confirmation (not manual cashbook entry).
+  autoCreated          Boolean                      @default(false)
+  /// false = For review (default for auto-created); true = Reviewed (default for manual).
+  reviewComplete       Boolean                      @default(false)
+  orders               FinanceTransactionOrder[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  @@index([date])
+  @@index([accountId])
+  @@index([paidThroughAccountId])
+  @@index([transferToAccountId])
+  @@index([categoryId])
+  @@index([contactId])
+  @@index([autoCreated, reviewComplete, createdAt])
+}
+
+model FinanceTransactionOrder {
+  id            String             @id @default(cuid())
+  transactionId String
+  transaction   FinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, orderId])
+  @@index([orderId])
+}
+
+/// Append-only log of finance section mutations (who changed what).
+model FinanceAuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorEmail  String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  /// Human label for the touched row (contact name, account name, order sheet, etc.).
+  objectLabel String   @default("")
+  /// Optional deep link into the finance UI for that object.
+  objectHref  String?
+  summary     String
+  before      Json?
+  after       Json?
+
+  @@index([createdAt])
+  @@index([entityType, createdAt])
+  @@index([actorEmail, createdAt])
 }
