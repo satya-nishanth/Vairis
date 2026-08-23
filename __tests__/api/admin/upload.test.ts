@@ -163,3 +163,39 @@ describe('POST /api/admin/upload — video', () => {
     expect(res.status).toBe(200)
   })
 })
+
+// ── Folder parameter ──────────────────────────────────────────────────────────
+
+describe('POST /api/admin/upload — folder parameter', () => {
+  it('defaults to the products/ path when folder is omitted', async () => {
+    await POST(makeImageRequest())
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^products\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+
+  it('uses the given folder for quote screenshots', async () => {
+    const fd = new FormData()
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    fd.append('file', file)
+    fd.append('folder', 'quotations/screenshots')
+    const req = new NextRequest('http://localhost/api/admin/upload', { method: 'POST', body: fd })
+    await POST(req)
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^quotations\/screenshots\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+
+  it('rejects an unrecognized folder value with 400 and never uploads', async () => {
+    const fd = new FormData()
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    fd.append('file', file)
+    fd.append('folder', '../../etc')
+    const req = new NextRequest('http://localhost/api/admin/upload', { method: 'POST', body: fd })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/Invalid folder/)
+    expect(mockUpload).not.toHaveBeenCalled()
+  })
+})

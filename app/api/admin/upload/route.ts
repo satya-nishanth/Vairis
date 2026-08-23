@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
+  const folder = (formData.get('folder') as string) || 'products'
+  const ALLOWED_FOLDERS = ['products', 'quotations/screenshots']
+  if (!ALLOWED_FOLDERS.includes(folder)) {
+    return NextResponse.json({ error: 'Invalid folder' }, { status: 400 })
+  }
+
   if (!ALLOWED_TYPES.includes(file.type)) {
     return NextResponse.json(
       { error: `Unsupported type: ${file.type}. Allowed: jpg/png/webp and mp4/webm/mov.` },
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
       )
     }
     const ext = file.name.split('.').pop() ?? 'mp4'
-    const path = `products/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const path = `${folder}/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
 
     if (STORAGE_PROVIDER === 'azure') {
       const url = await uploadProductMedia(path, arrayBuffer, file.type)
@@ -75,7 +81,7 @@ export async function POST(req: NextRequest) {
     .jpeg({ quality: 85 })
     .toBuffer()
 
-  const path = `products/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+  const path = `${folder}/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
 
   if (STORAGE_PROVIDER === 'azure') {
     const url = await uploadProductMedia(path, resized, 'image/jpeg')

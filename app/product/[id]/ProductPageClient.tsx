@@ -10,6 +10,7 @@ import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { PdpStickyBar } from "@/components/commerce/PdpStickyBar";
+import { QuoteEnquiryModal } from "@/components/commerce/QuoteEnquiryModal";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { compareTrustItems } from "@/lib/compare-trust-content";
@@ -64,6 +65,7 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [activeThumb, setActiveThumb] = useState(0);
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     product.variants[0]?.id ?? null,
   );
@@ -177,10 +179,6 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
   // differs between SSR and the browser and causes a hydration mismatch —
   // the href would silently stick to the server-rendered value).
   const productUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/product/${product.id}`;
-
-  const whatsappText = encodeURIComponent(
-    `Hi! I'm interested in *${product.name}*${product.itemCode ? ` (Code: ${product.itemCode})` : ""} from VAIRIS.\n${productUrl}`,
-  );
 
   const handleAddToCart = async () => {
     if (!selectedVariant) return;
@@ -482,14 +480,13 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                     {addingToCart ? "Adding…" : "Add to Cart"}
                   </button>
                 )}
-                <a
-                  href={`https://wa.me/917075486464?text=${whatsappText}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setQuoteModalOpen(true)}
                   className={canAddToCart ? "btn btn-secondary" : "btn btn-primary"}
                 >
                   Enquire on WhatsApp
-                </a>
+                </button>
                 <WishlistButton
                   productId={product.id}
                   productName={product.name}
@@ -526,10 +523,18 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
           onAddToCart={handleAddToCart}
           addingToCart={addingToCart}
           expertLabel="Enquire on WhatsApp"
-          whatsappHref={`https://wa.me/917075486464?text=${whatsappText}`}
+          onExpertClick={() => setQuoteModalOpen(true)}
           canPurchase={product.showPrice}
         />
       )}
+      <QuoteEnquiryModal
+        open={quoteModalOpen}
+        onClose={() => setQuoteModalOpen(false)}
+        isLoggedIn={isLoggedIn}
+        productName={product.name}
+        productUrl={productUrl}
+        itemCode={product.itemCode}
+      />
     </PageShell>
   );
 }

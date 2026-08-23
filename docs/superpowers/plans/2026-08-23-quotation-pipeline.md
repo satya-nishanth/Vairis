@@ -1,0 +1,4275 @@
+# Quotation Pipeline Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers-extended-cc:subagent-driven-development (recommended) or superpowers-extended-cc:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build the Quotation pipeline (manual + website intake, Discord threads with reminders/escalation, Convert to order) across the Vairis Next.js app and the Vairis_Customer_Bot WhatsApp/Discord worker, per `docs/superpowers/specs/2026-08-20-quotation-pipeline-design.md`.
+
+**Architecture:** One Prisma `Quotation` model owned by Vairis. Next.js creates Discord threads via raw REST (it holds `DISCORD_BOT_TOKEN` but has no persistent gateway connection); the bot polls `/api/internal/quotations` (Bearer `INTERNAL_API_KEY`) for reminders/escalation and handles `/quoted /reply /close` using its existing live `discordClient` gateway connection. Quote machine and order machine stay independent until Convert to order.
+
+**Tech Stack:** Next.js 14 App Router, Prisma 5, zod, Postgres (Supabase) — Vairis repo. Node.js, discord.js v14, whatsapp-web.js, Jest — Vairis_Customer_Bot repo.
+
+**Repos:** `Vairis` (this repo) and `Vairis_Customer_Bot` (sibling directory `../Vairis_Customer_Bot`). Both are on branch `feature/quotation-pipeline` already. Every task below is tagged `[Vairis]` or `[Bot]` — run bot-tagged commands with `cd` into the bot repo (or use its absolute path).
+
+**Source docs:** `docs/superpowers/specs/2026-08-18-quotation-pipeline.txt` (product spec) and `docs/superpowers/specs/2026-08-20-quotation-pipeline-design.md` (technical design, hardened 2026-08-22/23). Read the design doc's "Reliability hardening" and "Env vars" sections before starting — this plan implements them as specified there.
+
+**Two design-doc gaps resolved during this plan's grounding pass (not separately re-documented per task, noted once here):**
+1. `quotationMap` needs a `threadId`-keyed index (`byThread`), not just phone-keyed — manual quotations are frequently phoneless, so `/quoted`/`/close` would never resolve them otherwise (design doc already updated for this).
+2. The bot's own Discord interactions (`reminderPoll.js`, `discordQuoteThreads.js`) use the bot's **existing live `discordClient` gateway connection** (`discordClient.channels.fetch(threadId)` → `.send()` / `.setArchived()`), exactly like `tickets.js`/`discordReplyHandler.js` already do — NOT raw REST fetch. Raw REST fetch (`lib/quotations.ts`) is Next.js-only, because Next.js has no gateway connection. The design doc's architecture diagram note about "no persistent gateway connection" describes Next.js's reason, not the bot's — the bot already has one.
+
+---
+
+## Task 1: Prisma schema — Quotation model
+
+**Goal:** Add the `Quotation` model, its three enums, and `Order.quotationId` to the Vairis schema, then migrate.
+
+**Files:**
+- Modify: `[Vairis] prisma/schema.prisma`
+
+**Acceptance Criteria:**
+- [ ] `Quotation` model matches the design doc's hardened schema exactly (includes `reminderCount`, `escalatedAt`, `quotedAt`; does NOT include `reminderIntervalMin` — that field was deliberately dropped as dead weight).
+- [ ] `Order.quotationId` is a plain optional unique scalar, no relation (informational only, per source spec).
+- [ ] Migration applies cleanly against the local dev database.
+
+**Verify:** `npx prisma validate && npx prisma migrate dev --name add_quotation` → migration created and applied with no errors; `npx prisma generate` runs as part of `migrate dev` automatically.
+
+**Steps:**
+
+- [ ] **Step 1: Add the enums + model to schema.prisma**
+
+Insert this block after the closing `}` of `model Invoice` (line ~594) and before `model HeroImage`:
+
+```prisma
+// ── Quotations ───────────────────────────────────────────────────────────────
+
+enum QuotationSource {
+  MANUAL
+  WEBSITE
+}
+
+enum QuotationStatus {
+  REQUESTED
+  QUOTED
+  CONVERTED
+  CANCELLED
+}
+
+enum QuotationOrderType {
+  VAIRIS
+  CUSTOMISATION
+}
+
+model Quotation {
+  id                  String             @id @default(cuid())
+  displayId           String             @unique // "Q-7K2M"
+  source              QuotationSource
+  status              QuotationStatus    @default(REQUESTED)
+  orderType           QuotationOrderType
+  details             String?
+  customerName        String?
+  customerMobile      String?
+  productId           String?            // optional picker link, no relation enforced
+  screenshotUrls      String[]           @default([])
+  discordThreadId     String?
+  lastReminderAt      DateTime?
+  reminderCount        Int               @default(0) // pings sent while REQUESTED; drives escalation
+  escalatedAt         DateTime?          // set once, when reminderCount crosses the threshold
+  quotedAmount        Int?
+  quotedNotes         String?
+  quotedAt            DateTime?          // set on REQUESTED->QUOTED transition; staleness clock for QUOTED
+  orderId             String?            @unique // set on CONVERTED
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([customerMobile, status]) // dedup/attach lookups
+}
+```
+
+- [ ] **Step 2: Add `quotationId` to the existing `Order` model**
+
+In `model Order` (around line 262, near `parentOrderId`), add:
+
+```prisma
+  quotationId   String?      @unique // informational only — no FK, quote machine stays independent
+```
+
+- [ ] **Step 3: Migrate**
+
+```bash
+npx prisma validate
+npx prisma migrate dev --name add_quotation
+```
+Expected: migration file created under `prisma/migrations/`, applies with no errors, `npx prisma generate` runs automatically as part of `migrate dev`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add prisma/schema.prisma prisma/migrations
+git commit -m "feat: add Quotation model and Order.quotationId"
+```
+
+---
+
+## Task 2: lib/quotations.ts — transitions, displayId generator, unique-insert helper
+
+**Goal:** Core quotation domain logic Next.js routes will import: the transition graph, the short `Q-XXXX` id generator, and a retry helper for the rare id collision.
+
+**Files:**
+- Create: `[Vairis] lib/quotations.ts`
+- Test: `[Vairis] __tests__/lib/quotations.test.ts`
+
+**Acceptance Criteria:**
+- [ ] `QUOTATION_TRANSITIONS.REQUESTED` allows only `['QUOTED', 'CANCELLED']`; `QUOTED` allows only `['CONVERTED', 'CANCELLED']`; `CONVERTED`/`CANCELLED` have no outgoing transitions.
+- [ ] `generateQuotationDisplayId` always returns `Q-` followed by 4 uppercase alphanumerics, even with no customer info at all (`anon`/`nophone`/`nosku` fallbacks).
+- [ ] `createWithUniqueDisplayId` retries up to 5 times on a Prisma `P2002` (unique constraint) error, and rethrows immediately on any other error.
+
+**Verify:** `npx jest __tests__/lib/quotations.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/lib/quotations.test.ts
+import { generateQuotationDisplayId, createWithUniqueDisplayId, QUOTATION_TRANSITIONS } from '@/lib/quotations'
+import { Prisma } from '@prisma/client'
+
+describe('generateQuotationDisplayId', () => {
+  it('produces a Q-XXXX id even with no customer info at all', () => {
+    const id = generateQuotationDisplayId({})
+    expect(id).toMatch(/^Q-[0-9A-Z]{4}$/)
+  })
+
+  it('produces a different id for different seeds', () => {
+    const a = generateQuotationDisplayId({ customerName: 'Asha', customerMobile: '9876543210' })
+    const b = generateQuotationDisplayId({ customerName: 'Kiran', customerMobile: '9123456780' })
+    expect(a).not.toBe(b)
+  })
+})
+
+describe('createWithUniqueDisplayId', () => {
+  function p2002() {
+    return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: '5.0.0',
+    })
+  }
+
+  it('returns the created record on the first successful attempt', async () => {
+    const create = jest.fn(async (displayId: string) => ({ id: '1', displayId }))
+    const result = await createWithUniqueDisplayId({}, create)
+    expect(result.id).toBe('1')
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries with a new displayId on a unique constraint violation', async () => {
+    const create = jest
+      .fn()
+      .mockRejectedValueOnce(p2002())
+      .mockRejectedValueOnce(p2002())
+      .mockResolvedValueOnce({ id: '1', displayId: 'Q-ABCD' })
+    const result = await createWithUniqueDisplayId({}, create)
+    expect(result.id).toBe('1')
+    expect(create).toHaveBeenCalledTimes(3)
+  })
+
+  it('gives up after 5 attempts of persistent conflicts', async () => {
+    const create = jest.fn().mockRejectedValue(p2002())
+    await expect(createWithUniqueDisplayId({}, create)).rejects.toThrow()
+    expect(create).toHaveBeenCalledTimes(5)
+  })
+
+  it('rethrows immediately on a non-conflict error', async () => {
+    const create = jest.fn().mockRejectedValue(new Error('db down'))
+    await expect(createWithUniqueDisplayId({}, create)).rejects.toThrow('db down')
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('QUOTATION_TRANSITIONS', () => {
+  it('allows REQUESTED to move to QUOTED or CANCELLED only', () => {
+    expect(QUOTATION_TRANSITIONS.REQUESTED).toEqual(['QUOTED', 'CANCELLED'])
+  })
+
+  it('allows QUOTED to move to CONVERTED or CANCELLED only', () => {
+    expect(QUOTATION_TRANSITIONS.QUOTED).toEqual(['CONVERTED', 'CANCELLED'])
+  })
+
+  it('has no transitions out of terminal states', () => {
+    expect(QUOTATION_TRANSITIONS.CONVERTED).toBeUndefined()
+    expect(QUOTATION_TRANSITIONS.CANCELLED).toBeUndefined()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/lib/quotations.test.ts -v`
+Expected: FAIL — `Cannot find module '@/lib/quotations'`
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+// lib/quotations.ts
+import { Prisma, QuotationStatus } from '@prisma/client'
+import { createHash, randomBytes } from 'crypto'
+
+/** Admin/bot-driven quotation transitions. CONVERTED and CANCELLED are terminal. */
+export const QUOTATION_TRANSITIONS: Partial<Record<QuotationStatus, QuotationStatus[]>> = {
+  REQUESTED: ['QUOTED', 'CANCELLED'],
+  QUOTED: ['CONVERTED', 'CANCELLED'],
+}
+
+function slugPart(v: string | null | undefined, fallback: string, max = 12): string {
+  if (!v) return fallback
+  const slug = v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+  return slug.slice(0, max) || fallback
+}
+
+/**
+ * Seed string per the source spec (username_mobile_productId collides too often since phone is
+ * frequently missing) — not stored, just entropy for the short displayId suffix below.
+ */
+function buildDisplayIdSeed(input: {
+  customerName?: string | null
+  customerMobile?: string | null
+  sku?: string | null
+}): string {
+  const slugName = slugPart(input.customerName, 'anon')
+  const last10phone = input.customerMobile
+    ? input.customerMobile.replace(/\D/g, '').slice(-10) || 'nophone'
+    : 'nophone'
+  const sku = slugPart(input.sku, 'nosku')
+  return `q_${slugName}_${last10phone}_${sku}_${randomBytes(4).toString('hex')}`
+}
+
+/** Short display id shown in the UI and Discord thread names, e.g. "Q-7K2M". */
+export function generateQuotationDisplayId(input: {
+  customerName?: string | null
+  customerMobile?: string | null
+  sku?: string | null
+}): string {
+  const seed = buildDisplayIdSeed(input)
+  const digest = createHash('sha1').update(seed).digest()
+  const suffix = digest.readUInt32BE(0).toString(36).toUpperCase().padStart(4, '0').slice(-4)
+  return `Q-${suffix}`
+}
+
+/**
+ * displayId has ~1.6M possible values (36^4) — collisions are rare but not impossible under
+ * concurrent creation. Retries with a fresh seed on a unique constraint violation rather than
+ * trusting a single generated id.
+ */
+export async function createWithUniqueDisplayId<T>(
+  seedInput: { customerName?: string | null; customerMobile?: string | null; sku?: string | null },
+  create: (displayId: string) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const displayId = generateQuotationDisplayId(seedInput)
+    try {
+      return await create(displayId)
+    } catch (err) {
+      const isUniqueViolation =
+        err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+      if (isUniqueViolation && attempt < 4) continue
+      throw err
+    }
+  }
+  throw new Error('unreachable')
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/lib/quotations.test.ts -v`
+Expected: PASS (10 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/quotations.ts __tests__/lib/quotations.test.ts
+git commit -m "feat: add quotation transitions, displayId generator, unique-insert helper"
+```
+
+---
+
+## Task 3: lib/quotations.ts — Discord REST helpers + internal-API auth check
+
+**Goal:** Add the raw Discord REST v10 helpers Next.js uses (it has no gateway connection) plus the shared Bearer-auth check for the bot-facing internal API.
+
+**Files:**
+- Modify: `[Vairis] lib/quotations.ts`
+- Test: `[Vairis] __tests__/lib/quotations-discord.test.ts`
+
+**Acceptance Criteria:**
+- [ ] `createQuoteThread` POSTs to `/channels/{DISCORD_QUOTE_CHANNEL_ID}/threads` and returns the new thread id.
+- [ ] `closeThread` posts the given message, then archives the thread (in that order).
+- [ ] `mentionAssignee` returns `<@id>` when `DISCORD_QUOTE_ASSIGNEE_ID` is set, `''` otherwise (never throws).
+- [ ] A non-ok Discord response throws with the status code in the message.
+- [ ] `isInternalApiAuthorized` returns true only when the `Authorization` header exactly matches `Bearer ${INTERNAL_API_KEY}`.
+
+**Verify:** `npx jest __tests__/lib/quotations-discord.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/lib/quotations-discord.test.ts
+import { NextRequest } from 'next/server'
+import { createQuoteThread, postToThread, mentionAssignee, closeThread, isInternalApiAuthorized } from '@/lib/quotations'
+
+const originalFetch = global.fetch
+
+describe('Discord REST helpers', () => {
+  beforeEach(() => {
+    process.env.DISCORD_BOT_TOKEN = 'test-token'
+    process.env.DISCORD_QUOTE_CHANNEL_ID = 'chan-1'
+    process.env.DISCORD_QUOTE_ASSIGNEE_ID = 'user-1'
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  it('createQuoteThread posts to the channel and returns the new thread id', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'thread-9' }) }) as never
+    const threadId = await createQuoteThread('Q-7K2M · vairis · Kurnool bracelet')
+    expect(threadId).toBe('thread-9')
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/chan-1/threads',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('throws with the response status on a non-ok Discord response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403, text: async () => 'Missing Access' }) as never
+    await expect(createQuoteThread('x')).rejects.toThrow(/403/)
+  })
+
+  it('mentionAssignee returns a snowflake mention when set, empty string otherwise', () => {
+    expect(mentionAssignee()).toBe('<@user-1>')
+    delete process.env.DISCORD_QUOTE_ASSIGNEE_ID
+    expect(mentionAssignee()).toBe('')
+  })
+
+  it('closeThread posts the message then archives the thread, in that order', async () => {
+    const calls: string[] = []
+    global.fetch = jest.fn(async (url: string, init: RequestInit) => {
+      calls.push(`${init.method} ${url}`)
+      return { ok: true, json: async () => ({}), text: async () => '' }
+    }) as never
+    await closeThread('thread-9', 'Cancelled')
+    expect(calls).toEqual([
+      'POST https://discord.com/api/v10/channels/thread-9/messages',
+      'PATCH https://discord.com/api/v10/channels/thread-9',
+    ])
+  })
+})
+
+describe('isInternalApiAuthorized', () => {
+  beforeEach(() => {
+    process.env.INTERNAL_API_KEY = 'secret-key'
+  })
+
+  it('accepts the exact Bearer token', () => {
+    const req = new NextRequest('http://localhost/api/internal/quotations', {
+      headers: { authorization: 'Bearer secret-key' },
+    })
+    expect(isInternalApiAuthorized(req)).toBe(true)
+  })
+
+  it('rejects a missing or wrong header', () => {
+    const noAuth = new NextRequest('http://localhost/api/internal/quotations')
+    const wrongAuth = new NextRequest('http://localhost/api/internal/quotations', {
+      headers: { authorization: 'Bearer wrong' },
+    })
+    expect(isInternalApiAuthorized(noAuth)).toBe(false)
+    expect(isInternalApiAuthorized(wrongAuth)).toBe(false)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/lib/quotations-discord.test.ts -v`
+Expected: FAIL — the named exports don't exist yet.
+
+- [ ] **Step 3: Append to lib/quotations.ts**
+
+```typescript
+import type { NextRequest } from 'next/server'
+
+const DISCORD_API = 'https://discord.com/api/v10'
+
+function discordHeaders() {
+  return {
+    Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+async function discordFetch(path: string, init: RequestInit) {
+  const res = await fetch(`${DISCORD_API}${path}`, { ...init, headers: discordHeaders() })
+  if (!res.ok) {
+    throw new Error(`Discord API ${init.method ?? 'GET'} ${path} failed: ${res.status} ${await res.text()}`)
+  }
+  return res
+}
+
+/** Creates a public thread directly on the quote channel (no starter message needed). */
+export async function createQuoteThread(name: string): Promise<string> {
+  const channelId = process.env.DISCORD_QUOTE_CHANNEL_ID
+  const res = await discordFetch(`/channels/${channelId}/threads`, {
+    method: 'POST',
+    body: JSON.stringify({ name: name.slice(0, 100), auto_archive_duration: 60, type: 11 }),
+  })
+  const data = await res.json()
+  return data.id as string
+}
+
+export async function postToThread(threadId: string, content: string): Promise<void> {
+  await discordFetch(`/channels/${threadId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  })
+}
+
+/** `<@id>` mention for DISCORD_QUOTE_ASSIGNEE_ID, or '' if unset (never crashes thread creation). */
+export function mentionAssignee(): string {
+  const id = process.env.DISCORD_QUOTE_ASSIGNEE_ID
+  return id ? `<@${id}>` : ''
+}
+
+/** Posts a closing message and archives the thread — called on CONVERTED and CANCELLED. */
+export async function closeThread(threadId: string, message: string): Promise<void> {
+  await postToThread(threadId, message)
+  await discordFetch(`/channels/${threadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ archived: true }),
+  })
+}
+
+/** Shared Bearer-auth check for every /api/internal/quotations* route (bot-only). */
+export function isInternalApiAuthorized(req: NextRequest): boolean {
+  return req.headers.get('authorization') === `Bearer ${process.env.INTERNAL_API_KEY}`
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/lib/quotations-discord.test.ts -v`
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/quotations.ts __tests__/lib/quotations-discord.test.ts
+git commit -m "feat: add Discord REST helpers and internal-API auth check"
+```
+
+---
+
+## Task 4: Public quotation intake route
+
+**Goal:** `POST /api/quotations` — the PDP modal's and the bot's keyword-fallback path's shared entry point. Always writes `orderType: VAIRIS`; dedups by open (REQUESTED/QUOTED) quotation per mobile.
+
+**Files:**
+- Create: `[Vairis] app/api/quotations/route.ts`
+- Test: `[Vairis] __tests__/api/quotations.test.ts`
+
+**Acceptance Criteria:**
+- [ ] Requires `customerName` + `customerMobile`; `details` optional; any client-supplied `orderType` is ignored (always `VAIRIS`).
+- [ ] A repeat POST from a mobile with an existing REQUESTED/QUOTED quotation returns that same quotation (200), not a new one (201).
+- [ ] Response includes `{ id, displayId, status, customerMobile, discordThreadId }` — the bot needs all of these to populate its local `quotationMap` immediately (Task 21).
+- [ ] Discord thread-creation failure never blocks the 201/200 response — quotation row is created regardless.
+- [ ] Route has `export const dynamic = 'force-dynamic'`.
+
+**Verify:** `npx jest __tests__/api/quotations.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/quotations.test.ts
+import { NextRequest } from 'next/server'
+import { POST } from '@/app/api/quotations/route'
+import { prisma } from '@/lib/prisma'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    quotation: { create: jest.fn(), update: jest.fn() },
+    $transaction: jest.fn((cb) => cb(prisma)),
+    $queryRaw: jest.fn(),
+  },
+}))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  createQuoteThread: jest.fn(),
+  postToThread: jest.fn(),
+  mentionAssignee: jest.fn(() => '<@assignee>'),
+}))
+
+const mockPrisma = prisma as unknown as {
+  quotation: { create: jest.Mock; update: jest.Mock }
+  $queryRaw: jest.Mock
+}
+
+function req(body: unknown) {
+  return new NextRequest('http://localhost/api/quotations', { method: 'POST', body: JSON.stringify(body) })
+}
+
+describe('POST /api/quotations', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('rejects a request with no customerMobile', async () => {
+    const res = await POST(req({ customerName: 'Asha' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('creates a REQUESTED VAIRIS quotation, ignoring a client-supplied orderType', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([])
+    mockPrisma.quotation.create.mockResolvedValue({
+      id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', customerMobile: '919876543210', discordThreadId: null,
+    })
+    ;(quotations.createQuoteThread as jest.Mock).mockResolvedValue('thread-1')
+
+    const res = await POST(req({
+      customerName: 'Asha', customerMobile: '919876543210', orderType: 'CUSTOMISATION',
+    }))
+    expect(res.status).toBe(201)
+    expect(mockPrisma.quotation.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ orderType: 'VAIRIS', source: 'WEBSITE' }) }),
+    )
+  })
+
+  it('reuses an existing open quotation for the same mobile instead of creating a duplicate', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([{ id: 'existing-1' }])
+    ;(prisma as any).quotation.findUniqueOrThrow = jest.fn().mockResolvedValue({
+      id: 'existing-1', displayId: 'Q-EXST', status: 'REQUESTED', customerMobile: '919876543210', discordThreadId: 'thread-old',
+    })
+
+    const res = await POST(req({ customerName: 'Asha', customerMobile: '919876543210' }))
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.id).toBe('existing-1')
+    expect(mockPrisma.quotation.create).not.toHaveBeenCalled()
+  })
+
+  it('still returns 201 when Discord thread creation fails', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([])
+    mockPrisma.quotation.create.mockResolvedValue({
+      id: 'q2', displayId: 'Q-FAIL', status: 'REQUESTED', customerMobile: '919876543211', discordThreadId: null,
+    })
+    ;(quotations.createQuoteThread as jest.Mock).mockRejectedValue(new Error('Discord down'))
+
+    const res = await POST(req({ customerName: 'Asha', customerMobile: '919876543211' }))
+    expect(res.status).toBe(201)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/quotations.test.ts -v`
+Expected: FAIL — `Cannot find module '@/app/api/quotations/route'`
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+// app/api/quotations/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { createWithUniqueDisplayId, createQuoteThread, postToThread, mentionAssignee } from '@/lib/quotations'
+
+export const dynamic = 'force-dynamic'
+
+const publicQuotationSchema = z.object({
+  customerName: z.string().trim().min(1).max(100),
+  customerMobile: z.string().trim().regex(/^\d{7,15}$/, 'Valid mobile number required'),
+  details: z.string().trim().max(1000).optional(),
+})
+
+/**
+ * POST /api/quotations — public. Used by the PDP "Enquire on WhatsApp" modal AND by the bot's
+ * WhatsApp keyword-fallback path (no ref in the message). orderType is always VAIRIS here —
+ * Customisation quotes only come from the admin manual-intake form.
+ */
+export async function POST(req: NextRequest) {
+  const parsed = publicQuotationSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  }
+  const d = parsed.data
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Dedup: one open quotation per mobile. FOR UPDATE locks any existing open row so a burst of
+    // rapid submissions from the same phone can't race past this check.
+    const existingRows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Quotation"
+      WHERE "customerMobile" = ${d.customerMobile} AND status IN ('REQUESTED', 'QUOTED')
+      FOR UPDATE
+    `
+    if (existingRows.length > 0) {
+      const existing = await tx.quotation.findUniqueOrThrow({ where: { id: existingRows[0].id } })
+      return { quotation: existing, created: false }
+    }
+
+    const quotation = await createWithUniqueDisplayId(
+      { customerName: d.customerName, customerMobile: d.customerMobile },
+      (displayId) =>
+        tx.quotation.create({
+          data: {
+            displayId,
+            source: 'WEBSITE',
+            orderType: 'VAIRIS',
+            customerName: d.customerName,
+            customerMobile: d.customerMobile,
+            details: d.details,
+          },
+        }),
+    )
+    return { quotation, created: true }
+  })
+
+  if (result.created) {
+    try {
+      const threadId = await createQuoteThread(`${result.quotation.displayId} · vairis · ${d.customerName}`)
+      const updated = await prisma.quotation.update({
+        where: { id: result.quotation.id },
+        data: { discordThreadId: threadId },
+      })
+      result.quotation = updated
+      await postToThread(
+        threadId,
+        `${mentionAssignee()} New website quotation request\n**Customer:** ${d.customerName}\n**Mobile:** ${d.customerMobile}${d.details ? `\n**Details:** ${d.details}` : ''}`,
+      )
+    } catch (err) {
+      // Never blocks the response — reminderPoll retries thread creation (Task 19).
+      console.error('[api/quotations] Discord thread creation failed', err)
+    }
+  }
+
+  return NextResponse.json(
+    {
+      id: result.quotation.id,
+      displayId: result.quotation.displayId,
+      status: result.quotation.status,
+      customerMobile: result.quotation.customerMobile,
+      discordThreadId: result.quotation.discordThreadId,
+    },
+    { status: result.created ? 201 : 200 },
+  )
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/quotations.test.ts -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/quotations __tests__/api/quotations.test.ts
+git commit -m "feat: add public quotation intake route with mobile dedup"
+```
+
+---
+
+## Task 5: Admin quotations route — manual intake (POST) + list (GET)
+
+**Goal:** `POST /api/admin/quotations` for the dashboard manual-intake form (`orderType` required, no default); `GET /api/admin/quotations` for the list page, supporting `?status=` and `?attention=true`.
+
+**Files:**
+- Create: `[Vairis] app/api/admin/quotations/route.ts`
+- Test: `[Vairis] __tests__/api/admin/quotations.test.ts`
+
+**Acceptance Criteria:**
+- [ ] POST rejects a request with no `orderType` (400) — no default value.
+- [ ] POST accepts optional `customerName`, `customerMobile`, `productId`, `screenshotUrls`, and required `details`.
+- [ ] GET with no query params returns everything, oldest-`createdAt`-first.
+- [ ] GET `?status=QUOTED` sorts by `quotedAt` ascending instead.
+- [ ] GET `?attention=true` returns only REQUESTED rows with `escalatedAt` set, or QUOTED rows older than `QUOTE_STALE_QUOTED_HOURS` hours (default 24) since `quotedAt`.
+- [ ] Both routes call `requireAdmin()` first.
+
+**Verify:** `npx jest __tests__/api/admin/quotations.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/quotations.test.ts
+import { NextRequest } from 'next/server'
+import { POST, GET } from '@/app/api/admin/quotations/route'
+import { prisma } from '@/lib/prisma'
+import { requireAdmin } from '@/lib/auth'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: { quotation: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() } },
+}))
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  createQuoteThread: jest.fn().mockResolvedValue('thread-1'),
+  postToThread: jest.fn(),
+  mentionAssignee: jest.fn(() => '<@assignee>'),
+}))
+
+function postReq(body: unknown) {
+  return new NextRequest('http://localhost/api/admin/quotations', { method: 'POST', body: JSON.stringify(body) })
+}
+function getReq(query: string) {
+  return new NextRequest(`http://localhost/api/admin/quotations${query}`)
+}
+
+describe('POST /api/admin/quotations', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('rejects a request with no orderType', async () => {
+    const res = await POST(postReq({ details: 'Kurnool bracelet quotation' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('creates a REQUESTED MANUAL quotation with the given orderType', async () => {
+    ;(prisma.quotation.create as jest.Mock).mockResolvedValue({
+      id: 'q1', displayId: 'Q-ABCD', discordThreadId: null,
+    })
+    const res = await POST(postReq({ orderType: 'CUSTOMISATION', details: 'Kurnool bracelet quotation' }))
+    expect(res.status).toBe(201)
+    expect(prisma.quotation.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ source: 'MANUAL', orderType: 'CUSTOMISATION' }) }),
+    )
+    expect(requireAdmin).toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/admin/quotations', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('defaults to oldest-createdAt-first with no filter', async () => {
+    ;(prisma.quotation.findMany as jest.Mock).mockResolvedValue([])
+    await GET(getReq(''))
+    expect(prisma.quotation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
+    )
+  })
+
+  it('sorts by quotedAt when filtering to QUOTED', async () => {
+    ;(prisma.quotation.findMany as jest.Mock).mockResolvedValue([])
+    await GET(getReq('?status=QUOTED'))
+    expect(prisma.quotation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'QUOTED' }, orderBy: { quotedAt: 'asc' } }),
+    )
+  })
+
+  it('?attention=true filters to escalated REQUESTED or stale QUOTED', async () => {
+    ;(prisma.quotation.findMany as jest.Mock).mockResolvedValue([])
+    await GET(getReq('?attention=true'))
+    const call = (prisma.quotation.findMany as jest.Mock).mock.calls[0][0]
+    expect(call.where.OR).toHaveLength(2)
+    expect(call.where.OR[0]).toEqual({ status: 'REQUESTED', escalatedAt: { not: null } })
+    expect(call.where.OR[1].status).toBe('QUOTED')
+    expect(call.where.OR[1].quotedAt.lt).toBeInstanceOf(Date)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/quotations.test.ts -v`
+Expected: FAIL — module doesn't exist yet.
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+// app/api/admin/quotations/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { QuotationStatus } from '@prisma/client'
+import { requireAdmin } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { createWithUniqueDisplayId, createQuoteThread, postToThread, mentionAssignee } from '@/lib/quotations'
+
+export const dynamic = 'force-dynamic'
+
+const manualQuotationSchema = z.object({
+  orderType: z.enum(['VAIRIS', 'CUSTOMISATION']),
+  details: z.string().trim().min(1).max(2000),
+  customerName: z.string().trim().max(100).optional(),
+  customerMobile: z.string().trim().regex(/^\d{7,15}$/).optional().or(z.literal('')),
+  productId: z.string().trim().optional(),
+  screenshotUrls: z.array(z.string().url()).max(6).optional(),
+})
+
+/** POST /api/admin/quotations — manual/dashboard intake. orderType is required, no default. */
+export async function POST(req: NextRequest) {
+  await requireAdmin()
+
+  const parsed = manualQuotationSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  }
+  const d = parsed.data
+
+  const quotation = await createWithUniqueDisplayId(
+    { customerName: d.customerName, customerMobile: d.customerMobile, sku: d.productId },
+    (displayId) =>
+      prisma.quotation.create({
+        data: {
+          displayId,
+          source: 'MANUAL',
+          orderType: d.orderType,
+          details: d.details,
+          customerName: d.customerName || null,
+          customerMobile: d.customerMobile || null,
+          productId: d.productId || null,
+          screenshotUrls: d.screenshotUrls ?? [],
+        },
+      }),
+  )
+
+  try {
+    const threadId = await createQuoteThread(
+      `${quotation.displayId} · ${d.orderType.toLowerCase()} · ${d.details.slice(0, 60)}`,
+    )
+    await prisma.quotation.update({ where: { id: quotation.id }, data: { discordThreadId: threadId } })
+    await postToThread(
+      threadId,
+      `${mentionAssignee()} New ${d.orderType.toLowerCase()} quotation request\n**Details:** ${d.details}${d.customerName ? `\n**Customer:** ${d.customerName}` : ''}${d.customerMobile ? `\n**Mobile:** ${d.customerMobile}` : ''}`,
+    )
+  } catch (err) {
+    console.error('[api/admin/quotations] Discord thread creation failed', err)
+  }
+
+  return NextResponse.json({ id: quotation.id, displayId: quotation.displayId }, { status: 201 })
+}
+
+/** GET /api/admin/quotations?status=&attention=true — dashboard list. */
+export async function GET(req: NextRequest) {
+  await requireAdmin()
+
+  const status = req.nextUrl.searchParams.get('status') as QuotationStatus | null
+  const attention = req.nextUrl.searchParams.get('attention') === 'true'
+  const staleHours = Number(process.env.QUOTE_STALE_QUOTED_HOURS ?? 24)
+  const staleThreshold = new Date(Date.now() - staleHours * 60 * 60 * 1000)
+
+  const where = attention
+    ? {
+        OR: [
+          { status: 'REQUESTED' as const, escalatedAt: { not: null } },
+          { status: 'QUOTED' as const, quotedAt: { lt: staleThreshold } },
+        ],
+      }
+    : status
+      ? { status }
+      : undefined
+
+  const quotations = await prisma.quotation.findMany({
+    where,
+    orderBy: status === 'QUOTED' ? { quotedAt: 'asc' } : { createdAt: 'asc' },
+    take: 200,
+  })
+  return NextResponse.json(quotations)
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/quotations.test.ts -v`
+Expected: PASS (5 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/quotations/route.ts __tests__/api/admin/quotations.test.ts
+git commit -m "feat: add admin quotation manual-intake and list routes"
+```
+
+---
+
+## Task 6: Admin quotation detail route — GET + PATCH (Mark quoted / Cancel)
+
+**Goal:** `GET /api/admin/quotations/[id]` for the detail page; `PATCH` for the dashboard's "Mark quoted" and "Cancel" actions, transition-gated by `QUOTATION_TRANSITIONS`.
+
+**Files:**
+- Create: `[Vairis] app/api/admin/quotations/[id]/route.ts`
+- Test: `[Vairis] __tests__/api/admin/quotations-id.test.ts`
+
+**Acceptance Criteria:**
+- [ ] GET 404s on an unknown id.
+- [ ] `action: 'mark_quoted'` is rejected with 409 unless current status is REQUESTED.
+- [ ] `action: 'mark_quoted'` sets `status: QUOTED`, `quotedAt: now`, and optional `quotedAmount`/`quotedNotes` — callable again while still QUOTED to overwrite them (idempotent, per the hardening pass).
+- [ ] `action: 'cancel'` sets `status: CANCELLED` and calls `closeThread` when a `discordThreadId` exists.
+- [ ] `action: 'cancel'` is rejected with 409 from a terminal state (CONVERTED/CANCELLED).
+
+**Verify:** `npx jest __tests__/api/admin/quotations-id.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/quotations-id.test.ts
+import { NextRequest } from 'next/server'
+import { GET, PATCH } from '@/app/api/admin/quotations/[id]/route'
+import { prisma } from '@/lib/prisma'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: { quotation: { findUnique: jest.fn(), update: jest.fn() } },
+}))
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  closeThread: jest.fn(),
+}))
+
+function patchReq(body: unknown) {
+  return new NextRequest('http://localhost/api/admin/quotations/q1', { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+describe('GET /api/admin/quotations/[id]', () => {
+  it('404s on an unknown id', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue(null)
+    const res = await GET(new NextRequest('http://localhost/x'), { params: Promise.resolve({ id: 'missing' }) })
+    expect(res.status).toBe(404)
+  })
+})
+
+describe('PATCH /api/admin/quotations/[id]', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('mark_quoted is rejected from a non-REQUESTED status', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
+    const res = await PATCH(patchReq({ action: 'mark_quoted' }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(409)
+    expect(prisma.quotation.update).not.toHaveBeenCalled()
+  })
+
+  it('mark_quoted sets QUOTED + quotedAt + optional amount/notes', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
+    const res = await PATCH(
+      patchReq({ action: 'mark_quoted', quotedAmount: 45000, quotedNotes: 'Discussed at the store' }),
+      { params: Promise.resolve({ id: 'q1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'QUOTED', quotedAmount: 45000, quotedNotes: 'Discussed at the store' }),
+      }),
+    )
+  })
+
+  it('mark_quoted can be called again while still QUOTED to overwrite amount/notes', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
+    const res = await PATCH(patchReq({ action: 'mark_quoted', quotedAmount: 50000 }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(200)
+  })
+
+  it('cancel closes the Discord thread when one exists', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1' })
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CANCELLED', discordThreadId: 'thread-1' })
+    const res = await PATCH(patchReq({ action: 'cancel' }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(200)
+    expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('Cancelled'))
+  })
+
+  it('cancel is rejected from a terminal status', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    const res = await PATCH(patchReq({ action: 'cancel' }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(409)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/quotations-id.test.ts -v`
+Expected: FAIL — module doesn't exist yet.
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+// app/api/admin/quotations/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { QuotationStatus } from '@prisma/client'
+import { requireAdmin } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { QUOTATION_TRANSITIONS, closeThread } from '@/lib/quotations'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin()
+  const { id } = await params
+  const quotation = await prisma.quotation.findUnique({ where: { id } })
+  if (!quotation) return NextResponse.json({ error: 'Quotation not found' }, { status: 404 })
+  return NextResponse.json(quotation)
+}
+
+const patchSchema = z.object({
+  action: z.enum(['mark_quoted', 'cancel']),
+  quotedAmount: z.number().int().positive().optional(),
+  quotedNotes: z.string().trim().max(500).optional(),
+})
+
+/** PATCH /api/admin/quotations/[id] — dashboard "Mark quoted" / "Cancel" actions. */
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin()
+  const { id } = await params
+
+  const parsed = patchSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  }
+  const { action, quotedAmount, quotedNotes } = parsed.data
+
+  const quotation = await prisma.quotation.findUnique({ where: { id } })
+  if (!quotation) return NextResponse.json({ error: 'Quotation not found' }, { status: 404 })
+
+  const nextStatus: QuotationStatus = action === 'mark_quoted' ? 'QUOTED' : 'CANCELLED'
+  const allowed = QUOTATION_TRANSITIONS[quotation.status] ?? []
+  if (!allowed.includes(nextStatus)) {
+    return NextResponse.json({ error: `Cannot move ${quotation.status} → ${nextStatus}` }, { status: 409 })
+  }
+
+  const updated = await prisma.quotation.update({
+    where: { id },
+    data:
+      nextStatus === 'QUOTED'
+        ? { status: 'QUOTED', quotedAt: new Date(), quotedAmount, quotedNotes }
+        : { status: 'CANCELLED' },
+  })
+
+  if (nextStatus === 'CANCELLED' && updated.discordThreadId) {
+    try {
+      await closeThread(updated.discordThreadId, '❌ Cancelled (via dashboard).')
+    } catch (err) {
+      console.error('[api/admin/quotations/[id]] Discord close failed', err)
+    }
+  }
+
+  return NextResponse.json(updated)
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/quotations-id.test.ts -v`
+Expected: PASS (6 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/quotations/[id] __tests__/api/admin/quotations-id.test.ts
+git commit -m "feat: add admin quotation detail route with Mark quoted / Cancel"
+```
+
+---
+
+## Task 7: Internal (bot-facing) quotation API
+
+**Goal:** `GET /api/internal/quotations` (open quotations, for the reminder poll) and `PATCH /api/internal/quotations/[id]` (reminder bookkeeping, `/quoted`, `/close`, and the `retryThread` recovery hook) — both Bearer-authed with `INTERNAL_API_KEY`.
+
+**Files:**
+- Create: `[Vairis] app/api/internal/quotations/route.ts`
+- Create: `[Vairis] app/api/internal/quotations/[id]/route.ts`
+- Test: `[Vairis] __tests__/api/internal/quotations.test.ts`
+
+**Acceptance Criteria:**
+- [ ] Both routes 401 without a valid `Authorization: Bearer ${INTERNAL_API_KEY}` header.
+- [ ] GET returns only REQUESTED/QUOTED quotations (CONVERTED/CANCELLED simply disappear from the response — that absence is what `quotationMap`'s pruning relies on, no separate "closed" list needed).
+- [ ] PATCH with `status: 'QUOTED'` is rejected 409 unless the current status allows it (same `QUOTATION_TRANSITIONS` gate as the admin route).
+- [ ] PATCH with `retryThread: true` on a quotation that already has a `discordThreadId` does nothing extra (idempotent) — only actually creates a thread when one is missing.
+- [ ] PATCH with `retryThread: true` on a quotation with no `discordThreadId` calls `createQuoteThread` + `postToThread` and persists the new `discordThreadId`.
+
+**Verify:** `npx jest __tests__/api/internal/quotations.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/internal/quotations.test.ts
+import { NextRequest } from 'next/server'
+import { GET } from '@/app/api/internal/quotations/route'
+import { PATCH } from '@/app/api/internal/quotations/[id]/route'
+import { prisma } from '@/lib/prisma'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: { quotation: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() } },
+}))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  createQuoteThread: jest.fn(),
+  postToThread: jest.fn(),
+  mentionAssignee: jest.fn(() => '<@assignee>'),
+}))
+
+function authedReq(url: string, init: RequestInit = {}) {
+  return new NextRequest(url, { ...init, headers: { ...init.headers, authorization: 'Bearer test-internal-key' } })
+}
+
+beforeAll(() => {
+  process.env.INTERNAL_API_KEY = 'test-internal-key'
+})
+
+describe('GET /api/internal/quotations', () => {
+  it('401s without a valid Bearer token', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/quotations'))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns open quotations with the fields the bot needs', async () => {
+    ;(prisma.quotation.findMany as jest.Mock).mockResolvedValue([{ id: 'q1', status: 'REQUESTED' }])
+    const res = await GET(authedReq('http://localhost/api/internal/quotations'))
+    expect(res.status).toBe(200)
+    expect(prisma.quotation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: { in: ['REQUESTED', 'QUOTED'] } } }),
+    )
+  })
+})
+
+describe('PATCH /api/internal/quotations/[id]', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  function patchReq(body: unknown) {
+    return authedReq('http://localhost/api/internal/quotations/q1', { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  it('401s without a valid Bearer token', async () => {
+    const res = await PATCH(
+      new NextRequest('http://localhost/x', { method: 'PATCH', body: '{}' }),
+      { params: Promise.resolve({ id: 'q1' }) },
+    )
+    expect(res.status).toBe(401)
+  })
+
+  it('writes back reminder bookkeeping fields', async () => {
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1' })
+    const res = await PATCH(
+      patchReq({ lastReminderAt: new Date().toISOString(), reminderCount: 2 }),
+      { params: Promise.resolve({ id: 'q1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ reminderCount: 2 }) }),
+    )
+  })
+
+  it('rejects status: QUOTED when the current status forbids it', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    const res = await PATCH(patchReq({ status: 'QUOTED' }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(409)
+  })
+
+  it('retryThread creates a thread when discordThreadId is missing', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', discordThreadId: null })
+    ;(quotations.createQuoteThread as jest.Mock).mockResolvedValue('thread-new')
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', discordThreadId: 'thread-new' })
+    const res = await PATCH(patchReq({ retryThread: true }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(200)
+    expect(quotations.createQuoteThread).toHaveBeenCalled()
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ discordThreadId: 'thread-new' }) }),
+    )
+  })
+
+  it('retryThread is a no-op when a discordThreadId already exists', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-existing' })
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', discordThreadId: 'thread-existing' })
+    const res = await PATCH(patchReq({ retryThread: true }), { params: Promise.resolve({ id: 'q1' }) })
+    expect(res.status).toBe(200)
+    expect(quotations.createQuoteThread).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/internal/quotations.test.ts -v`
+Expected: FAIL — modules don't exist yet.
+
+- [ ] **Step 3: Write app/api/internal/quotations/route.ts**
+
+```typescript
+// app/api/internal/quotations/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { isInternalApiAuthorized } from '@/lib/quotations'
+
+export const dynamic = 'force-dynamic'
+
+/** GET /api/internal/quotations — bot-only. Every open quotation; closed ones simply disappear. */
+export async function GET(req: NextRequest) {
+  if (!isInternalApiAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const quotations = await prisma.quotation.findMany({
+    where: { status: { in: ['REQUESTED', 'QUOTED'] } },
+    select: {
+      id: true,
+      displayId: true,
+      status: true,
+      customerMobile: true,
+      discordThreadId: true,
+      lastReminderAt: true,
+      reminderCount: true,
+      escalatedAt: true,
+      createdAt: true,
+    },
+  })
+  return NextResponse.json(quotations)
+}
+```
+
+- [ ] **Step 4: Write app/api/internal/quotations/[id]/route.ts**
+
+```typescript
+// app/api/internal/quotations/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import {
+  QUOTATION_TRANSITIONS,
+  isInternalApiAuthorized,
+  createQuoteThread,
+  postToThread,
+  mentionAssignee,
+} from '@/lib/quotations'
+
+export const dynamic = 'force-dynamic'
+
+const internalPatchSchema = z.object({
+  lastReminderAt: z.string().datetime().optional(),
+  reminderCount: z.number().int().min(0).optional(),
+  escalatedAt: z.string().datetime().optional(),
+  status: z.enum(['QUOTED', 'CANCELLED']).optional(),
+  quotedAmount: z.number().int().positive().optional(),
+  quotedNotes: z.string().trim().max(500).optional(),
+  retryThread: z.boolean().optional(),
+})
+
+/**
+ * PATCH /api/internal/quotations/[id] — bot-only. Serves three callers: reminderPoll's
+ * bookkeeping write-back, the bot's /quoted and /close Discord commands, and the retryThread
+ * recovery hook for a quotation whose thread creation failed at intake time.
+ */
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!isInternalApiAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { id } = await params
+
+  const parsed = internalPatchSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  }
+  const d = parsed.data
+
+  const quotation = await prisma.quotation.findUnique({ where: { id } })
+  if (!quotation) return NextResponse.json({ error: 'Quotation not found' }, { status: 404 })
+
+  if (d.status) {
+    const allowed = QUOTATION_TRANSITIONS[quotation.status] ?? []
+    if (!allowed.includes(d.status)) {
+      return NextResponse.json({ error: `Cannot move ${quotation.status} → ${d.status}` }, { status: 409 })
+    }
+  }
+
+  let newThreadId: string | undefined
+  if (d.retryThread && !quotation.discordThreadId) {
+    try {
+      newThreadId = await createQuoteThread(`${quotation.displayId} · retry`)
+      await postToThread(newThreadId, `${mentionAssignee()} (Recovered thread — original creation failed.)`)
+    } catch (err) {
+      console.error('[api/internal/quotations/[id]] retryThread failed', err)
+    }
+  }
+
+  const updated = await prisma.quotation.update({
+    where: { id },
+    data: {
+      ...(d.lastReminderAt ? { lastReminderAt: new Date(d.lastReminderAt) } : {}),
+      ...(d.reminderCount !== undefined ? { reminderCount: d.reminderCount } : {}),
+      ...(d.escalatedAt ? { escalatedAt: new Date(d.escalatedAt) } : {}),
+      ...(newThreadId ? { discordThreadId: newThreadId } : {}),
+      ...(d.status === 'QUOTED'
+        ? { status: 'QUOTED' as const, quotedAt: new Date(), quotedAmount: d.quotedAmount, quotedNotes: d.quotedNotes }
+        : {}),
+      ...(d.status === 'CANCELLED' ? { status: 'CANCELLED' as const } : {}),
+    },
+  })
+
+  return NextResponse.json(updated)
+}
+```
+
+This route is bot-authed via the Bearer token only — it deliberately never imports or calls `requireAdmin()` (there is no admin session on an internal bot-to-store call).
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `npx jest __tests__/api/internal/quotations.test.ts -v`
+Expected: PASS (7 tests)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/api/internal/quotations __tests__/api/internal/quotations.test.ts
+git commit -m "feat: add internal bot-facing quotation API with retryThread recovery"
+```
+
+---
+
+## Task 8: Upload route — optional `folder` param
+
+**Goal:** Let quote screenshots land under `quotations/screenshots/...` instead of the hardcoded `products/...` prefix, without changing default behavior for existing product-image callers.
+
+**Files:**
+- Modify: `[Vairis] app/api/admin/upload/route.ts`
+- Test: `[Vairis] __tests__/api/admin/upload.test.ts`
+
+**Acceptance Criteria:**
+- [ ] Omitting `folder` in the form data keeps the existing `products/images/...` / `products/videos/...` paths (no behavior change for product image uploads).
+- [ ] Passing `folder=quotations/screenshots` produces a path starting with `quotations/screenshots/images/...`.
+
+**Verify:** `npx jest __tests__/api/admin/upload.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/upload.test.ts
+import { NextRequest } from 'next/server'
+import { POST } from '@/app/api/admin/upload/route'
+import { requireAdmin } from '@/lib/auth'
+
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('sharp', () => () => ({
+  resize: () => ({ jpeg: () => ({ toBuffer: async () => Buffer.from('fake-jpeg') }) }),
+}))
+
+const mockUpload = jest.fn().mockResolvedValue({ error: null })
+const mockGetPublicUrl = jest.fn().mockReturnValue({ data: { publicUrl: 'https://cdn/x.jpg' } })
+const mockCreateBucket = jest.fn().mockResolvedValue({ error: null })
+jest.mock('@/lib/supabase-admin', () => ({
+  getSupabaseAdmin: jest.fn(() => ({
+    storage: {
+      createBucket: mockCreateBucket,
+      from: () => ({ upload: mockUpload, getPublicUrl: mockGetPublicUrl }),
+    },
+  })),
+}))
+
+function uploadReq(fields: Record<string, string | File>) {
+  const formData = new FormData()
+  for (const [k, v] of Object.entries(fields)) formData.append(k, v)
+  return new NextRequest('http://localhost/api/admin/upload', { method: 'POST', body: formData })
+}
+
+describe('POST /api/admin/upload', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('defaults to the products/ path when folder is omitted', async () => {
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    await POST(uploadReq({ file }))
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^products\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+
+  it('uses the given folder for quote screenshots', async () => {
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    await POST(uploadReq({ file, folder: 'quotations/screenshots' }))
+    expect(mockUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^quotations\/screenshots\/images\//), expect.anything(), expect.anything(),
+    )
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/upload.test.ts -v`
+Expected: FAIL — current route always uses `products/images/`, never reads a `folder` field.
+
+- [ ] **Step 3: Modify the route**
+
+In `app/api/admin/upload/route.ts`, add right after the `if (!file) return ...` line:
+
+```typescript
+  const folder = (formData.get('folder') as string) || 'products'
+```
+
+Then change the video path line from:
+
+```typescript
+    const path = `products/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+```
+to:
+```typescript
+    const path = `${folder}/videos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+```
+
+And the image path line from:
+
+```typescript
+  const path = `products/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+```
+to:
+```typescript
+  const path = `${folder}/images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+```
+
+No other lines in the file change.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/upload.test.ts -v`
+Expected: PASS (2 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/upload/route.ts __tests__/api/admin/upload.test.ts
+git commit -m "feat: support an optional folder param on the admin upload route"
+```
+
+---
+
+## Task 9: Orders route — Convert-to-order (quotationId → CONVERTED) + race guard
+
+**Goal:** `POST /api/admin/orders` accepts an optional `quotationId`; on success it sets that quotation `CONVERTED` + `orderId` in the same transaction, guards against double-submit with a 409, and closes the Discord thread post-commit.
+
+**Files:**
+- Modify: `[Vairis] app/api/admin/orders/route.ts`
+- Test: `[Vairis] __tests__/api/admin/orders-quotation-convert.test.ts`
+
+**Acceptance Criteria:**
+- [ ] `quotationId` omitted → behavior is byte-for-byte unchanged from today (existing manual-order tests, if any, still pass).
+- [ ] `quotationId` present + quotation status QUOTED → order created, quotation set to CONVERTED with `orderId`, `closeThread` called post-commit with a message containing the order id.
+- [ ] `quotationId` present + quotation status NOT QUOTED (already CONVERTED/CANCELLED, or still REQUESTED) → 409, no order created, no quotation mutation.
+- [ ] `quotationId` pointing at a nonexistent quotation → 409 (same "not QUOTED" path — nothing to convert).
+
+**Verify:** `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```typescript
+// __tests__/api/admin/orders-quotation-convert.test.ts
+import { NextRequest } from 'next/server'
+import { POST } from '@/app/api/admin/orders/route'
+import { prisma } from '@/lib/prisma'
+import { requireAdmin } from '@/lib/auth'
+import * as quotations from '@/lib/quotations'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: { findUnique: jest.fn() },
+    productVariant: { findMany: jest.fn() },
+    order: { create: jest.fn() },
+    quotation: { findUnique: jest.fn(), update: jest.fn() },
+    $transaction: jest.fn((cb) => cb(prisma)),
+  },
+}))
+jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/split', () => ({ autoSplitOrder: jest.fn().mockResolvedValue([]) }))
+jest.mock('@/lib/quotations', () => ({
+  ...jest.requireActual('@/lib/quotations'),
+  closeThread: jest.fn(),
+}))
+
+function baseBody(overrides: Record<string, unknown> = {}) {
+  return {
+    userId: 'user-1',
+    contactName: 'Asha',
+    contactPhone: '9876543210',
+    addressLine1: '1 MG Road',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560001',
+    initialStatus: 'PAYMENT_PENDING',
+    items: [{ variantId: 'v1', quantity: 1, unitPrice: 45000 }],
+    ...overrides,
+  }
+}
+
+function req(body: unknown) {
+  return new NextRequest('http://localhost/api/admin/orders', { method: 'POST', body: JSON.stringify(body) })
+}
+
+describe('POST /api/admin/orders — quotation conversion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ id: 'user-1' })
+    ;(prisma.productVariant.findMany as jest.Mock).mockResolvedValue([
+      { id: 'v1', product: { name: 'Bracelet' } },
+    ])
+  })
+
+  it('converts a QUOTED quotation and closes its thread', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1',
+    })
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123' })
+
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(201)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'q1' }, data: { status: 'CONVERTED', orderId: 'order-123' } }),
+    )
+    expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('order-123'.slice(-8)))
+  })
+
+  it('409s and creates no order when the quotation is already CONVERTED', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(409)
+    expect(prisma.order.create).not.toHaveBeenCalled()
+  })
+
+  it('409s when the quotation is still REQUESTED (not yet QUOTED)', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    const res = await POST(req(baseBody({ quotationId: 'q1' })))
+    expect(res.status).toBe(409)
+    expect(prisma.order.create).not.toHaveBeenCalled()
+  })
+
+  it('works unchanged with no quotationId at all', async () => {
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-456' })
+    const res = await POST(req(baseBody()))
+    expect(res.status).toBe(201)
+    expect(prisma.quotation.findUnique).not.toHaveBeenCalled()
+    expect(quotations.closeThread).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v`
+Expected: FAIL — route doesn't accept/handle `quotationId` yet.
+
+- [ ] **Step 3: Modify app/api/admin/orders/route.ts**
+
+Add `quotationId` to the schema:
+
+```typescript
+const manualOrderSchema = z.object({
+  userId: z.string().min(1),
+  contactName: z.string().trim().min(2),
+  contactPhone: z.string().trim().regex(/^\d{10}$/, '10-digit mobile required'),
+  addressLine1: z.string().trim().min(5),
+  addressLine2: z.string().trim().optional(),
+  city: z.string().trim().min(2),
+  state: z.string().trim().min(2),
+  pincode: z.string().trim().regex(/^\d{6}$/, '6-digit pincode required'),
+  applyDeposit: z.boolean().optional(),
+  initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
+  paymentNote: z.string().trim().max(300).optional(),
+  quotationId: z.string().trim().optional(),
+  items: z
+    .array(
+      z.object({
+        variantId: z.string().min(1),
+        quantity: z.number().int().min(1).max(20),
+        unitPrice: z.number().positive().max(10000000),
+      }),
+    )
+    .min(1),
+})
+```
+
+Add this import near the top:
+
+```typescript
+import { closeThread } from '@/lib/quotations'
+```
+
+Replace the whole `export async function POST` body with:
+
+```typescript
+export async function POST(req: NextRequest) {
+  await requireAdmin()
+
+  const parsed = manualOrderSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? 'Invalid order' },
+      { status: 400 },
+    )
+  }
+  const d = parsed.data
+
+  const user = await prisma.user.findUnique({ where: { id: d.userId } })
+  if (!user) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: d.items.map((i) => i.variantId) } },
+    include: { product: true },
+  })
+  const variantMap = new Map(variants.map((v) => [v.id, v]))
+  for (const item of d.items) {
+    if (!variantMap.has(item.variantId)) {
+      return NextResponse.json({ error: `Variant ${item.variantId} not found` }, { status: 400 })
+    }
+  }
+
+  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+
+  let quotationThreadId: string | null = null
+  let result: { order: { id: string }; childOrderIds: string[] }
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const quotation = d.quotationId
+        ? await tx.quotation.findUnique({ where: { id: d.quotationId } })
+        : null
+      if (d.quotationId && (!quotation || quotation.status !== 'QUOTED')) {
+        throw new ConvertConflictError()
+      }
+
+      const created = await tx.order.create({
+        data: {
+          userId: user.id,
+          status: d.initialStatus,
+          totalAmount,
+          depositAmount,
+          grandTotal,
+          contactName: d.contactName,
+          contactPhone: d.contactPhone,
+          addressLine1: d.addressLine1,
+          addressLine2: d.addressLine2 || null,
+          city: d.city,
+          state: d.state,
+          pincode: d.pincode,
+          quotationId: d.quotationId || null,
+          items: {
+            create: d.items.map((i) => ({
+              variantId: i.variantId,
+              quantity: i.quantity,
+              price: Math.round(i.unitPrice),
+              productName: variantMap.get(i.variantId)!.product.name,
+            })),
+          },
+          events: {
+            create: [
+              { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },
+              ...(d.initialStatus === 'PAYMENT_CONFIRMED'
+                ? [
+                    {
+                      status: 'PAYMENT_CONFIRMED' as const,
+                      note: d.paymentNote || 'Payment received offline',
+                    },
+                  ]
+                : []),
+            ],
+          },
+        },
+      })
+
+      const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
+
+      if (quotation) {
+        await tx.quotation.update({
+          where: { id: quotation.id },
+          data: { status: 'CONVERTED', orderId: created.id },
+        })
+        quotationThreadId = quotation.discordThreadId
+      }
+
+      return { order: created, childOrderIds }
+    })
+  } catch (err) {
+    if (err instanceof ConvertConflictError) {
+      return NextResponse.json({ error: 'Quotation already converted or cancelled' }, { status: 409 })
+    }
+    throw err
+  }
+
+  if (quotationThreadId) {
+    try {
+      await closeThread(quotationThreadId, `✅ Converted → Order #${result.order.id.slice(-8)}`)
+    } catch (err) {
+      console.error('[api/admin/orders] closeThread on convert failed', err)
+    }
+  }
+
+  return NextResponse.json(
+    { orderId: result.order.id, ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}) },
+    { status: 201 },
+  )
+}
+```
+
+Add this small class near the top of the file, alongside the other declarations (after the imports, before `manualOrderSchema`):
+
+```typescript
+/** Thrown inside the transaction when a supplied quotationId isn't in a convertible state. */
+class ConvertConflictError extends Error {}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest __tests__/api/admin/orders-quotation-convert.test.ts -v`
+Expected: PASS (4 tests)
+
+Also run the pre-existing order tests to confirm nothing else broke:
+Run: `npx jest __tests__/api/admin/orders-international.test.ts -v`
+Expected: PASS (unchanged)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/api/admin/orders/route.ts __tests__/api/admin/orders-quotation-convert.test.ts
+git commit -m "feat: convert quotation to order with race guard and thread close"
+```
+
+---
+
+## Task 10: Admin quotations list page
+
+**Goal:** `/admin/quotations` — status chips (mirrors `orders/page.tsx`), an "Attention" chip, an age column, and a red/amber flag on rows that need attention.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/page.tsx`
+
+**Acceptance Criteria:**
+- [ ] Default view (no filter) lists all quotations oldest-`createdAt`-first with an age column (e.g. "2h 15m").
+- [ ] Status chips: ALL, REQUESTED, QUOTED, CONVERTED, CANCELLED, plus a separate "Needs attention" chip using `?attention=true`.
+- [ ] A REQUESTED row with `escalatedAt` set, or a QUOTED row older than `QUOTE_STALE_QUOTED_HOURS` since `quotedAt`, renders with a red/amber background.
+- [ ] Each row links to `/admin/quotations/[id]`.
+- [ ] "+ New Quotation" link to `/admin/quotations/new`.
+
+**Steps:**
+
+- [ ] **Step 1: Write the page**
+
+```tsx
+// app/(admin)/admin/quotations/page.tsx
+import Link from 'next/link'
+import type { QuotationStatus } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
+import { AdminGuide } from '@/components/admin/AdminGuide'
+
+export const dynamic = 'force-dynamic'
+
+const FILTERS: (QuotationStatus | 'ALL')[] = ['ALL', 'REQUESTED', 'QUOTED', 'CONVERTED', 'CANCELLED']
+const STALE_QUOTED_HOURS = Number(process.env.QUOTE_STALE_QUOTED_HOURS ?? 24)
+
+function formatAge(from: Date): string {
+  const ms = Date.now() - from.getTime()
+  const hours = Math.floor(ms / (60 * 60 * 1000))
+  const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000))
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+function isFlagged(q: { status: QuotationStatus; escalatedAt: Date | null; quotedAt: Date | null }): boolean {
+  if (q.status === 'REQUESTED') return q.escalatedAt != null
+  if (q.status === 'QUOTED') {
+    return q.quotedAt != null && Date.now() - q.quotedAt.getTime() > STALE_QUOTED_HOURS * 60 * 60 * 1000
+  }
+  return false
+}
+
+async function loadQuotations(filter: QuotationStatus | null, attention: boolean) {
+  const staleThreshold = new Date(Date.now() - STALE_QUOTED_HOURS * 60 * 60 * 1000)
+  const where = attention
+    ? {
+        OR: [
+          { status: 'REQUESTED' as const, escalatedAt: { not: null } },
+          { status: 'QUOTED' as const, quotedAt: { lt: staleThreshold } },
+        ],
+      }
+    : filter
+      ? { status: filter }
+      : undefined
+
+  return prisma.quotation.findMany({
+    where,
+    orderBy: filter === 'QUOTED' ? { quotedAt: 'asc' } : { createdAt: 'asc' },
+    take: 200,
+  })
+}
+
+export default async function AdminQuotationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; attention?: string }>
+}) {
+  const { status, attention: attentionParam } = await searchParams
+  const filter = FILTERS.includes(status as QuotationStatus) ? (status as QuotationStatus) : null
+  const attention = attentionParam === 'true'
+
+  const quotations = await loadQuotations(filter, attention)
+
+  return (
+    <div className="admin-page">
+      <div className="admin-page__header">
+        <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Quotations</h1>
+        <Link href="/admin/quotations/new" className="admin-btn">
+          + New Quotation
+        </Link>
+      </div>
+      <AdminGuide
+        pageKey="quotations"
+        title="Quotations"
+        blurb="Vendor-quote pipeline for offline/WhatsApp deals. Reminders ping the assignee on Discord while REQUESTED; Convert to order once QUOTED."
+        tips={['Rows flagged red/amber have been escalated (REQUESTED) or sat QUOTED too long — check the Attention filter.']}
+      />
+
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        {FILTERS.map((f) => {
+          const active = !attention && ((f === 'ALL' && !filter) || f === filter)
+          return (
+            <Link
+              key={f}
+              href={f === 'ALL' ? '/admin/quotations' : `/admin/quotations?status=${f}`}
+              style={{
+                fontSize: '0.6875rem',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                padding: '6px 12px',
+                borderRadius: '999px',
+                textDecoration: 'none',
+                border: '1px solid',
+                borderColor: active ? '#032b24' : '#e5e7eb',
+                background: active ? '#032b24' : '#fff',
+                color: active ? '#fff' : '#4b5563',
+              }}
+            >
+              {f === 'ALL' ? 'All' : f}
+            </Link>
+          )
+        })}
+        <Link
+          href="/admin/quotations?attention=true"
+          style={{
+            fontSize: '0.6875rem',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            padding: '6px 12px',
+            borderRadius: '999px',
+            textDecoration: 'none',
+            border: '1px solid',
+            borderColor: attention ? '#b91c1c' : '#fecaca',
+            background: attention ? '#b91c1c' : '#fef2f2',
+            color: attention ? '#fff' : '#b91c1c',
+          }}
+        >
+          Needs Attention
+        </Link>
+      </div>
+
+      {quotations.length === 0 ? (
+        <p style={{ color: '#6b7280', padding: '2rem 0' }}>No quotations{filter ? ` in ${filter}` : ''}.</p>
+      ) : (
+        <div className="admin-table-wrap">
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left', color: '#6b7280' }}>
+                <th style={{ padding: '10px 12px' }}>Ref</th>
+                <th style={{ padding: '10px 12px' }}>Type</th>
+                <th style={{ padding: '10px 12px' }}>Customer</th>
+                <th style={{ padding: '10px 12px' }}>Age</th>
+                <th style={{ padding: '10px 12px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotations.map((q) => {
+                const flagged = isFlagged(q)
+                const age = q.status === 'QUOTED' && q.quotedAt ? q.quotedAt : q.createdAt
+                return (
+                  <tr
+                    key={q.id}
+                    style={{
+                      borderBottom: '1px solid #f3f4f6',
+                      background: flagged ? '#fef2f2' : undefined,
+                    }}
+                  >
+                    <td style={{ padding: '10px 12px' }}>
+                      <Link href={`/admin/quotations/${q.id}`} style={{ color: '#032b24', fontWeight: 600 }}>
+                        {q.displayId}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{q.orderType}</td>
+                    <td style={{ padding: '10px 12px' }}>{q.customerName || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {formatAge(age)}
+                      {flagged && <span style={{ marginLeft: 6, color: '#b91c1c' }}>⚠</span>}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{q.status}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Manual verification (no automated test — matches `orders/page.tsx`'s own untested convention)**
+
+Run: `npm run dev`, visit `/admin/quotations` while logged in as an admin. Confirm the filter chips, "Needs Attention" chip, and (once Task 5's route + Task 11's form exist) that a created quotation appears in the list with a correct age.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/page.tsx"
+git commit -m "feat: add admin quotations list page with age/attention flagging"
+```
+
+---
+
+## Task 11: Admin manual quotation intake — page + form
+
+**Goal:** `/admin/quotations/new` — order type radio (required, no default), details textarea (required), optional screenshots/customer name/mobile/product picker.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/new/page.tsx`
+- Create: `[Vairis] app/(admin)/admin/quotations/new/QuotationForm.tsx`
+
+**Acceptance Criteria:**
+- [ ] Submit with no order type selected is blocked client-side (native radio `required`) and server-side (Task 5's 400).
+- [ ] Screenshot files upload via `POST /api/admin/upload` with `folder=quotations/screenshots` before the quotation itself is submitted, and their returned URLs are included in the quotation POST body.
+- [ ] On success, navigates to `/admin/quotations/[id]`.
+
+**Steps:**
+
+- [ ] **Step 1: Write the server component page**
+
+```tsx
+// app/(admin)/admin/quotations/new/page.tsx
+import { prisma } from '@/lib/prisma'
+import { QuotationForm } from './QuotationForm'
+
+export const dynamic = 'force-dynamic'
+
+export default async function NewQuotationPage() {
+  const products = await prisma.product.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, itemCode: true },
+    orderBy: { name: 'asc' },
+  })
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 720 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
+        New Quotation
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        For an offline/WhatsApp quote request. This creates a Discord thread in
+        #quote-requests-offline and starts reminding the assignee until it&apos;s marked quoted.
+      </p>
+      <QuotationForm products={products} />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Write the client form**
+
+```tsx
+// app/(admin)/admin/quotations/new/QuotationForm.tsx
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+type Product = { id: string; name: string; itemCode: string | null }
+
+const input: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid #d1d5db',
+  padding: '8px 10px',
+  fontSize: '0.8125rem',
+}
+const label: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.6875rem',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#6b7280',
+  margin: '12px 0 4px',
+}
+const card: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  padding: '1.25rem',
+  marginBottom: '1rem',
+}
+
+export function QuotationForm({ products }: { products: Product[] }) {
+  const router = useRouter()
+  const [orderType, setOrderType] = useState<'VAIRIS' | 'CUSTOMISATION' | ''>('')
+  const [details, setDetails] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [customerMobile, setCustomerMobile] = useState('')
+  const [productId, setProductId] = useState('')
+  const [screenshots, setScreenshots] = useState<File[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function uploadScreenshots(): Promise<string[]> {
+    const urls: string[] = []
+    for (const file of screenshots) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'quotations/screenshots')
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Screenshot upload failed')
+      urls.push(data.url)
+    }
+    return urls
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!orderType) {
+      setError('Select an order type')
+      return
+    }
+    if (!details.trim()) {
+      setError('Details are required')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const screenshotUrls = await uploadScreenshots()
+      const res = await fetch('/api/admin/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderType,
+          details,
+          customerName: customerName || undefined,
+          customerMobile: customerMobile || undefined,
+          productId: productId || undefined,
+          screenshotUrls,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Could not create quotation')
+        return
+      }
+      router.push(`/admin/quotations/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <div style={card}>
+        <strong style={{ fontSize: '0.875rem' }}>Order type</strong>
+        <div style={{ display: 'flex', gap: '1.5rem', marginTop: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+            <input
+              type="radio"
+              name="orderType"
+              required
+              checked={orderType === 'VAIRIS'}
+              onChange={() => setOrderType('VAIRIS')}
+            />
+            Vairis
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+            <input
+              type="radio"
+              name="orderType"
+              required
+              checked={orderType === 'CUSTOMISATION'}
+              onChange={() => setOrderType('CUSTOMISATION')}
+            />
+            Customisation
+          </label>
+        </div>
+      </div>
+
+      <div style={card}>
+        <strong style={{ fontSize: '0.875rem' }}>Details</strong>
+        <label style={label}>What does the customer want? (required)</label>
+        <textarea
+          style={{ ...input, minHeight: 100 }}
+          required
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          placeholder="e.g. Kurnool bracelet quotation — customer wants 22K gold, ~15g, plain design"
+        />
+
+        <label style={label}>Screenshots (optional)</label>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => setScreenshots(Array.from(e.target.files ?? []))}
+        />
+
+        <label style={label}>Customer name (optional)</label>
+        <input style={input} value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+
+        <label style={label}>Mobile (optional)</label>
+        <input style={input} value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} placeholder="9876543210" />
+
+        <label style={label}>Product reference (optional)</label>
+        <select style={input} value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <option value="">— None —</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.itemCode ? ` (${p.itemCode})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && (
+        <p style={{ fontSize: '0.8125rem', color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', border: '1px solid #fecaca', marginBottom: 12 }}>
+          {error}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={saving}
+        style={{
+          padding: '10px 28px',
+          fontSize: '0.75rem',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          background: '#032b24',
+          color: '#fff',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        {saving ? 'Creating…' : 'Create Quotation'}
+      </button>
+    </form>
+  )
+}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`, visit `/admin/quotations/new`. Confirm: submitting with no order type shows the browser's native "please select one of these options" validation; submitting with order type + details creates a row visible at `/admin/quotations` and redirects to the detail page (Task 12).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/new"
+git commit -m "feat: add admin manual quotation intake form"
+```
+
+---
+
+## Task 12: Admin quotation detail page + actions
+
+**Goal:** `/admin/quotations/[id]` — shows details, thread link, quoted amount/notes; "Mark quoted" and "Cancel" buttons while actionable; "Convert to order" only when QUOTED; a link to the order once CONVERTED.
+
+**Files:**
+- Create: `[Vairis] app/(admin)/admin/quotations/[id]/page.tsx`
+- Create: `[Vairis] app/(admin)/admin/quotations/[id]/QuotationActions.tsx`
+
+**Acceptance Criteria:**
+- [ ] Unknown id → Next.js `notFound()` (404 page), matching the codebase's existing pattern for missing detail records.
+- [ ] "Convert to order" link is rendered only when `status === 'QUOTED'`, and points to `/admin/orders/new?quotationId={id}`.
+- [ ] Once `status === 'CONVERTED'`, a link to `/admin/orders/{orderId}` renders instead of any action buttons.
+- [ ] "Mark quoted" opens inline amount/notes inputs before submitting the PATCH.
+- [ ] "Cancel" is hidden once CONVERTED or CANCELLED.
+
+**Steps:**
+
+- [ ] **Step 1: Write the server component page**
+
+```tsx
+// app/(admin)/admin/quotations/[id]/page.tsx
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { prisma } from '@/lib/prisma'
+import { QuotationActions } from './QuotationActions'
+
+export const dynamic = 'force-dynamic'
+
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID
+
+export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const quotation = await prisma.quotation.findUnique({ where: { id } })
+  if (!quotation) notFound()
+
+  const threadUrl =
+    quotation.discordThreadId && DISCORD_GUILD_ID
+      ? `https://discord.com/channels/${DISCORD_GUILD_ID}/${quotation.discordThreadId}`
+      : null
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 720 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.25rem' }}>
+        {quotation.displayId}
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        {quotation.orderType} · {quotation.source} · {quotation.status}
+      </p>
+
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1.25rem', marginBottom: '1rem' }}>
+        <p><strong>Details:</strong> {quotation.details || '—'}</p>
+        {quotation.customerName && <p><strong>Customer:</strong> {quotation.customerName}</p>}
+        {quotation.customerMobile && <p><strong>Mobile:</strong> {quotation.customerMobile}</p>}
+        {quotation.quotedAmount != null && (
+          <p><strong>Quoted amount:</strong> ₹{quotation.quotedAmount.toLocaleString('en-IN')}</p>
+        )}
+        {quotation.quotedNotes && <p><strong>Quoted notes:</strong> {quotation.quotedNotes}</p>}
+        {quotation.screenshotUrls.length > 0 && (
+          <div>
+            <strong>Screenshots:</strong>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {quotation.screenshotUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="Quote screenshot" style={{ width: 100, height: 100, objectFit: 'cover' }} />
+              ))}
+            </div>
+          </div>
+        )}
+        {threadUrl && (
+          <p>
+            <a href={threadUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#032b24' }}>
+              View Discord thread ↗
+            </a>
+          </p>
+        )}
+      </div>
+
+      {quotation.status === 'CONVERTED' && quotation.orderId ? (
+        <Link href={`/admin/orders/${quotation.orderId}`} className="admin-btn">
+          View Order
+        </Link>
+      ) : (
+        <QuotationActions id={quotation.id} status={quotation.status} />
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Write the client actions component**
+
+```tsx
+// app/(admin)/admin/quotations/[id]/QuotationActions.tsx
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import type { QuotationStatus } from '@prisma/client'
+
+export function QuotationActions({ id, status }: { id: string; status: QuotationStatus }) {
+  const router = useRouter()
+  const [showQuoteForm, setShowQuoteForm] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function patch(body: Record<string, unknown>) {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/quotations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Action failed')
+        return
+      }
+      router.refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {status === 'QUOTED' && (
+        <Link href={`/admin/orders/new?quotationId=${id}`} className="admin-btn">
+          Convert to Order
+        </Link>
+      )}
+
+      {status === 'REQUESTED' && !showQuoteForm && (
+        <button type="button" className="admin-btn" onClick={() => setShowQuoteForm(true)}>
+          Mark Quoted
+        </button>
+      )}
+
+      {status === 'REQUESTED' && showQuoteForm && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', padding: '1rem', minWidth: 260 }}>
+          <label style={{ display: 'block', fontSize: '0.6875rem', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>
+            Quoted amount (₹, optional)
+          </label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            style={{ width: '100%', border: '1px solid #d1d5db', padding: '6px 8px', marginBottom: 8 }}
+          />
+          <label style={{ display: 'block', fontSize: '0.6875rem', textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>
+            Notes (optional)
+          </label>
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ width: '100%', border: '1px solid #d1d5db', padding: '6px 8px', marginBottom: 8 }}
+          />
+          <button
+            type="button"
+            disabled={saving}
+            className="admin-btn"
+            onClick={() =>
+              patch({
+                action: 'mark_quoted',
+                quotedAmount: amount ? Number(amount) : undefined,
+                quotedNotes: notes || undefined,
+              })
+            }
+          >
+            {saving ? 'Saving…' : 'Confirm Quoted'}
+          </button>
+        </div>
+      )}
+
+      {(status === 'REQUESTED' || status === 'QUOTED') && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => patch({ action: 'cancel' })}
+          style={{ border: '1px solid #b91c1c', color: '#b91c1c', background: '#fff', padding: '8px 16px', cursor: 'pointer' }}
+        >
+          Cancel
+        </button>
+      )}
+
+      {error && <p style={{ color: '#b91c1c', fontSize: '0.8125rem' }}>{error}</p>}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`. Create a quotation (Task 11), open its detail page: confirm "Mark Quoted" flow sets status to QUOTED and reveals "Convert to Order"; confirm "Cancel" sets CANCELLED and hides both buttons; confirm visiting an unknown id 404s.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/quotations/[id]"
+git commit -m "feat: add admin quotation detail page with mark-quoted/cancel/convert actions"
+```
+
+---
+
+## Task 13: ManualOrderForm — prefill from `?quotationId=`
+
+**Goal:** `/admin/orders/new?quotationId=...` prefills the manual order form's contact name/phone from the quotation and shows a read-only reference panel — everything stays fully editable, matching the source spec's "prefilled, editable" requirement.
+
+**Important constraint discovered while grounding this plan:** `ManualOrderForm` requires selecting an existing `User` account (search by email/name → `userId`) — order creation has always required a real customer account (the page copy already says so: "The customer must have an account"). A quotation's `customerName`/`customerMobile` are **not** a `User` record, so they can only prefill the `contactName`/`contactPhone` address fields — they cannot auto-select a customer. The admin still searches/picks the actual `User` account normally. Do not attempt to auto-create or auto-match a `User` from the quotation's name/mobile — that's out of scope and error-prone (name/mobile don't uniquely identify an account).
+
+**Files:**
+- Modify: `[Vairis] app/(admin)/admin/orders/new/page.tsx`
+- Modify: `[Vairis] app/(admin)/admin/orders/new/ManualOrderForm.tsx`
+
+**Acceptance Criteria:**
+- [ ] Visiting `/admin/orders/new` with no `quotationId` behaves exactly as today (no prop, no prefill, no reference panel).
+- [ ] Visiting with `?quotationId=X` for a real quotation prefills `contactName`/`contactPhone` from it and shows a reference panel (order type, details, screenshots) above the form.
+- [ ] Visiting with `?quotationId=X` for a nonexistent quotation silently falls back to the no-quotation behavior (no crash, no reference panel) — matches the existing page's general resilience style rather than a hard error for a bad/stale link.
+- [ ] Saving the order still calls `POST /api/admin/orders` and now includes `quotationId` in the body when one was prefilled (Task 9 already handles the server side).
+
+**Steps:**
+
+- [ ] **Step 1: Modify page.tsx to read the query param and fetch the quotation**
+
+Add `searchParams` to the page's signature and a quotation fetch:
+
+```tsx
+// app/(admin)/admin/orders/new/page.tsx
+import { prisma } from '@/lib/prisma'
+import { calculatePrice } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { ManualOrderForm } from './ManualOrderForm'
+
+export const dynamic = 'force-dynamic'
+
+export default async function NewManualOrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ quotationId?: string }>
+}) {
+  const { quotationId } = await searchParams
+
+  const [products, goldRates, pricingConfig, quotation] = await Promise.all([
+    prisma.product.findMany({
+      where: { isActive: true },
+      include: {
+        variants: { orderBy: { metalType: 'asc' } },
+        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+    }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+    quotationId ? prisma.quotation.findUnique({ where: { id: quotationId } }) : Promise.resolve(null),
+  ])
+
+  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+
+  const variantOptions = products.flatMap((p) =>
+    p.variants.map((v) => {
+      const rate = rateMap[v.metalType]
+      const suggested = rate
+        ? Math.round(
+            calculatePrice(
+              {
+                weightGrams: v.weightGrams.toString(),
+                makingChargePerGram: v.makingChargePerGram.toString(),
+                flatMakingCharge: v.flatMakingCharge.toString(),
+                stoneCharges: v.stoneCharges.toString(),
+                miscCharges: v.miscCharges.toString(),
+              },
+              rate,
+              { stones: toStoneInputs(p.stones), withExchange: false, config: pricingConfig },
+            ).total,
+          )
+        : 0
+      return {
+        variantId: v.id,
+        productId: p.id,
+        category: p.category,
+        productName: p.name,
+        itemCode: p.itemCode ?? '',
+        sku: v.sku,
+        label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
+        suggestedPrice: suggested,
+      }
+    }),
+  )
+
+  return (
+    <div className="admin-page" style={{ maxWidth: 860 }}>
+      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
+        New Manual Order
+      </h1>
+      <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+        For WhatsApp / offline sales. The customer must have an account (same email they&apos;ll
+        use on the site) — the order then appears in their My Orders and on Track Order.
+        Prices default to today&apos;s gold rate; override them with the negotiated amount.
+      </p>
+      <ManualOrderForm variantOptions={variantOptions} quotation={quotation} />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Modify ManualOrderForm.tsx to accept and use the quotation prop**
+
+Change the component signature and add a `quotationId` field to the submit body, plus a reference panel. Replace:
+
+```tsx
+export function ManualOrderForm({ variantOptions }: { variantOptions: VariantOption[] }) {
+  const router = useRouter()
+
+  // Customer search
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Customer[]>([])
+  const [customer, setCustomer] = useState<Customer | null>(null)
+
+  // Address / contact
+  const [address, setAddress] = useState({
+    contactName: '',
+    contactPhone: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
+  })
+```
+
+with:
+
+```tsx
+type Quotation = {
+  id: string
+  displayId: string
+  orderType: string
+  details: string | null
+  customerName: string | null
+  customerMobile: string | null
+  screenshotUrls: string[]
+} | null
+
+export function ManualOrderForm({
+  variantOptions,
+  quotation = null,
+}: {
+  variantOptions: VariantOption[]
+  quotation?: Quotation
+}) {
+  const router = useRouter()
+
+  // Customer search
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Customer[]>([])
+  const [customer, setCustomer] = useState<Customer | null>(null)
+
+  // Address / contact — prefilled from the quotation when converting one, still fully editable.
+  // The quotation's customerName/customerMobile are NOT a User account (see Task 13) — only the
+  // contact fields prefill; the admin still searches/picks the real customer account above.
+  const [address, setAddress] = useState({
+    contactName: quotation?.customerName ?? '',
+    contactPhone: quotation?.customerMobile ?? '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
+  })
+```
+
+Then find the `submit` function's `fetch('/api/admin/orders', ...)` call and add `quotationId` to its body:
+
+```tsx
+        body: JSON.stringify({
+          userId: customer.id,
+          ...address,
+          initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
+          paymentNote: paymentNote || undefined,
+          items: lines,
+          quotationId: quotation?.id,
+        }),
+```
+
+Finally, add the reference panel right after the opening `<form onSubmit={submit}>` tag:
+
+```tsx
+      {quotation && (
+        <div style={{ ...card, background: '#f8fafc', borderStyle: 'dashed' }}>
+          <strong style={{ fontSize: '0.875rem' }}>Converting {quotation.displayId}</strong>
+          <p style={{ fontSize: '0.8125rem', margin: '8px 0 0' }}>
+            <strong>Type:</strong> {quotation.orderType}
+          </p>
+          {quotation.details && (
+            <p style={{ fontSize: '0.8125rem', margin: '4px 0 0' }}>
+              <strong>Details:</strong> {quotation.details}
+            </p>
+          )}
+          {quotation.screenshotUrls.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {quotation.screenshotUrls.map((url) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={url} src={url} alt="Quote screenshot" style={{ width: 80, height: 80, objectFit: 'cover' }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+```
+
+- [ ] **Step 3: Manual verification**
+
+Run: `npm run dev`. Mark a quotation QUOTED (Task 12), click "Convert to Order", confirm the address contact name/phone are prefilled, the reference panel shows, everything is still editable, and saving creates the order + converts the quotation (Task 9). Then visit `/admin/orders/new` directly (no query param) and confirm it's unchanged from before this task.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add "app/(admin)/admin/orders/new/page.tsx" "app/(admin)/admin/orders/new/ManualOrderForm.tsx"
+git commit -m "feat: prefill manual order form from a converting quotation"
+```
+
+---
+
+## Task 14: PDP quote-enquiry modal (both "Enquire on WhatsApp" call sites)
+
+**Goal:** Both PDP "Enquire on WhatsApp" call sites (the inline button and `PdpStickyBar`'s expert link) open a small modal (name + mobile required, prefilled if logged in, optional note) that POSTs to `/api/quotations` before opening WhatsApp with a "Ref Q-..." prefilled message.
+
+**Files:**
+- Create: `[Vairis] components/commerce/QuoteEnquiryModal.tsx`
+- Modify: `[Vairis] components/commerce/PdpStickyBar.tsx`
+- Modify: `[Vairis] app/product/[id]/ProductPageClient.tsx`
+
+**Acceptance Criteria:**
+- [ ] Clicking either "Enquire on WhatsApp" entry point opens the modal instead of navigating immediately.
+- [ ] Modal requires name + mobile; prefills them from `GET /api/account/addresses`'s first (default) address when the user is logged in (reusing the existing endpoint — no new profile API).
+- [ ] On submit: POSTs to `/api/quotations`, then opens `https://wa.me/917075486464?text=...` in a new tab with the same product text as today PLUS a `Ref Q-XXXX` line using the returned `displayId`.
+- [ ] If the POST fails, the modal shows an inline error and does NOT open WhatsApp (no silent fallback to the old unref'd link — a request with no matching Discord thread defeats the whole feature).
+- [ ] `PdpStickyBar` is otherwise unchanged for any future caller that doesn't pass the new prop (backward compatible — it's currently only used here, confirmed during grounding).
+
+**Steps:**
+
+- [ ] **Step 1: Create the modal component**
+
+```tsx
+// components/commerce/QuoteEnquiryModal.tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+
+type Props = {
+  open: boolean
+  onClose: () => void
+  isLoggedIn: boolean
+  productName: string
+  productUrl: string
+  itemCode: string | null
+}
+
+export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, productUrl, itemCode }: Props) {
+  const [name, setName] = useState('')
+  const [mobile, setMobile] = useState('')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open || !isLoggedIn) return
+    fetch('/api/account/addresses')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((addresses: { contactName: string; contactPhone: string }[]) => {
+        const first = addresses[0]
+        if (first) {
+          setName((n) => n || first.contactName)
+          setMobile((m) => m || first.contactPhone)
+        }
+      })
+      .catch(() => {
+        // Prefill is a convenience only — an unauthenticated 401 or network error
+        // just leaves the fields blank for manual entry.
+      })
+  }, [open, isLoggedIn])
+
+  if (!open) return null
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim() || !/^\d{7,15}$/.test(mobile.trim())) {
+      setError('Enter your name and a valid mobile number')
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerName: name.trim(), customerMobile: mobile.trim(), details: note || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Could not submit your enquiry — try again')
+        return
+      }
+      const text = encodeURIComponent(
+        `Hi! I'm interested in *${productName}*${itemCode ? ` (Code: ${itemCode})` : ''} from VAIRIS.\n${productUrl}\n\nRef ${data.displayId}`,
+      )
+      window.open(`https://wa.me/917075486464?text=${text}`, '_blank', 'noopener,noreferrer')
+      onClose()
+    } catch {
+      setError('Network error — check your connection and try again')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: '#fff', padding: '1.5rem', maxWidth: 360, width: '90%', borderRadius: 4 }}
+      >
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: 12 }}>Enquire on WhatsApp</h2>
+        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Name</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
+        />
+        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Mobile</label>
+        <input
+          value={mobile}
+          onChange={(e) => setMobile(e.target.value)}
+          required
+          placeholder="9876543210"
+          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
+        />
+        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Note (optional)</label>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 12 }}
+        />
+        {error && <p style={{ color: '#b91c1c', fontSize: '0.75rem', marginBottom: 10 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" disabled={submitting} className="btn btn-primary" style={{ flex: 1 }}>
+            {submitting ? 'Sending…' : 'Continue to WhatsApp'}
+          </button>
+          <button type="button" onClick={onClose} className="btn btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Add the optional click-intercept prop to PdpStickyBar**
+
+Replace the whole file:
+
+```tsx
+// components/commerce/PdpStickyBar.tsx
+"use client";
+
+import Link from "next/link";
+import { useEffect } from "react";
+import { ThemeIcon } from "@/components/icons/ThemeIcon";
+import { WHATSAPP_URL } from "@/lib/ui-data";
+import { CHECKOUT_ENABLED } from "@/lib/flags";
+
+type PdpStickyBarProps = {
+  price: number | null | undefined;
+  onAddToCart: () => void;
+  addingToCart?: boolean;
+  expertLabel?: string;
+  whatsappHref?: string;
+  onExpertClick?: () => void;
+  canPurchase?: boolean;
+};
+
+export function PdpStickyBar({
+  price,
+  onAddToCart,
+  addingToCart,
+  expertLabel = "Talk to Expert",
+  whatsappHref = WHATSAPP_URL,
+  onExpertClick,
+  canPurchase = true,
+}: PdpStickyBarProps) {
+  useEffect(() => {
+    document.body.classList.add("has-mobile-sticky-bar");
+    return () => document.body.classList.remove("has-mobile-sticky-bar");
+  }, []);
+
+  return (
+    <div className="pdp-sticky-bar" role="region" aria-label="Purchase actions">
+      <div className="pdp-sticky-bar__expert">
+        {price != null && (
+          <span className="pdp-sticky-bar__price">₹{price.toLocaleString("en-IN")}</span>
+        )}
+        {onExpertClick ? (
+          <button type="button" onClick={onExpertClick} className="pdp-sticky-bar__expert-link">
+            <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
+            {expertLabel}
+          </button>
+        ) : (
+          <Link href={whatsappHref} className="pdp-sticky-bar__expert-link">
+            <ThemeIcon name="jewellery_expert_phone" category="social" size={18} className="pdp-sticky-bar__expert-icon" />
+            {expertLabel}
+          </Link>
+        )}
+      </div>
+      {CHECKOUT_ENABLED && canPurchase && (
+        <div className="pdp-sticky-bar__actions">
+          <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
+            {addingToCart ? "Adding…" : "Add to Cart"}
+          </button>
+          <Link href="/checkout" className="btn btn-secondary">
+            Buy Now
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+`pdp-sticky-bar__expert-link` is styled generically enough in the existing stylesheet to work as a `<button>` too (it's already just an icon+label row) — if it visibly differs once rendered as a button, add `background: none; border: none; cursor: pointer; font: inherit;` inline on that button in a follow-up pass; not addressed further here since it's a pure CSS-reset concern, not a logic one.
+
+- [ ] **Step 3: Wire the modal into ProductPageClient.tsx**
+
+Add the import near the top:
+
+```tsx
+import { QuoteEnquiryModal } from "@/components/commerce/QuoteEnquiryModal";
+```
+
+Add state right after the existing `useState` calls in `PdpContent` (near `const [cartError, setCartError] = useState...`):
+
+```tsx
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+```
+
+Replace the inline anchor call site:
+
+```tsx
+                <a
+                  href={`https://wa.me/917075486464?text=${whatsappText}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={canAddToCart ? "btn btn-secondary" : "btn btn-primary"}
+                >
+                  Enquire on WhatsApp
+                </a>
+```
+
+with:
+
+```tsx
+                <button
+                  type="button"
+                  onClick={() => setQuoteModalOpen(true)}
+                  className={canAddToCart ? "btn btn-secondary" : "btn btn-primary"}
+                >
+                  Enquire on WhatsApp
+                </button>
+```
+
+Replace the `PdpStickyBar` call site:
+
+```tsx
+        <PdpStickyBar
+          price={product.showPrice ? price : undefined}
+          onAddToCart={handleAddToCart}
+          addingToCart={addingToCart}
+          expertLabel="Enquire on WhatsApp"
+          whatsappHref={`https://wa.me/917075486464?text=${whatsappText}`}
+          canPurchase={product.showPrice}
+        />
+```
+
+with:
+
+```tsx
+        <PdpStickyBar
+          price={product.showPrice ? price : undefined}
+          onAddToCart={handleAddToCart}
+          addingToCart={addingToCart}
+          expertLabel="Enquire on WhatsApp"
+          onExpertClick={() => setQuoteModalOpen(true)}
+          canPurchase={product.showPrice}
+        />
+```
+
+Add the modal itself right before the closing `</PageShell>` of the returned JSX in `PdpContent` (after the `{!product.comingSoon && (<PdpStickyBar .../>)}` block):
+
+```tsx
+      <QuoteEnquiryModal
+        open={quoteModalOpen}
+        onClose={() => setQuoteModalOpen(false)}
+        isLoggedIn={isLoggedIn}
+        productName={product.name}
+        productUrl={productUrl}
+        itemCode={product.itemCode}
+      />
+```
+
+- [ ] **Step 4: Manual verification**
+
+Run: `npm run dev`, visit any product page. Click "Enquire on WhatsApp" (both the inline button and, on mobile viewport width, the sticky bar's version) — confirm the modal opens, submitting with a valid name+mobile opens a WhatsApp tab with a `Ref Q-XXXX` line in the text, and the corresponding quotation appears in `/admin/quotations` with source WEBSITE. Confirm a logged-in user with a saved address sees name/mobile prefilled.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add components/commerce/QuoteEnquiryModal.tsx components/commerce/PdpStickyBar.tsx "app/product/[id]/ProductPageClient.tsx"
+git commit -m "feat: add PDP quote-enquiry modal ahead of WhatsApp handoff"
+```
+
+---
+
+## Task 15: Next.js env var documentation
+
+**Goal:** Document every env var the Vairis side of this feature reads, in `.env.local.example`, so a real deploy doesn't have to reverse-engineer them from the code.
+
+**Files:**
+- Modify: `[Vairis] .env.local.example`
+
+**Acceptance Criteria:**
+- [ ] Every var Next.js actually reads (`process.env.X`) across Tasks 1-14 has a line here.
+- [ ] Existing `INTERNAL_API_KEY` line (already present, line ~57) gets an updated comment noting it's now used — not left as "reserved, unused".
+
+**Steps:**
+
+- [ ] **Step 1: Add a new block to `.env.local.example`**
+
+Append near the existing `INTERNAL_API_KEY` line (update its comment too):
+
+```bash
+# Internal API (bot <-> store) — used by /api/internal/quotations*
+INTERNAL_API_KEY=
+
+# Quotation pipeline — Discord thread creation + assignee ping (Next.js side)
+DISCORD_BOT_TOKEN=
+DISCORD_QUOTE_CHANNEL_ID=
+DISCORD_QUOTE_ASSIGNEE_ID=
+# Server for the "View Discord thread" deep-link on /admin/quotations/[id] —
+# https://discord.com/channels/{guild}/{thread}. Optional: link is omitted if unset.
+DISCORD_GUILD_ID=
+# Dashboard-only staleness threshold for a QUOTED-but-not-converted quotation (hours). No pings —
+# visibility only, per the hardening pass in the design doc.
+QUOTE_STALE_QUOTED_HOURS=24
+```
+
+Update the existing `INTERNAL_API_KEY=` line's preceding comment from "Internal API (WhatsApp bot)" (if that's still the wording) to match the block above — don't leave two separate `INTERNAL_API_KEY=` lines; merge into one.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .env.local.example
+git commit -m "docs: document quotation pipeline env vars"
+```
+
+---
+
+# Part 2 — Vairis_Customer_Bot repo
+
+Every task below runs in the sibling `Vairis_Customer_Bot` repo, already on `feature/quotation-pipeline`. All file paths are relative to that repo's root, not Vairis's.
+
+---
+
+## Task 16: Bot config — quotation env vars
+
+**Goal:** Add the quotation-feature env vars to `src/config.js`, following the file's existing `requireEnv`/optional-with-warning conventions. None of these join `REQUIRED_ENV` — the bot must still boot cleanly in any environment where this feature isn't configured yet (matches how `DISCORD_BOT_TOKEN` itself degrades gracefully in `discord/client.js` today).
+
+**Files:**
+- Modify: `[Bot] src/config.js`
+
+**Acceptance Criteria:**
+- [ ] The bot still starts with none of the new vars set (no crash, no addition to `REQUIRED_ENV`).
+- [ ] `QUOTE_REMINDER_INTERVAL_MIN`, `QUOTE_FIRST_REMINDER_MIN`, `QUOTE_ESCALATION_AFTER_MISSES` parse to numbers with the documented defaults (30 / 10 / 3) when unset.
+- [ ] `VAIRIS_API_BASE_URL`, `DISCORD_QUOTE_CHANNEL_ID`, `DISCORD_QUOTE_ASSIGNEE_ID`, `DISCORD_ESCALATION_ID` are `null` when unset (not `undefined`, not an empty string — consistent with `requireEnv`'s existing return shape).
+
+**Verify:** `node -e "require('./src/config')"` (with a valid `.env` for the existing required vars) → exits 0, no errors.
+
+**Steps:**
+
+- [ ] **Step 1: Add the new exports to `src/config.js`**
+
+Insert after the existing `const VAIRIS_RETURNS_URL = ...` line, before `module.exports`:
+
+```javascript
+// Quotation pipeline — bot side. None of these are in REQUIRED_ENV: the bot must keep working
+// (WhatsApp/ticket flows) even before this feature is configured in a given environment.
+const VAIRIS_API_BASE_URL = requireEnv('VAIRIS_API_BASE_URL');
+const INTERNAL_API_KEY = requireEnv('INTERNAL_API_KEY');
+const DISCORD_QUOTE_CHANNEL_ID = requireEnv('DISCORD_QUOTE_CHANNEL_ID');
+const DISCORD_QUOTE_ASSIGNEE_ID = requireEnv('DISCORD_QUOTE_ASSIGNEE_ID');
+const DISCORD_ESCALATION_ID = requireEnv('DISCORD_ESCALATION_ID');
+const QUOTE_REMINDER_INTERVAL_MIN = Number(process.env.QUOTE_REMINDER_INTERVAL_MIN || 30);
+const QUOTE_FIRST_REMINDER_MIN = Number(process.env.QUOTE_FIRST_REMINDER_MIN || 10);
+const QUOTE_ESCALATION_AFTER_MISSES = Number(process.env.QUOTE_ESCALATION_AFTER_MISSES || 3);
+```
+
+Then add all eight names to the `module.exports` object at the bottom of the file (it currently ends with `VAIRIS_RETURNS_URL,` before the closing `};` — add the new names as additional lines right after it).
+
+- [ ] **Step 2: Verify**
+
+Run: `node -e "require('./src/config')"` from the bot repo root (with your local `.env` in place for the pre-existing required vars).
+Expected: no output, exit code 0.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/config.js
+git commit -m "feat: add quotation pipeline env vars to bot config"
+```
+
+---
+
+## Task 17: Bot — internal API client
+
+**Goal:** Thin fetch wrappers around `/api/internal/quotations*` — the only place in the bot that talks HTTP to Next.js (everything else the bot does with the store is direct Postgres via `postgresClient.js`, which quotations deliberately don't use — see the design doc's rationale for keeping Prisma-owned data behind the internal API).
+
+**Files:**
+- Create: `[Bot] src/quotes/internalApiClient.js`
+- Test: `[Bot] test/internalApiClient.test.js`
+
+**Acceptance Criteria:**
+- [ ] `fetchOpenQuotations()` returns `[]` (not a throw) when `VAIRIS_API_BASE_URL` or `INTERNAL_API_KEY` isn't configured — matches config.js's graceful-degradation stance from Task 16.
+- [ ] `fetchOpenQuotations()` sends `Authorization: Bearer ${INTERNAL_API_KEY}` and throws on a non-ok response.
+- [ ] `patchQuotation(id, body)` PATCHes with the same header and the given JSON body; throws on a non-ok response.
+
+**Verify:** `npx jest test/internalApiClient.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/internalApiClient.test.js
+jest.mock('../src/config', () => ({
+  VAIRIS_API_BASE_URL: 'https://vairis.example.com',
+  INTERNAL_API_KEY: 'test-key',
+}));
+
+const { fetchOpenQuotations, patchQuotation } = require('../src/quotes/internalApiClient');
+
+const originalFetch = global.fetch;
+afterEach(() => {
+  global.fetch = originalFetch;
+  jest.resetModules();
+});
+
+describe('fetchOpenQuotations', () => {
+  it('sends the Bearer token and returns the parsed list', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => [{ id: 'q1' }] });
+    const result = await fetchOpenQuotations();
+    expect(result).toEqual([{ id: 'q1' }]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://vairis.example.com/api/internal/quotations',
+      expect.objectContaining({ headers: { Authorization: 'Bearer test-key' } }),
+    );
+  });
+
+  it('throws on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    await expect(fetchOpenQuotations()).rejects.toThrow(/500/);
+  });
+});
+
+describe('patchQuotation', () => {
+  it('PATCHes with the Bearer token and the given body', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'q1' }) });
+    await patchQuotation('q1', { reminderCount: 2 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://vairis.example.com/api/internal/quotations/q1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer test-key', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reminderCount: 2 }),
+      }),
+    );
+  });
+
+  it('throws on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 409 });
+    await expect(patchQuotation('q1', {})).rejects.toThrow(/409/);
+  });
+});
+
+describe('graceful degradation when unconfigured', () => {
+  it('fetchOpenQuotations returns [] instead of throwing when config is missing', async () => {
+    jest.doMock('../src/config', () => ({ VAIRIS_API_BASE_URL: null, INTERNAL_API_KEY: null }));
+    jest.resetModules();
+    const { fetchOpenQuotations: fetchUnconfigured } = require('../src/quotes/internalApiClient');
+    global.fetch = jest.fn();
+    const result = await fetchUnconfigured();
+    expect(result).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/internalApiClient.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/internalApiClient'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/internalApiClient.js
+const { VAIRIS_API_BASE_URL, INTERNAL_API_KEY } = require('../config');
+
+/** GET /api/internal/quotations — every open (REQUESTED/QUOTED) quotation. */
+async function fetchOpenQuotations() {
+    if (!VAIRIS_API_BASE_URL || !INTERNAL_API_KEY) return [];
+    const res = await fetch(`${VAIRIS_API_BASE_URL}/api/internal/quotations`, {
+        headers: { Authorization: `Bearer ${INTERNAL_API_KEY}` },
+    });
+    if (!res.ok) throw new Error(`internal quotations GET failed: ${res.status}`);
+    return res.json();
+}
+
+/** PATCH /api/internal/quotations/[id] — reminder bookkeeping, /quoted, /close, retryThread. */
+async function patchQuotation(id, body) {
+    if (!VAIRIS_API_BASE_URL || !INTERNAL_API_KEY) return null;
+    const res = await fetch(`${VAIRIS_API_BASE_URL}/api/internal/quotations/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${INTERNAL_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`internal quotations PATCH ${id} failed: ${res.status}`);
+    return res.json();
+}
+
+module.exports = { fetchOpenQuotations, patchQuotation };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/internalApiClient.test.js -v`
+Expected: PASS (5 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/internalApiClient.js test/internalApiClient.test.js
+git commit -m "feat: add internal API client for the quotation reminder poll"
+```
+
+---
+
+## Task 18: Bot — `quotationMap` (phone + thread caches)
+
+**Goal:** The bot's local, ephemeral view of open quotations — two maps built from the same poll snapshot: `byPhone` (WhatsApp message routing) and `byThread` (Discord command routing). See this plan's intro for why both are needed (manual quotations are frequently phoneless).
+
+**Files:**
+- Create: `[Bot] src/quotes/quotationMap.js`
+- Test: `[Bot] test/quotationMap.test.js`
+
+**Acceptance Criteria:**
+- [ ] `refresh(quotations)` clears and rebuilds both maps from scratch each call (pruning is "absence from the latest snapshot", not an explicit delete list — matches Task 7's GET contract).
+- [ ] A quotation with a `discordThreadId` but no `customerMobile` (a phoneless manual quote) appears in `byThread` but not `byPhone`.
+- [ ] A quotation with a `customerMobile` but no `discordThreadId` yet (Discord creation still pending/retrying) appears in `byPhone` with `threadId: null`.
+- [ ] `upsertOne(q)` updates both maps for a single quotation without touching any other entries — used for the ref-match one-off resolve (no 30-minute wait for the next poll).
+
+**Verify:** `npx jest test/quotationMap.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/quotationMap.test.js
+const quotationMap = require('../src/quotes/quotationMap');
+
+beforeEach(() => {
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+describe('refresh', () => {
+    it('populates byThread for a phoneless manual quotation', () => {
+        quotationMap.refresh([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: null },
+        ]);
+        expect(quotationMap.byThread.get('thread-1')).toEqual({ quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+        expect(quotationMap.byPhone.size).toBe(0);
+    });
+
+    it('populates byPhone with a null threadId when Discord creation is still pending', () => {
+        quotationMap.refresh([
+            { id: 'q2', status: 'REQUESTED', discordThreadId: null, customerMobile: '919876543210' },
+        ]);
+        expect(quotationMap.byPhone.get('919876543210')).toEqual({ quotationId: 'q2', threadId: null });
+    });
+
+    it('clears stale entries not present in the latest snapshot (prune-by-absence)', () => {
+        quotationMap.refresh([{ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: '919876543210' }]);
+        expect(quotationMap.byThread.has('thread-1')).toBe(true);
+        quotationMap.refresh([]); // q1 converted/cancelled — no longer in the open-quotations response
+        expect(quotationMap.byThread.has('thread-1')).toBe(false);
+        expect(quotationMap.byPhone.has('919876543210')).toBe(false);
+    });
+});
+
+describe('upsertOne', () => {
+    it('adds a single quotation to both maps without clearing existing entries', () => {
+        quotationMap.refresh([{ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', customerMobile: '919876543210' }]);
+        quotationMap.upsertOne({ id: 'q2', status: 'REQUESTED', discordThreadId: 'thread-2', customerMobile: '919876543211' });
+        expect(quotationMap.byThread.has('thread-1')).toBe(true);
+        expect(quotationMap.byThread.has('thread-2')).toBe(true);
+        expect(quotationMap.byPhone.has('919876543211')).toBe(true);
+    });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/quotationMap.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/quotationMap'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/quotationMap.js
+const byPhone = new Map(); // phone (bot-normalized, e.g. "919876543210") -> { quotationId, threadId }
+const byThread = new Map(); // discordThreadId -> { quotationId, status, customerMobile }
+
+function upsertOne(q) {
+    if (q.discordThreadId) {
+        byThread.set(q.discordThreadId, {
+            quotationId: q.id,
+            status: q.status,
+            customerMobile: q.customerMobile || null,
+        });
+    }
+    if (q.customerMobile) {
+        byPhone.set(q.customerMobile, { quotationId: q.id, threadId: q.discordThreadId || null });
+    }
+}
+
+/** Rebuilds both maps from the latest open-quotations snapshot. Absence = pruned. */
+function refresh(quotations) {
+    byPhone.clear();
+    byThread.clear();
+    for (const q of quotations) upsertOne(q);
+}
+
+module.exports = { byPhone, byThread, refresh, upsertOne };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/quotationMap.test.js -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/quotationMap.js test/quotationMap.test.js
+git commit -m "feat: add quotationMap phone/thread caches"
+```
+
+---
+
+## Task 19: Bot — `reminderPoll.js`
+
+**Goal:** The reminder/escalation loop: fetch-on-boot + `QUOTE_REMINDER_INTERVAL_MIN`-interval polling, first-ping-faster timing, one-time escalation, `retryThread` recovery for any open quotation missing a Discord thread, and refreshing `quotationMap` every cycle. Uses the bot's **existing live `discordClient` gateway connection** (`channels.fetch` → `.setArchived()` / `.send()`) — exactly like `tickets.js`'s `sendTicketReminder` already does for the 24h ticket system — not raw REST.
+
+**Files:**
+- Create: `[Bot] src/quotes/reminderPoll.js`
+- Test: `[Bot] test/reminderPoll.test.js`
+
+**Acceptance Criteria:**
+- [ ] A quotation with `lastReminderAt: null` gets its first ping once it's `QUOTE_FIRST_REMINDER_MIN` minutes old (not the full `QUOTE_REMINDER_INTERVAL_MIN`).
+- [ ] A quotation with a `lastReminderAt` gets its next ping only after `QUOTE_REMINDER_INTERVAL_MIN` minutes since then.
+- [ ] Escalation (`<@DISCORD_ESCALATION_ID>` mention + `escalatedAt` set) fires exactly once, on the cycle where `reminderCount` would cross `QUOTE_ESCALATION_AFTER_MISSES`, and never again once `escalatedAt` is already set.
+- [ ] An archived thread is unarchived before the reminder is sent.
+- [ ] Any open quotation (REQUESTED or QUOTED) with no `discordThreadId` gets `retryThread: true` PATCHed every cycle until one exists — independent of the ping-timing gate above, and skips the ping for that cycle (nothing to ping yet).
+- [ ] `quotationMap.refresh()` is called with the full poll response every cycle, regardless of whether any pings fired.
+- [ ] `startQuoteReminderPoll()` runs one poll cycle immediately (fetch-on-boot), then on the configured interval.
+
+**Verify:** `npx jest test/reminderPoll.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/reminderPoll.test.js
+jest.mock('../src/config', () => ({
+    QUOTE_REMINDER_INTERVAL_MIN: 30,
+    QUOTE_FIRST_REMINDER_MIN: 10,
+    QUOTE_ESCALATION_AFTER_MISSES: 3,
+    DISCORD_QUOTE_ASSIGNEE_ID: 'assignee-1',
+    DISCORD_ESCALATION_ID: 'escalation-1',
+}));
+
+const mockFetchOpenQuotations = jest.fn();
+const mockPatchQuotation = jest.fn().mockResolvedValue({});
+jest.mock('../src/quotes/internalApiClient', () => ({
+    fetchOpenQuotations: mockFetchOpenQuotations,
+    patchQuotation: mockPatchQuotation,
+}));
+
+function makeThread({ archived = false } = {}) {
+    return { isThread: () => true, archived, setArchived: jest.fn(async () => {}), send: jest.fn(async () => {}) };
+}
+const mockThread = makeThread();
+const mockChannelsFetch = jest.fn(async () => mockThread);
+jest.mock('../src/discord/client', () => ({
+    discordClient: { channels: { fetch: mockChannelsFetch } },
+}));
+
+const { runQuoteReminderPoll } = require('../src/quotes/reminderPoll');
+const quotationMap = require('../src/quotes/quotationMap');
+
+function minutesAgo(mins) {
+    return new Date(Date.now() - mins * 60 * 1000).toISOString();
+}
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    mockThread.archived = false;
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+describe('first ping timing', () => {
+    it('pings a never-reminded quotation once it is QUOTE_FIRST_REMINDER_MIN old', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(11), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledTimes(1);
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 1 }));
+    });
+
+    it('does not ping a never-reminded quotation younger than QUOTE_FIRST_REMINDER_MIN', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(5), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).not.toHaveBeenCalled();
+    });
+});
+
+describe('repeat ping timing', () => {
+    it('does not re-ping before QUOTE_REMINDER_INTERVAL_MIN has passed since lastReminderAt', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(50), lastReminderAt: minutesAgo(10), reminderCount: 1, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).not.toHaveBeenCalled();
+    });
+
+    it('pings again once QUOTE_REMINDER_INTERVAL_MIN has passed since lastReminderAt', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(80), lastReminderAt: minutesAgo(31), reminderCount: 1, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledTimes(1);
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 2 }));
+    });
+});
+
+describe('escalation', () => {
+    it('escalates exactly once when reminderCount would cross the threshold', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(80), lastReminderAt: minutesAgo(31), reminderCount: 2, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledWith(expect.stringContaining('<@escalation-1>'));
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', expect.objectContaining({ reminderCount: 3, escalatedAt: expect.any(String) }));
+    });
+
+    it('does not escalate again once escalatedAt is already set', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(200), lastReminderAt: minutesAgo(31), reminderCount: 5, escalatedAt: minutesAgo(100) },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.send).toHaveBeenCalledWith(expect.not.stringContaining('<@escalation-1>'));
+        const patchArg = mockPatchQuotation.mock.calls[0][1];
+        expect(patchArg.escalatedAt).toBeUndefined();
+    });
+});
+
+describe('archived thread', () => {
+    it('unarchives before sending the reminder', async () => {
+        mockThread.archived = true;
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1', createdAt: minutesAgo(11), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockThread.setArchived).toHaveBeenCalledWith(false);
+    });
+});
+
+describe('retryThread', () => {
+    it('PATCHes retryThread for an open quotation with no discordThreadId, and skips the ping', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'REQUESTED', discordThreadId: null, createdAt: minutesAgo(50), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { retryThread: true });
+        expect(mockChannelsFetch).not.toHaveBeenCalled();
+    });
+
+    it('applies to QUOTED quotations too, not just REQUESTED', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'QUOTED', discordThreadId: null, createdAt: minutesAgo(50), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { retryThread: true });
+    });
+});
+
+describe('quotationMap refresh', () => {
+    it('refreshes the map every cycle regardless of whether anything was pinged', async () => {
+        mockFetchOpenQuotations.mockResolvedValue([
+            { id: 'q1', status: 'QUOTED', discordThreadId: 'thread-1', customerMobile: '919876543210', createdAt: minutesAgo(1), lastReminderAt: null, reminderCount: 0, escalatedAt: null },
+        ]);
+        await runQuoteReminderPoll();
+        expect(quotationMap.byThread.get('thread-1')).toBeDefined();
+        expect(mockThread.send).not.toHaveBeenCalled(); // QUOTED never gets pinged
+    });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/reminderPoll.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/reminderPoll'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/reminderPoll.js
+const { discordClient } = require('../discord/client');
+const {
+    QUOTE_REMINDER_INTERVAL_MIN,
+    QUOTE_FIRST_REMINDER_MIN,
+    QUOTE_ESCALATION_AFTER_MISSES,
+    DISCORD_QUOTE_ASSIGNEE_ID,
+    DISCORD_ESCALATION_ID,
+} = require('../config');
+const { fetchOpenQuotations, patchQuotation } = require('./internalApiClient');
+const quotationMap = require('./quotationMap');
+
+function minutesSince(iso) {
+    return (Date.now() - new Date(iso).getTime()) / 60000;
+}
+
+function shouldPing(q) {
+    if (q.status !== 'REQUESTED') return false;
+    if (!q.lastReminderAt) return minutesSince(q.createdAt) >= QUOTE_FIRST_REMINDER_MIN;
+    return minutesSince(q.lastReminderAt) >= QUOTE_REMINDER_INTERVAL_MIN;
+}
+
+async function pingReminder(q) {
+    try {
+        const thread = await discordClient.channels.fetch(q.discordThreadId);
+        if (!thread || !thread.isThread()) return;
+        if (thread.archived) await thread.setArchived(false);
+
+        const nextCount = (q.reminderCount || 0) + 1;
+        const willEscalate = nextCount >= QUOTE_ESCALATION_AFTER_MISSES && !q.escalatedAt;
+
+        const mention = DISCORD_QUOTE_ASSIGNEE_ID ? `<@${DISCORD_QUOTE_ASSIGNEE_ID}>` : '';
+        const escalationMention = willEscalate && DISCORD_ESCALATION_ID ? ` <@${DISCORD_ESCALATION_ID}>` : '';
+        await thread.send(`${mention}${escalationMention} ⏰ Still waiting on this quote.`);
+
+        await patchQuotation(q.id, {
+            lastReminderAt: new Date().toISOString(),
+            reminderCount: nextCount,
+            ...(willEscalate ? { escalatedAt: new Date().toISOString() } : {}),
+        });
+    } catch (e) {
+        console.error(`❌ Reminder ping failed for ${q.id}:`, e.message);
+    }
+}
+
+async function runQuoteReminderPoll() {
+    let quotations;
+    try {
+        quotations = await fetchOpenQuotations();
+    } catch (e) {
+        console.error('❌ Quote reminder poll: failed to fetch open quotations:', e.message);
+        return;
+    }
+
+    quotationMap.refresh(quotations);
+
+    for (const q of quotations) {
+        if (!q.discordThreadId) {
+            // Thread creation failed (or is still catching up) at intake time — the bot has no
+            // DISCORD_BOT_TOKEN REST capability by design, so it asks Next.js to retry instead of
+            // creating the thread itself. Applies to REQUESTED and QUOTED alike; independent of
+            // the ping-timing gate below since it's a distinct concern (thread existence, not
+            // reminder cadence).
+            try {
+                await patchQuotation(q.id, { retryThread: true });
+            } catch (e) {
+                console.error(`❌ retryThread failed for ${q.id}:`, e.message);
+            }
+            continue;
+        }
+        if (shouldPing(q)) await pingReminder(q);
+    }
+}
+
+function startQuoteReminderPoll() {
+    runQuoteReminderPoll(); // fetch-on-boot — closes the cold-start blind spot on quotationMap
+    setInterval(runQuoteReminderPoll, QUOTE_REMINDER_INTERVAL_MIN * 60 * 1000);
+}
+
+module.exports = { startQuoteReminderPoll, runQuoteReminderPoll };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/reminderPoll.test.js -v`
+Expected: PASS (10 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/reminderPoll.js test/reminderPoll.test.js
+git commit -m "feat: add quotation reminder poll with escalation and retryThread"
+```
+
+---
+
+## Task 20: Bot — `discordQuoteThreads.js` (`/quoted`, `/close`, `/reply`)
+
+**Goal:** The `#quote-requests-offline` command handler — parallel in shape to the existing `discordReplyHandler.js` (same `messageCreate` + thread-tracking-map pattern) but a separate file since the data source differs (HTTP to Next.js via `quotationMap`/`internalApiClient`, not local Postgres via `activeTickets`).
+
+**Files:**
+- Create: `[Bot] src/quotes/discordQuoteThreads.js`
+- Test: `[Bot] test/discordQuoteThreads.test.js`
+
+**Acceptance Criteria:**
+- [ ] A message in a thread not tracked in `quotationMap.byThread` is ignored (no reaction, no API call) — same as `discordReplyHandler.js`'s untracked-thread behavior.
+- [ ] A message from a bot author is ignored.
+- [ ] `/quoted 45000 discussed a discount` PATCHes `{status:'QUOTED', quotedAmount:45000, quotedNotes:'discussed a discount'}` and reacts ✅.
+- [ ] `/quoted` alone (no amount/notes) PATCHes `{status:'QUOTED', quotedAmount:undefined, quotedNotes:undefined}` and still reacts ✅ — amount/notes are optional per the source spec.
+- [ ] `/close` PATCHes `{status:'CANCELLED'}`, replies "Cancelled", and archives the thread.
+- [ ] `/reply <text>` on a quotation with a `customerMobile` sends the text over WhatsApp (via the existing `sendWhatsAppSafe` from `tickets.js`) and reacts ✅/❌ based on delivery.
+- [ ] `/reply <text>` on a phoneless quotation (no `customerMobile`) does NOT call `sendWhatsAppSafe` — replies with a warning instead.
+- [ ] A failed PATCH (internal API error) reacts ❌ instead of throwing.
+
+**Verify:** `npx jest test/discordQuoteThreads.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests**
+
+```javascript
+// test/discordQuoteThreads.test.js
+const mockPatchQuotation = jest.fn();
+jest.mock('../src/quotes/internalApiClient', () => ({ patchQuotation: mockPatchQuotation }));
+
+const mockSendWhatsAppSafe = jest.fn();
+jest.mock('../src/bot/tickets', () => ({ sendWhatsAppSafe: mockSendWhatsAppSafe }));
+
+const mockDiscordClient = { on: jest.fn() };
+jest.mock('../src/discord/client', () => ({ discordClient: mockDiscordClient }));
+
+const { registerQuoteThreadHandlers } = require('../src/quotes/discordQuoteThreads');
+const quotationMap = require('../src/quotes/quotationMap');
+
+registerQuoteThreadHandlers();
+function getHandler() {
+    return mockDiscordClient.on.mock.calls.find(([name]) => name === 'messageCreate')[1];
+}
+
+function makeMsg({ channelId, content, isThread = true }) {
+    return {
+        author: { bot: false },
+        channelId,
+        channel: { isThread: () => isThread, setArchived: jest.fn(async () => {}) },
+        content,
+        react: jest.fn(async () => {}),
+        reply: jest.fn(async () => {}),
+    };
+}
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    quotationMap.byThread.clear();
+});
+
+test('a message in an untracked thread is ignored', async () => {
+    const handler = getHandler();
+    await handler(makeMsg({ channelId: 'unknown-thread', content: '/quoted 100' }));
+    expect(mockPatchQuotation).not.toHaveBeenCalled();
+});
+
+test('a message from a bot author is ignored', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    const handler = getHandler();
+    const msg = { ...makeMsg({ channelId: 'thread-1', content: '/close' }), author: { bot: true } };
+    await handler(msg);
+    expect(mockPatchQuotation).not.toHaveBeenCalled();
+});
+
+test('/quoted with amount and notes patches and reacts', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted 45000 discussed a discount' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'QUOTED', quotedAmount: 45000, quotedNotes: 'discussed a discount' });
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/quoted with no arguments still patches and reacts', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'QUOTED', quotedAmount: undefined, quotedNotes: undefined });
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/close patches CANCELLED, replies, and archives', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'QUOTED', customerMobile: null });
+    mockPatchQuotation.mockResolvedValue({});
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/close' });
+    await handler(msg);
+    expect(mockPatchQuotation).toHaveBeenCalledWith('q1', { status: 'CANCELLED' });
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Cancelled'));
+    expect(msg.channel.setArchived).toHaveBeenCalledWith(true);
+});
+
+test('/reply sends to WhatsApp when a customerMobile exists', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'QUOTED', customerMobile: '919876543210' });
+    mockSendWhatsAppSafe.mockResolvedValue(true);
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/reply Ready in 3 days' });
+    await handler(msg);
+    expect(mockSendWhatsAppSafe).toHaveBeenCalledWith('919876543210@c.us', expect.stringContaining('Ready in 3 days'));
+    expect(msg.react).toHaveBeenCalledWith('✅');
+});
+
+test('/reply on a phoneless quotation warns instead of sending', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/reply Ready in 3 days' });
+    await handler(msg);
+    expect(mockSendWhatsAppSafe).not.toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('No WhatsApp phone'));
+});
+
+test('a failed PATCH reacts with ❌ instead of throwing', async () => {
+    quotationMap.byThread.set('thread-1', { quotationId: 'q1', status: 'REQUESTED', customerMobile: null });
+    mockPatchQuotation.mockRejectedValue(new Error('500'));
+    const handler = getHandler();
+    const msg = makeMsg({ channelId: 'thread-1', content: '/quoted 100' });
+    await expect(handler(msg)).resolves.not.toThrow();
+    expect(msg.react).toHaveBeenCalledWith('❌');
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/discordQuoteThreads.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/discordQuoteThreads'`
+
+- [ ] **Step 3: Write the implementation**
+
+```javascript
+// src/quotes/discordQuoteThreads.js
+const { discordClient } = require('../discord/client');
+const { sendWhatsAppSafe } = require('../bot/tickets');
+const { patchQuotation } = require('./internalApiClient');
+const quotationMap = require('./quotationMap');
+
+function parseQuotedCommand(text) {
+    // "/quoted 45000 discussed a discount" -> { amount: 45000, notes: 'discussed a discount' }
+    // "/quoted" alone -> { amount: undefined, notes: undefined } — both optional per the source spec.
+    const rest = text.replace(/^\/quoted\s*/i, '').trim();
+    if (!rest) return { amount: undefined, notes: undefined };
+    const match = rest.match(/^(\d+)\s*(.*)$/);
+    if (!match) return { amount: undefined, notes: rest };
+    return { amount: Number(match[1]), notes: match[2].trim() || undefined };
+}
+
+/** Agent-side commands typed into a tracked #quote-requests-offline thread. */
+function registerQuoteThreadHandlers() {
+    discordClient.on('messageCreate', async (discordMsg) => {
+        if (discordMsg.author.bot) return;
+        if (!discordMsg.channel.isThread()) return;
+
+        const tracked = quotationMap.byThread.get(discordMsg.channelId);
+        if (!tracked) return;
+
+        const text = discordMsg.content.trim();
+
+        if (/^\/quoted\b/i.test(text)) {
+            const { amount, notes } = parseQuotedCommand(text);
+            try {
+                await patchQuotation(tracked.quotationId, { status: 'QUOTED', quotedAmount: amount, quotedNotes: notes });
+                await discordMsg.react('✅');
+            } catch (e) {
+                console.error('❌ /quoted failed:', e.message);
+                await discordMsg.react('❌');
+            }
+            return;
+        }
+
+        if (/^\/close\b/i.test(text)) {
+            try {
+                await patchQuotation(tracked.quotationId, { status: 'CANCELLED' });
+                await discordMsg.reply('❌ Cancelled.');
+                await discordMsg.channel.setArchived(true);
+            } catch (e) {
+                console.error('❌ /close failed:', e.message);
+                await discordMsg.react('❌');
+            }
+            return;
+        }
+
+        if (text.startsWith('/reply ')) {
+            const answer = text.replace(/^\/reply\s+/i, '').trim();
+            if (!tracked.customerMobile) {
+                await discordMsg.reply('⚠️ No WhatsApp phone on this quotation — nothing to reply to.');
+                return;
+            }
+            try {
+                const sent = await sendWhatsAppSafe(`${tracked.customerMobile}@c.us`, `💎 *Vairis:*\n\n${answer}`);
+                await discordMsg.react(sent ? '✅' : '❌');
+            } catch (e) {
+                console.error('❌ /reply failed:', e.message);
+                await discordMsg.react('❌');
+            }
+        }
+    });
+}
+
+module.exports = { registerQuoteThreadHandlers };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/discordQuoteThreads.test.js -v`
+Expected: PASS (8 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/quotes/discordQuoteThreads.js test/discordQuoteThreads.test.js
+git commit -m "feat: add /quoted /close /reply handler for quote-requests-offline"
+```
+
+---
+
+## Task 21: Bot — `handleMessage.js` integration (the biggest behavior change)
+
+**Goal:** Wire WhatsApp price enquiries into the quotation pipeline instead of the old `#whatsapp-support-bot` "Enquiry: Pricing" ticket, and forward any message from an attached/ref-matched phone straight into its quote thread — before `isPriceEnquiry()` ever runs.
+
+**This replaces existing behavior, it doesn't just add to it.** Per the source spec's isolation rule ("non-price WhatsApp tickets still go only to #whatsapp-support-bot"), a price enquiry must no longer ALSO create an old-style ticket — otherwise the same message would spawn both a quotation thread and a ticket thread. Grounding this plan found **one existing test that asserts the old behavior and will need updating, not just new tests added alongside it**: `test/handleMessage.test.js:73-81` ("a price-related keyword raises a price enquiry ticket straight from MENU").
+
+**Files:**
+- Create: `[Bot] src/quotes/quoteIntake.js`
+- Test: `[Bot] test/quoteIntake.test.js`
+- Modify: `[Bot] src/bot/handleMessage.js`
+- Modify: `[Bot] test/handleMessage.test.js`
+
+**Acceptance Criteria:**
+- [ ] A price-enquiry-shaped message from a brand-new phone calls `createOrAttachQuotation`, NOT `createTicket` — no thread is created in the support channel, and the session never enters `WAITING`.
+- [ ] `createOrAttachQuotation` POSTs to `${VAIRIS_API_BASE_URL}/api/quotations` with `customerMobile` set to the bot's own normalized `phoneReadable` (not the WA-suffixed sender id) and updates `quotationMap` on success.
+- [ ] `createOrAttachQuotation` no-ops (returns `null`, doesn't throw) when `VAIRIS_API_BASE_URL` is unset.
+- [ ] A phone already in `quotationMap.byPhone` has its messages forwarded straight into the quote thread and returns early — before `isPriceEnquiry()` runs, and without calling `createOrAttachQuotation` again.
+- [ ] A message containing `Ref Q-XXXX` for an unattached phone resolves that quotation via `fetchOpenQuotations`, attaches it (`quotationMap.upsertOne`, keyed by the bot's own `phoneReadable`, not whatever `customerMobile` the server has on file — see the code comment on why these can legitimately differ), and forwards the message — without creating a duplicate quotation.
+- [ ] The one existing test whose behavior changes is updated to match, not deleted or ignored.
+
+**Verify:** `npx jest test/quoteIntake.test.js test/handleMessage.test.js -v` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing quoteIntake tests**
+
+```javascript
+// test/quoteIntake.test.js
+jest.mock('../src/config', () => ({ VAIRIS_API_BASE_URL: 'https://vairis.example.com' }));
+
+const { createOrAttachQuotation } = require('../src/quotes/quoteIntake');
+const quotationMap = require('../src/quotes/quotationMap');
+
+const originalFetch = global.fetch;
+afterEach(() => {
+    global.fetch = originalFetch;
+});
+beforeEach(() => {
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+});
+
+test('POSTs to the public quotations route with the bot-normalized phone and updates quotationMap', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', discordThreadId: 'thread-1' }),
+    });
+
+    const result = await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: 'Asha', details: 'price question' });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+        'https://vairis.example.com/api/quotations',
+        expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ customerName: 'Asha', customerMobile: '919876543210', details: 'price question' }),
+        }),
+    );
+    expect(result.id).toBe('q1');
+    expect(quotationMap.byPhone.get('919876543210')).toEqual({ quotationId: 'q1', threadId: 'thread-1' });
+});
+
+test('defaults customerName to "WhatsApp customer" when none is known yet', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+        ok: true, json: async () => ({ id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', discordThreadId: null }),
+    });
+    await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.customerName).toBe('WhatsApp customer');
+});
+
+test('returns null and does not call fetch when VAIRIS_API_BASE_URL is unset', async () => {
+    jest.resetModules();
+    jest.doMock('../src/config', () => ({ VAIRIS_API_BASE_URL: null }));
+    const { createOrAttachQuotation: unconfigured } = require('../src/quotes/quoteIntake');
+    global.fetch = jest.fn();
+    const result = await unconfigured({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    expect(result).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('returns null (not a throw) on a non-ok response', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+    const result = await createOrAttachQuotation({ phoneReadable: '919876543210', customerName: null, details: 'x' });
+    expect(result).toBeNull();
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx jest test/quoteIntake.test.js -v`
+Expected: FAIL — `Cannot find module '../src/quotes/quoteIntake'`
+
+- [ ] **Step 3: Write src/quotes/quoteIntake.js**
+
+```javascript
+// src/quotes/quoteIntake.js
+const { VAIRIS_API_BASE_URL } = require('../config');
+const quotationMap = require('./quotationMap');
+
+/**
+ * WhatsApp keyword-fallback price enquiries (no "Ref Q-..." in the message) create or reuse a
+ * VAIRIS quotation via the same public /api/quotations endpoint the PDP modal uses — its own
+ * one-open-quotation-per-mobile dedup means calling this on every enquiry from the same phone is
+ * safe, not just on the first one.
+ *
+ * customerMobile sent here is the bot's own normalized `phoneReadable` (no "@c.us"/"@lid" suffix)
+ * — self-consistent with how quotationMap looks phones up locally. This is unrelated to how a
+ * website-typed mobile number is stored for a WEBSITE-sourced quotation (that's an opaque string
+ * the customer typed on the PDP form) — the two are never compared to each other; ref-matching
+ * (not phone-matching) is what links a WEBSITE quotation to WhatsApp.
+ */
+async function createOrAttachQuotation({ phoneReadable, customerName, details }) {
+    if (!VAIRIS_API_BASE_URL) {
+        console.warn('⚠️ VAIRIS_API_BASE_URL not set — skipping quotation creation.');
+        return null;
+    }
+    try {
+        const res = await fetch(`${VAIRIS_API_BASE_URL}/api/quotations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customerName: customerName || 'WhatsApp customer',
+                customerMobile: phoneReadable,
+                details,
+            }),
+        });
+        if (!res.ok) {
+            console.error(`❌ Quotation create failed: ${res.status}`);
+            return null;
+        }
+        const quotation = await res.json();
+        quotationMap.upsertOne({ ...quotation, customerMobile: phoneReadable });
+        return quotation;
+    } catch (e) {
+        console.error('❌ Failed to create quotation from WhatsApp:', e.message);
+        return null;
+    }
+}
+
+module.exports = { createOrAttachQuotation };
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx jest test/quoteIntake.test.js -v`
+Expected: PASS (4 tests)
+
+- [ ] **Step 5: Modify src/bot/handleMessage.js**
+
+Add these three requires at the top, alongside the existing ones:
+
+```javascript
+const quotationMap = require('../quotes/quotationMap');
+const { fetchOpenQuotations } = require('../quotes/internalApiClient');
+const { createOrAttachQuotation } = require('../quotes/quoteIntake');
+```
+
+Add `phoneReadable` right after `const sender = getNormalizedSender(msg.from);`:
+
+```javascript
+    const sender = getNormalizedSender(msg.from);
+    const phoneReadable = sender.split('@')[0];
+```
+
+Insert this new global block right after the existing "GLOBAL: RAISE TICKET" block (after its closing `}` and blank line) and before the "GLOBAL: PRICE ENQUIRY" comment:
+
+```javascript
+    // --- GLOBAL: QUOTATION (attached/ref-matched phone forwards; runs before isPriceEnquiry()) ---
+    async function forwardToQuoteThread(threadId) {
+        try {
+            const thread = await discordClient.channels.fetch(threadId);
+            if (!thread || !thread.isThread()) return false;
+            if (thread.archived) await thread.setArchived(false);
+            await thread.send(`💬 **Message from customer:**\n${incomingText}`);
+            await msg.reply('✅ Got it — our team will follow up on your quotation shortly.');
+            return true;
+        } catch (e) {
+            console.error('❌ Failed to forward WhatsApp message to quote thread:', e.message);
+            return false;
+        }
+    }
+
+    const attachedQuotation = quotationMap.byPhone.get(phoneReadable);
+    if (attachedQuotation && attachedQuotation.threadId && (await forwardToQuoteThread(attachedQuotation.threadId))) {
+        return;
+    }
+
+    if (!attachedQuotation) {
+        const refMatch = incomingText.match(/Ref\s+(Q-[0-9A-Z]{4})/i);
+        if (refMatch) {
+            try {
+                const open = await fetchOpenQuotations();
+                const match = open.find((q) => q.displayId.toUpperCase() === refMatch[1].toUpperCase());
+                if (match) {
+                    quotationMap.upsertOne({ ...match, customerMobile: phoneReadable });
+                    if (match.discordThreadId && (await forwardToQuoteThread(match.discordThreadId))) {
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error('❌ Failed to resolve quotation ref:', e.message);
+            }
+        }
+    }
+```
+
+Now replace the three price-enquiry `createTicket(...)` call sites. First, the non-WAITING branch — replace:
+
+```javascript
+    if (isPriceEnquiry(incomingText) && session.state !== 'WAITING') {
+        console.log(`🔍 Pricing inquiry detected from ${sender}.`);
+        await msg.reply(getPriceThankYouMessage());
+        const customerPhoneReadable = sender.split('@')[0];
+        await createTicket(
+            sender, session, incomingText,
+            'Pricing enquiry - team will respond with details.',
+            `Enquiry: Pricing (+${customerPhoneReadable})`,
+            'enquiry',
+            msg,
+            { category: 'price_enquiry' }
+        );
+        return;
+    }
+```
+
+with:
+
+```javascript
+    if (isPriceEnquiry(incomingText) && session.state !== 'WAITING') {
+        console.log(`🔍 Pricing inquiry detected from ${sender}.`);
+        await msg.reply(getPriceThankYouMessage());
+        await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+        return;
+    }
+```
+
+Second, the WAITING branch — replace just its tail (the part from `session.state = 'MENU';` through the `createTicket` call and `return;`):
+
+```javascript
+        session.state = 'MENU';
+        delete session.threadId;
+        delete session.ticketCreatedAt;
+        delete session.reminderSent;
+        await saveState(sender);
+        await msg.reply(getPriceThankYouMessage());
+        const customerPhoneReadable = sender.split('@')[0];
+        await createTicket(
+            sender, session, incomingText,
+            'Pricing enquiry - team will respond with details.',
+            `Enquiry: Pricing (+${customerPhoneReadable})`,
+            'enquiry',
+            msg,
+            { category: 'price_enquiry' }
+        );
+        return;
+    }
+```
+
+with:
+
+```javascript
+        session.state = 'MENU';
+        delete session.threadId;
+        delete session.ticketCreatedAt;
+        delete session.reminderSent;
+        await saveState(sender);
+        await msg.reply(getPriceThankYouMessage());
+        await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+        return;
+    }
+```
+
+(Leave the block above it — the `if (session.threadId) { try { ... forward into existing ticket thread ... } }` part — untouched. That's for a customer still mid-conversation on an unrelated open ticket; only the fallthrough when there's no such open thread redirects to quotation creation.)
+
+Third, the `AWAITING_PRICE_DETAILS` case — replace:
+
+```javascript
+        case 'AWAITING_PRICE_DETAILS': {
+            if (isMenuOptionOnly(incomingText)) {
+                await msg.reply(`↩️ Looks like you picked a menu option by mistake.\nReply *0* or *back* for the main menu.\nOr send your product details / link to continue the price enquiry.`);
+                break;
+            }
+            await msg.reply(getPriceThankYouMessage());
+            const customerPhoneReadable = sender.split('@')[0];
+            await createTicket(
+                sender, session, incomingText,
+                'Pricing enquiry via menu option 2.',
+                `Enquiry: Pricing (+${customerPhoneReadable})`,
+                'enquiry',
+                msg,
+                { category: 'price_enquiry' }
+            );
+            break;
+        }
+```
+
+with:
+
+```javascript
+        case 'AWAITING_PRICE_DETAILS': {
+            if (isMenuOptionOnly(incomingText)) {
+                await msg.reply(`↩️ Looks like you picked a menu option by mistake.\nReply *0* or *back* for the main menu.\nOr send your product details / link to continue the price enquiry.`);
+                break;
+            }
+            await msg.reply(getPriceThankYouMessage());
+            await createOrAttachQuotation({ phoneReadable, customerName: session.customerName, details: incomingText });
+            break;
+        }
+```
+
+- [ ] **Step 6: Update test/handleMessage.test.js**
+
+Add these two mocks near the top, alongside the existing `jest.mock` calls:
+
+```javascript
+jest.mock('../src/quotes/internalApiClient', () => ({ fetchOpenQuotations: jest.fn() }));
+jest.mock('../src/quotes/quoteIntake', () => ({ createOrAttachQuotation: jest.fn() }));
+```
+
+Add these requires alongside the existing `const { handleIncomingMessage } = ...` line:
+
+```javascript
+const { fetchOpenQuotations } = require('../src/quotes/internalApiClient');
+const { createOrAttachQuotation } = require('../src/quotes/quoteIntake');
+const quotationMap = require('../src/quotes/quotationMap');
+```
+
+Add cleanup to the existing `beforeEach`:
+
+```javascript
+beforeEach(() => {
+    userSessions.clear();
+    activeTickets.clear();
+    mockDiscordClient._reset();
+    quotationMap.byPhone.clear();
+    quotationMap.byThread.clear();
+    fetchOpenQuotations.mockReset();
+    createOrAttachQuotation.mockReset();
+});
+```
+
+Replace the now-outdated test (originally at lines 73-81):
+
+```javascript
+test('a price-related keyword raises a price enquiry ticket straight from MENU', async () => {
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'how much for a gold ring?' });
+    await handleIncomingMessage(msg);
+
+    expect(mockDiscordClient._supportChannel.threads.create).toHaveBeenCalledTimes(1);
+    const [[createArgs]] = mockDiscordClient._supportChannel.threads.create.mock.calls;
+    expect(createArgs.name).toMatch(/Enquiry: Pricing/);
+    expect(userSessions.get(SENDER).state).toBe('WAITING');
+});
+```
+
+with:
+
+```javascript
+test('a price-related keyword creates a quotation instead of a support ticket, and does not enter WAITING', async () => {
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'how much for a gold ring?' });
+    await handleIncomingMessage(msg);
+
+    expect(createOrAttachQuotation).toHaveBeenCalledWith(
+        expect.objectContaining({ phoneReadable: SENDER.split('@')[0], details: 'how much for a gold ring?' }),
+    );
+    expect(mockDiscordClient._supportChannel.threads.create).not.toHaveBeenCalled();
+    expect(userSessions.get(SENDER)?.state ?? 'MENU').not.toBe('WAITING');
+});
+
+test('an attached phone forwards messages to its quote thread instead of creating a ticket', async () => {
+    mockDiscordClient._channels.set('quote-thread-1', {
+        id: 'quote-thread-1', isThread: () => true, archived: false,
+        send: jest.fn(async () => {}), setArchived: jest.fn(async () => {}),
+    });
+    quotationMap.byPhone.set(SENDER.split('@')[0], { quotationId: 'q1', threadId: 'quote-thread-1' });
+
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'any update on my quote?' });
+    await handleIncomingMessage(msg);
+
+    const thread = mockDiscordClient._channels.get('quote-thread-1');
+    expect(thread.send).toHaveBeenCalledWith(expect.stringContaining('any update on my quote?'));
+    expect(createOrAttachQuotation).not.toHaveBeenCalled();
+    expect(mockDiscordClient._supportChannel.threads.create).not.toHaveBeenCalled();
+});
+
+test('a message containing "Ref Q-XXXX" attaches to that quotation and forwards, without creating a new one', async () => {
+    mockDiscordClient._channels.set('quote-thread-2', {
+        id: 'quote-thread-2', isThread: () => true, archived: false,
+        send: jest.fn(async () => {}), setArchived: jest.fn(async () => {}),
+    });
+    fetchOpenQuotations.mockResolvedValue([
+        { id: 'q2', displayId: 'Q-7K2M', status: 'REQUESTED', discordThreadId: 'quote-thread-2', customerMobile: '9876500000' },
+    ]);
+
+    const msg = makeFakeWaMessage({ from: SENDER, body: 'Following up — Ref Q-7K2M' });
+    await handleIncomingMessage(msg);
+
+    const thread = mockDiscordClient._channels.get('quote-thread-2');
+    expect(thread.send).toHaveBeenCalledWith(expect.stringContaining('Ref Q-7K2M'));
+    expect(createOrAttachQuotation).not.toHaveBeenCalled();
+    expect(quotationMap.byPhone.get(SENDER.split('@')[0])).toEqual({ quotationId: 'q2', threadId: 'quote-thread-2' });
+});
+```
+
+- [ ] **Step 7: Run to verify it passes**
+
+Run: `npx jest test/quoteIntake.test.js test/handleMessage.test.js -v`
+Expected: PASS (all tests, including the ones untouched by this task)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/quotes/quoteIntake.js test/quoteIntake.test.js src/bot/handleMessage.js test/handleMessage.test.js
+git commit -m "feat: route WhatsApp price enquiries into the quotation pipeline"
+```
+
+---
+
+## Task 22: Bot — wire up `index.js`
+
+**Goal:** Start the quote reminder poll and register the quote-thread Discord handler at boot, alongside (not inside) the existing WhatsApp bootstrap — the reminder poll only needs Discord + the internal API, never WhatsApp, so it doesn't need to wait for `waClient.on('ready')` the way the 24h ticket reminder does.
+
+**Files:**
+- Modify: `[Bot] index.js`
+
+**Acceptance Criteria:**
+- [ ] `registerQuoteThreadHandlers()` and `startQuoteReminderPoll()` are both called unconditionally at startup, not gated on WhatsApp readiness.
+- [ ] Existing startup behavior (WhatsApp init, Discord connect, session load) is unchanged.
+
+**Steps:**
+
+- [ ] **Step 1: Modify index.js**
+
+Add two requires near the top, alongside the existing ones:
+
+```javascript
+const { registerQuoteThreadHandlers } = require('./src/quotes/discordQuoteThreads');
+const { startQuoteReminderPoll } = require('./src/quotes/reminderPoll');
+```
+
+Add two calls right after the existing `registerDiscordReplyHandlers();` line:
+
+```javascript
+registerWhatsAppEvents();
+registerDiscordReplyHandlers();
+registerQuoteThreadHandlers();
+startQuoteReminderPoll();
+```
+
+No other change to `index.js`.
+
+- [ ] **Step 2: Manual verification**
+
+Run: `node index.js` locally (with a valid `.env` including the new quote vars from Task 16/23). Confirm the bot starts with no new errors, and check logs for the reminder poll's first (fetch-on-boot) run.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add index.js
+git commit -m "feat: wire up quotation reminder poll and Discord handler at boot"
+```
+
+---
+
+## Task 23: Bot env var documentation
+
+**Goal:** Document every new bot-side env var in `.env.example`, matching the file's existing comment style.
+
+**Files:**
+- Modify: `[Bot] .env.example`
+
+**Acceptance Criteria:**
+- [ ] Every var Task 16 added to `config.js` has a documented line here, marked optional (this feature degrades gracefully when unset).
+
+**Steps:**
+
+- [ ] **Step 1: Append to .env.example**
+
+```bash
+
+# Quotation pipeline (optional — bot degrades gracefully without these; see src/config.js)
+# Where the Vairis Next.js app is deployed — the bot has no other way to reach it (every other
+# bot<->store integration is direct Postgres, not HTTP).
+VAIRIS_API_BASE_URL=https://vairis-ten.vercel.app
+# Bearer token shared with Vairis's INTERNAL_API_KEY — must match exactly.
+INTERNAL_API_KEY=
+# #quote-requests-offline channel id, and the xperson (vendor-quote executive) snowflake to ping.
+DISCORD_QUOTE_CHANNEL_ID=
+DISCORD_QUOTE_ASSIGNEE_ID=
+# Pinged once, additionally, if the assignee hasn't responded after QUOTE_ESCALATION_AFTER_MISSES pings.
+DISCORD_ESCALATION_ID=
+# Reminder cadence in minutes: first ping fires sooner than the steady-state repeat interval.
+QUOTE_FIRST_REMINDER_MIN=10
+QUOTE_REMINDER_INTERVAL_MIN=30
+QUOTE_ESCALATION_AFTER_MISSES=3
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .env.example
+git commit -m "docs: document quotation pipeline bot env vars"
+```
+
+---
+
+## Deployment note: stage/prod channel isolation (no code — env values only)
+
+The design doc's hardening pass calls for test traffic to never reach real staff: `DISCORD_QUOTE_CHANNEL_ID`, `DISCORD_QUOTE_ASSIGNEE_ID`, and `DISCORD_ESCALATION_ID` should hold **different values** in non-production environments, not the same production channel/people. There's no code task for this — Tasks 15 and 23 already parameterize everything through env vars — but it's easy to silently skip at deploy time, so spelling it out here:
+
+- [ ] Create a `stage-quote-requests-offline` Discord channel (or reuse one you already use for testing).
+- [ ] Set `DISCORD_QUOTE_ASSIGNEE_ID` and `DISCORD_ESCALATION_ID` to test snowflakes (e.g. your own Discord user id) in every non-production `.env` — local dev, and the bot's `.env.stage`/`.env.local` if one exists — so test quotations never ping xperson or Anil.
+- [ ] Keep production values (`.env.prod` on the bot; the Vercel Production environment on Vairis) pointed at the real channel and people.
+- [ ] Set `VAIRIS_API_BASE_URL` on the bot to match whichever Vairis deployment it's polling — a local dev bot pointed at `http://localhost:3000`, a staging bot pointed at a Vercel preview URL, production at `https://vairis-ten.vercel.app`.
+
+---

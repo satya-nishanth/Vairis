@@ -258,6 +258,10 @@ model Order {
   payment       Payment?
   events        OrderEvent[]
   parentOrderId String?
+  quotationId   String?      @unique // informational only — no FK, quote machine stays independent.
+                                      // @unique is a defense-in-depth backstop against a duplicate
+                                      // order slipping through; the real race guard is the
+                                      // conditional updateMany in app/api/admin/orders/route.ts.
   parent        Order?       @relation("OrderSplit", fields: [parentOrderId], references: [id])
   children      Order[]      @relation("OrderSplit")
   refunds       OrderRefund[]
@@ -564,6 +568,50 @@ model CatalogueComment {
   productId   String
   body        String
   createdAt   DateTime  @default(now())
+}
+
+// ── Quotations ───────────────────────────────────────────────────────────────
+
+enum QuotationSource {
+  MANUAL
+  WEBSITE
+}
+
+enum QuotationStatus {
+  REQUESTED
+  QUOTED
+  CONVERTED
+  CANCELLED
+}
+
+enum QuotationOrderType {
+  VAIRIS
+  CUSTOMISATION
+}
+
+model Quotation {
+  id                  String             @id @default(cuid())
+  displayId           String             @unique // "Q-7K2M"
+  source              QuotationSource
+  status              QuotationStatus    @default(REQUESTED)
+  orderType           QuotationOrderType
+  details             String?
+  customerName        String?
+  customerMobile      String?
+  productId           String?            // optional picker link, no relation enforced
+  screenshotUrls      String[]           @default([])
+  discordThreadId     String?
+  lastReminderAt      DateTime?
+  reminderCount       Int                @default(0) // pings sent while REQUESTED; drives escalation
+  escalatedAt         DateTime?          // set once, when reminderCount crosses the threshold
+  quotedAmount        Int?
+  quotedNotes         String?
+  quotedAt            DateTime?          // set on REQUESTED->QUOTED transition; staleness clock for QUOTED
+  orderId             String?            @unique // set on CONVERTED
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([customerMobile, status]) // dedup/attach lookups
 }
 
 model HeroImage {
