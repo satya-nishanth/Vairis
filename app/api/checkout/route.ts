@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { calculatePrice } from '@/lib/pricing'
+import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { computeOrderAmounts } from '@/lib/orders'
 import { validatePromo } from '@/lib/promo'
@@ -105,34 +105,40 @@ export async function POST(req: NextRequest) {
 
   // Server-side price snapshot per line (same formula the PDP shows) —
   // stones priced at the per-carat rate for the item's exchange choice.
+  // Full breakdown is frozen on OrderItem.priceBreakdown; price = unit total.
   const lines = cartItems.map((item) => {
     const rate = rateMap[item.variant.metalType]
     if (!rate) {
       throw new Error(`No gold rate for ${item.variant.metalType} — cannot price order`)
     }
-    const unitPrice = Math.round(
-      calculatePrice(
-        {
-          weightGrams: item.variant.weightGrams.toString(),
-          makingChargePerGram: item.variant.makingChargePerGram.toString(),
-          flatMakingCharge: item.variant.flatMakingCharge.toString(),
-          stoneCharges: item.variant.stoneCharges.toString(),
-          miscCharges: item.variant.miscCharges.toString(),
-        },
-        rate,
-        {
-          stones: toStoneInputs(item.variant.product.stones),
-          withExchange: item.withExchange,
-          config: pricingConfig,
-        },
-      ).total,
+    const weightGrams = Number(item.variant.weightGrams)
+    const breakdown = calculatePrice(
+      {
+        weightGrams: item.variant.weightGrams.toString(),
+        makingChargePerGram: item.variant.makingChargePerGram.toString(),
+        flatMakingCharge: item.variant.flatMakingCharge.toString(),
+        stoneCharges: item.variant.stoneCharges.toString(),
+        miscCharges: item.variant.miscCharges.toString(),
+      },
+      rate,
+      {
+        stones: toStoneInputs(item.variant.product.stones),
+        withExchange: item.withExchange,
+        config: pricingConfig,
+      },
     )
+    const unitPrice = Math.round(breakdown.total)
     return {
       variantId: item.variantId,
       productName: item.variant.product.name,
       quantity: item.quantity,
       unitPrice,
       withExchange: item.withExchange,
+      priceBreakdown: toOrderItemPriceSnapshot(breakdown, {
+        goldRatePerGram: rate,
+        weightGrams,
+        metalType: item.variant.metalType,
+      }),
     }
   })
 
@@ -182,6 +188,7 @@ export async function POST(req: NextRequest) {
           variantId: l.variantId,
           quantity: l.quantity,
           price: l.unitPrice,
+          priceBreakdown: l.priceBreakdown,
           productName: l.productName,
           withExchange: l.withExchange,
         })),

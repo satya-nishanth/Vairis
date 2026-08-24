@@ -76,6 +76,9 @@ export async function loadInvoiceCatalogue(): Promise<InvoiceCatalogue> {
 export const INVOICE_ORDER_INCLUDE = {
   user: { select: { name: true, email: true } },
   payment: true,
+  // Split children have no Payment row — gateway payment lives on the parent
+  // (same anchoring as lib/refunds resolvePayment / order detail UI).
+  parent: { include: { payment: true } },
   items: {
     include: {
       variant: {
@@ -142,6 +145,8 @@ export async function buildInvoiceFromProducts(
 /**
  * Order-journey helper: cart / checkout / manual order lines (variant ids)
  * → tax invoice using catalogue weights, stones, and current gold rates.
+ * Prefer `invoiceFromOrderId` when an order already exists — that path uses
+ * frozen OrderItem.priceBreakdown instead of live rates.
  */
 export async function invoiceFromVariants(
   items: InvoiceVariantItem[],

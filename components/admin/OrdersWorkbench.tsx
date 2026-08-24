@@ -1,9 +1,34 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
-import type { OrderStatus } from '@prisma/client'
-import { ORDER_STATUS_META } from '@/lib/orders'
+import type { OrderStatus, PaymentStatus } from '@prisma/client'
+import {
+  ORDER_STATUS_META,
+  buildAdminJourneyNodes,
+  type AdminJourneyNode,
+} from '@/lib/orders'
+
+export type OrdersListItem = {
+  productName: string
+  quantity: number
+  imageUrl: string | null
+}
+
+export type OrdersListEvent = {
+  id: string
+  status: OrderStatus
+  note: string | null
+  createdAt: string
+}
+
+export type OrdersListPayment = {
+  status: PaymentStatus
+  amount: number
+  razorpayPaymentId: string | null
+  createdAt: string
+}
 
 export type OrdersListRow = {
   id: string
@@ -14,7 +39,18 @@ export type OrdersListRow = {
   createdAt: string
   email: string
   itemsLabel: string
+  itemCount: number
+  items: OrdersListItem[]
+  payment: OrdersListPayment | null
+  events: OrdersListEvent[]
   children?: OrdersListRow[]
+}
+
+export type OrdersKpi = {
+  key: string
+  label: string
+  count: number
+  href: string
 }
 
 type Chip = {
@@ -29,37 +65,65 @@ type OrdersWorkbenchProps = {
   activeChip: string
   moreStatuses: Chip[]
   filterLabel: string | null
+  kpis: OrdersKpi[]
 }
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`
 
 function statusTone(status: OrderStatus): string {
   const tone = ORDER_STATUS_META[status]?.tone ?? 'pending'
-  return `orders-cards__badge is-${tone}`
+  return `orders-wb__badge is-${tone}`
 }
 
-function accentClass(status: OrderStatus): string {
-  if (
-    status === 'PAYMENT_CONFIRMED' ||
-    status === 'PREPARING' ||
-    status === 'SHIPPED' ||
-    status === 'OUT_FOR_DELIVERY' ||
-    status === 'SPLIT_INTO_DELIVERIES'
-  ) {
-    return 'is-active'
-  }
-  if (status === 'DELIVERED' || status === 'DEPOSIT_REFUNDED') return 'is-done'
-  if (ORDER_STATUS_META[status]?.tone === 'bad') return 'is-bad'
-  return 'is-muted'
+function isPaid(order: OrdersListRow): boolean {
+  if (order.payment?.status === 'CAPTURED') return true
+  return (
+    order.status === 'PAYMENT_CONFIRMED' ||
+    order.status === 'PREPARING' ||
+    order.status === 'SHIPPED' ||
+    order.status === 'OUT_FOR_DELIVERY' ||
+    order.status === 'DELIVERED' ||
+    order.status === 'DEPOSIT_REFUNDED' ||
+    order.status === 'SPLIT_INTO_DELIVERIES'
+  )
 }
 
-function parentItemsLabel(order: OrdersListRow): string {
+function itemsDisplay(order: OrdersListRow): string {
   const kids = order.children ?? []
   if (kids.length > 0) {
-    return `${kids.length} deliver${kids.length === 1 ? 'y' : 'ies'}`
+    const names = kids
+      .flatMap((c) => c.items.map((i) => i.productName))
+      .filter(Boolean)
+    const unique = [...new Set(names)]
+    if (unique.length === 0) {
+      return `${kids.length} deliver${kids.length === 1 ? 'y' : 'ies'}`
+    }
+    if (unique.length === 1) return unique[0]
+    if (unique.length === 2) return `${unique[0]}, ${unique[1]}`
+    return `${unique[0]} +${unique.length - 1} more`
   }
-  if (order.status === 'SPLIT_INTO_DELIVERIES') return 'Split into children'
-  return order.itemsLabel || 'No items'
+  if (order.items.length === 0) return order.itemsLabel || 'No items'
+  if (order.items.length === 1) {
+    const i = order.items[0]
+    return i.quantity > 1 ? `${i.productName} ×${i.quantity}` : i.productName
+  }
+  const first = order.items[0].productName
+  return `${first} +${order.items.length - 1} more`
+}
+
+function previewImages(order: OrdersListRow): OrdersListItem[] {
+  const kids = order.children ?? []
+  const source = kids.length > 0 ? kids.flatMap((c) => c.items) : order.items
+  const seen = new Set<string>()
+  const out: OrdersListItem[] = []
+  for (const item of source) {
+    const key = item.imageUrl ?? item.productName
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+    if (out.length >= 4) break
+  }
+  return out
 }
 
 function matchesQuery(order: OrdersListRow, t: string): boolean {
@@ -76,83 +140,262 @@ function matchesQuery(order: OrdersListRow, t: string): boolean {
   return (order.children ?? []).some((c) => matchesQuery(c, t))
 }
 
-function Chevron() {
+function findOrder(orders: OrdersListRow[], id: string | null): OrdersListRow | null {
+  if (!id) return null
+  for (const o of orders) {
+    if (o.id === id) return o
+    for (const c of o.children ?? []) {
+      if (c.id === id) return c
+    }
+  }
+  return null
+}
+
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function JourneyStrip({ nodes }: { nodes: AdminJourneyNode[] }) {
   return (
-    <span className="orders-cards__chevron" aria-hidden>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M6 3.5L10.5 8L6 12.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
+    <ol className="orders-wb__journey">
+      {nodes.map((node, i) => (
+        <li
+          key={node.id}
+          className={`orders-wb__journey-step is-${node.state}${node.isActive ? ' is-active' : ''}`}
+        >
+          {i > 0 && <span className="orders-wb__journey-line" aria-hidden />}
+          <span className="orders-wb__journey-dot" aria-hidden>
+            {node.state === 'done' ? (
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M3 7.2L5.8 10L11 4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : null}
+          </span>
+          <span className="orders-wb__journey-label">{node.label}</span>
+          <span className="orders-wb__journey-when">
+            {node.enteredAt
+              ? formatWhen(
+                  node.enteredAt instanceof Date
+                    ? node.enteredAt.toISOString()
+                    : String(node.enteredAt),
+                )
+              : node.state === 'todo'
+                ? 'Pending'
+                : '—'}
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
-function ParentHeader({ order }: { order: OrdersListRow }) {
-  const kids = order.children ?? []
-  const isGroup = kids.length > 0
+function JourneyPreview({ order }: { order: OrdersListRow }) {
+  const nodes = useMemo(
+    () => buildAdminJourneyNodes(order.events, order.status, order.createdAt),
+    [order],
+  )
+  const images = previewImages(order)
+  const paid = isPaid(order)
 
   return (
-    <Link
-      href={`/admin/orders/${order.id}`}
-      className={isGroup ? 'orders-cards__parent' : `orders-cards__card ${accentClass(order.status)}`}
-    >
-      <span className="orders-cards__who">
-        <span className="orders-cards__id">{order.id.slice(-8)}</span>
-        <span className="orders-cards__email">{order.email}</span>
-        {isGroup && (
-          <span className="orders-cards__deliveries">{parentItemsLabel(order)}</span>
-        )}
-      </span>
-      {!isGroup && (
-        <span className="orders-cards__items">{order.itemsLabel || 'No items'}</span>
+    <aside className="orders-wb__preview" aria-label="Journey preview">
+      <div className="orders-wb__preview-head">
+        <h2 className="orders-wb__preview-title">Journey preview</h2>
+        <span className="orders-wb__preview-id">{order.id.slice(-8)}</span>
+      </div>
+
+      {images.length > 0 && (
+        <div className="orders-wb__preview-gallery">
+          {images.map((item, i) => (
+            <div key={`${item.productName}-${i}`} className="orders-wb__preview-shot">
+              {item.imageUrl ? (
+                <Image
+                  src={item.imageUrl}
+                  alt={item.productName}
+                  fill
+                  sizes="120px"
+                  style={{ objectFit: 'cover' }}
+                />
+              ) : (
+                <span className="orders-wb__preview-shot-empty" />
+              )}
+            </div>
+          ))}
+        </div>
       )}
-      {isGroup && <span className="orders-cards__items" aria-hidden />}
-      <span className="orders-cards__amount">{inr(order.grandTotal)}</span>
-      <span className={statusTone(order.status)}>
-        {ORDER_STATUS_META[order.status]?.label ?? order.status}
-      </span>
-      <span className="orders-cards__date">
-        {new Date(order.createdAt).toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-        })}
-      </span>
-      <Chevron />
-    </Link>
+
+      <dl className="orders-wb__preview-customer">
+        <div>
+          <dt>Name</dt>
+          <dd>{order.contactName || '—'}</dd>
+        </div>
+        <div>
+          <dt>Email</dt>
+          <dd>{order.email}</dd>
+        </div>
+        <div>
+          <dt>Phone</dt>
+          <dd>{order.contactPhone || '—'}</dd>
+        </div>
+      </dl>
+
+      <div className="orders-wb__preview-section">
+        <h3 className="orders-wb__preview-section-title">Order journey</h3>
+        <JourneyStrip nodes={nodes} />
+      </div>
+
+      <div className="orders-wb__preview-section">
+        <h3 className="orders-wb__preview-section-title">Payment</h3>
+        <dl className="orders-wb__preview-payment">
+          <div>
+            <dt>Status</dt>
+            <dd>
+              <span className={paid ? 'orders-wb__paid is-yes' : 'orders-wb__paid'}>
+                <span className="orders-wb__paid-dot" aria-hidden />
+                {paid ? 'Paid' : 'Unpaid'}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>Method</dt>
+            <dd>
+              {order.payment
+                ? order.payment.razorpayPaymentId?.startsWith('mock_')
+                  ? 'Mock gateway'
+                  : 'Razorpay'
+                : 'Offline / pending'}
+            </dd>
+          </div>
+          <div>
+            <dt>Amount</dt>
+            <dd>{inr(order.payment?.amount ?? order.grandTotal)}</dd>
+          </div>
+          {order.payment?.razorpayPaymentId && (
+            <div>
+              <dt>Txn ID</dt>
+              <dd className="orders-wb__mono">{order.payment.razorpayPaymentId}</dd>
+            </div>
+          )}
+          {order.payment && (
+            <div>
+              <dt>Paid on</dt>
+              <dd>{formatWhen(order.payment.createdAt)}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
+      {order.itemsLabel && (
+        <div className="orders-wb__preview-section">
+          <h3 className="orders-wb__preview-section-title">Items</h3>
+          <p className="orders-wb__preview-items">{order.itemsLabel}</p>
+        </div>
+      )}
+
+      <Link href={`/admin/orders/${order.id}`} className="orders-wb__preview-cta">
+        View order details
+        <span aria-hidden>→</span>
+      </Link>
+    </aside>
   )
 }
 
-function ChildRow({ child }: { child: OrdersListRow }) {
+function OrderRow({
+  order,
+  selected,
+  onSelect,
+  nested,
+}: {
+  order: OrdersListRow
+  selected: boolean
+  onSelect: () => void
+  nested?: boolean
+}) {
   return (
-    <Link href={`/admin/orders/${child.id}`} className="orders-cards__child">
-      <span className="orders-cards__who">
-        <span className="orders-cards__id">{child.id.slice(-8)}</span>
+    <div
+      role="button"
+      tabIndex={0}
+      className={`orders-wb__row${selected ? ' is-selected' : ''}${nested ? ' is-nested' : ''}`}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+    >
+      <span className="orders-wb__col-order">
+        <span className="orders-wb__id">{order.id.slice(-8)}</span>
+        {nested && <span className="orders-wb__nested-tag">Delivery</span>}
       </span>
-      <span className="orders-cards__items">{child.itemsLabel || 'No items'}</span>
-      <span className="orders-cards__amount">{inr(child.grandTotal)}</span>
-      <span className={statusTone(child.status)}>
-        {ORDER_STATUS_META[child.status]?.label ?? child.status}
+      <span className="orders-wb__col-customer">
+        <span className="orders-wb__name">{order.contactName || '—'}</span>
+        <span className="orders-wb__meta">{order.email}</span>
+        {order.contactPhone ? (
+          <span className="orders-wb__meta">{order.contactPhone}</span>
+        ) : null}
       </span>
-      <span className="orders-cards__date orders-cards__date--hide-sm" aria-hidden />
-      <Chevron />
-    </Link>
+      <span className="orders-wb__col-items" title={order.itemsLabel || undefined}>
+        {itemsDisplay(order)}
+      </span>
+      <span className="orders-wb__col-paid">
+        <span className={isPaid(order) ? 'orders-wb__paid is-yes' : 'orders-wb__paid'}>
+          <span className="orders-wb__paid-dot" aria-hidden />
+          {isPaid(order) ? 'Paid' : 'Unpaid'}
+        </span>
+        <span className="orders-wb__amount">{inr(order.grandTotal)}</span>
+      </span>
+      <span className="orders-wb__col-status">
+        <span className={statusTone(order.status)}>
+          {ORDER_STATUS_META[order.status]?.label ?? order.status}
+        </span>
+      </span>
+      <span className="orders-wb__col-date">{formatShortDate(order.createdAt)}</span>
+      <span className="orders-wb__col-action">
+        <Link
+          href={`/admin/orders/${order.id}`}
+          className="orders-wb__open"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Open Order
+        </Link>
+      </span>
+    </div>
   )
 }
 
-/** Option A — card rows; split parents nest children in the same card. */
+/** Split workbench: order table + journey preview (product images live in the preview). */
 export function OrdersWorkbench({
   orders,
   chips,
   activeChip,
   moreStatuses,
   filterLabel,
+  kpis,
 }: OrdersWorkbenchProps) {
   const [q, setQ] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(orders[0]?.id ?? null)
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -160,28 +403,54 @@ export function OrdersWorkbench({
     return orders.filter((o) => matchesQuery(o, t))
   }, [orders, q])
 
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedId(null)
+      return
+    }
+    if (!findOrder(filtered, selectedId)) {
+      setSelectedId(filtered[0].id)
+    }
+  }, [filtered, selectedId])
+
+  const selected = findOrder(filtered, selectedId) ?? findOrder(orders, selectedId)
+
   return (
-    <div className="orders-cards">
-      <div className="orders-cards__toolbar">
-        <h1 className="orders-cards__title">Orders</h1>
-        <Link href="/admin/orders/new" className="admin-btn">
-          + Manual order
-        </Link>
+    <div className="orders-wb">
+      <div className="orders-wb__toolbar">
+        <h1 className="orders-wb__title">Orders</h1>
+        <div className="orders-wb__toolbar-right">
+          <label className="orders-wb__search">
+            <span className="sr-only">Search orders</span>
+            <input
+              type="search"
+              placeholder="Search order, email, phone…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <Link href="/admin/orders/new" className="admin-btn">
+            + Manual order
+          </Link>
+        </div>
       </div>
 
-      <label className="orders-cards__search">
-        <span className="sr-only">Search orders</span>
-        <input
-          type="search"
-          placeholder="Search order, email, phone…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          autoComplete="off"
-        />
-      </label>
+      <div className="orders-wb__kpis">
+        {kpis.map((k) => (
+          <Link
+            key={k.key}
+            href={k.href}
+            className={`orders-wb__kpi${activeChip === k.key ? ' is-active' : ''}`}
+          >
+            <span className="orders-wb__kpi-label">{k.label}</span>
+            <span className="orders-wb__kpi-value">{k.count}</span>
+          </Link>
+        ))}
+      </div>
 
-      <div className="orders-cards__filters">
-        <div className="orders-cards__chips" role="tablist" aria-label="Status filter">
+      <div className="orders-wb__filters">
+        <div className="orders-wb__chips" role="tablist" aria-label="Status filter">
           {chips.map((c) => {
             const active = c.key === activeChip
             return (
@@ -190,17 +459,17 @@ export function OrdersWorkbench({
                 href={c.href}
                 role="tab"
                 aria-selected={active}
-                className={active ? 'orders-cards__chip is-active' : 'orders-cards__chip'}
+                className={active ? 'orders-wb__chip is-active' : 'orders-wb__chip'}
               >
                 {c.label}
               </Link>
             )
           })}
         </div>
-        <label className="orders-cards__more">
+        <label className="orders-wb__more">
           <span className="sr-only">More status filters</span>
           <select
-            className="orders-cards__more-select"
+            className="orders-wb__more-select"
             value={moreStatuses.some((m) => m.key === activeChip) ? activeChip : ''}
             onChange={(e) => {
               const href = moreStatuses.find((m) => m.key === e.target.value)?.href
@@ -217,49 +486,81 @@ export function OrdersWorkbench({
         </label>
       </div>
 
-      {orders.length === 0 ? (
-        <p className="orders-cards__empty">
-          No orders{filterLabel ? ` in ${filterLabel}` : ' yet'}.
-        </p>
-      ) : filtered.length === 0 ? (
-        <p className="orders-cards__empty">No orders match “{q.trim()}”.</p>
-      ) : (
-        <>
-          <ul className="orders-cards__list">
-            {filtered.map((order) => {
-              const kids = order.children ?? []
-              if (kids.length === 0) {
-                return (
-                  <li key={order.id}>
-                    <ParentHeader order={order} />
-                  </li>
-                )
-              }
-              return (
-                <li key={order.id}>
-                  <div className={`orders-cards__group ${accentClass(order.status)}`}>
-                    <ParentHeader order={order} />
-                    <div className="orders-cards__nest">
-                      <ul className="orders-cards__children">
-                        {kids.map((child) => (
-                          <li key={child.id} className="orders-cards__child-wrap">
-                            <ChildRow child={child} />
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-          <p className="orders-cards__count">
-            Showing {filtered.length}
-            {q.trim() ? ` of ${orders.length}` : ''} order
-            {filtered.length === 1 ? '' : 's'}
-          </p>
-        </>
-      )}
+      <div className="orders-wb__split">
+        <div className="orders-wb__list-pane">
+          {orders.length === 0 ? (
+            <p className="orders-wb__empty">
+              No orders{filterLabel ? ` in ${filterLabel}` : ' yet'}.
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="orders-wb__empty">No orders match “{q.trim()}”.</p>
+          ) : (
+            <>
+              <div className="orders-wb__table-head" aria-hidden>
+                <span>Order</span>
+                <span>Customer</span>
+                <span>Items</span>
+                <span>Paid</span>
+                <span>Status</span>
+                <span>Date</span>
+                <span />
+              </div>
+              <ul className="orders-wb__list">
+                {filtered.map((order) => {
+                  const kids = order.children ?? []
+                  if (kids.length === 0) {
+                    return (
+                      <li key={order.id} className="orders-wb__group">
+                        <OrderRow
+                          order={order}
+                          selected={selectedId === order.id}
+                          onSelect={() => setSelectedId(order.id)}
+                        />
+                      </li>
+                    )
+                  }
+                  return (
+                    <li key={order.id} className="orders-wb__group is-split">
+                      <OrderRow
+                        order={order}
+                        selected={selectedId === order.id}
+                        onSelect={() => setSelectedId(order.id)}
+                      />
+                      <div className="orders-wb__nest">
+                        <ul className="orders-wb__children">
+                          {kids.map((child) => (
+                            <li key={child.id} className="orders-wb__child-wrap">
+                              <OrderRow
+                                order={child}
+                                selected={selectedId === child.id}
+                                onSelect={() => setSelectedId(child.id)}
+                                nested
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="orders-wb__count">
+                Showing {filtered.length}
+                {q.trim() ? ` of ${orders.length}` : ''} order
+                {filtered.length === 1 ? '' : 's'}
+              </p>
+            </>
+          )}
+        </div>
+
+        {selected ? (
+          <JourneyPreview order={selected} />
+        ) : (
+          <aside className="orders-wb__preview orders-wb__preview--empty">
+            <p>Select an order to preview its journey.</p>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }

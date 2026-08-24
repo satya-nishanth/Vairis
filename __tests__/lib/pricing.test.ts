@@ -1,4 +1,4 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG } from '@/lib/pricing'
+import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot } from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
 describe('calculatePrice (estimator formula)', () => {
@@ -22,6 +22,16 @@ describe('calculatePrice (estimator formula)', () => {
     expect(b.taxable).toBe(33500)
     expect(b.gst).toBe(1005)
     expect(b.total).toBe(34505)
+
+    const snap = toOrderItemPriceSnapshot(b, {
+      goldRatePerGram: 6000,
+      weightGrams: 5,
+      metalType: 'GOLD_22K',
+    })
+    expect(snap.goldRatePerGram).toBe(6000)
+    expect(snap.weightGrams).toBe(5)
+    expect(isOrderItemPriceSnapshot(snap)).toBe(true)
+    expect(isOrderItemPriceSnapshot(null)).toBe(false)
   })
 
   it('matches the tax-invoice sample line (4.200 g @ 6100, 10% wastage, making 1000/g, stones 53000)', () => {

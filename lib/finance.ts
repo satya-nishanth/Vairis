@@ -49,18 +49,25 @@ export function sheetTotals(lines: FinanceLineInput[]): { cost: number; selling:
 }
 
 /**
- * Order sheet is pending when the revenue side has a value (quoted and/or
- * selling) but purchase/cost is still zero.
+ * Order sheet is complete when every line with a selling price has a
+ * non-zero purchase/cost price. No sheet → not complete.
  */
-export function isPendingOrderSheet(input: {
-  purchasePrice: number
-  sellingPrice: number
-  quotedPrice: number
-}): boolean {
-  const purchase = roundMoney(input.purchasePrice)
-  const selling = roundMoney(input.sellingPrice)
-  const quoted = roundMoney(input.quotedPrice)
-  return purchase === 0 && (selling > 0 || quoted > 0)
+export function isOrderSheetComplete(
+  lines: { costPrice: number; sellingPrice: number }[] | null | undefined,
+): boolean {
+  if (!lines) return false
+  return lines.every((l) => {
+    const selling = roundMoney(l.sellingPrice)
+    if (selling <= 0) return true
+    return roundMoney(l.costPrice) > 0
+  })
+}
+
+/** Inverse of isOrderSheetComplete — used for dashboard pending counts. */
+export function isPendingOrderSheet(
+  lines: { costPrice: number; sellingPrice: number }[] | null | undefined,
+): boolean {
+  return !isOrderSheetComplete(lines)
 }
 
 /** Map retail PriceBreakdown → finance sheet kinds (quoted / selling guidance).
@@ -93,11 +100,16 @@ export type OrderItemQuote = {
   productName: string
   quantity: number
   withExchange: boolean
-  /** Live catalogue quote (sum of byKind). */
+  /** Quoted column — live catalogue except GOLD from checkout snapshot when present. */
   quotedTotal: number
   /** Snapshot unit price stored on the order line × qty. */
   snapshotTotal: number
   byKind: Record<FinanceLineKind, number>
+  /**
+   * Prefill for Selling column — full checkout breakdown mapped to finance kinds.
+   * Falls back to byKind when no snapshot exists.
+   */
+  sellingByKind: Record<FinanceLineKind, number>
 }
 
 export function sumQuotedByKind(items: OrderItemQuote[]): Record<FinanceLineKind, number> {
@@ -105,6 +117,17 @@ export function sumQuotedByKind(items: OrderItemQuote[]): Record<FinanceLineKind
   for (const item of items) {
     for (const kind of FINANCE_LINE_KINDS) {
       out[kind] = roundMoney(out[kind] + (item.byKind[kind] ?? 0))
+    }
+  }
+  return out
+}
+
+export function sumSellingByKind(items: OrderItemQuote[]): Record<FinanceLineKind, number> {
+  const out = Object.fromEntries(FINANCE_LINE_KINDS.map((k) => [k, 0])) as Record<FinanceLineKind, number>
+  for (const item of items) {
+    const src = item.sellingByKind ?? item.byKind
+    for (const kind of FINANCE_LINE_KINDS) {
+      out[kind] = roundMoney(out[kind] + (src[kind] ?? 0))
     }
   }
   return out

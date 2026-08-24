@@ -1,10 +1,18 @@
 import { prisma } from '@/lib/prisma'
-import { calculatePrice } from '@/lib/pricing'
+import { calculatePrice, isOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
-import { quotedAmountsFromBreakdown, type OrderItemQuote } from '@/lib/finance'
+import { quotedAmountsFromBreakdown, roundMoney, type OrderItemQuote } from '@/lib/finance'
 import type { MetalType } from '@prisma/client'
 
-/** Live catalogue quotes for each line item on an order (finance sheet guidance). */
+/**
+ * Per-line quotes for finance sheets.
+ *
+ * Quoted (byKind): live catalogue pricing, except GOLD uses checkout snapshot
+ * gold value when OrderItem.priceBreakdown exists.
+ *
+ * Selling (sellingByKind): full checkout breakdown mapped to finance kinds
+ * (prefill Selling column). Falls back to quoted when no snapshot.
+ */
 export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuote[]> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -17,6 +25,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
           quantity: true,
           price: true,
           withExchange: true,
+          priceBreakdown: true,
           variant: {
             select: {
               weightGrams: true,
@@ -50,6 +59,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
       orderBy: { sortOrder: 'asc' },
     }),
   ])
+
   const rateMap = Object.fromEntries(goldRates.map((g) => [g.metalType, Number(g.ratePerGram)])) as Record<
     MetalType,
     number
@@ -71,7 +81,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
       ]
     }
 
-    const breakdown = calculatePrice(
+    const live = calculatePrice(
       {
         weightGrams: Number(v.weightGrams),
         makingChargePerGram: Number(v.makingChargePerGram),
@@ -87,7 +97,19 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
       },
     )
 
-    const byKind = quotedAmountsFromBreakdown(breakdown, item.quantity)
+    const liveByKind = quotedAmountsFromBreakdown(live, item.quantity)
+    const snapshot = isOrderItemPriceSnapshot(item.priceBreakdown) ? item.priceBreakdown : null
+
+    const byKind = { ...liveByKind }
+    if (snapshot) {
+      // Quoted gold from frozen checkout breakdown; everything else stays live.
+      byKind.GOLD = roundMoney(snapshot.goldValue * Math.max(1, item.quantity))
+    }
+
+    const sellingByKind = snapshot
+      ? quotedAmountsFromBreakdown(snapshot, item.quantity)
+      : { ...liveByKind }
+
     const quotedTotal = Object.values(byKind).reduce((s, n) => s + n, 0)
 
     return {
@@ -98,6 +120,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
       quotedTotal,
       snapshotTotal: Number(item.price) * item.quantity,
       byKind,
+      sellingByKind,
     }
   })
 }

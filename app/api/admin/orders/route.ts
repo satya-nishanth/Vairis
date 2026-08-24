@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
+import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,7 +92,13 @@ export async function POST(req: NextRequest) {
 
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: d.items.map((i) => i.variantId) } },
-    include: { product: true },
+    include: {
+      product: {
+        include: {
+          stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+        },
+      },
+    },
   })
   const variantMap = new Map(variants.map((v) => [v.id, v]))
   for (const item of d.items) {
@@ -99,8 +107,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const [goldRates, pricingConfig] = await Promise.all([
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
+  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+
+  const itemRows = d.items.map((i) => {
+    const v = variantMap.get(i.variantId)!
+    const rate = rateMap[v.metalType]
+    let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
+    if (rate != null) {
+      const breakdown = calculatePrice(
+        {
+          weightGrams: v.weightGrams.toString(),
+          makingChargePerGram: v.makingChargePerGram.toString(),
+          flatMakingCharge: v.flatMakingCharge.toString(),
+          stoneCharges: v.stoneCharges.toString(),
+          miscCharges: v.miscCharges.toString(),
+        },
+        rate,
+        {
+          stones: toStoneInputs(v.product.stones),
+          withExchange: false,
+          config: pricingConfig,
+        },
+      )
+      priceBreakdown = toOrderItemPriceSnapshot(breakdown, {
+        goldRatePerGram: rate,
+        weightGrams: Number(v.weightGrams),
+        metalType: v.metalType,
+      })
+    }
+    return {
+      variantId: i.variantId,
+      quantity: i.quantity,
+      price: Math.round(i.unitPrice),
+      priceBreakdown,
+      productName: v.product.name,
+    }
+  })
 
   let quotationThreadId: string | null = null
   let result: { order: { id: string }; childOrderIds: string[] }
@@ -141,12 +190,7 @@ export async function POST(req: NextRequest) {
           pincode: d.pincode,
           quotationId: d.quotationId || null,
           items: {
-            create: d.items.map((i) => ({
-              variantId: i.variantId,
-              quantity: i.quantity,
-              price: Math.round(i.unitPrice),
-              productName: variantMap.get(i.variantId)!.product.name,
-            })),
+            create: itemRows,
           },
           events: {
             create: [

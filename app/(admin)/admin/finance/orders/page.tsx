@@ -1,37 +1,44 @@
 import { prisma } from '@/lib/prisma'
 import { OrderFinanceManager, type OrderSheetBoot } from '@/components/admin/OrderFinanceManager'
-import { sheetTotals } from '@/lib/finance'
 import { getOrderItemQuotes } from '@/lib/finance-order-quotes'
 import { listRecentFinanceOrders, searchFinanceOrders } from '@/lib/finance-order-search'
 
 export const dynamic = 'force-dynamic'
 
-const RECENT_ORDERS = 8
+const LIST_ORDERS = 40
+
+type SheetFilter = 'all' | 'incomplete' | 'complete'
+
+function parseFilter(raw: string | undefined): SheetFilter {
+  if (raw === 'incomplete' || raw === 'complete') return raw
+  return 'all'
+}
 
 export default async function FinanceOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ orderId?: string; q?: string }>
+  searchParams: Promise<{
+    orderId?: string
+    q?: string
+    saved?: string
+    error?: string
+    filter?: string
+  }>
 }) {
   const sp = await searchParams
   const selectedOrderId = sp.orderId?.trim() || null
   const searchQ = !selectedOrderId && sp.q && sp.q.trim().length >= 2 ? sp.q.trim() : null
+  const saveFlash = sp.saved === '1'
+  const saveError = sp.error?.trim() || null
+  const initialFilter = parseFilter(sp.filter)
 
-  const [rows, accounts, recentOrders, searchHits] = await Promise.all([
-    prisma.orderFinance.findMany({
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        lines: true,
-        paidToAccount: { select: { id: true, name: true } },
-        order: { select: { contactName: true, grandTotal: true } },
-      },
-    }),
+  const [accounts, recentOrders, searchHits] = await Promise.all([
     prisma.financeAccount.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true },
     }),
-    listRecentFinanceOrders(RECENT_ORDERS),
+    listRecentFinanceOrders(LIST_ORDERS),
     searchQ ? searchFinanceOrders(searchQ) : Promise.resolve([]),
   ])
 
@@ -49,6 +56,8 @@ export default async function FinanceOrdersPage({
           contactPhone: true,
           grandTotal: true,
           status: true,
+          items: { select: { productName: true, quantity: true }, take: 4 },
+          _count: { select: { items: true } },
           finance: {
             select: {
               paidToAccountId: true,
@@ -64,13 +73,24 @@ export default async function FinanceOrdersPage({
     ])
 
     if (order) {
+      const items = order.items
+      let itemsLabel = '—'
+      if (items.length === 1) {
+        const i = items[0]
+        itemsLabel = i.quantity > 1 ? `${i.productName} ×${i.quantity}` : i.productName
+      } else if (items.length > 1) {
+        const more = Math.max(0, order._count.items - 1)
+        itemsLabel = more > 0 ? `${items[0].productName} +${more} more` : items[0].productName
+      }
+
       boot = {
         orderId: order.id,
-        orderLabel: order.id,
+        orderLabel: order.contactName || order.id,
         orderMeta: {
           phone: order.contactPhone,
           total: Number(order.grandTotal),
           status: order.status,
+          itemsLabel,
         },
         paidToAccountId: order.finance?.paidToAccountId || fallbackPaidTo,
         lines: (order.finance?.lines ?? []).map((l) => ({
@@ -80,44 +100,24 @@ export default async function FinanceOrdersPage({
           sellingPrice: Number(l.sellingPrice),
         })),
         quotes,
+        hasSheet: Boolean(order.finance),
       }
     }
   }
 
   return (
     <OrderFinanceManager
-      key={selectedOrderId ?? (searchQ ? `q:${searchQ}` : 'pick')}
+      key={`${selectedOrderId ?? (searchQ ? `q:${searchQ}` : 'pick')}-${saveFlash ? 'saved' : 'n'}-${saveError ?? ''}-${initialFilter}`}
       selectedOrderId={selectedOrderId}
       boot={boot}
       initialSearchQuery={searchQ}
       initialSearchHits={searchQ ? searchHits : null}
+      initialSaveFlash={saveFlash}
+      initialSaveError={saveError}
+      initialFilter={initialFilter}
       accounts={accounts}
       defaultPaidToAccountId={companyBank?.id ?? null}
       recentOrders={recentOrders}
-      initial={rows.map((r) => {
-        const lines = [...r.lines]
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((l) => ({
-            id: l.id,
-            kind: l.kind,
-            costPrice: Number(l.costPrice),
-            sellingPrice: Number(l.sellingPrice),
-          }))
-        const totals = sheetTotals(lines)
-        return {
-          id: r.id,
-          orderId: r.orderId,
-          paidToAccountId: r.paidToAccountId,
-          paidToAccountName: r.paidToAccount.name,
-          lines,
-          cost: totals.cost,
-          sellingPrice: totals.selling,
-          profit: totals.profit,
-          order: r.order
-            ? { contactName: r.order.contactName, grandTotal: Number(r.order.grandTotal) }
-            : undefined,
-        }
-      })}
     />
   )
 }

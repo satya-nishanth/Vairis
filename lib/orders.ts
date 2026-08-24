@@ -150,6 +150,7 @@ export const OFFLINE_SETTLEMENT_TRANSITIONS: Partial<Record<OrderStatus, OrderSt
 
 /** from→to pairs whose PATCH requires a non-empty note. */
 export const REASON_REQUIRED: [OrderStatus, OrderStatus][] = [
+  ["PAYMENT_PENDING", "PAYMENT_CONFIRMED"], // offline: URN / transaction ID
   ["SHIPPED", "DELIVERY_FAILED"],
   ["OUT_FOR_DELIVERY", "DELIVERY_FAILED"],
   ["RETURN_RECEIVED", "PREPARING"],

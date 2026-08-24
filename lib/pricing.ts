@@ -67,6 +67,44 @@ export interface PriceBreakdown {
   withExchange: boolean
 }
 
+/**
+ * Frozen at OrderItem create time (checkout / admin). Stored as OrderItem.priceBreakdown.
+ * Includes gold rate + weight so the snapshot is self-contained after rates change.
+ */
+export type OrderItemPriceSnapshot = PriceBreakdown & {
+  goldRatePerGram: number
+  weightGrams: number
+  metalType?: string
+  capturedAt: string
+}
+
+export function toOrderItemPriceSnapshot(
+  breakdown: PriceBreakdown,
+  meta: { goldRatePerGram: number; weightGrams: number; metalType?: string },
+): OrderItemPriceSnapshot {
+  return {
+    ...breakdown,
+    goldRatePerGram: meta.goldRatePerGram,
+    weightGrams: meta.weightGrams,
+    metalType: meta.metalType,
+    capturedAt: new Date().toISOString(),
+  }
+}
+
+/** True when a JSON column looks like a usable price snapshot. */
+export function isOrderItemPriceSnapshot(v: unknown): v is OrderItemPriceSnapshot {
+  if (!v || typeof v !== 'object') return false
+  const o = v as Record<string, unknown>
+  return (
+    typeof o.total === 'number' &&
+    typeof o.goldValue === 'number' &&
+    typeof o.goldVA === 'number' &&
+    typeof o.making === 'number' &&
+    typeof o.stoneValue === 'number' &&
+    typeof o.gst === 'number'
+  )
+}
+
 export interface VariantPriceInput {
   weightGrams: number | string
   makingChargePerGram: number | string

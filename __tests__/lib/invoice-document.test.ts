@@ -1,5 +1,13 @@
 import { DEFAULT_PRICING_CONFIG } from '@/lib/pricing'
-import { applyInvoiceSeller, invoiceFromProducts, sellerDefaults } from '@/lib/invoice-document'
+import {
+  applyInvoiceSeller,
+  invoiceFromProducts,
+  lineFromOrderItem,
+  payloadFromOrder,
+  recomputeLine,
+  sellerDefaults,
+  type PrefillOrder,
+} from '@/lib/invoice-document'
 
 describe('invoiceFromProducts', () => {
   it('builds a tax invoice from a product list using calculatePrice', () => {
@@ -60,6 +68,92 @@ describe('invoiceFromProducts', () => {
     expect(totals.taxable).toBe(67000)
     expect(totals.igst).toBe(67000 * 0.03)
     expect(totals.cgst).toBe(0)
+  })
+})
+
+describe('order invoice from priceBreakdown', () => {
+  const snap = {
+    goldValue: 21516.35,
+    goldVA: 1075.82,
+    making: 1100,
+    stoneValue: 0,
+    stoneLines: [] as {
+      typeLabel: string
+      caratWeight: number
+      ratePerCarat: number
+      value: number
+    }[],
+    stoneVA: 0,
+    vaTotal: 1075.82,
+    vaLabel: 'Value Addition',
+    miscCharges: 45,
+    taxable: 23737.17,
+    gst: 712.11,
+    total: 24449.28,
+    withExchange: false,
+    goldRatePerGram: 9780.16,
+    weightGrams: 2.2,
+    metalType: 'GOLD_18K',
+    capturedAt: '2026-08-24T10:10:54.783Z',
+  }
+
+  const orderItem: PrefillOrder['items'][number] = {
+    productName: 'Heart Solitaire Diamond Ring',
+    quantity: 1,
+    withExchange: false,
+    priceBreakdown: snap,
+    variant: {
+      sku: 'AJLR-598-G18K-12',
+      metalType: 'GOLD_18K',
+      weightGrams: 2.2,
+      makingChargePerGram: 500,
+      flatMakingCharge: 0,
+      miscCharges: 45,
+      stoneCharges: 0,
+      product: { itemCode: 'AJLR-598', stones: [] },
+    },
+  }
+
+  it('uses frozen snapshot amounts even when live gold rate differs', () => {
+    const line = lineFromOrderItem(orderItem, { GOLD_18K: 99999 }, DEFAULT_PRICING_CONFIG)
+    expect(line.lockedPricing).toBe(true)
+    expect(line.goldRatePerGram).toBe(9780.16)
+    expect(line.goldValue).toBeCloseTo(21516.35, 2)
+    expect(line.wastage).toBeCloseTo(1075.82, 2)
+    expect(line.making).toBe(1100)
+    expect(line.taxable).toBeCloseTo(23737.17, 2)
+
+    // Live recompute would use 99999/g — locked path must not.
+    const again = recomputeLine({ ...line, goldRatePerGram: 99999 }, 'Wastage')
+    expect(again.goldValue).toBeCloseTo(21516.35, 2)
+    expect(again.taxable).toBeCloseTo(23737.17, 2)
+  })
+
+  it('payloadFromOrder keeps snapshot taxable on the invoice', () => {
+    const order: PrefillOrder = {
+      id: 'ord_test',
+      status: 'PAYMENT_CONFIRMED',
+      createdAt: new Date('2026-08-24T10:00:00Z'),
+      contactName: 'Test',
+      contactPhone: '9876543210',
+      addressLine1: '12 MG Road',
+      addressLine2: null,
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      pincode: '560001',
+      user: { name: 'Test', email: 't@example.com' },
+      payment: {
+        razorpayPaymentId: 'pay_x',
+        razorpayOrderId: 'order_x',
+        status: 'CAPTURED',
+        createdAt: new Date('2026-08-24T10:00:00Z'),
+      },
+      items: [orderItem],
+    }
+    const payload = payloadFromOrder(order, { GOLD_18K: 99999 }, DEFAULT_PRICING_CONFIG)
+    expect(payload.lines[0].lockedPricing).toBe(true)
+    expect(payload.lines[0].goldValue).toBeCloseTo(21516.35, 2)
+    expect(payload.lines[0].taxable).toBeCloseTo(23737.17, 2)
   })
 })
 

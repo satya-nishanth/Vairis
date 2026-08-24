@@ -393,7 +393,24 @@ function LineEditor({
   const computed = recomputeLine(line, 'Wastage')
 
   function patch(partial: Partial<InvoiceLine>) {
-    onChange({ ...line, ...partial })
+    const unlockKeys = [
+      'weightGrams',
+      'goldRatePerGram',
+      'wastagePct',
+      'makingPerGram',
+      'flatMaking',
+      'miscCharges',
+      'legacyStoneCharges',
+      'leadIncentive',
+      'stones',
+      'withExchange',
+    ]
+    const unlock = Object.keys(partial).some((k) => unlockKeys.includes(k))
+    onChange({
+      ...line,
+      ...partial,
+      ...(unlock ? { lockedPricing: false } : null),
+    })
   }
 
   function patchStone(idx: number, partial: Partial<InvoiceStoneRow>) {
@@ -409,6 +426,12 @@ function LineEditor({
           Remove
         </button>
       </div>
+      {line.lockedPricing ? (
+        <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#065f46' }}>
+          Amounts from order checkout snapshot (not live rates). Editing weight/rate unlocks live
+          recalculation.
+        </p>
+      ) : null}
       <div className="inv-composer__grid">
         <Field label="Product name" value={line.productName} onChange={(v) => patch({ productName: v })} />
         <Field label="Item code" value={line.itemCode} onChange={(v) => patch({ itemCode: v })} />

@@ -4,8 +4,10 @@ import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
+import { isOrderItemPriceSnapshot } from '@/lib/pricing'
 import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
+import { MarkPaidOffline } from './MarkPaidOffline'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +49,10 @@ export default async function AdminOrderDetailPage({
   const resolvedPayment = resolved?.payment ?? null
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
-  const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
+  const inr = (n: unknown) =>
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+  const inrRate = (n: unknown) =>
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
   const provider = getShippingProvider(order.country)
   const payment = order.payment ?? resolvedPayment
   const paymentOwnerId = order.payment ? order.id : order.parentOrderId
@@ -285,7 +290,7 @@ export default async function AdminOrderDetailPage({
 
         <OrderNotes orderId={order.id} notes={order.notes} />
 
-        <div style={{ ...card, gridColumn: '1 / -1' }}>
+        <div style={card}>
           <h3 style={heading}>Payment</h3>
           {payment ? (
             <table className="order-payment-table">
@@ -402,6 +407,14 @@ export default async function AdminOrderDetailPage({
                   <td>{refundedTotal > 0 ? inr(refundedTotal) : '—'}</td>
                 </tr>
                 <tr>
+                  <th scope="row">Status</th>
+                  <td>
+                    {order.status === 'PAYMENT_PENDING'
+                      ? 'Awaiting payment'
+                      : ORDER_STATUS_META[order.status].label}
+                  </td>
+                </tr>
+                <tr>
                   <th scope="row">Note</th>
                   <td style={{ color: '#6b7280' }}>
                     Settled manually (UPI/bank) — no gateway payment record.
@@ -409,6 +422,77 @@ export default async function AdminOrderDetailPage({
                 </tr>
               </tbody>
             </table>
+          )}
+          {!payment && order.status === 'PAYMENT_PENDING' && !order.parentOrderId && (
+            <MarkPaidOffline orderId={order.id} amount={Number(order.grandTotal)} />
+          )}
+        </div>
+
+        <div style={card}>
+          <h3 style={heading}>Price breakdown</h3>
+          {order.items.every((item) => !isOrderItemPriceSnapshot(item.priceBreakdown)) ? (
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              No snapshot on this order — created before line breakdowns were stored.
+            </p>
+          ) : (
+            order.items.map((item) => {
+              const b = isOrderItemPriceSnapshot(item.priceBreakdown) ? item.priceBreakdown : null
+              if (!b) {
+                return (
+                  <p key={item.id} style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: 12 }}>
+                    {item.productName} — no snapshot
+                  </p>
+                )
+              }
+              const vaLabel = b.vaLabel || 'Wastage'
+              const rows: { label: string; value: string }[] = [
+                ...(b.weightGrams != null
+                  ? [{ label: 'Weight', value: `${Number(b.weightGrams)} g` }]
+                  : []),
+                ...(b.goldRatePerGram != null
+                  ? [
+                      {
+                        label: 'Gold rate',
+                        value: `${inrRate(b.goldRatePerGram)}/g${b.metalType ? ` · ${b.metalType.replace(/_/g, ' ')}` : ''}`,
+                      },
+                    ]
+                  : []),
+                { label: 'Gold', value: inr(Math.round(b.goldValue)) },
+                { label: vaLabel, value: inr(Math.round(b.goldVA)) },
+                { label: 'Making', value: inr(Math.round(b.making)) },
+                { label: 'Stones', value: inr(Math.round(b.stoneValue)) },
+                ...(b.stoneLines ?? []).map((line) => ({
+                  label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
+                  value: inr(Math.round(line.value)),
+                })),
+                ...(b.miscCharges ? [{ label: 'Misc', value: inr(Math.round(b.miscCharges)) }] : []),
+                { label: 'Taxable', value: inr(Math.round(b.taxable)) },
+                { label: 'GST (3%)', value: inr(Math.round(b.gst)) },
+                { label: 'Line total', value: inr(Math.round(b.total)) },
+              ]
+              if (item.quantity > 1) {
+                rows.push({ label: `× ${item.quantity}`, value: inr(Math.round(b.total * item.quantity)) })
+              }
+              return (
+                <div key={item.id} style={{ marginBottom: order.items.length > 1 ? 16 : 0 }}>
+                  {order.items.length > 1 && (
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 8px' }}>
+                      {item.productName}
+                    </p>
+                  )}
+                  <table className="order-payment-table">
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.label}>
+                          <th scope="row">{r.label}</th>
+                          <td>{r.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })
           )}
         </div>
       </div>
