@@ -177,7 +177,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           : nextStatus === 'REFUNDED'
             ? 'Amount refunded (offline settlement)'
             : nextStatus === 'PAYMENT_CONFIRMED'
-              ? note?.trim() || 'Payment received offline'
+              ? 'Payment received offline'
               : nextStatus === 'RETURN_REQUESTED'
                 ? 'Return requested (admin)'
                 : nextStatus === 'RETURN_IN_TRANSIT'

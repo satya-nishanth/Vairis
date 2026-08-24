@@ -70,7 +70,7 @@ function serialize(row: {
 
 export async function upsertOrderFinanceSheet(
   input: UpsertOrderSheetInput,
-  session: { user: { email?: string | null; id?: string } },
+  session: { user: { id: string; email?: string | null } },
 ) {
   if (!FINANCE_LINE_KINDS.length) {
     throw new Error('Invalid configuration')
