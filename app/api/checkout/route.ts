@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
             variantId: l.variantId,
             quantity: l.quantity,
             price: l.unitPrice,
-            priceBreakdown: l.priceBreakdown as Prisma.InputJsonValue,
+            priceBreakdown: l.priceBreakdown as unknown as Prisma.InputJsonValue,
             productName: l.productName,
             withExchange: l.withExchange,
           }),
