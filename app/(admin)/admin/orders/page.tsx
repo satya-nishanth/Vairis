@@ -1,8 +1,12 @@
-import type { OrderStatus, Prisma } from '@prisma/client'
+import type { OrderStatus, PaymentStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { AdminGuide } from '@/components/admin/AdminGuide'
-import { OrdersWorkbench, type OrdersListRow } from '@/components/admin/OrdersWorkbench'
+import {
+  OrdersWorkbench,
+  type OrdersListRow,
+  type OrdersKpi,
+} from '@/components/admin/OrdersWorkbench'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,16 +35,72 @@ const PRIMARY_CHIPS: { key: string; label: string }[] = [
 
 const ALL_STATUS_KEYS = Object.keys(ORDER_STATUS_META) as OrderStatus[]
 
+const itemSelect = {
+  productName: true,
+  quantity: true,
+  variant: { select: { product: { select: { images: true } } } },
+} satisfies Prisma.OrderItemSelect
+
 const orderInclude = {
-  items: { select: { productName: true, quantity: true } },
+  items: { select: itemSelect },
   user: { select: { email: true } },
+  payment: {
+    select: {
+      status: true,
+      amount: true,
+      razorpayPaymentId: true,
+      createdAt: true,
+    },
+  },
+  events: {
+    select: { id: true, status: true, note: true, createdAt: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
   children: {
     include: {
-      items: { select: { productName: true, quantity: true } },
+      items: { select: itemSelect },
+      payment: {
+        select: {
+          status: true,
+          amount: true,
+          razorpayPaymentId: true,
+          createdAt: true,
+        },
+      },
+      events: {
+        select: { id: true, status: true, note: true, createdAt: true },
+        orderBy: { createdAt: 'asc' as const },
+      },
     },
     orderBy: { createdAt: 'asc' as const },
   },
 } satisfies Prisma.OrderInclude
+
+/** Front image only — skip video assets in the product gallery. */
+function frontImage(images: string[]): string | null {
+  const src = images.find((u) => !/\.(mp4|webm|mov)(\?|$)/i.test(u)) ?? images[0]
+  return src || null
+}
+
+type RawItem = {
+  productName: string
+  quantity: number
+  variant: { product: { images: string[] } }
+}
+
+type RawPayment = {
+  status: PaymentStatus
+  amount: { toString(): string } | number
+  razorpayPaymentId: string | null
+  createdAt: Date
+} | null
+
+type RawEvent = {
+  id: string
+  status: OrderStatus
+  note: string | null
+  createdAt: Date
+}
 
 function resolveFilter(statusParam: string | undefined): {
   activeChip: string
@@ -77,7 +137,9 @@ function mapRow(
     contactPhone: string
     createdAt: Date
     user: { email: string }
-    items: { productName: string; quantity: number }[]
+    items: RawItem[]
+    payment?: RawPayment
+    events?: RawEvent[]
     children?: {
       id: string
       status: OrderStatus
@@ -85,11 +147,27 @@ function mapRow(
       contactName: string
       contactPhone: string
       createdAt: Date
-      items: { productName: string; quantity: number }[]
+      items: RawItem[]
+      payment?: RawPayment
+      events?: RawEvent[]
     }[]
   },
   emailFallback?: string,
 ): OrdersListRow {
+  const items = o.items.map((i) => ({
+    productName: i.productName,
+    quantity: i.quantity,
+    imageUrl: frontImage(i.variant.product.images),
+  }))
+  const payment = o.payment
+    ? {
+        status: o.payment.status,
+        amount: Number(o.payment.amount),
+        razorpayPaymentId: o.payment.razorpayPaymentId,
+        createdAt: o.payment.createdAt.toISOString(),
+      }
+    : null
+
   return {
     id: o.id,
     status: o.status,
@@ -99,9 +177,22 @@ function mapRow(
     createdAt: o.createdAt.toISOString(),
     email: emailFallback ?? o.user.email,
     itemsLabel: o.items.map((i) => `${i.productName} ×${i.quantity}`).join(', '),
+    itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
+    items,
+    payment,
+    events: (o.events ?? []).map((e) => ({
+      id: e.id,
+      status: e.status,
+      note: e.note,
+      createdAt: e.createdAt.toISOString(),
+    })),
     children: (o.children ?? []).map((c) =>
       mapRow(
-        { ...c, user: { email: emailFallback ?? o.user.email }, children: [] },
+        {
+          ...c,
+          user: { email: emailFallback ?? o.user.email },
+          children: [],
+        },
         emailFallback ?? o.user.email,
       ),
     ),
@@ -137,7 +228,38 @@ async function loadOrderGroups(whereStatus: OrderStatus | { in: OrderStatus[] } 
   })
 }
 
-/** Admin order list — Option A card rows with nested parent/child groups. */
+async function loadKpis(): Promise<OrdersKpi[]> {
+  // Count every work unit (root singles + child deliveries). Split parents
+  // use SPLIT_INTO_DELIVERIES, so they never inflate these buckets.
+  const [needsAction, inCrafting, outForDelivery] = await Promise.all([
+    prisma.order.count({ where: { status: 'PAYMENT_CONFIRMED' } }),
+    prisma.order.count({ where: { status: 'PREPARING' } }),
+    prisma.order.count({ where: { status: 'OUT_FOR_DELIVERY' } }),
+  ])
+
+  return [
+    {
+      key: 'PAYMENT_CONFIRMED',
+      label: 'Needs action',
+      count: needsAction,
+      href: '/admin/orders?status=PAYMENT_CONFIRMED',
+    },
+    {
+      key: 'PREPARING',
+      label: 'In crafting',
+      count: inCrafting,
+      href: '/admin/orders?status=PREPARING',
+    },
+    {
+      key: 'OUT_FOR_DELIVERY',
+      label: 'Out for delivery',
+      count: outForDelivery,
+      href: '/admin/orders?status=OUT_FOR_DELIVERY',
+    },
+  ]
+}
+
+/** Admin order list — split table + journey preview. */
 export default async function AdminOrdersPage({
   searchParams,
 }: {
@@ -147,10 +269,11 @@ export default async function AdminOrdersPage({
   const { activeChip, whereStatus, filterLabel } = resolveFilter(status)
 
   let ordersRaw: Awaited<ReturnType<typeof loadOrderGroups>> = []
+  let kpis: OrdersKpi[] = []
   let dbMissing = false
 
   try {
-    ordersRaw = await loadOrderGroups(whereStatus)
+    ;[ordersRaw, kpis] = await Promise.all([loadOrderGroups(whereStatus), loadKpis()])
   } catch (err) {
     console.error('[admin/orders] query failed', err)
     dbMissing = true
@@ -208,6 +331,7 @@ export default async function AdminOrdersPage({
           activeChip={activeChip}
           moreStatuses={moreStatuses}
           filterLabel={filterLabel}
+          kpis={kpis}
         />
       )}
     </div>

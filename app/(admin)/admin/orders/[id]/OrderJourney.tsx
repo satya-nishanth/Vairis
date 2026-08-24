@@ -208,7 +208,11 @@ export function OrderJourney({
           <div className="order-journey__forms">
             <textarea
               className="order-journey__input order-journey__textarea"
-              placeholder={`Reason for marking ${ORDER_STATUS_META[pendingTransition].label}…`}
+              placeholder={
+                pendingTransition === 'PAYMENT_CONFIRMED'
+                  ? 'URN / transaction ID of the offline payment…'
+                  : `Reason for marking ${ORDER_STATUS_META[pendingTransition].label}…`
+              }
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />

@@ -1,17 +1,20 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { saveOrderSheetAction } from '@/app/(admin)/admin/finance/orders/actions'
+import { OrderSheetSaveButton } from '@/components/admin/OrderSheetSaveButton'
 import {
   FINANCE_LINE_KINDS,
   LINE_KIND_LABEL,
   sheetTotals,
   shortFinanceId,
-  sumQuotedByKind,
+  sumSellingByKind,
   type OrderItemQuote,
 } from '@/lib/finance'
-import type { FinanceLineKind } from '@prisma/client'
+import type { FinanceOrderHit } from '@/lib/finance-order-search'
+import { ORDER_STATUS_META } from '@/lib/orders'
+import type { FinanceLineKind, OrderStatus } from '@prisma/client'
 
 type Line = {
   id?: string
@@ -20,26 +23,10 @@ type Line = {
   sellingPrice: number
 }
 
-type Sheet = {
-  id: string
-  orderId: string
-  paidToAccountId: string
-  paidToAccountName?: string | null
-  lines: Line[]
-  order?: { contactName: string; grandTotal: number }
-}
+type Hit = FinanceOrderHit
 
-type Hit = {
-  id: string
-  contactName: string
-  contactPhone: string
-  grandTotal: number
-  status: string
-  hasSheet: boolean
-  sheet?: {
-    paidToAccountId: string
-    lines: Line[]
-  } | null
+function statusLabel(status: string): string {
+  return ORDER_STATUS_META[status as OrderStatus]?.label ?? status
 }
 
 type AccountOpt = { id: string; name: string }
@@ -50,20 +37,24 @@ type Editor = {
   revision: number
   orderId: string
   orderLabel: string
-  orderMeta: { phone?: string; total?: number; status?: string }
+  orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
   amounts: Amounts
   paidToAccountId: string
+  hasSheet: boolean
 }
 
 /** Server-prefetched selection — avoids mobile client-fetch races. */
 export type OrderSheetBoot = {
   orderId: string
   orderLabel: string
-  orderMeta: { phone?: string; total?: number; status?: string }
+  orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
   paidToAccountId: string
   lines: Line[]
   quotes: OrderItemQuote[]
+  hasSheet?: boolean
 }
+
+type SheetFilter = 'all' | 'incomplete' | 'complete'
 
 const GREEN = '#032b24'
 const BORDER = '#e5e7eb'
@@ -115,7 +106,7 @@ function amountsFromBoot(boot: OrderSheetBoot): Amounts {
   let next = amountsFromLines(boot.lines)
   const sellingEmpty = FINANCE_LINE_KINDS.every((k) => !next[k].sellingPrice)
   if (sellingEmpty && boot.quotes.length > 0) {
-    const summed = sumQuotedByKind(boot.quotes)
+    const summed = sumSellingByKind(boot.quotes)
     next = { ...next }
     for (const kind of FINANCE_LINE_KINDS) {
       next[kind] = {
@@ -135,14 +126,50 @@ function parseAmounts(amounts: Amounts) {
   }))
 }
 
-const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+/** Deterministic — avoids SSR/client toLocaleString hydration mismatches. */
+function inr(n: number): string {
+  const v = Math.round(n)
+  const sign = v < 0 ? '-' : ''
+  const digits = String(Math.abs(v))
+  let out = ''
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) out += ','
+    out += digits[i]
+  }
+  return `₹${sign}${out}`
+}
+
+function moneyOrDash(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return inr(n)
+}
 
 function orderHref(orderId: string) {
   return `${ORDERS_PATH}?orderId=${encodeURIComponent(orderId)}`
 }
 
+function filterHref(filter: SheetFilter, q?: string) {
+  const params = new URLSearchParams()
+  if (filter !== 'all') params.set('filter', filter)
+  if (q && q.trim().length >= 2) params.set('q', q.trim())
+  const s = params.toString()
+  return s ? `${ORDERS_PATH}?${s}` : ORDERS_PATH
+}
+
+/** Match admin-shell.css order-sheet breakpoints (max-width: 767px). */
+function useIsNarrowOrderSheet() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia('(max-width: 767px)')
+      mq.addEventListener('change', onChange)
+      return () => mq.removeEventListener('change', onChange)
+    },
+    () => window.matchMedia('(max-width: 767px)').matches,
+    () => true,
+  )
+}
+
 export function OrderFinanceManager({
-  initial,
   accounts,
   defaultPaidToAccountId,
   recentOrders = [],
@@ -150,22 +177,23 @@ export function OrderFinanceManager({
   boot = null,
   initialSearchQuery = null,
   initialSearchHits = null,
+  initialSaveFlash = false,
+  initialSaveError = null,
+  initialFilter = 'all',
 }: {
-  initial: Sheet[]
   accounts: AccountOpt[]
   defaultPaidToAccountId: string | null
   recentOrders?: Hit[]
   selectedOrderId?: string | null
   boot?: OrderSheetBoot | null
-  /** From ?q= — mobile search uses full navigation (same reliability as latest-order links). */
   initialSearchQuery?: string | null
   initialSearchHits?: Hit[] | null
+  initialSaveFlash?: boolean
+  initialSaveError?: string | null
+  initialFilter?: SheetFilter
 }) {
-  const router = useRouter()
   const fallbackPaidTo = defaultPaidToAccountId ?? accounts[0]?.id ?? ''
 
-  const [rows, setRows] = useState(initial)
-  // Search box is uncontrolled (defaultValue) so mobile GET submit sends what was typed.
   const [query, setQuery] = useState(() => initialSearchQuery ?? '')
   const [hits, setHits] = useState<Hit[]>(() => initialSearchHits ?? [])
   const [searching, setSearching] = useState(() => Boolean(initialSearchQuery))
@@ -174,6 +202,7 @@ export function OrderFinanceManager({
     const n = initialSearchHits?.length ?? 0
     return n === 0 ? 'No matching orders found' : `${n} result${n === 1 ? '' : 's'}`
   })
+  const [filter, setFilter] = useState<SheetFilter>(initialFilter)
   const [editor, setEditor] = useState<Editor>(() =>
     boot
       ? {
@@ -183,6 +212,7 @@ export function OrderFinanceManager({
           orderMeta: boot.orderMeta,
           amounts: amountsFromBoot(boot),
           paidToAccountId: boot.paidToAccountId || fallbackPaidTo,
+          hasSheet: boot.hasSheet ?? boot.lines.length > 0,
         }
       : {
           revision: 0,
@@ -191,28 +221,39 @@ export function OrderFinanceManager({
           orderMeta: {},
           amounts: emptyAmounts(),
           paidToAccountId: fallbackPaidTo,
+          hasSheet: false,
         },
   )
   const [quotes] = useState<OrderItemQuote[]>(() => boot?.quotes ?? [])
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(() =>
-    selectedOrderId && !boot ? 'Order not found' : '',
-  )
+  const [error] = useState(() => {
+    if (initialSaveError) return initialSaveError
+    if (selectedOrderId && !boot) return 'Order not found'
+    return ''
+  })
   const searchSeq = useRef(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const isNarrow = useIsNarrowOrderSheet()
+  const saveStatus = initialSaveError ? '' : initialSaveFlash ? 'Saved' : ''
 
   const parsedLines = parseAmounts(editor.amounts)
   const totals = sheetTotals(parsedLines)
-  const listOrders = searching && (hits.length > 0 || Boolean(initialSearchQuery)) ? hits : recentOrders
-  const listLabel = searching ? 'Search results' : 'Latest orders'
+  const baseList = searching && (hits.length > 0 || Boolean(initialSearchQuery)) ? hits : recentOrders
+  const listOrders = useMemo(() => {
+    if (filter === 'incomplete') return baseList.filter((h) => !h.sheetComplete)
+    if (filter === 'complete') return baseList.filter((h) => h.sheetComplete)
+    return baseList
+  }, [baseList, filter])
+  const listLabel = searching ? 'Search results' : 'All orders'
   const quoteCols = quotes.length
-  const linesGridStyle: React.CSSProperties = {
+  const linesGridStyle: CSSProperties = {
     gridTemplateColumns:
       quoteCols > 0
-        ? `minmax(110px, 1.1fr) ${'minmax(88px, 1fr) '.repeat(quoteCols)}minmax(100px, 1fr) minmax(100px, 1fr)`
-        : 'minmax(120px, 1.2fr) 1fr 1fr',
+        ? `minmax(96px, 0.9fr) ${'minmax(72px, 0.85fr) '.repeat(quoteCols)}minmax(88px, 1fr) minmax(88px, 1fr)`
+        : 'minmax(96px, 0.9fr) minmax(88px, 1fr) minmax(88px, 1fr)',
   }
   const locked = !editor.orderId
+  const incompleteCount = baseList.filter((h) => !h.sheetComplete).length
+  const completeCount = baseList.filter((h) => h.sheetComplete).length
 
   function setAmount(kind: FinanceLineKind, field: 'costPrice' | 'sellingPrice', value: string) {
     setEditor((prev) => ({
@@ -246,14 +287,8 @@ export function OrderFinanceManager({
       }
       const next = (await res.json()) as Hit[]
       if (seq !== searchSeq.current) return
-      const rowsFound = Array.isArray(next) ? next : []
-      setHits(rowsFound)
-      setSearching(true)
-      setSearchHint(
-        rowsFound.length === 0
-          ? 'No matching orders found'
-          : `${rowsFound.length} result${rowsFound.length === 1 ? '' : 's'}`,
-      )
+      setHits(next)
+      setSearchHint(next.length === 0 ? 'No matching orders found' : `${next.length} result${next.length === 1 ? '' : 's'}`)
     } catch {
       if (seq !== searchSeq.current) return
       setHits([])
@@ -269,122 +304,18 @@ export function OrderFinanceManager({
     void fetchHits(q)
   }
 
-  /** Mobile: native GET (browser sends input value). Desktop: client fetch. */
   function onSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
     const typed = (searchInputRef.current?.value ?? '').trim()
-    const mobile =
-      typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
     if (typed.length < 2) {
-      e.preventDefault()
       setSearchHint('Type at least 2 characters, then tap Search')
       return
     }
-    if (!mobile) {
-      e.preventDefault()
-      void fetchHits(typed)
-    }
-    // mobile: do not preventDefault — form GET → /admin/finance/orders?q=…
+    void fetchHits(typed)
   }
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editor.orderId) {
-      setError('Pick an order')
-      return
-    }
-    if (!editor.paidToAccountId) {
-      setError('Pick paid-to account')
-      return
-    }
-    setSaving(true)
-    setError('')
-    try {
-      const res = await fetch('/api/admin/finance/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: editor.orderId,
-          paidToAccountId: editor.paidToAccountId,
-          lines: parsedLines,
-        }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(json.error ?? 'Save failed')
-        return
-      }
-      setRows((rs) => {
-        const rest = rs.filter((r) => r.orderId !== json.orderId)
-        return [json, ...rest]
-      })
-      if (json.lines) {
-        setEditor((prev) => ({
-          ...prev,
-          revision: prev.revision + 1,
-          amounts: amountsFromLines(json.lines),
-          paidToAccountId: json.paidToAccountId ?? prev.paidToAccountId,
-        }))
-      }
-      router.refresh()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function renderOrderList() {
-    if (editor.orderId) return null
-    return (
-      <>
-        {listOrders.length > 0 && (
-          <div className="order-sheet-hits" style={{ marginTop: 12 }}>
-            <div className="order-sheet-hits__label">{listLabel}</div>
-            {listOrders.map((h) => (
-              <Link key={h.id} href={orderHref(h.id)} className="order-sheet-hit" prefetch={false}>
-                <span className="order-sheet-hit__name" title={h.id}>
-                  {shortFinanceId(h.id)}
-                </span>
-                <span className="order-sheet-hit__meta">
-                  {h.contactName ? `${h.contactName} · ` : ''}
-                  {h.status} · {inr(h.grandTotal)}
-                  {h.hasSheet ? ' · sheet exists' : ''}
-                </span>
-              </Link>
-            ))}
-            <div className="order-sheet-hits__footer">
-              <span>Can&apos;t find the order?</span>
-              <Link href="/admin/orders/new">+ Create new order</Link>
-            </div>
-          </div>
-        )}
-
-        {searchHint && (
-          <p className="order-sheet-search-hint" role="status">
-            {searchHint}
-          </p>
-        )}
-
-        {searching && hits.length === 0 && (
-          <div className="order-sheet-hits__empty" style={{ marginTop: 12 }}>
-            <span>{searchHint || 'No matching orders found'}</span>
-            <Link href={ORDERS_PATH} className="admin-btn" style={{ fontSize: '0.7rem', textDecoration: 'none' }}>
-              Clear search
-            </Link>
-          </div>
-        )}
-
-        {!searching && recentOrders.length === 0 && (
-          <div className="order-sheet-hits__empty" style={{ marginTop: 12 }}>
-            <span>No orders yet.</span>
-            <Link href="/admin/orders/new" className="admin-btn" style={{ fontSize: '0.7rem', textDecoration: 'none' }}>
-              + Create order
-            </Link>
-          </div>
-        )}
-      </>
-    )
-  }
-
-  function renderPriceInputs(kind: FinanceLineKind) {
+  function renderPriceInputs(kind: FinanceLineKind, surface: 'desk' | 'mobile') {
+    const active = surface === 'mobile' ? isNarrow : !isNarrow
     return (
       <>
         <label className="order-sheet-row__field">
@@ -396,11 +327,13 @@ export function OrderFinanceManager({
               ...(locked ? { background: '#f3f4f6', color: '#9ca3af' } : null),
             }}
             type="text"
+            name={active ? `cost_${kind}` : undefined}
             inputMode="decimal"
             placeholder="0"
             value={editor.amounts[kind].costPrice}
             onChange={(e) => setAmount(kind, 'costPrice', e.target.value)}
             readOnly={locked}
+            disabled={locked || !active}
           />
         </label>
         <label className="order-sheet-row__field">
@@ -412,26 +345,299 @@ export function OrderFinanceManager({
               ...(locked ? { background: '#f3f4f6', color: '#9ca3af' } : null),
             }}
             type="text"
+            name={active ? `sell_${kind}` : undefined}
             inputMode="decimal"
             placeholder="0"
             value={editor.amounts[kind].sellingPrice}
             onChange={(e) => setAmount(kind, 'sellingPrice', e.target.value)}
             readOnly={locked}
+            disabled={locked || !active}
           />
         </label>
       </>
     )
   }
 
-  return (
-    <div>
-      <div className="order-sheet-form" style={{ marginBottom: 12 }}>
-        <div className="order-sheet-form__intro">
-          <h2 className="order-sheet-form__title">Order finance sheet</h2>
-          <p className="order-sheet-form__hint">
-            One sheet per order. Enter purchase and selling prices by line. Leave blank if not
-            applicable (counts as ₹0). Saving overwrites.
+  function renderSaveBar() {
+    const status = error || saveStatus || '\u00a0'
+    return (
+      <div className="order-sheet-save-bar">
+        <p
+          className="order-sheet-save-bar__status"
+          style={{ color: error ? '#b91c1c' : '#065f46' }}
+          role="status"
+          aria-live="polite"
+        >
+          {status}
+        </p>
+        <div className="order-sheet-actions">
+          <Link href={ORDERS_PATH} className="order-sheet-btn-ghost">
+            Cancel
+          </Link>
+          <OrderSheetSaveButton />
+        </div>
+      </div>
+    )
+  }
+
+  function actionLabel(h: Hit) {
+    return h.hasSheet ? 'Edit' : 'Add sheet'
+  }
+
+  function renderFilterChips() {
+    const chips: { id: SheetFilter; label: string; count?: number }[] = [
+      { id: 'all', label: 'All', count: baseList.length },
+      { id: 'incomplete', label: 'Incomplete', count: incompleteCount },
+      { id: 'complete', label: 'Complete', count: completeCount },
+    ]
+    return (
+      <div className="order-sheet-filters" role="tablist" aria-label="Sheet status">
+        {chips.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={filter === c.id}
+            className={`order-sheet-filter-chip${filter === c.id ? ' is-active' : ''}`}
+            onClick={() => setFilter(c.id)}
+          >
+            {c.label}
+            {c.count != null ? <span className="order-sheet-filter-chip__count">{c.count}</span> : null}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  function renderListDesk() {
+    return (
+      <div className="order-sheet-hits order-sheet-desk">
+        <div className="order-sheet-hits__label">
+          {listLabel}
+          {filter !== 'all' ? ` · ${filter}` : ''}
+        </div>
+        <div className="order-sheet-hits__table-wrap">
+          <table className="order-sheet-hits__table order-sheet-hits__table--wide">
+            <thead>
+              <tr>
+                <th scope="col">Contact</th>
+                <th scope="col">Item</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Order ID</th>
+                <th scope="col">Status</th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Purchasing price (from vendor)
+                </th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Selling price (to customer)
+                </th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Profit
+                </th>
+                <th scope="col">Paid to</th>
+                <th scope="col" />
+              </tr>
+            </thead>
+            <tbody>
+              {listOrders.length === 0 && (
+                <tr>
+                  <td colSpan={10} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
+                    {searching ? 'No matching orders' : 'No orders in this filter'}
+                  </td>
+                </tr>
+              )}
+              {listOrders.map((h) => (
+                <tr key={h.id} className={!h.sheetComplete ? 'is-incomplete' : undefined}>
+                  <td>
+                    <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
+                      <span className="order-sheet-hits__contact">{h.contactName || '—'}</span>
+                      {h.contactPhone ? (
+                        <span className="order-sheet-hits__sub">{h.contactPhone}</span>
+                      ) : null}
+                    </Link>
+                  </td>
+                  <td>
+                    <Link
+                      href={orderHref(h.id)}
+                      className="order-sheet-hits__link"
+                      prefetch={false}
+                      title={h.itemsLabel}
+                    >
+                      {h.itemsLabel || '—'}
+                    </Link>
+                  </td>
+                  <td>
+                    <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
+                      <span className="order-sheet-hits__amount">{inr(h.grandTotal)}</span>
+                    </Link>
+                  </td>
+                  <td>
+                    <Link
+                      href={orderHref(h.id)}
+                      className="order-sheet-hits__link order-sheet-hits__id"
+                      prefetch={false}
+                      title={h.id}
+                    >
+                      {shortFinanceId(h.id)}
+                    </Link>
+                  </td>
+                  <td>
+                    <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
+                      {statusLabel(h.status)}
+                    </Link>
+                  </td>
+                  <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
+                  <td className="order-sheet-hits__num">{moneyOrDash(h.selling)}</td>
+                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {moneyOrDash(h.profit)}
+                  </td>
+                  <td>{h.paidToAccountName || '—'}</td>
+                  <td>
+                    <Link
+                      href={orderHref(h.id)}
+                      className={
+                        h.hasSheet ? 'order-sheet-row-action' : 'order-sheet-row-action is-add'
+                      }
+                      prefetch={false}
+                    >
+                      {actionLabel(h)}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="order-sheet-hits__footer">
+          <span>
+            {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+            {searching ? '' : ' shown'}
+          </span>
+          <Link href="/admin/orders/new">+ Create new order</Link>
+        </div>
+      </div>
+    )
+  }
+
+  function renderListMobile() {
+    return (
+      <div className="order-sheet-mobile-list order-sheet-mobile-stack">
+        <div className="order-sheet-hits__label" style={{ marginBottom: 8 }}>
+          {listLabel}
+          {filter !== 'all' ? ` · ${filter}` : ''}
+        </div>
+        {listOrders.length === 0 && (
+          <p style={{ fontSize: '0.8125rem', color: MUTED, margin: '8px 0' }}>
+            {searching ? 'No matching orders' : 'No orders in this filter'}
           </p>
+        )}
+        {listOrders.map((h) => (
+          <article
+            key={h.id}
+            className={`order-sheet-list-card${!h.sheetComplete ? ' is-incomplete' : ''}`}
+          >
+            <div className="order-sheet-list-card__top">
+              <div>
+                <div className="order-sheet-list-card__name">{h.contactName || '—'}</div>
+                {h.contactPhone ? (
+                  <div className="order-sheet-list-card__sub">{h.contactPhone}</div>
+                ) : null}
+              </div>
+              <span
+                className={`order-sheet-hits__pill ${h.sheetComplete ? 'is-yes' : 'is-no'}`}
+              >
+                {h.sheetComplete ? 'Yes' : 'No'}
+              </span>
+            </div>
+            <div className="order-sheet-list-card__item">{h.itemsLabel || '—'}</div>
+            <div className="order-sheet-list-card__meta">
+              <span className="order-sheet-hits__amount">{inr(h.grandTotal)}</span>
+              <span title={h.id}>{shortFinanceId(h.id)}</span>
+              <span>{statusLabel(h.status)}</span>
+            </div>
+            <div className="order-sheet-list-card__money">
+              <div>
+                <span>Purchasing</span>
+                <strong>{moneyOrDash(h.purchasing)}</strong>
+              </div>
+              <div>
+                <span>Selling</span>
+                <strong>{moneyOrDash(h.selling)}</strong>
+              </div>
+              <div>
+                <span>Profit</span>
+                <strong>{moneyOrDash(h.profit)}</strong>
+              </div>
+              <div>
+                <span>Paid to</span>
+                <strong>{h.paidToAccountName || '—'}</strong>
+              </div>
+            </div>
+            <Link
+              href={orderHref(h.id)}
+              className={
+                h.hasSheet
+                  ? 'order-sheet-list-card__cta'
+                  : 'order-sheet-list-card__cta is-add'
+              }
+              prefetch={false}
+            >
+              {actionLabel(h)}
+            </Link>
+          </article>
+        ))}
+        <div className="order-sheet-hits__footer" style={{ marginTop: 4 }}>
+          <span>Can&apos;t find the order?</span>
+          <Link href="/admin/orders/new">+ Create new order</Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (editor.orderId) {
+    return (
+      <div className="order-sheet-edit-page">
+        <Link href={filterHref(filter, query)} className="order-sheet-back">
+          ← All order sheets
+        </Link>
+        <div className="order-sheet-form__intro">
+          <h2 className="order-sheet-form__title">
+            {editor.hasSheet ? 'Edit order sheet' : 'Add order sheet'}
+          </h2>
+          <p className="order-sheet-form__hint">
+            Enter purchase and selling prices by line. Leave blank if not applicable (counts as ₹0).
+            Saving overwrites.
+          </p>
+          <details className="order-sheet-col-guide">
+            <summary className="order-sheet-col-guide__summary">
+              <span>How Quoted, Purchase &amp; Selling work</span>
+              <span aria-hidden className="order-sheet-col-guide__chevron">
+                ▾
+              </span>
+            </summary>
+            <div className="order-sheet-col-guide__body">
+              <ul>
+                <li>
+                  <strong>Quoted</strong> — reference only (not saved). Live catalogue prices for
+                  each line, except <strong>Gold</strong>, which uses the gold value frozen on the
+                  order at checkout.
+                </li>
+                <li>
+                  <strong>Purchase price</strong> — what you paid the vendor for that line. Enter
+                  ₹0 / leave blank if not applicable. A sheet is complete when every line with a
+                  selling price also has a non-zero purchase price.
+                </li>
+                <li>
+                  <strong>Selling price</strong> — what the customer paid for that line. Prefills
+                  from the order&apos;s checkout price breakdown (gold, diamonds, making, wastage,
+                  delivery/GST). Edit before saving if needed.
+                </li>
+              </ul>
+              <p>
+                Profit on the sheet = sum of selling − sum of purchase. Blank fields count as ₹0.
+              </p>
+            </div>
+          </details>
           {error && (
             <p style={{ color: '#b91c1c', fontSize: '0.8125rem', margin: '0 0 8px' }} role="alert">
               {error}
@@ -441,302 +647,278 @@ export function OrderFinanceManager({
 
         <div className="order-sheet-editor">
           <section className="order-sheet-panel">
-            <h3 className="order-sheet-panel__heading">Find order</h3>
-            {!editor.orderId && (
-              <div className="order-sheet-field">
-                <span id="order-sheet-search-label">Search (name, phone, email, id)</span>
-                <form
-                  className="order-sheet-search-row"
-                  method="get"
-                  action={ORDERS_PATH}
-                  onSubmit={onSearchSubmit}
-                >
-                  <input
-                    ref={searchInputRef}
-                    id="order-sheet-search-input"
-                    name="q"
-                    aria-labelledby="order-sheet-search-label"
-                    className="order-sheet-search-input"
-                    style={{ ...control, flex: 1, fontSize: '16px' }}
-                    placeholder="Name, phone, email or order ID…"
-                    defaultValue={initialSearchQuery ?? ''}
-                    onChange={(e) => onSearchTyping(e.target.value)}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    enterKeyHint="search"
-                    inputMode="text"
-                  />
-                  <button type="submit" className="order-sheet-search-btn">
-                    Search
-                  </button>
-                </form>
-                <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
-                  Type at least 2 characters, then tap Search.
-                </p>
-                {searching && (
-                  <p className="order-sheet-search-hint order-sheet-mobile-only">
-                    <Link href={ORDERS_PATH}>Clear search</Link>
-                    {searchHint ? ` · ${searchHint}` : ''}
-                  </p>
-                )}
-                <Link href="/admin/orders/new" className="order-sheet-create-link">
-                  + Create order
-                </Link>
-              </div>
-            )}
-
-            {renderOrderList()}
-
-            {editor.orderId && (
-              <div className="order-sheet-selected">
-                <div>
-                  <div className="order-sheet-selected__name" title={editor.orderId}>
-                    {shortFinanceId(editor.orderId)}
-                  </div>
-                  <div className="order-sheet-selected__meta">
-                    {editor.orderMeta.status ? `${editor.orderMeta.status} · ` : ''}
-                    {editor.orderMeta.total != null ? `Goods ${inr(editor.orderMeta.total)}` : ''}
-                    {editor.orderMeta.phone ? ` · ${editor.orderMeta.phone}` : ''}
-                  </div>
-                  {quotes.length > 0 && (
-                    <div className="order-sheet-selected__quotes-summary">
-                      {quotes.length} item{quotes.length === 1 ? '' : 's'} · Quoted Σ{' '}
-                      {inr(quotes.reduce((s, q) => s + q.quotedTotal, 0))}
-                    </div>
-                  )}
+            <div className="order-sheet-selected">
+              <div>
+                <div className="order-sheet-selected__name" title={editor.orderId}>
+                  {editor.orderLabel || shortFinanceId(editor.orderId)}
+                  <span className="order-sheet-selected__id" title={editor.orderId}>
+                    {' '}
+                    · {shortFinanceId(editor.orderId)}
+                  </span>
                 </div>
-                <Link href={ORDERS_PATH} className="order-sheet-selected__change">
-                  Change
+                <div className="order-sheet-selected__meta">
+                  {editor.orderMeta.status ? `${statusLabel(editor.orderMeta.status)} · ` : ''}
+                  {editor.orderMeta.total != null ? `Goods ${inr(editor.orderMeta.total)}` : ''}
+                  {editor.orderMeta.phone ? ` · ${editor.orderMeta.phone}` : ''}
+                </div>
+                {editor.orderMeta.itemsLabel ? (
+                  <div className="order-sheet-selected__quotes-summary">
+                    {editor.orderMeta.itemsLabel}
+                  </div>
+                ) : null}
+                {quotes.length > 0 && (
+                  <div className="order-sheet-selected__quotes-summary">
+                    {quotes.length} item{quotes.length === 1 ? '' : 's'} · Quoted Σ{' '}
+                    {inr(quotes.reduce((s, q) => s + q.quotedTotal, 0))}
+                  </div>
+                )}
+                <Link
+                  href={`/admin/orders/${editor.orderId}`}
+                  className="order-sheet-selected__open"
+                >
+                  Open order
                 </Link>
               </div>
-            )}
+            </div>
           </section>
 
           <section className="order-sheet-panel">
             <h3 className="order-sheet-panel__heading">Purchase &amp; selling prices</h3>
 
-            {!editor.orderId && (
-              <p style={{ fontSize: '0.8125rem', color: MUTED, marginTop: 0 }}>
-                Select an order to load quoted prices and edit the sheet.
-              </p>
-            )}
-
-            {editor.orderId && quotes.length === 0 && (
+            {quotes.length === 0 && (
               <p style={{ fontSize: '0.8125rem', color: MUTED, marginTop: 0 }}>
                 No line items on this order — quoted amounts unavailable. You can still enter
                 purchase and selling prices.
               </p>
             )}
 
-            {editor.orderId && (
-              <form onSubmit={save}>
-                {/* Desktop grid */}
-                <div className="order-sheet-lines-scroll order-sheet-desk">
-                  <div className="order-sheet-lines-head" style={linesGridStyle} aria-hidden>
-                    <span>Line</span>
-                    {quotes.map((q) => (
-                      <span key={q.orderItemId} title={`${q.productName} ×${q.quantity}`}>
-                        Quoted
-                        <span className="order-sheet-quote-sub">
-                          {q.productName.length > 18 ? `${q.productName.slice(0, 16)}…` : q.productName}
-                          {q.quantity > 1 ? ` ×${q.quantity}` : ''}
-                        </span>
+            <form action={saveOrderSheetAction} className="order-sheet-sheet-form">
+              <input type="hidden" name="orderId" value={editor.orderId} />
+
+              <div className="order-sheet-lines-scroll order-sheet-desk">
+                <div className="order-sheet-lines-head" style={linesGridStyle} aria-hidden>
+                  <span>Line</span>
+                  {quotes.map((q) => (
+                    <span key={q.orderItemId} title={`${q.productName} ×${q.quantity}`}>
+                      Quoted
+                      <span className="order-sheet-quote-sub">
+                        {q.productName.length > 18 ? `${q.productName.slice(0, 16)}…` : q.productName}
+                        {q.quantity > 1 ? ` ×${q.quantity}` : ''}
                       </span>
-                    ))}
-                    <span>Purchase price (₹)</span>
-                    <span>Selling price (₹)</span>
-                  </div>
-
-                  <div className="order-sheet-lines" key={`desk-${editor.revision}-${editor.orderId}`}>
-                    {FINANCE_LINE_KINDS.map((kind) => (
-                      <div key={kind} className="order-sheet-row" style={linesGridStyle}>
-                        <div className="order-sheet-row__kind">{LINE_KIND_LABEL[kind]}</div>
-                        {quotes.map((q) => (
-                          <div key={q.orderItemId} className="order-sheet-row__quote">
-                            <div className="order-sheet-quote-value">{inr(q.byKind[kind] ?? 0)}</div>
-                          </div>
-                        ))}
-                        {renderPriceInputs(kind)}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="order-sheet-totals" style={linesGridStyle}>
-                    <div className="order-sheet-totals__cell order-sheet-totals__profit">
-                      <span className="order-sheet-totals__label">Profit</span>
-                      <strong>{inr(totals.profit)}</strong>
-                    </div>
-                    {quotes.map((q) => (
-                      <div key={q.orderItemId} className="order-sheet-totals__cell">
-                        <span className="order-sheet-totals__label">Quoted Σ</span>
-                        <strong>{inr(q.quotedTotal)}</strong>
-                      </div>
-                    ))}
-                    <div className="order-sheet-totals__cell">
-                      <span className="order-sheet-totals__label">Purchasing</span>
-                      <strong>{inr(totals.cost)}</strong>
-                    </div>
-                    <div className="order-sheet-totals__cell">
-                      <span className="order-sheet-totals__label">Selling</span>
-                      <strong>{inr(totals.selling)}</strong>
-                    </div>
-                  </div>
+                    </span>
+                  ))}
+                  {quotes.length === 0 && <span>Quoted</span>}
+                  <span>Purchase price (₹)</span>
+                  <span>Selling price (₹)</span>
                 </div>
 
-                {/* Mobile stacked — always flex on small screens via CSS */}
-                <div className="order-sheet-mobile-stack" key={`mob-${editor.revision}-${editor.orderId}`}>
+                <div className="order-sheet-lines" key={`desk-${editor.revision}-${editor.orderId}`}>
                   {FINANCE_LINE_KINDS.map((kind) => (
-                    <div key={kind} className="order-sheet-m-card">
-                      <div className="order-sheet-m-card__kind">{LINE_KIND_LABEL[kind]}</div>
+                    <div key={kind} className="order-sheet-row" style={linesGridStyle}>
+                      <div className="order-sheet-row__kind">{LINE_KIND_LABEL[kind]}</div>
                       {quotes.map((q) => (
-                        <div key={q.orderItemId} className="order-sheet-m-card__quote">
-                          <span>
-                            Quoted
-                            {quotes.length > 1
-                              ? ` · ${
-                                  q.productName.length > 22
-                                    ? `${q.productName.slice(0, 20)}…`
-                                    : q.productName
-                                }`
-                              : ''}
-                            {q.quantity > 1 ? ` ×${q.quantity}` : ''}
-                          </span>
-                          <strong>{inr(q.byKind[kind] ?? 0)}</strong>
+                        <div key={q.orderItemId} className="order-sheet-row__quote">
+                          <div className="order-sheet-quote-value">{inr(q.byKind[kind] ?? 0)}</div>
                         </div>
                       ))}
                       {quotes.length === 0 && (
-                        <div className="order-sheet-m-card__quote order-sheet-m-card__quote--empty">
-                          <span>Quoted</span>
-                          <strong>—</strong>
+                        <div className="order-sheet-row__quote">
+                          <div className="order-sheet-quote-value">—</div>
                         </div>
                       )}
-                      <div className="order-sheet-m-card__fields">{renderPriceInputs(kind)}</div>
+                      {renderPriceInputs(kind, 'desk')}
                     </div>
                   ))}
+                </div>
 
-                  <div className="order-sheet-m-totals">
-                    <div className="order-sheet-m-totals__profit">
-                      <span>Profit</span>
-                      <strong>{inr(totals.profit)}</strong>
+                <div className="order-sheet-totals" style={linesGridStyle}>
+                  <div className="order-sheet-totals__cell order-sheet-totals__profit">
+                    <span className="order-sheet-totals__label">Profit</span>
+                    <strong>{inr(totals.profit)}</strong>
+                  </div>
+                  {quotes.map((q) => (
+                    <div key={q.orderItemId} className="order-sheet-totals__cell">
+                      <span className="order-sheet-totals__label">Quoted Σ</span>
+                      <strong>{inr(q.quotedTotal)}</strong>
                     </div>
+                  ))}
+                  {quotes.length === 0 && <div className="order-sheet-totals__cell" />}
+                  <div className="order-sheet-totals__cell">
+                    <span className="order-sheet-totals__label">Purchasing</span>
+                    <strong>{inr(totals.cost)}</strong>
+                  </div>
+                  <div className="order-sheet-totals__cell">
+                    <span className="order-sheet-totals__label">Selling</span>
+                    <strong>{inr(totals.selling)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="order-sheet-mobile-stack" key={`mob-${editor.revision}-${editor.orderId}`}>
+                {FINANCE_LINE_KINDS.map((kind) => (
+                  <div key={kind} className="order-sheet-m-card">
+                    <div className="order-sheet-m-card__kind">{LINE_KIND_LABEL[kind]}</div>
                     {quotes.map((q) => (
-                      <div key={q.orderItemId}>
+                      <div key={q.orderItemId} className="order-sheet-m-card__quote">
                         <span>
-                          Quoted Σ
+                          Quoted
                           {quotes.length > 1
                             ? ` · ${
-                                q.productName.length > 16
-                                  ? `${q.productName.slice(0, 14)}…`
+                                q.productName.length > 22
+                                  ? `${q.productName.slice(0, 20)}…`
                                   : q.productName
                               }`
                             : ''}
+                          {q.quantity > 1 ? ` ×${q.quantity}` : ''}
                         </span>
-                        <strong>{inr(q.quotedTotal)}</strong>
+                        <strong>{inr(q.byKind[kind] ?? 0)}</strong>
                       </div>
                     ))}
-                    <div>
-                      <span>Purchasing</span>
-                      <strong>{inr(totals.cost)}</strong>
+                    {quotes.length === 0 && (
+                      <div className="order-sheet-m-card__quote order-sheet-m-card__quote--empty">
+                        <span>Quoted</span>
+                        <strong>—</strong>
+                      </div>
+                    )}
+                    <div className="order-sheet-m-card__fields">{renderPriceInputs(kind, 'mobile')}</div>
+                  </div>
+                ))}
+
+                <div className="order-sheet-m-totals">
+                  <div className="order-sheet-m-totals__profit">
+                    <span>Profit</span>
+                    <strong>{inr(totals.profit)}</strong>
+                  </div>
+                  {quotes.map((q) => (
+                    <div key={q.orderItemId}>
+                      <span>Quoted Σ</span>
+                      <strong>{inr(q.quotedTotal)}</strong>
                     </div>
-                    <div>
-                      <span>Selling</span>
-                      <strong>{inr(totals.selling)}</strong>
-                    </div>
+                  ))}
+                  <div>
+                    <span>Purchasing</span>
+                    <strong>{inr(totals.cost)}</strong>
+                  </div>
+                  <div>
+                    <span>Selling</span>
+                    <strong>{inr(totals.selling)}</strong>
                   </div>
                 </div>
+              </div>
 
-                <label className="order-sheet-field" style={{ marginTop: 14 }}>
-                  <span>Customer paid to (account holding cash)</span>
-                  <select
-                    style={{
-                      ...control,
-                      fontSize: '16px',
-                      ...(locked ? { background: '#f3f4f6', color: '#9ca3af' } : null),
-                    }}
-                    value={editor.paidToAccountId}
-                    onChange={(e) =>
-                      setEditor((prev) => ({ ...prev, paidToAccountId: e.target.value }))
-                    }
-                    required
-                    disabled={locked}
-                  >
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <label className="order-sheet-field" style={{ marginTop: 14 }}>
+                <span>Customer paid to (account holding cash)</span>
+                <select
+                  style={{
+                    ...control,
+                    fontSize: '16px',
+                    ...(locked ? { background: '#f3f4f6', color: '#9ca3af' } : null),
+                  }}
+                  name="paidToAccountId"
+                  value={editor.paidToAccountId}
+                  onChange={(e) =>
+                    setEditor((prev) => ({ ...prev, paidToAccountId: e.target.value }))
+                  }
+                  disabled={locked}
+                >
+                  {accounts.length === 0 && <option value="">No accounts configured</option>}
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-                <div className="order-sheet-actions">
-                  <Link href={ORDERS_PATH} className="order-sheet-btn-ghost">
-                    Cancel
-                  </Link>
-                  <button
-                    type="submit"
-                    className="admin-btn"
-                    disabled={saving || !editor.orderId || !editor.paidToAccountId}
-                  >
-                    {saving ? 'Saving…' : 'Save sheet'}
-                  </button>
-                </div>
-              </form>
-            )}
+              {renderSaveBar()}
+            </form>
           </section>
         </div>
       </div>
+    )
+  }
 
-      <div className="order-sheet-table-wrap">
-        <table className="order-sheet-table">
-          <thead>
-            <tr>
-              <th>Order</th>
-              <th style={{ textAlign: 'right' }}>Purchasing price (from vendor)</th>
-              <th style={{ textAlign: 'right' }}>Selling price (to customer)</th>
-              <th style={{ textAlign: 'right' }}>Profit</th>
-              <th>Paid to</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
-                  No order sheets yet.
-                </td>
-              </tr>
+  return (
+    <div>
+      <div className="order-sheet-form" style={{ marginBottom: 12 }}>
+        <div className="order-sheet-form__intro">
+          <h2 className="order-sheet-form__title">Order sheets</h2>
+          <p className="order-sheet-form__hint">
+            One sheet per order — purchase and selling by line. Use Add sheet / Edit to open a
+            sheet.
+          </p>
+          {error && (
+            <p style={{ color: '#b91c1c', fontSize: '0.8125rem', margin: '0 0 8px' }} role="alert">
+              {error}
+            </p>
+          )}
+          {!error && saveStatus && (
+            <p
+              style={{ color: '#065f46', fontSize: '0.8125rem', margin: '0 0 8px', fontWeight: 600 }}
+              role="status"
+            >
+              {saveStatus}
+            </p>
+          )}
+        </div>
+
+        {renderFilterChips()}
+
+        <div className="order-sheet-field" style={{ marginTop: 14 }}>
+          <span id="order-sheet-search-label">Search (name, phone, email, id, item)</span>
+          <form className="order-sheet-search-row" onSubmit={onSearchSubmit}>
+            <input
+              ref={searchInputRef}
+              id="order-sheet-search-input"
+              name="q"
+              aria-labelledby="order-sheet-search-label"
+              className="order-sheet-search-input"
+              style={{ ...control, flex: 1, fontSize: '16px' }}
+              placeholder="Name, phone, email, order ID or item…"
+              defaultValue={initialSearchQuery ?? ''}
+              onChange={(e) => onSearchTyping(e.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              inputMode="text"
+            />
+            <button type="submit" className="order-sheet-search-btn">
+              Search
+            </button>
+          </form>
+          <div className="order-sheet-search-actions">
+            <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
+              Type at least 2 characters, then tap Search.
+            </p>
+            {searching && (
+              <p className="order-sheet-search-hint">
+                <button
+                  type="button"
+                  className="order-sheet-btn-ghost"
+                  style={{ padding: 0, textDecoration: 'underline' }}
+                  onClick={() => {
+                    setSearching(false)
+                    setHits([])
+                    setQuery('')
+                    setSearchHint('')
+                    if (searchInputRef.current) searchInputRef.current.value = ''
+                  }}
+                >
+                  Clear search
+                </button>
+                {searchHint ? ` · ${searchHint}` : ''}
+              </p>
             )}
-            {rows.map((r) => {
-              const t = sheetTotals(
-                (r.lines ?? []).map((l) => ({
-                  kind: l.kind as FinanceLineKind,
-                  costPrice: Number(l.costPrice) || 0,
-                  sellingPrice: Number(l.sellingPrice) || 0,
-                })),
-              )
-              return (
-                <tr key={r.id}>
-                  <td>
-                    <Link href={`/admin/orders/${r.orderId}`} style={{ color: GREEN, fontWeight: 500 }} title={r.orderId}>
-                      {shortFinanceId(r.orderId)}
-                    </Link>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>{inr(t.cost)}</td>
-                  <td style={{ textAlign: 'right' }}>{inr(t.selling)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{inr(t.profit)}</td>
-                  <td>{r.paidToAccountName ?? r.paidToAccountId}</td>
-                  <td>
-                    <Link href={orderHref(r.orderId)} className="order-sheet-btn-ghost" prefetch={false}>
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            <Link href="/admin/orders/new" className="order-sheet-create-link">
+              + Create order
+            </Link>
+          </div>
+        </div>
+
+        {renderListDesk()}
+        {renderListMobile()}
       </div>
     </div>
   )

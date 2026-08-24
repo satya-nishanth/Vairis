@@ -1,4 +1,11 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import {
+  calculatePrice,
+  DEFAULT_PRICING_CONFIG,
+  isOrderItemPriceSnapshot,
+  type OrderItemPriceSnapshot,
+  type PricingConfig,
+  type StoneInput,
+} from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
 import type { InvoiceStatus } from '@prisma/client'
@@ -43,6 +50,11 @@ export type InvoiceLine = {
   itemValue: number
   makingPlusWastage: number
   taxable: number
+  /**
+   * When true, amounts came from OrderItem.priceBreakdown and must not be
+   * recomputed from live catalogue rates until the admin edits pricing fields.
+   */
+  lockedPricing?: boolean
 }
 
 /** Product / cart / order-item input for `invoiceFromProducts`. */
@@ -175,6 +187,24 @@ export function goldRateKey(metalType: string): 'GOLD_14K' | 'GOLD_18K' {
 
 export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLine {
   const qty = Math.max(1, Number(line.quantity) || 1)
+
+  // Order-creation snapshot — keep frozen component amounts; only scale by qty.
+  if (line.lockedPricing) {
+    const unitTaxable =
+      Number(line.goldValue) +
+      Number(line.wastage) +
+      Number(line.making) +
+      Number(line.stoneValue) +
+      Number(line.miscCharges)
+    return {
+      ...line,
+      quantity: qty,
+      itemValue: Number(line.goldValue) + Number(line.stoneValue),
+      makingPlusWastage: Number(line.making) + Number(line.wastage),
+      taxable: unitTaxable * qty,
+    }
+  }
+
   const unit = calculatePrice(
     {
       weightGrams: line.weightGrams,
@@ -448,10 +478,16 @@ export type PrefillOrder = {
   pincode: string
   user: { name: string; email: string }
   payment: { razorpayPaymentId: string | null; razorpayOrderId: string; status: string; createdAt: Date } | null
+  /** Present when this is a split child — payment may live on the parent. */
+  parent?: {
+    payment: { razorpayPaymentId: string | null; razorpayOrderId: string; status: string; createdAt: Date } | null
+  } | null
   items: Array<{
     productName: string
     quantity: number
     withExchange: boolean
+    /** Frozen at checkout — preferred source for invoice line amounts. */
+    priceBreakdown?: unknown
     variant: {
       sku: string
       metalType: string
@@ -487,46 +523,128 @@ function flattenItems(order: PrefillOrder): PrefillOrder['items'] {
   return order.items
 }
 
+/** Own Payment row, else parent’s (split delivery anchoring). */
+function resolvedPayment(order: PrefillOrder): PrefillOrder['payment'] {
+  return order.payment ?? order.parent?.payment ?? null
+}
+
+function stonesFromSnapshot(snap: OrderItemPriceSnapshot): InvoiceStoneRow[] {
+  return (snap.stoneLines ?? []).map((s) => ({
+    label: s.typeLabel || 'Diamond',
+    caratWeight: Number(s.caratWeight),
+    ratePerCarat: Number(s.ratePerCarat),
+    value: Number(s.value),
+    exchange: Boolean(snap.withExchange),
+  }))
+}
+
+/**
+ * Build an invoice line from an order item.
+ * Prefers OrderItem.priceBreakdown (frozen at create); falls back to live rates.
+ */
+export function lineFromOrderItem(
+  item: PrefillOrder['items'][number],
+  rates: Record<string, number>,
+  config: PricingConfig,
+): InvoiceLine {
+  const v = item.variant
+  const metal = v.metalType
+  const withExchange = item.withExchange
+  const snap = isOrderItemPriceSnapshot(item.priceBreakdown) ? item.priceBreakdown : null
+
+  if (snap) {
+    const wastagePct =
+      snap.goldValue > 0 ? (snap.goldVA / snap.goldValue) * 100 : Number(config.vaGoldPct)
+    const stones =
+      stonesFromSnapshot(snap).length > 0
+        ? stonesFromSnapshot(snap)
+        : stoneRowsFromInputs(toStoneInputs(v.product.stones), withExchange)
+
+    return recomputeLine(
+      {
+        ...blankLine(),
+        productName: item.productName,
+        itemCode: v.product.itemCode ?? '',
+        sku: v.sku,
+        metalLabel: metalLabel(snap.metalType || metal),
+        withExchange: Boolean(snap.withExchange),
+        quantity: item.quantity,
+        weightGrams: Number(snap.weightGrams) || Number(v.weightGrams),
+        goldRatePerGram: Number(snap.goldRatePerGram),
+        goldValue: Number(snap.goldValue),
+        wastagePct,
+        wastage: Number(snap.goldVA),
+        makingPerGram: Number(v.makingChargePerGram),
+        flatMaking: Number(v.flatMakingCharge),
+        making: Number(snap.making),
+        stones,
+        stoneValue: Number(snap.stoneValue),
+        miscCharges: Number(snap.miscCharges),
+        legacyStoneCharges: 0,
+        leadIncentive: 0,
+        itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
+        makingPlusWastage: Number(snap.making) + Number(snap.goldVA),
+        taxable: Number(snap.taxable),
+        lockedPricing: true,
+      },
+      snap.vaLabel || config.vaLabel,
+    )
+  }
+
+  return lineFromProduct(
+    {
+      productName: item.productName,
+      itemCode: v.product.itemCode ?? '',
+      sku: v.sku,
+      metalType: metal,
+      withExchange,
+      quantity: item.quantity,
+      weightGrams: Number(v.weightGrams),
+      makingChargePerGram: Number(v.makingChargePerGram),
+      flatMakingCharge: Number(v.flatMakingCharge),
+      miscCharges: Number(v.miscCharges),
+      stoneCharges: Number(v.stoneCharges ?? 0),
+      stones: toStoneInputs(v.product.stones),
+    },
+    rates,
+    config,
+  )
+}
+
 export function payloadFromOrder(
   order: PrefillOrder,
   rates: Record<string, number>,
   config: PricingConfig,
 ): InvoicePayload {
+  const payment = resolvedPayment(order)
   const paid =
-    order.payment?.status === 'CAPTURED' ||
+    payment?.status === 'CAPTURED' ||
     ['PAYMENT_CONFIRMED', 'PREPARING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(order.status)
   const party: InvoiceParty = {
     name: order.contactName || order.user.name,
     lines: addressBlock(order),
     phone: order.contactPhone ? `+91 ${order.contactPhone}` : '',
   }
-  const products: InvoiceProductInput[] = flattenItems(order).map((item) => ({
-    productName: item.productName,
-    itemCode: item.variant.product.itemCode ?? '',
-    sku: item.variant.sku,
-    metalType: item.variant.metalType,
-    withExchange: item.withExchange,
-    quantity: item.quantity,
-    weightGrams: Number(item.variant.weightGrams),
-    makingChargePerGram: Number(item.variant.makingChargePerGram),
-    flatMakingCharge: Number(item.variant.flatMakingCharge),
-    miscCharges: Number(item.variant.miscCharges),
-    stoneCharges: Number(item.variant.stoneCharges ?? 0),
-    stones: toStoneInputs(item.variant.product.stones),
-  }))
-  return invoiceFromProducts(products, {
+  const lines = flattenItems(order).map((item) => lineFromOrderItem(item, rates, config))
+  const payload: InvoicePayload = {
+    seller: sellerDefaults(),
     billedTo: party,
     shippedTo: { ...party },
-    goldRates: rates,
-    config,
-    placeOfSupply: /maharashtra/i.test(order.state) ? 'Maharashtra (27)' : order.state || 'Maharashtra (27)',
     payment: {
-      method: order.payment ? 'Online' : '',
-      reference: order.payment?.razorpayPaymentId || order.payment?.razorpayOrderId || '',
-      received: order.payment ? order.payment.createdAt.toISOString().slice(0, 10) : '',
+      method: payment ? 'Online' : '',
+      reference: payment?.razorpayPaymentId || payment?.razorpayOrderId || '',
+      received: payment ? payment.createdAt.toISOString().slice(0, 10) : '',
       status: paid ? 'Paid in full' : 'Unpaid',
     },
-  }).payload
+    invoiceDate: new Date().toISOString().slice(0, 10),
+    placeOfSupply: /maharashtra/i.test(order.state)
+      ? 'Maharashtra (27)'
+      : order.state || 'Maharashtra (27)',
+    notes: { ...DEFAULT_INVOICE_NOTES },
+    lines: lines.length > 0 ? lines : [blankLine()],
+  }
+  const totals = totalsFromPayload(payload)
+  return { ...payload, lines: totals.lines }
 }
 
 export function invoiceStatusFromPayload(payload: InvoicePayload): InvoiceStatus {

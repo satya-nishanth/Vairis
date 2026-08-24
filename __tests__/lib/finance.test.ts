@@ -6,6 +6,7 @@ import {
   orderProfit,
   sheetTotals,
   isPendingOrderSheet,
+  isOrderSheetComplete,
   summarizeFinance,
   summarizeTransactionFlows,
   summarizeDashboardKpis,
@@ -38,23 +39,49 @@ describe('sheetTotals / orderProfit', () => {
   })
 })
 
-describe('isPendingOrderSheet', () => {
-  it('is pending when selling > 0 and purchase is 0', () => {
-    expect(isPendingOrderSheet({ purchasePrice: 0, sellingPrice: 25000, quotedPrice: 0 })).toBe(true)
+describe('isOrderSheetComplete / isPendingOrderSheet', () => {
+  it('is incomplete with no sheet', () => {
+    expect(isOrderSheetComplete(null)).toBe(false)
+    expect(isPendingOrderSheet(null)).toBe(true)
   })
 
-  it('is pending when quoted > 0 and purchase is 0', () => {
-    expect(isPendingOrderSheet({ purchasePrice: 0, sellingPrice: 0, quotedPrice: 18000 })).toBe(true)
+  it('is incomplete when a selling line has zero purchase', () => {
+    expect(
+      isOrderSheetComplete([
+        { costPrice: 0, sellingPrice: 21516 },
+        { costPrice: 0, sellingPrice: 1100 },
+      ]),
+    ).toBe(false)
   })
 
-  it('is not pending when purchase is filled', () => {
-    expect(isPendingOrderSheet({ purchasePrice: 10000, sellingPrice: 25000, quotedPrice: 0 })).toBe(
-      false,
-    )
+  it('is complete when every selling line has purchase', () => {
+    expect(
+      isOrderSheetComplete([
+        { costPrice: 18000, sellingPrice: 21516 },
+        { costPrice: 0, sellingPrice: 0 },
+        { costPrice: 800, sellingPrice: 1100 },
+      ]),
+    ).toBe(true)
+    expect(
+      isPendingOrderSheet([
+        { costPrice: 18000, sellingPrice: 21516 },
+        { costPrice: 800, sellingPrice: 1100 },
+      ]),
+    ).toBe(false)
   })
 
-  it('is not pending when revenue side is also zero', () => {
-    expect(isPendingOrderSheet({ purchasePrice: 0, sellingPrice: 0, quotedPrice: 0 })).toBe(false)
+  it('is incomplete when only some selling lines have purchase', () => {
+    expect(
+      isOrderSheetComplete([
+        { costPrice: 18000, sellingPrice: 21516 },
+        { costPrice: 0, sellingPrice: 1100 },
+      ]),
+    ).toBe(false)
+  })
+
+  it('treats empty sheet / zero-selling lines as complete', () => {
+    expect(isOrderSheetComplete([])).toBe(true)
+    expect(isOrderSheetComplete([{ costPrice: 0, sellingPrice: 0 }])).toBe(true)
   })
 })
 

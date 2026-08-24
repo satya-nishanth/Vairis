@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
+import type { FinanceLineKind, Prisma } from '@prisma/client'
 import { isPendingOrderSheet, sheetTotals } from '@/lib/finance'
-import { getOrderItemQuotes } from '@/lib/finance-order-quotes'
 
 /**
  * Order sheets are per delivery / line — hide multi-item parents:
@@ -21,10 +20,12 @@ const hitSelect = {
   grandTotal: true,
   status: true,
   createdAt: true,
+  items: { select: { productName: true, quantity: true }, take: 4 },
   _count: { select: { items: true, children: true } },
   finance: {
     select: {
       paidToAccountId: true,
+      paidToAccount: { select: { name: true } },
       lines: {
         select: { id: true, kind: true, costPrice: true, sellingPrice: true },
         orderBy: { sortOrder: 'asc' as const },
@@ -33,6 +34,45 @@ const hitSelect = {
   },
 } satisfies Prisma.OrderSelect
 
+function itemsLabel(
+  items: { productName: string; quantity: number }[],
+  itemCount: number,
+): string {
+  if (items.length === 0) return '—'
+  if (items.length === 1) {
+    const i = items[0]
+    return i.quantity > 1 ? `${i.productName} ×${i.quantity}` : i.productName
+  }
+  const first = items[0].productName
+  const more = Math.max(0, itemCount - 1)
+  return more > 0 ? `${first} +${more} more` : first
+}
+
+export type FinanceOrderHit = {
+  id: string
+  contactName: string
+  contactPhone: string
+  grandTotal: number
+  status: string
+  createdAt: string
+  itemsLabel: string
+  hasSheet: boolean
+  sheetComplete: boolean
+  purchasing: number | null
+  selling: number | null
+  profit: number | null
+  paidToAccountName: string | null
+  sheet: {
+    paidToAccountId: string
+    lines: {
+      id: string
+      kind: string
+      costPrice: number
+      sellingPrice: number
+    }[]
+  } | null
+}
+
 function mapHit(o: {
   id: string
   contactName: string
@@ -40,8 +80,11 @@ function mapHit(o: {
   grandTotal: { toString(): string } | number
   status: string
   createdAt: Date
+  items: { productName: string; quantity: number }[]
+  _count: { items: number; children: number }
   finance: {
     paidToAccountId: string
+    paidToAccount: { name: string }
     lines: {
       id: string
       kind: string
@@ -49,7 +92,26 @@ function mapHit(o: {
       sellingPrice: { toString(): string } | number
     }[]
   } | null
-}) {
+}): FinanceOrderHit {
+  const lines = o.finance
+    ? o.finance.lines.map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        costPrice: Number(l.costPrice),
+        sellingPrice: Number(l.sellingPrice),
+      }))
+    : null
+
+  const totals = lines
+    ? sheetTotals(
+        lines.map((l) => ({
+          kind: l.kind as FinanceLineKind,
+          costPrice: l.costPrice,
+          sellingPrice: l.sellingPrice,
+        })),
+      )
+    : null
+
   return {
     id: o.id,
     contactName: o.contactName,
@@ -57,16 +119,17 @@ function mapHit(o: {
     grandTotal: Number(o.grandTotal),
     status: o.status,
     createdAt: o.createdAt.toISOString(),
+    itemsLabel: itemsLabel(o.items, o._count.items),
     hasSheet: Boolean(o.finance),
+    sheetComplete: !isPendingOrderSheet(lines),
+    purchasing: totals ? totals.cost : null,
+    selling: totals ? totals.selling : null,
+    profit: totals ? totals.profit : null,
+    paidToAccountName: o.finance?.paidToAccount.name ?? null,
     sheet: o.finance
       ? {
           paidToAccountId: o.finance.paidToAccountId,
-          lines: o.finance.lines.map((l) => ({
-            id: l.id,
-            kind: l.kind,
-            costPrice: Number(l.costPrice),
-            sellingPrice: Number(l.sellingPrice),
-          })),
+          lines: lines!,
         }
       : null,
   }
@@ -102,14 +165,15 @@ export async function searchFinanceOrders(q: string) {
         { contactName: { contains: trimmed, mode: 'insensitive' } },
         { contactPhone: { contains: trimmed } },
         { user: { email: { contains: trimmed, mode: 'insensitive' } } },
+        { items: { some: { productName: { contains: trimmed, mode: 'insensitive' } } } },
       ],
     },
-    20,
+    40,
   )
 }
 
 /** Latest orders eligible for an order finance sheet. */
-export async function listRecentFinanceOrders(take = 8) {
+export async function listRecentFinanceOrders(take = 40) {
   return fetchSheetableOrders({}, take)
 }
 
@@ -132,8 +196,8 @@ const SHEET_EXPECTED_STATUSES = [
 ] as const
 
 /**
- * Count sheetable orders whose sheet is still pending:
- * non-zero quoted and/or selling price, and zero purchase price.
+ * Count sheetable orders whose sheet is incomplete:
+ * missing sheet, or any selling line still has zero purchase price.
  */
 export async function countPendingOrderSheets(): Promise<number> {
   const orders = await prisma.order.findMany({
@@ -147,41 +211,20 @@ export async function countPendingOrderSheets(): Promise<number> {
       _count: { select: { items: true, children: true } },
       finance: {
         select: {
-          lines: { select: { kind: true, costPrice: true, sellingPrice: true } },
+          lines: { select: { costPrice: true, sellingPrice: true } },
         },
       },
     },
   })
 
-  const candidates = orders.filter(
-    (o) => !isMultiItemParent(o._count.items, o.status, o._count.children),
-  )
-  if (candidates.length === 0) return 0
-
-  const assessed = await Promise.all(
-    candidates.map(async (o) => {
-      const totals = o.finance
-        ? sheetTotals(
-            o.finance.lines.map((l) => ({
-              kind: l.kind,
-              costPrice: Number(l.costPrice),
-              sellingPrice: Number(l.sellingPrice),
-            })),
-          )
-        : { cost: 0, selling: 0, profit: 0 }
-
-      if (totals.cost > 0) return false
-      if (totals.selling > 0) return true
-
-      const quotes = await getOrderItemQuotes(o.id)
-      const quotedPrice = quotes.reduce((s, q) => s + q.quotedTotal, 0)
-      return isPendingOrderSheet({
-        purchasePrice: 0,
-        sellingPrice: 0,
-        quotedPrice,
-      })
-    }),
-  )
-
-  return assessed.filter(Boolean).length
+  return orders.filter((o) => {
+    if (isMultiItemParent(o._count.items, o.status, o._count.children)) return false
+    const lines = o.finance
+      ? o.finance.lines.map((l) => ({
+          costPrice: Number(l.costPrice),
+          sellingPrice: Number(l.sellingPrice),
+        }))
+      : null
+    return isPendingOrderSheet(lines)
+  }).length
 }

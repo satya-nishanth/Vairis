@@ -117,7 +117,7 @@ export default async function FinanceDashboardPage() {
       </div>
 
       {mismatches.length > 0 && (
-        <div
+        <details
           role="alert"
           style={{
             marginBottom: 24,
@@ -127,11 +127,28 @@ export default async function FinanceDashboardPage() {
             background: '#fffbeb',
           }}
         >
-          <p style={{ margin: '0 0 8px', fontSize: '0.875rem', fontWeight: 600, color: '#92400e' }}>
-            Selling price and inflow transactions are not matching for below orders, please enter
-            transaction details
-          </p>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8125rem', color: '#78350f' }}>
+          <summary
+            style={{
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: '#92400e',
+              listStyle: 'none',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <span>
+              Selling price and inflow transactions are not matching for {mismatches.length} order
+              {mismatches.length === 1 ? '' : 's'} — Please record those inflows on the transactions page. Tap to view
+            </span>
+            <span aria-hidden style={{ flexShrink: 0, fontSize: '0.75rem', opacity: 0.8 }}>
+              ▾
+            </span>
+          </summary>
+          <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.8125rem', color: '#78350f' }}>
             {mismatches.map((m) => (
               <li key={m.orderId} style={{ marginBottom: 4 }}>
                 <Link href={`/admin/finance/orders?orderId=${encodeURIComponent(m.orderId)}`} style={{ color: '#92400e', fontWeight: 600 }} title={m.orderId}>
@@ -146,7 +163,7 @@ export default async function FinanceDashboardPage() {
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {pendingSheetsCount > 0 && (
@@ -162,8 +179,8 @@ export default async function FinanceDashboardPage() {
             color: '#92400e',
           }}
         >
-          There {pendingSheetsCount === 1 ? 'is' : 'are'} {pendingSheetsCount} order sheet
-          {pendingSheetsCount === 1 ? '' : 's'} pending. Please fill{' '}
+          There {pendingSheetsCount === 1 ? 'is' : 'are'} {pendingSheetsCount} incomplete order sheet
+          {pendingSheetsCount === 1 ? '' : 's'} . Please fill{' '}
           {pendingSheetsCount === 1 ? 'it' : 'them'} on the{' '}
           <Link href="/admin/finance/orders" style={{ color: '#92400e', fontWeight: 600 }}>
             order sheets page

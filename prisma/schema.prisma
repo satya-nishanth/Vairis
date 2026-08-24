@@ -295,7 +295,10 @@ model OrderItem {
   variantId    String
   variant      ProductVariant @relation(fields: [variantId], references: [id])
   quantity     Int
+  /// Unit retail total (incl. GST) at create time — same as priceBreakdown.total when formula-priced.
   price        Decimal
+  /// Full pricing snapshot at create time (gold rate, gold/wastage/making/stones/GST). Null on legacy rows. Shape: OrderItemPriceSnapshot in lib/pricing.ts
+  priceBreakdown Json?
   productName  String
   withExchange Boolean        @default(false)
 }

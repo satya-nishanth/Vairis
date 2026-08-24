@@ -105,7 +105,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     REASON_REQUIRED.some(([f, t]) => f === order.status && t === nextStatus) ||
     REASON_REQUIRED_TARGETS.includes(nextStatus as OrderStatus)
   if (reasonRequired && !note?.trim()) {
-    return NextResponse.json({ error: 'A reason note is required for this transition' }, { status: 400 })
+    const msg =
+      order.status === 'PAYMENT_PENDING' && nextStatus === 'PAYMENT_CONFIRMED'
+        ? 'URN / transaction ID is required to mark paid offline'
+        : 'A reason note is required for this transition'
+    return NextResponse.json({ error: msg }, { status: 400 })
   }
 
   // Return-request reject must revert to the exact pre-request status
@@ -173,7 +177,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           : nextStatus === 'REFUNDED'
             ? 'Amount refunded (offline settlement)'
             : nextStatus === 'PAYMENT_CONFIRMED'
-              ? 'Payment received offline'
+              ? note?.trim() || 'Payment received offline'
               : nextStatus === 'RETURN_REQUESTED'
                 ? 'Return requested (admin)'
                 : nextStatus === 'RETURN_IN_TRANSIT'
