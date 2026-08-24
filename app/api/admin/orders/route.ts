@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       productName: v.product.name,
     }
     if (priceBreakdown) {
-      row.priceBreakdown = priceBreakdown as Prisma.InputJsonValue
+      row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
     }
     return row
   })
