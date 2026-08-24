@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
@@ -184,14 +185,16 @@ export async function POST(req: NextRequest) {
       country: address.country,
       intlReviewRequired: address.country !== 'IN',
       items: {
-        create: lines.map((l) => ({
-          variantId: l.variantId,
-          quantity: l.quantity,
-          price: l.unitPrice,
-          priceBreakdown: l.priceBreakdown,
-          productName: l.productName,
-          withExchange: l.withExchange,
-        })),
+        create: lines.map(
+          (l): Prisma.OrderItemUncheckedCreateWithoutOrderInput => ({
+            variantId: l.variantId,
+            quantity: l.quantity,
+            price: l.unitPrice,
+            priceBreakdown: l.priceBreakdown as Prisma.InputJsonValue,
+            productName: l.productName,
+            withExchange: l.withExchange,
+          }),
+        ),
       },
       events: {
         create: {

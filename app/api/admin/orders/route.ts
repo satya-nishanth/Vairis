@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import type { OrderStatus } from '@prisma/client'
+import type { OrderStatus, Prisma } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
@@ -142,13 +142,16 @@ export async function POST(req: NextRequest) {
         metalType: v.metalType,
       })
     }
-    return {
+    const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
       quantity: i.quantity,
       price: Math.round(i.unitPrice),
-      priceBreakdown,
       productName: v.product.name,
     }
+    if (priceBreakdown) {
+      row.priceBreakdown = priceBreakdown as Prisma.InputJsonValue
+    }
+    return row
   })
 
   let quotationThreadId: string | null = null
