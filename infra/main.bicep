@@ -165,6 +165,7 @@ module app 'modules/app.bicep' = {
       { name: 'supabase-anon-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-anon-key', identity: identity.outputs.identityId }
       { name: 'supabase-service-role-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/supabase-service-role-key', identity: identity.outputs.identityId }
       { name: 'admin-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/admin-emails', identity: identity.outputs.identityId }
+      { name: 'finance-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/finance-emails', identity: identity.outputs.identityId }
       { name: 'gold-sync-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/gold-sync-secret', identity: identity.outputs.identityId }
       { name: 'order-sweep-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/order-sweep-secret', identity: identity.outputs.identityId }
       { name: 'metal-price-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/metal-price-api-key', identity: identity.outputs.identityId }
