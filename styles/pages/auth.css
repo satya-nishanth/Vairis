@@ -1,9 +1,16 @@
 /* Full-page auth screens (customer login, admin portal, update password) */
 
+/* Wraps PageShell's header + this page's <main> + footer in a column flex so .auth-screen can
+   grow to fill exactly the space left after the header/footer, on any screen height — no fixed
+   px guess, and no double-counting a full viewport against header+footer like plain 100vh would. */
+.auth-page-flex {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
 .auth-screen {
-  /* Not 100vh: this now sits inside PageShell's header/footer, which would double-count
-     against a full-viewport height and push the centered card down into a big empty gap. */
-  min-height: 640px;
+  flex: 1;
   display: flex;
   background:
     radial-gradient(circle at 30% 40%, rgba(197, 160, 89, 0.12) 0%, transparent 55%),
@@ -22,11 +29,9 @@
   text-align: center;
 }
 
-.auth-screen__visual img {
+.auth-screen__visual-img {
   width: min(280px, 40vw);
   height: auto;
-  border-radius: var(--radius-sm);
-  box-shadow: 0 8px 40px rgba(197, 160, 89, 0.25);
 }
 
 .auth-screen__tagline {
@@ -44,16 +49,6 @@
   align-items: center;
   justify-content: center;
   padding: 24px 16px 40px;
-}
-
-.auth-screen__mobile-logo {
-  margin-bottom: 20px;
-}
-
-.auth-screen__mobile-logo img {
-  height: 72px;
-  width: auto;
-  border-radius: var(--radius-sm);
 }
 
 .auth-card {
@@ -396,10 +391,6 @@
   .auth-screen__panel {
     padding: 40px 24px;
   }
-
-  .auth-screen__mobile-logo img {
-    height: 88px;
-  }
 }
 
 .admin-auth__form label {
@@ -457,9 +448,5 @@
 
   .auth-screen__panel {
     width: 50%;
-  }
-
-  .auth-screen__mobile-logo {
-    display: none;
   }
 }
