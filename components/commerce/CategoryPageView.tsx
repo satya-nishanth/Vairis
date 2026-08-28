@@ -132,6 +132,11 @@ export function CategoryPageView({
     setPage(1);
   };
 
+  const handlePageChange = (nextPage: number) => {
+    setPage(nextPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   useEffect(() => {
     document.body.classList.add("has-mobile-sticky-bar");
     return () => document.body.classList.remove("has-mobile-sticky-bar");
@@ -202,7 +207,7 @@ export function CategoryPageView({
                     ))}
                   </div>
 
-                  <CategoryPagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+                  <CategoryPagination page={currentPage} totalPages={totalPages} onPageChange={handlePageChange} />
                 </>
               )}
             </div>

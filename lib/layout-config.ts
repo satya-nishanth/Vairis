@@ -72,4 +72,11 @@ export const pageLayouts = {
     footer: "full",
     whatsapp: "Contact us",
   },
+  auth: {
+    promoBar: "none",
+    header: "minimal",
+    trustBar: "none",
+    footer: "minimal",
+    whatsapp: false,
+  },
 } satisfies Record<string, PageLayoutConfig>;
