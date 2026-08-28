@@ -1,7 +1,9 @@
 /* Full-page auth screens (customer login, admin portal, update password) */
 
 .auth-screen {
-  min-height: 100vh;
+  /* Not 100vh: this now sits inside PageShell's header/footer, which would double-count
+     against a full-viewport height and push the centered card down into a big empty gap. */
+  min-height: 640px;
   display: flex;
   background:
     radial-gradient(circle at 30% 40%, rgba(197, 160, 89, 0.12) 0%, transparent 55%),
@@ -42,8 +44,6 @@
   align-items: center;
   justify-content: center;
   padding: 24px 16px 40px;
-  min-height: 100vh;
-  min-height: 100dvh;
 }
 
 .auth-screen__mobile-logo {
