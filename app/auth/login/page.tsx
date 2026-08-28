@@ -6,6 +6,7 @@ import GoogleButton from '@/components/auth/GoogleButton'
 import SubmitButton from '@/components/auth/SubmitButton'
 import { PageShell } from '@/components/layout/PageShell'
 import { pageLayouts } from '@/lib/layout-config'
+import { BrandLogo } from '@/components/layout/BrandLogo'
 
 // ── Server Actions ────────────────────────────────────────────────────────
 
@@ -72,24 +73,19 @@ export default async function LoginPage({
   const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
 
   return (
+    <div className="auth-page-flex">
     <PageShell {...pageLayouts.auth}>
     <main className="auth-screen">
       {/* Left — brand visual */}
       <div className="auth-screen__visual">
         <Link href="/">
-          <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" />
+          <BrandLogo width={280} height={90} className="auth-screen__visual-img" />
         </Link>
         <p className="auth-screen__tagline">Where heritage meets the extraordinary.</p>
       </div>
 
       {/* Right — form */}
       <div className="auth-screen__panel">
-        <div className="auth-screen__mobile-logo">
-          <Link href="/">
-            <img src="/images/vairis_main.jpeg" alt="VAIRIS Fine Jewellery" />
-          </Link>
-        </div>
-
         <Link href="/" className="auth-back-link">
           <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
@@ -213,5 +209,6 @@ export default async function LoginPage({
       </div>
     </main>
     </PageShell>
+    </div>
   )
 }

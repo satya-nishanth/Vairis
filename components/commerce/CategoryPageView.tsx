@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { ProductCard } from "@/components/commerce/ProductCard";
@@ -119,6 +119,7 @@ export function CategoryPageView({
   const [drawerFocusSort, setDrawerFocusSort] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = usePlpPageSize();
+  const productsTopRef = useRef<HTMLDivElement>(null);
 
   const filteredProducts = useMemo(() => filterProducts(allProducts, filters), [allProducts, filters]);
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
@@ -134,7 +135,18 @@ export function CategoryPageView({
 
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Scroll to the top of the products list, not the page — the hero above it is tall, and
+    // re-showing it on every page change just makes the user scroll past it again. Offset by the
+    // sticky header's actual height (measured, not hardcoded — it already differs mobile vs
+    // desktop) so the list doesn't land hidden underneath it.
+    const target = productsTopRef.current;
+    if (target) {
+      const headerHeight = document.querySelector(".site-header")?.getBoundingClientRect().height ?? 0;
+      const top = target.getBoundingClientRect().top + window.scrollY - headerHeight;
+      window.scrollTo({ top, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   useEffect(() => {
@@ -183,7 +195,7 @@ export function CategoryPageView({
 
         <main className="container page-main plp-main">
           <div className="plp-layout">
-            <div className="plp-products">
+            <div className="plp-products" ref={productsTopRef}>
               {filteredProducts.length === 0 ? (
                 <div className="plp-empty">
                   <h2>New {meta.title.toLowerCase()} are on their way</h2>
