@@ -4,6 +4,8 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
 import GoogleButton from '@/components/auth/GoogleButton'
 import SubmitButton from '@/components/auth/SubmitButton'
+import { PageShell } from '@/components/layout/PageShell'
+import { pageLayouts } from '@/lib/layout-config'
 
 // ── Server Actions ────────────────────────────────────────────────────────
 
@@ -70,6 +72,7 @@ export default async function LoginPage({
   const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
 
   return (
+    <PageShell {...pageLayouts.auth}>
     <main className="auth-screen">
       {/* Left — brand visual */}
       <div className="auth-screen__visual">
@@ -209,5 +212,6 @@ export default async function LoginPage({
         </div>
       </div>
     </main>
+    </PageShell>
   )
 }
