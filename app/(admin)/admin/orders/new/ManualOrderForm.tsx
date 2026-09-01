@@ -14,7 +14,14 @@ type VariantOption = {
   suggestedPrice: number
 }
 type Customer = { id: string; email: string; name: string; mobile: string | null }
-type Line = { variantId: string; quantity: number; unitPrice: number }
+type Line = {
+  variantId: string
+  quantity: number
+  unitPrice: number
+  inventoryItemId?: string
+  maxQty?: number
+  fromInventory?: boolean
+}
 
 const CATEGORIES = [
   { key: 'ALL', label: 'All' },
@@ -84,8 +91,20 @@ export function ManualOrderForm({
   })
 
   // Item picker
+  const [itemMode, setItemMode] = useState<'catalogue' | 'inventory'>('catalogue')
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['key']>('ALL')
   const [itemSearch, setItemSearch] = useState('')
+  const [inventoryOptions, setInventoryOptions] = useState<
+    {
+      inventoryItemId: string
+      variantId: string
+      qtyOnHand: number
+      holderName: string
+      label: string
+      suggestedPrice: number
+    }[]
+  >([])
+  const [inventoryLoaded, setInventoryLoaded] = useState(false)
 
   // Lines + settlement
   const [lines, setLines] = useState<Line[]>([])
@@ -152,6 +171,46 @@ export function ManualOrderForm({
     setItemSearch('')
   }
 
+  async function ensureInventoryLoaded() {
+    if (inventoryLoaded) return
+    const res = await fetch('/api/admin/inventory/available')
+    if (res.ok) {
+      setInventoryOptions(await res.json())
+      setInventoryLoaded(true)
+    }
+  }
+
+  function switchItemMode(mode: 'catalogue' | 'inventory') {
+    setItemMode(mode)
+    if (mode === 'inventory') void ensureInventoryLoaded()
+  }
+
+  function addInventoryLine(row: (typeof inventoryOptions)[number]) {
+    setLines((ls) => [
+      ...ls,
+      {
+        variantId: row.variantId,
+        quantity: 1,
+        unitPrice: row.suggestedPrice,
+        inventoryItemId: row.inventoryItemId,
+        maxQty: row.qtyOnHand,
+        fromInventory: true,
+      },
+    ])
+    setItemSearch('')
+  }
+
+  const filteredInventory = useMemo(() => {
+    const q = itemSearch.trim().toLowerCase()
+    return inventoryOptions.filter((r) => {
+      if (!q) return true
+      return (
+        r.label.toLowerCase().includes(q) ||
+        r.holderName.toLowerCase().includes(q)
+      )
+    })
+  }, [inventoryOptions, itemSearch])
+
   const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))
   const grandTotal = total
   const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`
@@ -177,7 +236,12 @@ export function ManualOrderForm({
           ...address,
           initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
           paymentNote: paymentNote || undefined,
-          items: lines,
+          items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId }) => ({
+            variantId,
+            quantity,
+            unitPrice,
+            inventoryItemId,
+          })),
           quotationId: quotation?.id,
         }),
       })
@@ -259,6 +323,25 @@ export function ManualOrderForm({
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>2 · Items</strong>
 
+        <div className="inv-tabs" style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            className={itemMode === 'catalogue' ? 'is-active' : undefined}
+            onClick={() => switchItemMode('catalogue')}
+          >
+            From catalogue
+          </button>
+          <button
+            type="button"
+            className={itemMode === 'inventory' ? 'is-active' : undefined}
+            onClick={() => switchItemMode('inventory')}
+          >
+            From inventory
+          </button>
+        </div>
+
+        {itemMode === 'catalogue' ? (
+          <>
         <label style={label}>Category</label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {CATEGORIES.map((c) => {
@@ -345,24 +428,95 @@ export function ManualOrderForm({
             Showing first 80 — pick a category or type to narrow further.
           </p>
         )}
+          </>
+        ) : (
+          <>
+            <label style={label}>Search inventory</label>
+            <input
+              style={input}
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder="Product name, SKU, holder…"
+            />
+            <div
+              style={{
+                marginTop: 8,
+                border: '1px solid #e5e7eb',
+                maxHeight: 260,
+                overflowY: 'auto',
+                background: '#fafafa',
+              }}
+            >
+              {!inventoryLoaded ? (
+                <p style={{ padding: '12px 10px', fontSize: '0.8125rem', color: '#9ca3af', margin: 0 }}>
+                  Loading available stock…
+                </p>
+              ) : filteredInventory.length === 0 ? (
+                <p style={{ padding: '12px 10px', fontSize: '0.8125rem', color: '#9ca3af', margin: 0 }}>
+                  No linked inventory in stock — add items under Inventory and link them to the catalogue.
+                </p>
+              ) : (
+                filteredInventory.map((r) => (
+                  <button
+                    key={r.inventoryItemId}
+                    type="button"
+                    onClick={() => addInventoryLine(r)}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '9px 10px',
+                      fontSize: '0.8125rem',
+                      background: '#fff',
+                      border: 'none',
+                      borderBottom: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <div>{r.label}</div>
+                      <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>
+                        {r.qtyOnHand} @ {r.holderName}
+                      </div>
+                    </span>
+                    <span style={{ flexShrink: 0, color: '#032b24', fontWeight: 500 }}>{inr(r.suggestedPrice)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        )}
 
         {lines.map((line, idx) => {
-          const opt = variantOptions.find((v) => v.variantId === line.variantId)!
+          const opt = variantOptions.find((v) => v.variantId === line.variantId)
+          const labelText = opt?.label ?? 'Item'
+          const maxQ = line.fromInventory && line.maxQty ? line.maxQty : 20
           return (
             <div
               key={idx}
-              style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: '0.8125rem' }}
+              style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: '0.8125rem', flexWrap: 'wrap' }}
             >
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {opt.label}
+                {labelText}
+                {line.fromInventory && (
+                  <span className="inv-line-badge" style={{ marginLeft: 6 }}>
+                    inventory
+                  </span>
+                )}
               </span>
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={maxQ}
                 value={line.quantity}
                 onChange={(e) =>
-                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, quantity: Number(e.target.value) } : l)))
+                  setLines((ls) =>
+                    ls.map((l, i) =>
+                      i === idx ? { ...l, quantity: Math.min(maxQ, Math.max(1, Number(e.target.value))) } : l,
+                    ),
+                  )
                 }
                 style={{ ...input, width: 64 }}
                 aria-label="Quantity"

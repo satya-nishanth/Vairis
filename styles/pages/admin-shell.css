@@ -250,8 +250,8 @@
 }
 
 .admin-page--finance {
-  width: 60%;
-  max-width: 60%;
+  width: 100%;
+  max-width: 100%;
 }
 
 .admin-page--orders {
@@ -265,11 +265,6 @@
 }
 
 @media (max-width: 767px) {
-  .admin-page--finance {
-    width: 100%;
-    max-width: 100%;
-  }
-
   .admin-page--orders,
   .admin-page--order-detail {
     width: 100%;

@@ -8,6 +8,7 @@ import { isOrderItemPriceSnapshot } from '@/lib/pricing'
 import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
 import { MarkPaidOffline } from './MarkPaidOffline'
+import { inventoryDisplayName } from '@/lib/inventory'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,20 @@ export default async function AdminOrderDetailPage({
     },
   })
   if (!order) notFound()
+
+  const inventoryAllocations = await prisma.inventoryAllocation.findMany({
+    where: { orderId: order.id },
+    include: {
+      inventoryItem: {
+        include: {
+          holder: { select: { name: true } },
+          product: { select: { name: true } },
+          variant: { select: { sku: true, metalType: true, size: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
 
   const refundedTotal = Number(
     (await prisma.orderRefund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0,
@@ -210,6 +225,21 @@ export default async function AdminOrderDetailPage({
             <p style={{ fontSize: '0.875rem', color: '#b45309' }}>
               Refunded so far: {inr(order.payment!.refundedAmount)}
             </p>
+          )}
+          {inventoryAllocations.length > 0 && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+              <h3 style={{ ...heading, marginBottom: 8 }}>Inventory</h3>
+              {inventoryAllocations.map((a) => (
+                <p key={a.id} style={{ fontSize: '0.8125rem', marginBottom: 6 }}>
+                  {a.qty} unit(s) from{' '}
+                  <Link href={`/admin/inventory/${a.inventoryItemId}`} style={{ color: '#032b24' }}>
+                    {inventoryDisplayName(a.inventoryItem)}
+                  </Link>
+                  <span style={{ color: '#6b7280' }}> · held @ {a.inventoryItem.holder.name}</span>
+                </p>
+              ))}
+            </>
           )}
         </div>
 

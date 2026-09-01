@@ -8,6 +8,8 @@ import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
 import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
+import { inventoryActorFromSession } from '@/lib/inventory-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,6 +60,8 @@ const manualOrderSchema = z.object({
         // Editable: WhatsApp deals are negotiated, so the admin-entered
         // price wins over the computed gold-rate price.
         unitPrice: z.number().positive().max(10000000),
+        /** When set, decrements this inventory line inside the same transaction. */
+        inventoryItemId: z.string().min(1).optional(),
       }),
     )
     .min(1),
@@ -76,7 +80,8 @@ const manualOrderSchema = z.object({
  * transitions for exactly these gateway-less orders.
  */
 export async function POST(req: NextRequest) {
-  await requireAdmin()
+  const session = await requireAdmin()
+  const inventoryActor = inventoryActorFromSession(session)
 
   const parsed = manualOrderSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
@@ -104,6 +109,30 @@ export async function POST(req: NextRequest) {
   for (const item of d.items) {
     if (!variantMap.has(item.variantId)) {
       return NextResponse.json({ error: `Variant ${item.variantId} not found` }, { status: 400 })
+    }
+    if (item.inventoryItemId) {
+      const inv = await prisma.inventoryItem.findUnique({
+        where: { id: item.inventoryItemId },
+        select: { id: true, variantId: true, qtyOnHand: true },
+      })
+      if (!inv) {
+        return NextResponse.json({ error: 'Inventory item not found' }, { status: 400 })
+      }
+      if (!inv.variantId) {
+        return NextResponse.json(
+          { error: 'Inventory item must be linked to catalogue before selling' },
+          { status: 400 },
+        )
+      }
+      if (inv.variantId !== item.variantId) {
+        return NextResponse.json({ error: 'Inventory item does not match selected variant' }, { status: 400 })
+      }
+      if (inv.qtyOnHand < item.quantity) {
+        return NextResponse.json(
+          { error: `Only ${inv.qtyOnHand} unit(s) available in inventory` },
+          { status: 400 },
+        )
+      }
     }
   }
 
@@ -209,7 +238,24 @@ export async function POST(req: NextRequest) {
             ],
           },
         },
+        include: { items: true },
       })
+
+      for (let i = 0; i < d.items.length; i++) {
+        const src = d.items[i]
+        const orderItem = created.items[i]
+        if (!orderItem) continue
+        if (src.inventoryItemId) {
+          await allocateInventoryForOrderItem(tx, {
+            inventoryItemId: src.inventoryItemId,
+            orderId: created.id,
+            orderItemId: orderItem.id,
+            variantId: src.variantId,
+            qty: src.quantity,
+            actor: inventoryActor,
+          })
+        }
+      }
 
       // Multi-item manual orders auto-split into one child per line item too
       // (same rule as online checkout, just triggered at creation instead of
@@ -231,6 +277,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if (err instanceof ConvertConflictError) {
       return NextResponse.json({ error: 'Quotation already converted or cancelled' }, { status: 409 })
+    }
+    if (err instanceof InventoryError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
     }
     throw err
   }

@@ -1,0 +1,178 @@
+/* Admin inventory */
+
+.admin-page--inventory {
+  width: 100%;
+  max-width: 100%;
+}
+
+.inv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
+.inv-toolbar .inv-field {
+  flex: 1;
+  min-width: 160px;
+}
+
+.inv-field label {
+  display: block;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.inv-field input,
+.inv-field select,
+.inv-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.inv-table-wrap {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  overflow-x: auto;
+}
+
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.inv-table th,
+.inv-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: top;
+}
+
+.inv-table th {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #fafafa;
+}
+
+.inv-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.inv-badge--linked {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.inv-badge--unlinked {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.inv-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.inv-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.inv-tabs button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.inv-tabs button.is-active {
+  background: #032b24;
+  border-color: #032b24;
+  color: #fff;
+  font-weight: 600;
+}
+
+.inv-picker {
+  border: 1px solid #e5e7eb;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fafafa;
+}
+
+.inv-picker button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: none;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.inv-picker button:hover {
+  background: #f8fafc;
+}
+
+.inv-picker-selected {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+}
+
+.inv-line-badge {
+  font-size: 0.6875rem;
+  color: #047857;
+  background: #ecfdf5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.inv-holder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.admin-page--inventory .admin-btn--danger {
+  background: transparent;
+  color: #b91c1c;
+  border: 1px solid #b91c1c;
+}
+
+.admin-page--inventory .admin-btn--danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
