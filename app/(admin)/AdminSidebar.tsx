@@ -8,6 +8,7 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Analytics', href: '/admin/analytics' },
   { label: 'Products', href: '/admin/products' },
+  { label: 'Inventory', href: '/admin/inventory' },
   { label: 'Orders', href: '/admin/orders' },
   { label: 'Finance', href: '/admin/finance', financeOnly: true },
   { label: 'Invoices', href: '/admin/invoices' },

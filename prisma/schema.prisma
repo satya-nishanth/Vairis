@@ -145,6 +145,7 @@ model Product {
   wishlists   Wishlist[]
   reviews     Review[]
   collections CollectionProduct[]
+  inventoryItems InventoryItem[]
 }
 
 /// Per-carat diamond pricing — one row per diamond type, two rates each
@@ -212,6 +213,7 @@ model ProductVariant {
   sku                 String      @unique
   cartItems           CartItem[]
   orderItems          OrderItem[]
+  inventoryItems      InventoryItem[]
 }
 
 model GoldRate {
@@ -273,6 +275,7 @@ model Order {
   finance              OrderFinance?
   financeTransactions  FinanceTransactionOrder[]
   invoices             Invoice[]
+  inventoryAllocations InventoryAllocation[]
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 }
@@ -301,6 +304,7 @@ model OrderItem {
   priceBreakdown Json?
   productName  String
   withExchange Boolean        @default(false)
+  inventoryAllocations InventoryAllocation[]
 }
 
 model Payment {
@@ -845,6 +849,81 @@ model FinanceAuditLog {
   /// Human label for the touched row (contact name, account name, order sheet, etc.).
   objectLabel String   @default("")
   /// Optional deep link into the finance UI for that object.
+  objectHref  String?
+  summary     String
+  before      Json?
+  after       Json?
+
+  @@index([createdAt])
+  @@index([entityType, createdAt])
+  @@index([actorEmail, createdAt])
+}
+
+/// Physical stock location (workshop, store, karigar, etc.).
+model InventoryHolder {
+  id        String          @id @default(cuid())
+  name      String
+  active    Boolean         @default(true)
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     InventoryItem[]
+
+  @@index([active, sortOrder])
+}
+
+/// On-hand stock — linked to catalogue variant when sellable via manual order.
+model InventoryItem {
+  id                String                @id @default(cuid())
+  productId         String?
+  product           Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId         String?
+  variant           ProductVariant?       @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  customName        String?
+  customDescription String?
+  metalPurity       String?
+  weightGrams       Decimal?
+  qtyOnHand         Int                   @default(0)
+  holderId          String
+  holder            InventoryHolder       @relation(fields: [holderId], references: [id])
+  notes             String?
+  allocations       InventoryAllocation[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([holderId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([qtyOnHand])
+}
+
+/// Stock consumed by a manual admin order (not online checkout).
+model InventoryAllocation {
+  id              String        @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId     String?
+  orderItem       OrderItem?    @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  qty             Int
+  createdAt       DateTime      @default(now())
+
+  @@index([inventoryItemId])
+  @@index([orderId])
+  @@index([orderItemId])
+}
+
+/// Append-only log of inventory section mutations (who changed what).
+model InventoryAuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorEmail  String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  objectLabel String   @default("")
   objectHref  String?
   summary     String
   before      Json?
