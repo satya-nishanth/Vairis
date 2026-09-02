@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { inventoryDisplayName, isInventorySellable } from '@/lib/inventory'
-import { calculatePrice } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { computeVariantLiveUnitPrice } from '@/lib/inventory-pricing'
+import { getPricingConfig } from '@/lib/pricing-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,22 +36,8 @@ export async function GET() {
     .filter((r) => isInventorySellable(r) && r.variant)
     .map((r) => {
       const v = r.variant!
-      const rate = rateMap[v.metalType]
-      const suggested = rate
-        ? Math.round(
-            calculatePrice(
-              {
-                weightGrams: v.weightGrams.toString(),
-                makingChargePerGram: v.makingChargePerGram.toString(),
-                flatMakingCharge: v.flatMakingCharge.toString(),
-                stoneCharges: v.stoneCharges.toString(),
-                miscCharges: v.miscCharges.toString(),
-              },
-              rate,
-              { stones: toStoneInputs(v.product.stones), withExchange: false, config: pricingConfig },
-            ).total,
-          )
-        : 0
+      const suggested =
+        computeVariantLiveUnitPrice(v, rateMap[v.metalType], pricingConfig) ?? 0
       return {
         inventoryItemId: r.id,
         variantId: v.id,

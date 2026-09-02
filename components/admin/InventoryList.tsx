@@ -5,9 +5,13 @@ import { useMemo, useState } from 'react'
 import { inventoryDisplayName } from '@/lib/inventory'
 import { InventorySubnav } from '@/components/admin/InventorySubnav'
 
+const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+
 export type InventoryListRow = {
   id: string
   qtyOnHand: number
+  unitPrice: number | null
+  liveUnitPrice?: number | null
   customName: string | null
   updatedAt: string
   holder: { id: string; name: string }
@@ -48,9 +52,38 @@ export function InventoryList({
     })
   }, [initialRows, q, holderId, linked])
 
+  const totalValue = useMemo(
+    () =>
+      rows.reduce((sum, r) => {
+        const price = r.unitPrice ?? r.liveUnitPrice ?? null
+        if (price == null) return sum
+        return sum + r.qtyOnHand * price
+      }, 0),
+    [rows],
+  )
+
+  const pricedRowCount = useMemo(
+    () => rows.filter((r) => (r.unitPrice ?? r.liveUnitPrice) != null).length,
+    [rows],
+  )
+
   return (
     <>
       <InventorySubnav />
+
+      <div className="inv-kpi">
+        <div className="inv-kpi__card">
+          <div className="inv-kpi__label">Total inventory value</div>
+          <div className="inv-kpi__value">{inr(totalValue)}</div>
+          <div className="inv-kpi__meta">
+            {pricedRowCount > 0
+              ? `${pricedRowCount} priced line${pricedRowCount === 1 ? '' : 's'} in current view`
+              : rows.length > 0
+                ? 'Add price per piece on custom items to see value'
+                : 'No stock lines in current view'}
+          </div>
+        </div>
+      </div>
 
       <div className="inv-toolbar">
         <div className="inv-field">
@@ -96,6 +129,8 @@ export function InventoryList({
             <tr>
               <th>Item</th>
               <th>Qty</th>
+              <th>Price / pc</th>
+              <th>Total</th>
               <th>Holder</th>
               <th>Catalogue</th>
               <th>Updated</th>
@@ -105,12 +140,15 @@ export function InventoryList({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ color: '#9ca3af', padding: 20 }}>
+                <td colSpan={8} style={{ color: '#9ca3af', padding: 20 }}>
                   No inventory lines match.
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
+              rows.map((r) => {
+                const effectivePrice = r.unitPrice ?? r.liveUnitPrice ?? null
+                const isLivePrice = r.unitPrice == null && r.liveUnitPrice != null
+                return (
                 <tr key={r.id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{inventoryDisplayName(r)}</div>
@@ -119,6 +157,23 @@ export function InventoryList({
                     )}
                   </td>
                   <td>{r.qtyOnHand}</td>
+                  <td style={{ color: '#6b7280' }}>
+                    {effectivePrice != null ? (
+                      <>
+                        {inr(effectivePrice)}
+                        {isLivePrice && (
+                          <span style={{ display: 'block', fontSize: '0.6875rem', color: '#9ca3af' }}>
+                            live
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td style={{ fontWeight: 600 }}>
+                    {effectivePrice != null ? inr(r.qtyOnHand * effectivePrice) : '—'}
+                  </td>
                   <td>{r.holder.name}</td>
                   <td>
                     {r.variant ? (
@@ -134,7 +189,7 @@ export function InventoryList({
                     <Link href={`/admin/inventory/${r.id}`}>Edit</Link>
                   </td>
                 </tr>
-              ))
+              )})
             )}
           </tbody>
         </table>

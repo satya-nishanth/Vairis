@@ -19,6 +19,7 @@ const schema = z.object({
   contactId: z.string().nullable().optional(),
   contactName: z.string().trim().optional(),
   orderIds: z.array(z.string()).optional(),
+  unlinkedOrderLabels: z.array(z.string().trim().min(1)).optional(),
   /** Mark auto-created inflow as reviewed (admin ack). */
   reviewComplete: z.boolean().optional(),
 })
@@ -37,6 +38,7 @@ function serialize(row: {
   contactName: string
   autoCreated: boolean
   reviewComplete: boolean
+  unlinkedOrderLabels: string[]
   createdAt: Date
   updatedAt: Date
   account?: { id: string; name: string }
@@ -64,6 +66,7 @@ function serialize(row: {
     contactName: row.contactName || row.contact?.name || null,
     autoCreated: row.autoCreated,
     reviewComplete: row.reviewComplete,
+    unlinkedOrderLabels: row.unlinkedOrderLabels ?? [],
     orderIds: row.orders?.map((o) => o.orderId) ?? [],
     orders:
       row.orders?.map((o) => ({
@@ -188,7 +191,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: resolved.error }, { status: 400 })
   }
 
-  const orderIds = isTransfer ? [] : d.orderIds ? [...new Set(d.orderIds)] : undefined
+  const orderIds = isTransfer ? [] : d.orderIds !== undefined ? [...new Set(d.orderIds)] : undefined
+  const unlinkedOrderLabels =
+    isTransfer ? [] : d.unlinkedOrderLabels !== undefined ? [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))] : undefined
   if (orderIds?.length) {
     const found = await prisma.order.count({ where: { id: { in: orderIds } } })
     if (found !== orderIds.length) {
@@ -197,7 +202,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const row = await prisma.$transaction(async (tx) => {
-    if (orderIds || isTransfer) {
+    if (orderIds !== undefined || isTransfer) {
       await tx.financeTransactionOrder.deleteMany({ where: { transactionId: id } })
       if (orderIds?.length) {
         await tx.financeTransactionOrder.createMany({
@@ -222,6 +227,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ? { contactId: resolved.contactId, contactName: resolved.contactName }
           : {}),
         ...(typeof d.reviewComplete === 'boolean' ? { reviewComplete: d.reviewComplete } : {}),
+        ...(unlinkedOrderLabels !== undefined ? { unlinkedOrderLabels } : {}),
       },
       include,
     })

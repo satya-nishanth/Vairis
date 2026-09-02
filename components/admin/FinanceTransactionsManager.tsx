@@ -28,8 +28,13 @@ export type TxRow = {
   autoCreated: boolean
   reviewComplete: boolean
   orderIds: string[]
+  unlinkedOrderLabels?: string[]
   orders?: { id: string; contactName: string }[]
 }
+
+type OrderRef =
+  | { kind: 'linked'; id: string; label: string }
+  | { kind: 'unlinked'; key: string; label: string }
 
 type OrderHit = {
   id: string
@@ -38,8 +43,6 @@ type OrderHit = {
   grandTotal: number
   status: string
 }
-
-type SelectedOrder = { id: string; label: string }
 
 const GREEN = '#032b24'
 const GREEN_CHIP = '#dceee8'
@@ -152,7 +155,7 @@ export function FinanceTransactionsManager({
   const [contactOpen, setContactOpen] = useState(false)
   const contactWrapRef = useRef<HTMLDivElement>(null)
   const [relatedToOrder, setRelatedToOrder] = useState(true)
-  const [selectedOrders, setSelectedOrders] = useState<SelectedOrder[]>([])
+  const [selectedOrders, setSelectedOrders] = useState<OrderRef[]>([])
   const [orderQuery, setOrderQuery] = useState('')
   const [orderHits, setOrderHits] = useState<OrderHit[]>([])
   const [orderSearchHint, setOrderSearchHint] = useState('')
@@ -218,6 +221,7 @@ export function FinanceTransactionsManager({
       const orderText = [
         ...(r.orders?.map((o) => `${o.contactName} ${o.id}`) ?? []),
         ...r.orderIds,
+        ...(r.unlinkedOrderLabels ?? []),
       ]
         .join(' ')
         .toLowerCase()
@@ -275,18 +279,27 @@ export function FinanceTransactionsManager({
     setContactId(row.contactId)
     setContactText(row.contactName ?? '')
     setContactOpen(false)
-    const hasOrders = (row.orders?.length ?? 0) > 0 || row.orderIds.length > 0
+    const hasOrders =
+      (row.orders?.length ?? 0) > 0 ||
+      row.orderIds.length > 0 ||
+      (row.unlinkedOrderLabels?.length ?? 0) > 0
     setRelatedToOrder(row.direction === 'TRANSFER' ? false : hasOrders)
-    if (row.orders?.length) {
-      setSelectedOrders(
-        row.orders.map((o) => ({
-          id: o.id,
-          label: shortFinanceId(o.id),
-        })),
-      )
-    } else {
-      setSelectedOrders(row.orderIds.map((id) => ({ id, label: shortFinanceId(id) })))
-    }
+    const refs: OrderRef[] = [
+      ...(row.orders?.map((o) => ({
+        kind: 'linked' as const,
+        id: o.id,
+        label: shortFinanceId(o.id),
+      })) ?? []),
+      ...row.orderIds
+        .filter((id) => !row.orders?.some((o) => o.id === id))
+        .map((id) => ({ kind: 'linked' as const, id, label: shortFinanceId(id) })),
+      ...(row.unlinkedOrderLabels ?? []).map((label) => ({
+        kind: 'unlinked' as const,
+        key: `u:${label}`,
+        label,
+      })),
+    ]
+    setSelectedOrders(refs)
     setOrderQuery('')
     setOrderHits([])
     setOrderSearchHint('')
@@ -367,17 +380,37 @@ export function FinanceTransactionsManager({
 
   function addOrder(hit: OrderHit) {
     setSelectedOrders((prev) => {
-      if (prev.some((o) => o.id === hit.id)) return prev
+      if (prev.some((o) => o.kind === 'linked' && o.id === hit.id)) return prev
       const label = shortFinanceId(hit.id)
-      return [...prev, { id: hit.id, label }]
+      return [...prev, { kind: 'linked', id: hit.id, label }]
     })
     setOrderQuery('')
     setOrderHits([])
     setOrderSearchHint('')
   }
 
-  function removeOrder(id: string) {
-    setSelectedOrders((prev) => prev.filter((o) => o.id !== id))
+  function addUnlinkedOrder(raw: string) {
+    const label = raw.trim()
+    if (!label) return
+    setSelectedOrders((prev) => {
+      if (prev.some((o) => o.kind === 'unlinked' && o.label.toLowerCase() === label.toLowerCase())) {
+        return prev
+      }
+      return [...prev, { kind: 'unlinked', key: `u:${label}`, label }]
+    })
+    setOrderQuery('')
+    setOrderHits([])
+    setOrderSearchHint('')
+  }
+
+  function removeOrder(ref: OrderRef) {
+    setSelectedOrders((prev) =>
+      prev.filter((o) => {
+        if (ref.kind === 'linked' && o.kind === 'linked') return o.id !== ref.id
+        if (ref.kind === 'unlinked' && o.kind === 'unlinked') return o.key !== ref.key
+        return true
+      }),
+    )
   }
 
   async function save(e: React.FormEvent) {
@@ -385,7 +418,7 @@ export function FinanceTransactionsManager({
     setError('')
     const isTransfer = direction === 'TRANSFER'
     if (!isTransfer && relatedToOrder && selectedOrders.length === 0) {
-      setError('Select at least one order when “Related to Order” is checked')
+      setError('Add at least one order or order reference when “Related to Order” is checked')
       return
     }
     if (isTransfer) {
@@ -410,7 +443,14 @@ export function FinanceTransactionsManager({
       categoryId: isTransfer ? null : categoryId || null,
       contactId: isTransfer ? null : contactId || null,
       contactName: isTransfer ? '' : contactText.trim(),
-      orderIds: isTransfer || !relatedToOrder ? [] : selectedOrders.map((o) => o.id),
+      orderIds:
+        isTransfer || !relatedToOrder
+          ? []
+          : selectedOrders.filter((o) => o.kind === 'linked').map((o) => o.id),
+      unlinkedOrderLabels:
+        isTransfer || !relatedToOrder
+          ? []
+          : selectedOrders.filter((o) => o.kind === 'unlinked').map((o) => o.label),
     }
     try {
       const res = await fetch(
@@ -544,7 +584,7 @@ export function FinanceTransactionsManager({
                   Related to Order
                 </span>
                 <span style={{ display: 'block', marginTop: 2, fontSize: '0.75rem', color: MUTED }}>
-                  Link this transaction to a customer order
+                  Link to a store order, or add a name-only reference
                 </span>
               </span>
             </label>
@@ -574,7 +614,14 @@ export function FinanceTransactionsManager({
                       value={orderQuery}
                       onChange={(e) => void searchOrders(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.preventDefault()
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (orderHits.length === 1) {
+                            addOrder(orderHits[0]!)
+                          } else if (orderQuery.trim()) {
+                            addUnlinkedOrder(orderQuery)
+                          }
+                        }
                       }}
                       placeholder="Search by name, phone, email, or order id..."
                       autoComplete="off"
@@ -601,8 +648,29 @@ export function FinanceTransactionsManager({
                   </div>
                 </div>
 
-                {orderSearchHint && orderHits.length === 0 && (
+                {orderSearchHint && orderHits.length === 0 && orderQuery.trim().length < 2 && (
                   <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: MUTED }}>{orderSearchHint}</p>
+                )}
+
+                {orderQuery.trim().length >= 1 && (
+                  <button
+                    type="button"
+                    onClick={() => addUnlinkedOrder(orderQuery)}
+                    style={{
+                      marginTop: 8,
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '12px 14px',
+                      border: `1px dashed ${BORDER}`,
+                      borderRadius: 8,
+                      background: '#fafafa',
+                      fontSize: '0.8125rem',
+                      color: '#374151',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Add “{orderQuery.trim()}” — <span style={{ color: MUTED }}>not linked to order</span>
+                  </button>
                 )}
 
                 {orderHits.length > 0 && (
@@ -655,23 +723,30 @@ export function FinanceTransactionsManager({
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                     {selectedOrders.map((o) => (
                       <span
-                        key={o.id}
+                        key={o.kind === 'linked' ? o.id : o.key}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 8,
-                          background: GREEN_CHIP,
-                          color: GREEN,
+                          background: o.kind === 'linked' ? GREEN_CHIP : '#f3f4f6',
+                          color: o.kind === 'linked' ? GREEN : '#374151',
                           borderRadius: 999,
                           padding: '6px 10px 6px 12px',
                           fontSize: '0.8125rem',
                           fontWeight: 500,
                         }}
                       >
-                        {o.label}
+                        <span>
+                          {o.label}
+                          {o.kind === 'unlinked' && (
+                            <span style={{ display: 'block', fontSize: '0.6875rem', color: MUTED, fontWeight: 400 }}>
+                              Not linked to order
+                            </span>
+                          )}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => removeOrder(o.id)}
+                          onClick={() => removeOrder(o)}
                           aria-label="Remove order"
                           style={{
                             border: 'none',
@@ -680,7 +755,7 @@ export function FinanceTransactionsManager({
                             padding: 8,
                             margin: -8,
                             lineHeight: 1,
-                            color: GREEN,
+                            color: o.kind === 'linked' ? GREEN : MUTED,
                             fontSize: 18,
                             opacity: 0.7,
                             touchAction: 'manipulation',
@@ -1256,10 +1331,12 @@ export function FinanceTransactionsManager({
                     >
                       {r.description || '—'}
                     </td>
-                    <td style={{ ...td, maxWidth: 200 }}>
-                      {!orderLinks.length
-                        ? '—'
-                        : orderLinks.map((o, i) => (
+                    <td style={{ ...td, maxWidth: 220 }}>
+                      {!orderLinks.length && !(r.unlinkedOrderLabels?.length ?? 0) ? (
+                        '—'
+                      ) : (
+                        <>
+                          {orderLinks.map((o, i) => (
                             <span key={o.id}>
                               {i > 0 ? ', ' : null}
                               <Link
@@ -1271,6 +1348,20 @@ export function FinanceTransactionsManager({
                               </Link>
                             </span>
                           ))}
+                          {(r.unlinkedOrderLabels ?? []).map((label, i) => (
+                            <span key={`u:${label}`}>
+                              {orderLinks.length > 0 || i > 0 ? ', ' : null}
+                              <span title="Not linked to order">
+                                {label}
+                                <span style={{ color: MUTED, fontSize: '0.6875rem' }}>
+                                  {' '}
+                                  (not linked)
+                                </span>
+                              </span>
+                            </span>
+                          ))}
+                        </>
+                      )}
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       <select

@@ -224,6 +224,8 @@ export function FinanceReportsClient({
   const [month, setMonth] = useState(initialMonth)
   const [quarter, setQuarter] = useState(initialQuarter)
   const [year, setYear] = useState(String(initialYear))
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   function pushFilters(next: {
     mode: ReportMode
@@ -257,6 +259,41 @@ export function FinanceReportsClient({
   function selectYear(next: string) {
     setYear(next)
     pushFilters({ mode: 'year', month, quarter, year: next })
+  }
+
+  function exportParams(): URLSearchParams {
+    const params = new URLSearchParams()
+    if (mode === 'all') params.set('period', 'all')
+    else if (mode === 'year') params.set('year', year)
+    else if (mode === 'quarter') params.set('quarter', quarter)
+    else params.set('month', month)
+    return params
+  }
+
+  async function exportExcel() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const res = await fetch(`/api/admin/finance/transactions/export?${exportParams()}`)
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        setExportError(data.error ?? `Export failed (${res.status})`)
+        return
+      }
+      const blob = await res.blob()
+      const cd = res.headers.get('Content-Disposition')
+      const filename = cd?.match(/filename="([^"]+)"/)?.[1] ?? 'vairis-transactions.xlsx'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Export failed — try again.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const report: TransactionReport = useMemo(() => {
@@ -449,7 +486,21 @@ export function FinanceReportsClient({
             </select>
           </label>
         )}
+
+        <button
+          type="button"
+          onClick={() => void exportExcel()}
+          disabled={exporting}
+          className="admin-btn"
+          style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}
+        >
+          {exporting ? 'Exporting…' : 'Export Excel'}
+        </button>
       </div>
+
+      {exportError && (
+        <p style={{ color: '#b91c1c', fontSize: '0.8125rem', margin: '0 0 16px' }}>{exportError}</p>
+      )}
 
       <div
         style={{

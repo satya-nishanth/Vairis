@@ -813,6 +813,8 @@ model FinanceTransaction {
   autoCreated          Boolean                      @default(false)
   /// false = For review (default for auto-created); true = Reviewed (default for manual).
   reviewComplete       Boolean                      @default(false)
+  /// Free-text order references when no store order exists to link.
+  unlinkedOrderLabels  String[]                     @default([])
   orders               FinanceTransactionOrder[]
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
@@ -883,6 +885,8 @@ model InventoryItem {
   customDescription String?
   metalPurity       String?
   weightGrams       Decimal?
+  /// Optional valuation per unit (INR) for stock on hand.
+  unitPrice         Decimal?
   qtyOnHand         Int                   @default(0)
   holderId          String
   holder            InventoryHolder       @relation(fields: [holderId], references: [id])
