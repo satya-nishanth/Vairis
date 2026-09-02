@@ -51,10 +51,18 @@ export async function requireUser() {
   return user
 }
 
+/** Case-insensitive check against ADMIN_EMAILS — shared so admin-gated
+ * pages and APIs (e.g. requireFinanceApi) can't drift on what counts
+ * as an admin email. */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false
+  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
+  return adminEmails.includes(email.toLowerCase())
+}
+
 export async function requireAdmin() {
   const session = await getSession()
   if (!session) redirect('/auth/admin')
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim())
-  if (!adminEmails.includes(session.user.email!)) redirect('/')
+  if (!isAdminEmail(session.user.email)) redirect('/')
   return session
 }

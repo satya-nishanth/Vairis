@@ -339,7 +339,10 @@ export function findSheetInflowMismatches(
     if (!s.orderId || !inRange(s.orderCreatedAt)) continue
     const sheetSelling = roundMoney(s.sellingPrice)
     const inflowTotal = roundMoney(inflowByOrder.get(s.orderId) ?? 0)
-    if (sheetSelling === inflowTotal) continue
+    // Shared multi-order inflows split evenly (amount / orderIds.length) can
+    // leave a paisa or two of rounding drift per order without any real
+    // reconciliation problem — tolerate that instead of an exact ===.
+    if (Math.abs(sheetSelling - inflowTotal) <= 0.01) continue
     out.push({
       orderId: s.orderId,
       orderLabel: s.orderLabel || s.orderId,

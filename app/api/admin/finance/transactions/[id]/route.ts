@@ -171,6 +171,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!to) return NextResponse.json({ error: 'To account not found' }, { status: 400 })
   }
 
+  // categoryId to persist: explicit value from the request, or `undefined`
+  // to leave it untouched — except when `direction` changed and the
+  // existing category no longer matches the new direction, which must
+  // clear it (a stale INFLOW category left on a transaction just switched
+  // to OUTFLOW would silently mis-tag it).
+  let categoryIdToPersist: string | null | undefined = d.categoryId !== undefined ? d.categoryId || null : undefined
+
   if (!isTransfer && d.categoryId) {
     const category = await prisma.financeCategory.findFirst({ where: { id: d.categoryId, active: true } })
     if (!category) return NextResponse.json({ error: 'Category not found' }, { status: 400 })
@@ -180,8 +187,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         { status: 400 },
       )
     }
-  } else if (d.direction === 'TRANSFER' || (d.direction && existing.categoryId && d.direction !== existing.direction)) {
-    // switching away from matching category — clear if mismatch handled below
+  } else if (!isTransfer && categoryIdToPersist === undefined && existing.categoryId && nextDirection !== existing.direction) {
+    const currentCategory = await prisma.financeCategory.findUnique({
+      where: { id: existing.categoryId },
+      select: { direction: true },
+    })
+    if (!currentCategory || currentCategory.direction !== nextDirection) {
+      categoryIdToPersist = null
+    }
   }
 
   const resolved = isTransfer
@@ -222,7 +235,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ? { paidThroughAccountId: d.paidThroughAccountId }
           : {}),
         transferToAccountId: isTransfer ? nextTo : null,
-        categoryId: isTransfer ? null : d.categoryId !== undefined ? d.categoryId || null : undefined,
+        categoryId: isTransfer ? null : categoryIdToPersist,
         ...(resolved
           ? { contactId: resolved.contactId, contactName: resolved.contactName }
           : {}),

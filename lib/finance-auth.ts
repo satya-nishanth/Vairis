@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getSession, requireAdmin } from './auth'
+import { getSession, requireAdmin, isAdminEmail } from './auth'
 import { NextResponse } from 'next/server'
 import { prisma } from './prisma'
 
@@ -36,9 +36,7 @@ export async function requireFinanceApi() {
   if (!session) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
-  const email = session.user.email?.toLowerCase() ?? ''
-  if (!adminEmails.includes(email) || !isFinanceEmail(email)) {
+  if (!isAdminEmail(session.user.email) || !isFinanceEmail(session.user.email)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return { session }
