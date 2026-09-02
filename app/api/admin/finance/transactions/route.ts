@@ -20,6 +20,7 @@ const schema = z
     contactId: z.string().optional().nullable(),
     contactName: z.string().trim().optional().default(''),
     orderIds: z.array(z.string()).optional().default([]),
+    unlinkedOrderLabels: z.array(z.string().trim().min(1)).optional().default([]),
   })
   .superRefine((d, ctx) => {
     if (d.direction === 'TRANSFER') {
@@ -49,6 +50,7 @@ function serialize(row: {
   contactName: string
   autoCreated: boolean
   reviewComplete: boolean
+  unlinkedOrderLabels: string[]
   createdAt: Date
   updatedAt: Date
   account?: { id: string; name: string }
@@ -76,6 +78,7 @@ function serialize(row: {
     contactName: row.contactName || row.contact?.name || null,
     autoCreated: row.autoCreated,
     reviewComplete: row.reviewComplete,
+    unlinkedOrderLabels: row.unlinkedOrderLabels ?? [],
     orderIds: row.orders?.map((o) => o.orderId) ?? [],
     orders:
       row.orders?.map((o) => ({
@@ -166,6 +169,9 @@ export async function POST(req: NextRequest) {
   if ('error' in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 })
 
   const orderIds = isTransfer ? [] : [...new Set(d.orderIds)]
+  const unlinkedOrderLabels = isTransfer
+    ? []
+    : [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
   if (orderIds.length) {
     const found = await prisma.order.count({ where: { id: { in: orderIds } } })
     if (found !== orderIds.length) {
@@ -173,34 +179,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const row = await prisma.financeTransaction.create({
-    data: {
-      date: dateInputToIstDate(d.date),
-      direction: d.direction,
-      amount: d.amount,
-      description: d.description ?? '',
-      accountId: d.accountId,
-      paidThroughAccountId: d.paidThroughAccountId,
-      transferToAccountId,
-      categoryId,
-      contactId: resolved.contactId,
-      contactName: resolved.contactName,
-      autoCreated: false,
-      reviewComplete: true,
-      orders: orderIds.length ? { create: orderIds.map((orderId) => ({ orderId })) } : undefined,
-    },
-    include,
-  })
-  const after = serialize(row)
-  await logFinanceAudit({
-    actor: financeActorFromSession(gate.session),
-    action: 'CREATE',
-    entityType: 'TRANSACTION',
-    entityId: row.id,
-    objectLabel: txObjectLabel(after),
-    objectHref: `/admin/finance/transactions?edit=${row.id}`,
-    summary: `Created ${d.direction.toLowerCase()} ₹${after.amount.toLocaleString('en-IN')}${after.contactName ? ` — ${after.contactName}` : ''}`,
-    after,
-  })
-  return NextResponse.json(after, { status: 201 })
+  try {
+    const row = await prisma.financeTransaction.create({
+      data: {
+        date: dateInputToIstDate(d.date),
+        direction: d.direction,
+        amount: d.amount,
+        description: d.description ?? '',
+        accountId: d.accountId,
+        paidThroughAccountId: d.paidThroughAccountId,
+        transferToAccountId,
+        categoryId,
+        contactId: resolved.contactId,
+        contactName: resolved.contactName,
+        autoCreated: false,
+        reviewComplete: true,
+        unlinkedOrderLabels,
+        orders: orderIds.length ? { create: orderIds.map((orderId) => ({ orderId })) } : undefined,
+      },
+      include,
+    })
+    const after = serialize(row)
+    await logFinanceAudit({
+      actor: financeActorFromSession(gate.session),
+      action: 'CREATE',
+      entityType: 'TRANSACTION',
+      entityId: row.id,
+      objectLabel: txObjectLabel(after),
+      objectHref: `/admin/finance/transactions?edit=${row.id}`,
+      summary: `Created ${d.direction.toLowerCase()} ₹${after.amount.toLocaleString('en-IN')}${after.contactName ? ` — ${after.contactName}` : ''}`,
+      after,
+    })
+    return NextResponse.json(after, { status: 201 })
+  } catch (err) {
+    console.error('[finance.transactions.POST]', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Save failed' },
+      { status: 500 },
+    )
+  }
 }

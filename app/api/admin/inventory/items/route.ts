@@ -24,6 +24,7 @@ const createSchema = z
     metalPurity: z.string().trim().optional(),
     weightGrams: z.number().positive().optional(),
     qtyOnHand: z.number().int().min(0).max(9999),
+    unitPrice: z.number().positive().max(100000000).nullable().optional(),
     holderId: z.string().min(1),
     notes: z.string().trim().max(500).optional(),
   })
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
       customDescription: d.customDescription || null,
       metalPurity: d.metalPurity || null,
       weightGrams: d.weightGrams ?? null,
+      unitPrice: d.unitPrice ?? null,
       qtyOnHand: d.qtyOnHand,
       holderId: d.holderId,
       notes: d.notes || null,

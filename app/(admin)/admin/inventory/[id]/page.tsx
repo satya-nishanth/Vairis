@@ -48,6 +48,7 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
   const initial = {
     id: row.id,
     qtyOnHand: row.qtyOnHand,
+    unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
     customName: row.customName,
     customDescription: row.customDescription,
     metalPurity: row.metalPurity,

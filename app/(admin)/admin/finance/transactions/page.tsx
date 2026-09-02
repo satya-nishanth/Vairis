@@ -78,6 +78,7 @@ export default async function FinanceTransactionsPage({
         autoCreated: r.autoCreated,
         reviewComplete: r.reviewComplete,
         orderIds: r.orders.map((o) => o.orderId),
+        unlinkedOrderLabels: r.unlinkedOrderLabels,
         orders: r.orders.map((o) => ({
           id: o.order.id,
           contactName: o.order.contactName,

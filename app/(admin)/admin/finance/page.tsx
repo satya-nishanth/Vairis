@@ -36,6 +36,7 @@ export default async function FinanceDashboardPage() {
           amount: true,
           paidThroughAccountId: true,
           transferToAccountId: true,
+          unlinkedOrderLabels: true,
           orders: { select: { orderId: true } },
         },
       }),
@@ -69,7 +70,7 @@ export default async function FinanceDashboardPage() {
       date: t.date,
       direction: t.direction,
       amount: Number(t.amount),
-      relatedToOrder: t.orders.length > 0,
+      relatedToOrder: t.orders.length > 0 || t.unlinkedOrderLabels.length > 0,
     })),
   )
 

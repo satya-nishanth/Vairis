@@ -536,3 +536,72 @@ export function summarizeTransactionReport(
   }
 }
 
+export type FinanceReportMode = 'month' | 'quarter' | 'year' | 'all'
+
+export type FinanceReportPeriod = {
+  mode: FinanceReportMode
+  month: string
+  quarter: string
+  year: number
+}
+
+function readSearchParam(sp: URLSearchParams | Record<string, string | undefined>, key: string): string | undefined {
+  if (sp instanceof URLSearchParams) return sp.get(key) ?? undefined
+  return sp[key]
+}
+
+/** Shared period parsing for Reports page and transaction export. */
+export function parseFinanceReportSearchParams(
+  sp: URLSearchParams | Record<string, string | undefined>,
+): FinanceReportPeriod {
+  const nowYm = istYearMonth(new Date())
+  const nowQ = istQuarter(new Date())
+  const periodAll = readSearchParam(sp, 'period') === 'all'
+  const quarterRaw = readSearchParam(sp, 'quarter')
+  const quarterMatch = quarterRaw?.match(/^(\d{4})-([1-4])$/)
+  const yearRaw = readSearchParam(sp, 'year')
+  const yearOnly = !quarterMatch && yearRaw && /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : null
+  const monthRaw = readSearchParam(sp, 'month')
+  const monthValue =
+    monthRaw && /^\d{4}-\d{2}$/.test(monthRaw)
+      ? monthRaw
+      : `${nowYm.year}-${String(nowYm.month).padStart(2, '0')}`
+  const quarterValue = quarterMatch ? `${quarterMatch[1]}-${quarterMatch[2]}` : `${nowQ.year}-${nowQ.quarter}`
+
+  const mode: FinanceReportMode = periodAll
+    ? 'all'
+    : quarterMatch
+      ? 'quarter'
+      : yearOnly
+        ? 'year'
+        : 'month'
+
+  return {
+    mode,
+    month: monthValue,
+    quarter: quarterValue,
+    year: yearOnly ?? nowYm.year,
+  }
+}
+
+export function financeReportDateRange(period: FinanceReportPeriod): {
+  start?: Date
+  end?: Date
+  fileLabel: string
+} {
+  if (period.mode === 'all') return { fileLabel: 'all-time' }
+  if (period.mode === 'year') {
+    const range = istMonthUtcRange(period.year, 1)
+    const end = istMonthUtcRange(period.year, 12).end
+    return { start: range.start, end, fileLabel: String(period.year) }
+  }
+  if (period.mode === 'quarter') {
+    const [y, q] = period.quarter.split('-').map(Number)
+    const { start, end } = istQuarterUtcRange(y, q)
+    return { start, end, fileLabel: `${y}-Q${q}` }
+  }
+  const [y, m] = period.month.split('-').map(Number)
+  const { start, end } = istMonthUtcRange(y, m)
+  return { start, end, fileLabel: period.month }
+}
+

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { inventoryItemInclude } from '@/lib/inventory'
+import { getLiveUnitPricesByVariantId } from '@/lib/inventory-pricing'
 import { InventoryList } from '@/components/admin/InventoryList'
 
 export const dynamic = 'force-dynamic'
@@ -17,9 +18,20 @@ export default async function InventoryPage() {
     }),
   ])
 
+  const variantIds = rows.map((r) => r.variantId).filter((id): id is string => id != null)
+  const liveByVariantId = await getLiveUnitPricesByVariantId(variantIds)
+
   const serialized = rows.map((r) => ({
-    ...r,
+    id: r.id,
+    qtyOnHand: r.qtyOnHand,
+    unitPrice: r.unitPrice != null ? Number(r.unitPrice) : null,
+    liveUnitPrice: r.variantId ? (liveByVariantId[r.variantId] ?? null) : null,
+    customName: r.customName,
     updatedAt: r.updatedAt.toISOString(),
+    holder: r.holder,
+    product: r.product,
+    variant: r.variant,
+    _count: r._count,
   }))
 
   return (

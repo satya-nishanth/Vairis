@@ -56,6 +56,7 @@ export type InventoryItemAuditSnap = {
   id: string
   label: string
   qtyOnHand: number
+  unitPrice: number | null
   holderName: string
   variantSku: string | null
   notes: string | null
@@ -64,6 +65,7 @@ export type InventoryItemAuditSnap = {
 export function inventoryItemAuditSnap(row: {
   id: string
   qtyOnHand: number
+  unitPrice?: { toString(): string } | number | null
   notes: string | null
   customName: string | null
   product: { name: string } | null
@@ -74,6 +76,7 @@ export function inventoryItemAuditSnap(row: {
     id: row.id,
     label: inventoryItemObjectLabel(row),
     qtyOnHand: row.qtyOnHand,
+    unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
     holderName: row.holder.name,
     variantSku: row.variant?.sku ?? null,
     notes: row.notes,
@@ -88,6 +91,10 @@ export function summarizeItemUpdate(before: InventoryItemAuditSnap, after: Inven
   const parts: string[] = []
   if (before.qtyOnHand !== after.qtyOnHand) {
     parts.push(`qty ${before.qtyOnHand} → ${after.qtyOnHand}`)
+  }
+  if (before.unitPrice !== after.unitPrice) {
+    const fmt = (n: number | null) => (n != null ? `₹${n.toLocaleString('en-IN')}` : 'none')
+    parts.push(`price ${fmt(before.unitPrice)} → ${fmt(after.unitPrice)}`)
   }
   if (before.holderName !== after.holderName) {
     parts.push(`holder ${before.holderName} → ${after.holderName}`)

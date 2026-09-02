@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export type VariantOption = {
@@ -15,6 +15,7 @@ export type HolderOption = { id: string; name: string }
 export type InventoryEditRow = {
   id: string
   qtyOnHand: number
+  unitPrice: number | null
   customName: string | null
   customDescription: string | null
   metalPurity: string | null
@@ -52,6 +53,9 @@ export function InventoryItemForm({
   const [metalPurity, setMetalPurity] = useState(initial?.metalPurity ?? '')
   const [weightGrams, setWeightGrams] = useState(initial?.weightGrams ?? '')
   const [qtyOnHand, setQtyOnHand] = useState(String(initial?.qtyOnHand ?? 1))
+  const [unitPrice, setUnitPrice] = useState(
+    initial?.unitPrice != null ? String(initial.unitPrice) : '',
+  )
   const [holderId, setHolderId] = useState(initial?.holderId ?? holders[0]?.id ?? '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [linkVariantId, setLinkVariantId] = useState('')
@@ -60,6 +64,7 @@ export function InventoryItemForm({
   const [linkPickerOpen, setLinkPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [livePrice, setLivePrice] = useState<number | null>(null)
 
   const selectedVariant = useMemo(
     () => variantOptions.find((v) => v.variantId === variantId) ?? null,
@@ -75,6 +80,7 @@ export function InventoryItemForm({
     setVariantId(v.variantId)
     setPickerSearch(v.label)
     setCataloguePickerOpen(false)
+    setUnitPrice('')
     setError(null)
   }
 
@@ -100,6 +106,31 @@ export function InventoryItemForm({
   const isCatalogueLinkedEdit = isEdit && Boolean(initial?.variantId)
   const showCataloguePicker = (!isEdit && source === 'catalogue') || isCatalogueLinkedEdit
   const showCustomFields = (!isEdit && source === 'custom') || (isEdit && !initial?.variantId)
+  const usesCataloguePricing = showCataloguePicker && Boolean(variantId)
+
+  useEffect(() => {
+    if (!usesCataloguePricing) {
+      setLivePrice(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/inventory/variant-price?variantId=${encodeURIComponent(variantId)}`,
+        )
+        const data = (await res.json()) as { livePrice?: number | null }
+        if (!cancelled) {
+          setLivePrice(res.ok && data.livePrice != null ? data.livePrice : null)
+        }
+      } catch {
+        if (!cancelled) setLivePrice(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [variantId, usesCataloguePricing])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -109,12 +140,20 @@ export function InventoryItemForm({
     }
     setSaving(true)
     setError(null)
+    const parsedUnitPrice =
+      unitPrice.trim() === '' ? null : Number(unitPrice)
+    if (parsedUnitPrice != null && (!Number.isFinite(parsedUnitPrice) || parsedUnitPrice <= 0)) {
+      setError('Enter a valid price per piece')
+      setSaving(false)
+      return
+    }
     try {
       const body = isEdit
         ? isCatalogueLinkedEdit
           ? {
               variantId,
               qtyOnHand: Number(qtyOnHand),
+              unitPrice: parsedUnitPrice,
               holderId,
               notes: notes || null,
             }
@@ -124,6 +163,7 @@ export function InventoryItemForm({
               metalPurity: metalPurity || null,
               weightGrams: weightGrams ? Number(weightGrams) : null,
               qtyOnHand: Number(qtyOnHand),
+              unitPrice: parsedUnitPrice,
               holderId,
               notes: notes || null,
               ...(linkVariantId ? { linkVariantId } : {}),
@@ -136,6 +176,7 @@ export function InventoryItemForm({
             metalPurity: metalPurity || undefined,
             weightGrams: weightGrams ? Number(weightGrams) : undefined,
             qtyOnHand: Number(qtyOnHand),
+            unitPrice: parsedUnitPrice,
             holderId,
             notes: notes || undefined,
           }
@@ -362,7 +403,7 @@ export function InventoryItemForm({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
         <div className="inv-field">
           <label>Quantity on hand</label>
           <input
@@ -373,6 +414,30 @@ export function InventoryItemForm({
             value={qtyOnHand}
             onChange={(e) => setQtyOnHand(e.target.value)}
           />
+        </div>
+        <div className="inv-field">
+          <label>
+            {usesCataloguePricing
+              ? 'Override price per piece (₹, optional)'
+              : 'Price per piece (₹, optional)'}
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={unitPrice}
+            onChange={(e) => setUnitPrice(e.target.value)}
+            placeholder={usesCataloguePricing ? 'Leave blank for live price' : 'e.g. 85000'}
+          />
+          {usesCataloguePricing && (
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '4px 0 0' }}>
+              {livePrice != null
+                ? unitPrice.trim() === ''
+                  ? `Using live catalogue price: ₹${livePrice.toLocaleString('en-IN')}`
+                  : `Live catalogue price: ₹${livePrice.toLocaleString('en-IN')} — your entry overrides this`
+                : 'Live price unavailable — enter a price or check gold rates'}
+            </p>
+          )}
         </div>
         <div className="inv-field">
           <label>Holder</label>
