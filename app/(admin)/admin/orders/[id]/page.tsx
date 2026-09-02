@@ -4,8 +4,11 @@ import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
-import { OrderActions } from './OrderActions'
+import { isOrderItemPriceSnapshot } from '@/lib/pricing'
+import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
+import { MarkPaidOffline } from './MarkPaidOffline'
+import { inventoryDisplayName } from '@/lib/inventory'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +23,7 @@ export default async function AdminOrderDetailPage({
     where: { id },
     include: {
       items: { include: { variant: true } },
+      promoCode: { select: { code: true } },
       payment: true,
       shipments: { orderBy: { dispatchedAt: 'desc' } },
       events: { orderBy: { createdAt: 'asc' } },
@@ -34,6 +38,20 @@ export default async function AdminOrderDetailPage({
   })
   if (!order) notFound()
 
+  const inventoryAllocations = await prisma.inventoryAllocation.findMany({
+    where: { orderId: order.id },
+    include: {
+      inventoryItem: {
+        include: {
+          holder: { select: { name: true } },
+          product: { select: { name: true } },
+          variant: { select: { sku: true, metalType: true, size: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
   const refundedTotal = Number(
     (await prisma.orderRefund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0,
   )
@@ -46,8 +64,24 @@ export default async function AdminOrderDetailPage({
   const resolvedPayment = resolved?.payment ?? null
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
-  const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
-  const provider = getShippingProvider()
+  const inr = (n: unknown) =>
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+  const inrRate = (n: unknown) =>
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
+  const provider = getShippingProvider(order.country)
+  const payment = order.payment ?? resolvedPayment
+  const paymentOwnerId = order.payment ? order.id : order.parentOrderId
+  const gatewayLabel = (id: string) => (id.startsWith('mock_') ? 'Mock (dev)' : 'Razorpay')
+
+  const fmtDt = (d: Date) =>
+    d.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
 
   const card: React.CSSProperties = {
     background: '#fff',
@@ -64,7 +98,7 @@ export default async function AdminOrderDetailPage({
   }
 
   return (
-    <div className="admin-page" style={{ maxWidth: 1000 }}>
+    <div className="admin-page admin-page--order-detail">
       <p style={{ marginBottom: 12, fontSize: '0.8125rem' }}>
         <Link href="/admin/orders" style={{ color: '#032b24' }}>
           ← Orders
@@ -77,6 +111,9 @@ export default async function AdminOrderDetailPage({
         <span style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#032b24' }}>
           {ORDER_STATUS_META[order.status].label}
         </span>
+        <Link href={`/admin/invoices/new?orderId=${order.id}`} className="admin-btn">
+          Generate invoice
+        </Link>
       </div>
 
       {order.parentOrderId && (
@@ -92,26 +129,32 @@ export default async function AdminOrderDetailPage({
       {/* Split parents manage actions per-delivery (each child has its own
           status + refund); the parent itself only shows the rollup below. */}
       {!isSplitParent && (
-        <OrderActions
-          orderId={order.id}
-          status={order.status}
-          depositAmount={Number(order.depositAmount)}
-          // Own-order ledger total (refundedTotal, scoped to order.id below),
-          // NOT resolvedPayment.refundedAmount — that field is the shared
-          // parent Payment's cumulative total across ALL children, so a
-          // sibling's refund would incorrectly hide this order's own
-          // deposit-refund button (lib/split.ts payment anchoring).
-          refundedAmount={refundedTotal}
-          refundedTotal={refundedTotal}
-          grandTotal={Number(order.grandTotal)}
-          paymentCaptured={
-            resolvedPayment?.status === 'CAPTURED' ||
-            resolvedPayment?.status === 'PARTIALLY_REFUNDED' ||
-            resolvedPayment?.status === 'REFUNDED'
-          }
-          offline={!resolvedPayment}
-          shippingSupportsBooking={provider.supportsBooking}
-        />
+        <>
+          <OrderJourney
+            orderId={order.id}
+            status={order.status}
+            events={order.events.map((e) => ({
+              id: e.id,
+              status: e.status,
+              note: e.note,
+              createdAt: e.createdAt.toISOString(),
+            }))}
+            offline={!resolvedPayment}
+            shippingSupportsBooking={provider.supportsBooking}
+            createdAt={order.createdAt.toISOString()}
+            depositAmount={Number(order.depositAmount)}
+            refundedAmount={refundedTotal}
+            refundedTotal={refundedTotal}
+            grandTotal={Number(order.grandTotal)}
+            paymentCaptured={
+              resolvedPayment?.status === 'CAPTURED' ||
+              resolvedPayment?.status === 'PARTIALLY_REFUNDED' ||
+              resolvedPayment?.status === 'REFUNDED'
+            }
+            intlReviewRequired={order.intlReviewRequired}
+            intlReviewApproved={order.intlReviewApproved}
+          />
+        </>
       )}
 
       {isSplitParent && (
@@ -183,6 +226,21 @@ export default async function AdminOrderDetailPage({
               Refunded so far: {inr(order.payment!.refundedAmount)}
             </p>
           )}
+          {inventoryAllocations.length > 0 && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+              <h3 style={{ ...heading, marginBottom: 8 }}>Inventory</h3>
+              {inventoryAllocations.map((a) => (
+                <p key={a.id} style={{ fontSize: '0.8125rem', marginBottom: 6 }}>
+                  {a.qty} unit(s) from{' '}
+                  <Link href={`/admin/inventory/${a.inventoryItemId}`} style={{ color: '#032b24' }}>
+                    {inventoryDisplayName(a.inventoryItem)}
+                  </Link>
+                  <span style={{ color: '#6b7280' }}> · held @ {a.inventoryItem.holder.name}</span>
+                </p>
+              ))}
+            </>
+          )}
         </div>
 
         <div style={card}>
@@ -196,6 +254,12 @@ export default async function AdminOrderDetailPage({
             {order.addressLine2 ? `, ${order.addressLine2}` : ''}
             <br />
             {order.city}, {order.state} — {order.pincode}
+            {order.country !== 'IN' && (
+              <>
+                <br />
+                Country: <strong>{order.country}</strong>
+              </>
+            )}
           </p>
         </div>
 
@@ -242,7 +306,7 @@ export default async function AdminOrderDetailPage({
         </div>
 
         <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <h3 style={heading}>Timeline</h3>
+          <h3 style={heading}>Event log</h3>
           {order.events.map((e) => (
             <p key={e.id} style={{ fontSize: '0.8125rem', marginBottom: 6 }}>
               <span style={{ color: '#9ca3af' }}>
@@ -256,32 +320,209 @@ export default async function AdminOrderDetailPage({
 
         <OrderNotes orderId={order.id} notes={order.notes} />
 
-        <div style={{ ...card, gridColumn: '1 / -1' }}>
+        <div style={card}>
           <h3 style={heading}>Payment</h3>
-          {order.payment ? (
-            <p style={{ fontSize: '0.8125rem' }}>
-              Gateway order: {order.payment.razorpayOrderId}
-              {order.payment.razorpayPaymentId && <> · payment: {order.payment.razorpayPaymentId}</>}
-              {order.payment.razorpayRefundId && <> · refund: {order.payment.razorpayRefundId}</>}
-              {' · status: '}
-              {order.payment.status}
-            </p>
-          ) : order.parentOrderId && resolvedPayment ? (
-            <p style={{ fontSize: '0.8125rem' }}>
-              Via parent{' '}
-              <Link href={`/admin/orders/${order.parentOrderId}`} style={{ color: '#032b24' }}>
-                {order.parentOrderId}
-              </Link>
-              {' — gateway order: '}
-              {resolvedPayment.razorpayOrderId}
-              {resolvedPayment.razorpayPaymentId && <> · payment: {resolvedPayment.razorpayPaymentId}</>}
-              {' · status: '}
-              {resolvedPayment.status}
+          {payment ? (
+            <table className="order-payment-table">
+              <tbody>
+                <tr>
+                  <th scope="row">Gateway</th>
+                  <td>{gatewayLabel(payment.razorpayOrderId)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Status</th>
+                  <td>{payment.status.replace(/_/g, ' ')}</td>
+                </tr>
+                {paymentOwnerId && paymentOwnerId !== order.id && (
+                  <tr>
+                    <th scope="row">Payment on</th>
+                    <td>
+                      <Link href={`/admin/orders/${paymentOwnerId}`} style={{ color: '#032b24' }}>
+                        {paymentOwnerId}
+                      </Link>
+                      {' '}
+                      <span style={{ color: '#6b7280' }}>(parent order)</span>
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  <th scope="row">Gateway order ID</th>
+                  <td>{payment.razorpayOrderId}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Gateway payment ID</th>
+                  <td>{payment.razorpayPaymentId ?? '—'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Last gateway refund ID</th>
+                  <td>{payment.razorpayRefundId ?? '—'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Charged amount</th>
+                  <td>{inr(payment.amount)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">This order total</th>
+                  <td>
+                    {inr(order.grandTotal)}
+                    {paymentOwnerId && paymentOwnerId !== order.id && (
+                      <span style={{ color: '#6b7280' }}> · share of parent payment</span>
+                    )}
+                  </td>
+                </tr>
+                {Number(order.discountAmount) > 0 && (
+                  <tr>
+                    <th scope="row">Promo discount</th>
+                    <td>
+                      −{inr(order.discountAmount)}
+                      {order.promoCode?.code && (
+                        <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {Number(order.depositAmount) > 0 && (
+                  <tr>
+                    <th scope="row">Legacy deposit</th>
+                    <td>{inr(order.depositAmount)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <th scope="row">Refunded (gateway)</th>
+                  <td>{inr(payment.refundedAmount)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Unrefunded balance</th>
+                  <td>
+                    {inr(Number(payment.amount) - Number(payment.refundedAmount))}
+                    {payment.status === 'CAPTURED' && Number(payment.refundedAmount) === 0 && (
+                      <span style={{ color: '#6b7280' }}> · fully captured, nothing returned yet</span>
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Refunded (this order)</th>
+                  <td>{refundedTotal > 0 ? inr(refundedTotal) : '—'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Recorded</th>
+                  <td>{fmtDt(payment.createdAt)}</td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <table className="order-payment-table">
+              <tbody>
+                <tr>
+                  <th scope="row">Type</th>
+                  <td>Offline / manual</td>
+                </tr>
+                <tr>
+                  <th scope="row">This order total</th>
+                  <td>{inr(order.grandTotal)}</td>
+                </tr>
+                {Number(order.discountAmount) > 0 && (
+                  <tr>
+                    <th scope="row">Promo discount</th>
+                    <td>
+                      −{inr(order.discountAmount)}
+                      {order.promoCode?.code && (
+                        <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  <th scope="row">Refunded (this order)</th>
+                  <td>{refundedTotal > 0 ? inr(refundedTotal) : '—'}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Status</th>
+                  <td>
+                    {order.status === 'PAYMENT_PENDING'
+                      ? 'Awaiting payment'
+                      : ORDER_STATUS_META[order.status].label}
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Note</th>
+                  <td style={{ color: '#6b7280' }}>
+                    Settled manually (UPI/bank) — no gateway payment record.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          {!payment && order.status === 'PAYMENT_PENDING' && !order.parentOrderId && (
+            <MarkPaidOffline orderId={order.id} amount={Number(order.grandTotal)} />
+          )}
+        </div>
+
+        <div style={card}>
+          <h3 style={heading}>Price breakdown</h3>
+          {order.items.every((item) => !isOrderItemPriceSnapshot(item.priceBreakdown)) ? (
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              No snapshot on this order — created before line breakdowns were stored.
             </p>
           ) : (
-            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
-              Offline sale — settled manually (UPI/bank), no gateway payment record.
-            </p>
+            order.items.map((item) => {
+              const b = isOrderItemPriceSnapshot(item.priceBreakdown) ? item.priceBreakdown : null
+              if (!b) {
+                return (
+                  <p key={item.id} style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: 12 }}>
+                    {item.productName} — no snapshot
+                  </p>
+                )
+              }
+              const vaLabel = b.vaLabel || 'Wastage'
+              const rows: { label: string; value: string }[] = [
+                ...(b.weightGrams != null
+                  ? [{ label: 'Weight', value: `${Number(b.weightGrams)} g` }]
+                  : []),
+                ...(b.goldRatePerGram != null
+                  ? [
+                      {
+                        label: 'Gold rate',
+                        value: `${inrRate(b.goldRatePerGram)}/g${b.metalType ? ` · ${b.metalType.replace(/_/g, ' ')}` : ''}`,
+                      },
+                    ]
+                  : []),
+                { label: 'Gold', value: inr(Math.round(b.goldValue)) },
+                { label: vaLabel, value: inr(Math.round(b.goldVA)) },
+                { label: 'Making', value: inr(Math.round(b.making)) },
+                { label: 'Stones', value: inr(Math.round(b.stoneValue)) },
+                ...(b.stoneLines ?? []).map((line) => ({
+                  label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
+                  value: inr(Math.round(line.value)),
+                })),
+                ...(b.miscCharges ? [{ label: 'Misc', value: inr(Math.round(b.miscCharges)) }] : []),
+                { label: 'Taxable', value: inr(Math.round(b.taxable)) },
+                { label: 'GST (3%)', value: inr(Math.round(b.gst)) },
+                { label: 'Line total', value: inr(Math.round(b.total)) },
+              ]
+              if (item.quantity > 1) {
+                rows.push({ label: `× ${item.quantity}`, value: inr(Math.round(b.total * item.quantity)) })
+              }
+              return (
+                <div key={item.id} style={{ marginBottom: order.items.length > 1 ? 16 : 0 }}>
+                  {order.items.length > 1 && (
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 8px' }}>
+                      {item.productName}
+                    </p>
+                  )}
+                  <table className="order-payment-table">
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r.label}>
+                          <th scope="row">{r.label}</th>
+                          <td>{r.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })
           )}
         </div>
       </div>

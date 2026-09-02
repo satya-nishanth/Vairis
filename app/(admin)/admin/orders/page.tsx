@@ -1,20 +1,16 @@
-import Link from 'next/link'
-import type { OrderStatus } from '@prisma/client'
+import type { OrderStatus, PaymentStatus, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { AdminGuide } from '@/components/admin/AdminGuide'
+import {
+  OrdersWorkbench,
+  type OrdersListRow,
+  type OrdersKpi,
+} from '@/components/admin/OrdersWorkbench'
 
 export const dynamic = 'force-dynamic'
 
-const FILTERS: (OrderStatus | 'ALL')[] = [
-  'ALL',
-  'PAYMENT_PENDING',
-  'PAYMENT_CONFIRMED',
-  'PREPARING',
-  'SHIPPED',
-  'OUT_FOR_DELIVERY',
-  'DELIVERED',
-  'DEPOSIT_REFUNDED',
+const EXCEPTION_STATUSES: OrderStatus[] = [
   'DELIVERY_FAILED',
   'RETURNING_TO_ORIGIN',
   'RTO_RECEIVED',
@@ -22,57 +18,286 @@ const FILTERS: (OrderStatus | 'ALL')[] = [
   'RETURN_IN_TRANSIT',
   'RETURN_RECEIVED',
   'PAYMENT_EXPIRED',
-  'SPLIT_INTO_DELIVERIES',
   'FAILED_OTHER',
   'CANCELLED',
   'REFUNDED',
 ]
 
-type OrderRow = Awaited<ReturnType<typeof loadOrders>>[number]
+/** Short chip row — rest live under “More filters”. */
+const PRIMARY_CHIPS: { key: string; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'PAYMENT_CONFIRMED', label: 'Confirmed' },
+  { key: 'PREPARING', label: 'Crafting' },
+  { key: 'SHIPPED', label: 'Shipped' },
+  { key: 'DELIVERED', label: 'Delivered' },
+  { key: 'EXCEPTIONS', label: 'Exceptions' },
+]
 
-async function loadOrders(filter: OrderStatus | null) {
-  return prisma.order.findMany({
-    where: filter ? { status: filter } : undefined,
-    include: {
-      items: true,
-      payment: { select: { refundedAmount: true } },
-      user: { select: { email: true } },
+const ALL_STATUS_KEYS = Object.keys(ORDER_STATUS_META) as OrderStatus[]
+
+const itemSelect = {
+  productName: true,
+  quantity: true,
+  variant: { select: { product: { select: { images: true } } } },
+} satisfies Prisma.OrderItemSelect
+
+const orderInclude = {
+  items: { select: itemSelect },
+  user: { select: { email: true } },
+  payment: {
+    select: {
+      status: true,
+      amount: true,
+      razorpayPaymentId: true,
+      createdAt: true,
     },
+  },
+  events: {
+    select: { id: true, status: true, note: true, createdAt: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
+  children: {
+    include: {
+      items: { select: itemSelect },
+      payment: {
+        select: {
+          status: true,
+          amount: true,
+          razorpayPaymentId: true,
+          createdAt: true,
+        },
+      },
+      events: {
+        select: { id: true, status: true, note: true, createdAt: true },
+        orderBy: { createdAt: 'asc' as const },
+      },
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
+} satisfies Prisma.OrderInclude
+
+/** Front image only — skip video assets in the product gallery. */
+function frontImage(images: string[]): string | null {
+  const src = images.find((u) => !/\.(mp4|webm|mov)(\?|$)/i.test(u)) ?? images[0]
+  return src || null
+}
+
+type RawItem = {
+  productName: string
+  quantity: number
+  variant: { product: { images: string[] } }
+}
+
+type RawPayment = {
+  status: PaymentStatus
+  amount: { toString(): string } | number
+  razorpayPaymentId: string | null
+  createdAt: Date
+} | null
+
+type RawEvent = {
+  id: string
+  status: OrderStatus
+  note: string | null
+  createdAt: Date
+}
+
+function resolveFilter(statusParam: string | undefined): {
+  activeChip: string
+  whereStatus: OrderStatus | { in: OrderStatus[] } | undefined
+  filterLabel: string | null
+} {
+  if (!statusParam || statusParam === 'ALL') {
+    return { activeChip: 'ALL', whereStatus: undefined, filterLabel: null }
+  }
+  if (statusParam === 'EXCEPTIONS') {
+    return {
+      activeChip: 'EXCEPTIONS',
+      whereStatus: { in: EXCEPTION_STATUSES },
+      filterLabel: 'Exceptions',
+    }
+  }
+  if ((ALL_STATUS_KEYS as string[]).includes(statusParam)) {
+    const s = statusParam as OrderStatus
+    return {
+      activeChip: s,
+      whereStatus: s,
+      filterLabel: ORDER_STATUS_META[s].label,
+    }
+  }
+  return { activeChip: 'ALL', whereStatus: undefined, filterLabel: null }
+}
+
+function mapRow(
+  o: {
+    id: string
+    status: OrderStatus
+    grandTotal: { toString(): string } | number
+    contactName: string
+    contactPhone: string
+    createdAt: Date
+    user: { email: string }
+    items: RawItem[]
+    payment?: RawPayment
+    events?: RawEvent[]
+    children?: {
+      id: string
+      status: OrderStatus
+      grandTotal: { toString(): string } | number
+      contactName: string
+      contactPhone: string
+      createdAt: Date
+      items: RawItem[]
+      payment?: RawPayment
+      events?: RawEvent[]
+    }[]
+  },
+  emailFallback?: string,
+): OrdersListRow {
+  const items = o.items.map((i) => ({
+    productName: i.productName,
+    quantity: i.quantity,
+    imageUrl: frontImage(i.variant.product.images),
+  }))
+  const payment = o.payment
+    ? {
+        status: o.payment.status,
+        amount: Number(o.payment.amount),
+        razorpayPaymentId: o.payment.razorpayPaymentId,
+        createdAt: o.payment.createdAt.toISOString(),
+      }
+    : null
+
+  return {
+    id: o.id,
+    status: o.status,
+    grandTotal: Number(o.grandTotal),
+    contactName: o.contactName,
+    contactPhone: o.contactPhone,
+    createdAt: o.createdAt.toISOString(),
+    email: emailFallback ?? o.user.email,
+    itemsLabel: o.items.map((i) => `${i.productName} ×${i.quantity}`).join(', '),
+    itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
+    items,
+    payment,
+    events: (o.events ?? []).map((e) => ({
+      id: e.id,
+      status: e.status,
+      note: e.note,
+      createdAt: e.createdAt.toISOString(),
+    })),
+    children: (o.children ?? []).map((c) =>
+      mapRow(
+        {
+          ...c,
+          user: { email: emailFallback ?? o.user.email },
+          children: [],
+        },
+        emailFallback ?? o.user.email,
+      ),
+    ),
+  }
+}
+
+/**
+ * Root orders only, with children nested.
+ * Status filter: root matches OR any child matches (parent still shown with all children).
+ */
+async function loadOrderGroups(whereStatus: OrderStatus | { in: OrderStatus[] } | undefined) {
+  if (!whereStatus) {
+    return prisma.order.findMany({
+      where: { parentOrderId: null },
+      include: orderInclude,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+  }
+
+  const matching = await prisma.order.findMany({
+    where: { status: whereStatus },
+    select: { id: true, parentOrderId: true },
+    take: 300,
+  })
+  const rootIds = [...new Set(matching.map((m) => m.parentOrderId ?? m.id))]
+  if (rootIds.length === 0) return []
+
+  return prisma.order.findMany({
+    where: { id: { in: rootIds }, parentOrderId: null },
+    include: orderInclude,
     orderBy: { createdAt: 'desc' },
-    take: 200,
   })
 }
 
-/** Admin order list — filter chips per status, newest first. */
+async function loadKpis(): Promise<OrdersKpi[]> {
+  // Count every work unit (root singles + child deliveries). Split parents
+  // use SPLIT_INTO_DELIVERIES, so they never inflate these buckets.
+  const [needsAction, inCrafting, outForDelivery] = await Promise.all([
+    prisma.order.count({ where: { status: 'PAYMENT_CONFIRMED' } }),
+    prisma.order.count({ where: { status: 'PREPARING' } }),
+    prisma.order.count({ where: { status: 'OUT_FOR_DELIVERY' } }),
+  ])
+
+  return [
+    {
+      key: 'PAYMENT_CONFIRMED',
+      label: 'Needs action',
+      count: needsAction,
+      href: '/admin/orders?status=PAYMENT_CONFIRMED',
+    },
+    {
+      key: 'PREPARING',
+      label: 'In crafting',
+      count: inCrafting,
+      href: '/admin/orders?status=PREPARING',
+    },
+    {
+      key: 'OUT_FOR_DELIVERY',
+      label: 'Out for delivery',
+      count: outForDelivery,
+      href: '/admin/orders?status=OUT_FOR_DELIVERY',
+    },
+  ]
+}
+
+/** Admin order list — split table + journey preview. */
 export default async function AdminOrdersPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string }>
 }) {
   const { status } = await searchParams
-  const filter = FILTERS.includes(status as OrderStatus) ? (status as OrderStatus) : null
+  const { activeChip, whereStatus, filterLabel } = resolveFilter(status)
 
-  let orders: OrderRow[] = []
+  let ordersRaw: Awaited<ReturnType<typeof loadOrderGroups>> = []
+  let kpis: OrdersKpi[] = []
   let dbMissing = false
 
   try {
-    orders = await loadOrders(filter)
+    ;[ordersRaw, kpis] = await Promise.all([loadOrderGroups(whereStatus), loadKpis()])
   } catch (err) {
-    // Typical cloud miss: depositAmount / grandTotal / Payment.refundedAmount / OrderEvent
     console.error('[admin/orders] query failed', err)
     dbMissing = true
   }
 
-  const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
+  const orders: OrdersListRow[] = ordersRaw.map((o) => mapRow(o))
+
+  const chips = PRIMARY_CHIPS.map((c) => ({
+    key: c.key,
+    label: c.label,
+    href: c.key === 'ALL' ? '/admin/orders' : `/admin/orders?status=${c.key}`,
+  }))
+
+  const primaryKeys = new Set(
+    PRIMARY_CHIPS.map((c) => c.key).filter((k) => k !== 'ALL' && k !== 'EXCEPTIONS'),
+  )
+  const moreStatuses = ALL_STATUS_KEYS.filter((s) => !primaryKeys.has(s)).map((s) => ({
+    key: s,
+    label: ORDER_STATUS_META[s].label,
+    href: `/admin/orders?status=${s}`,
+  }))
 
   return (
-    <div className="admin-page">
-      <div className="admin-page__header">
-        <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Orders</h1>
-        <Link href="/admin/orders/new" className="admin-btn">
-          + Manual Order
-        </Link>
-      </div>
+    <div className="admin-page admin-page--orders">
       <AdminGuide
         pageKey="orders"
         title="Orders"
@@ -95,111 +320,19 @@ export default async function AdminOrdersPage({
           <strong>Database migration required.</strong> Order deposit columns (and related
           tables) are missing on this database. Run{' '}
           <code>scripts/apply-sitebanner-migration-cloud.sql</code> in the Supabase SQL Editor,
-          then reload. That script adds <code>Order.depositAmount</code>,{' '}
-          <code>Order.grandTotal</code>, <code>Payment.refundedAmount</code>,{' '}
-          <code>OrderEvent</code>, and <code>SiteBanner</code>.
+          then reload.
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        {FILTERS.map((f) => {
-          const active = (f === 'ALL' && !filter) || f === filter
-          const label =
-            f === 'ALL' ? 'All' : (ORDER_STATUS_META[f as OrderStatus]?.label ?? String(f))
-          return (
-            <Link
-              key={f}
-              href={f === 'ALL' ? '/admin/orders' : `/admin/orders?status=${f}`}
-              style={{
-                fontSize: '0.6875rem',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                padding: '6px 12px',
-                borderRadius: '999px',
-                textDecoration: 'none',
-                border: '1px solid',
-                borderColor: active ? '#032b24' : '#e5e7eb',
-                background: active ? '#032b24' : '#fff',
-                color: active ? '#fff' : '#4b5563',
-              }}
-            >
-              {label}
-            </Link>
-          )
-        })}
-      </div>
-
-      {dbMissing ? null : orders.length === 0 ? (
-        <p style={{ color: '#6b7280', padding: '2rem 0' }}>No orders{filter ? ` in ${filter}` : ' yet'}.</p>
-      ) : (
-        <>
-        <ul className="admin-cards">
-          {orders.map((order) => (
-            <li key={order.id} className="admin-card admin-card--no-media">
-              <div className="admin-card__body">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <Link href={`/admin/orders/${order.id}`} className="admin-card__title" style={{ color: '#032b24', textDecoration: 'none' }}>
-                    {order.id.slice(-8)}
-                  </Link>
-                  <span className="admin-card__meta">
-                    {order.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                  </span>
-                </div>
-                <p className="admin-card__meta">{order.user.email}</p>
-                <p className="admin-card__meta" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {order.items.map((i) => `${i.productName} ×${i.quantity}`).join(', ')}
-                </p>
-                <p className="admin-card__meta">
-                  {ORDER_STATUS_META[order.status]?.label ?? order.status}
-                  {' · '}Paid {inr(order.grandTotal)}
-                  {' · '}Deposit {Number(order.payment?.refundedAmount ?? 0) > 0 ? '↩ ' : ''}{inr(order.depositAmount)}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="admin-table-wrap">
-        <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', background: '#fff', fontSize: '0.8125rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left', color: '#6b7280' }}>
-              <th style={{ padding: '10px 12px' }}>Order</th>
-              <th style={{ padding: '10px 12px' }}>Customer</th>
-              <th style={{ padding: '10px 12px' }}>Items</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Paid</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>Deposit</th>
-              <th style={{ padding: '10px 12px' }}>Status</th>
-              <th style={{ padding: '10px 12px' }}>Placed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={{ padding: '10px 12px' }}>
-                  <Link href={`/admin/orders/${order.id}`} style={{ color: '#032b24', fontWeight: 600 }}>
-                    {order.id.slice(-8)}
-                  </Link>
-                </td>
-                <td style={{ padding: '10px 12px' }}>{order.user.email}</td>
-                <td style={{ padding: '10px 12px', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {order.items.map((i) => `${i.productName} ×${i.quantity}`).join(', ')}
-                </td>
-                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{inr(order.grandTotal)}</td>
-                <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                  {Number(order.payment?.refundedAmount ?? 0) > 0 ? '↩ ' : ''}
-                  {inr(order.depositAmount)}
-                </td>
-                <td style={{ padding: '10px 12px' }}>
-                  {ORDER_STATUS_META[order.status]?.label ?? order.status}
-                </td>
-                <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                  {order.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-        </>
+      {!dbMissing && (
+        <OrdersWorkbench
+          orders={orders}
+          chips={chips}
+          activeChip={activeChip}
+          moreStatuses={moreStatuses}
+          filterLabel={filterLabel}
+          kpis={kpis}
+        />
       )}
     </div>
   )

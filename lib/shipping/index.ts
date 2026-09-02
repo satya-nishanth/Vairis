@@ -16,7 +16,14 @@ const PROVIDERS: Record<string, ShippingProvider> = {
   dtdc: dtdcProvider,
 };
 
-export function getShippingProvider(): ShippingProvider {
+/**
+ * @param country Order delivery country. Non-IN always uses manual provider.
+ *   Omit for country-agnostic callers.
+ */
+export function getShippingProvider(country?: string): ShippingProvider {
+  if (country !== undefined && country !== "IN") {
+    return manualShippingProvider;
+  }
   const name = process.env.SHIPPING_PROVIDER ?? "manual";
   const provider = PROVIDERS[name];
   if (!provider) {

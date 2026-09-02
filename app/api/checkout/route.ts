@@ -1,25 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { calculatePrice } from '@/lib/pricing'
+import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { computeOrderAmounts } from '@/lib/orders'
 import { validatePromo } from '@/lib/promo'
 import { getPaymentGateway } from '@/lib/payments'
+import { checkPincodeServiceability } from '@/lib/shipping/sequel247-validate'
+import { checkIndiaFormat } from '@/lib/address-schema'
 
 export const dynamic = 'force-dynamic'
 
-const checkoutSchema = z.object({
+// Mirrors lib/address-schema.ts's addressSchema shape but keeps checkout's
+// existing addressLine1/addressLine2 field names (vs line1/line2 there) —
+// the India-format check itself is shared via checkIndiaFormat so the two
+// schemas can't drift on what "valid" means.
+const checkoutAddressSchema = z.object({
   contactName: z.string().trim().min(2, 'Name is required'),
-  contactPhone: z.string().trim().regex(/^\d{10}$/, 'Enter a 10-digit mobile number'),
+  contactPhone: z.string().trim().min(1, 'Phone number is required'),
   addressLine1: z.string().trim().min(5, 'Address is required'),
   addressLine2: z.string().trim().optional(),
   city: z.string().trim().min(2, 'City is required'),
   state: z.string().trim().min(2, 'State is required'),
-  pincode: z.string().trim().regex(/^\d{6}$/, 'Enter a 6-digit pincode'),
+  pincode: z.string().trim().min(1, 'Pincode is required'),
+  country: z.string().trim().min(2, 'Country is required').max(60).default('IN'),
   promoCode: z.string().trim().max(40).optional(),
-})
+}).superRefine(checkIndiaFormat)
 
 /**
  * POST /api/checkout — create an Order from the user's cart plus a matching
@@ -49,7 +57,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const parsed = checkoutSchema.safeParse(await req.json().catch(() => ({})))
+  const parsed = checkoutAddressSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'VALIDATION', message: parsed.error.issues[0]?.message ?? 'Invalid address' },
@@ -81,38 +89,57 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'EMPTY_CART', message: 'Your cart is empty' }, { status: 400 })
   }
 
+  // India addresses are checked against Sequel247's serviceability API,
+  // same as the address book (lib/shipping/sequel247-validate.ts). Run
+  // this before any pricing work or Order row is created.
+  if (address.country === 'IN') {
+    const serviceability = await checkPincodeServiceability(address.pincode)
+    if (!serviceability.ok) {
+      return NextResponse.json(
+        { error: 'VALIDATION', message: 'Enter a valid pincode' },
+        { status: 400 },
+      )
+    }
+  }
+
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
   // Server-side price snapshot per line (same formula the PDP shows) —
   // stones priced at the per-carat rate for the item's exchange choice.
+  // Full breakdown is frozen on OrderItem.priceBreakdown; price = unit total.
   const lines = cartItems.map((item) => {
     const rate = rateMap[item.variant.metalType]
     if (!rate) {
       throw new Error(`No gold rate for ${item.variant.metalType} — cannot price order`)
     }
-    const unitPrice = Math.round(
-      calculatePrice(
-        {
-          weightGrams: item.variant.weightGrams.toString(),
-          makingChargePerGram: item.variant.makingChargePerGram.toString(),
-          flatMakingCharge: item.variant.flatMakingCharge.toString(),
-          stoneCharges: item.variant.stoneCharges.toString(),
-          miscCharges: item.variant.miscCharges.toString(),
-        },
-        rate,
-        {
-          stones: toStoneInputs(item.variant.product.stones),
-          withExchange: item.withExchange,
-          config: pricingConfig,
-        },
-      ).total,
+    const weightGrams = Number(item.variant.weightGrams)
+    const breakdown = calculatePrice(
+      {
+        weightGrams: item.variant.weightGrams.toString(),
+        makingChargePerGram: item.variant.makingChargePerGram.toString(),
+        flatMakingCharge: item.variant.flatMakingCharge.toString(),
+        stoneCharges: item.variant.stoneCharges.toString(),
+        miscCharges: item.variant.miscCharges.toString(),
+      },
+      rate,
+      {
+        stones: toStoneInputs(item.variant.product.stones),
+        withExchange: item.withExchange,
+        config: pricingConfig,
+      },
     )
+    const unitPrice = Math.round(breakdown.total)
     return {
       variantId: item.variantId,
       productName: item.variant.product.name,
       quantity: item.quantity,
       unitPrice,
       withExchange: item.withExchange,
+      priceBreakdown: toOrderItemPriceSnapshot(breakdown, {
+        goldRatePerGram: rate,
+        weightGrams,
+        metalType: item.variant.metalType,
+      }),
     }
   })
 
@@ -155,14 +182,19 @@ export async function POST(req: NextRequest) {
       city: address.city,
       state: address.state,
       pincode: address.pincode,
+      country: address.country,
+      intlReviewRequired: address.country !== 'IN',
       items: {
-        create: lines.map((l) => ({
-          variantId: l.variantId,
-          quantity: l.quantity,
-          price: l.unitPrice,
-          productName: l.productName,
-          withExchange: l.withExchange,
-        })),
+        create: lines.map(
+          (l): Prisma.OrderItemUncheckedCreateWithoutOrderInput => ({
+            variantId: l.variantId,
+            quantity: l.quantity,
+            price: l.unitPrice,
+            priceBreakdown: l.priceBreakdown as unknown as Prisma.InputJsonValue,
+            productName: l.productName,
+            withExchange: l.withExchange,
+          }),
+        ),
       },
       events: {
         create: {

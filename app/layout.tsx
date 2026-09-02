@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { ThemeInitScript } from "@/components/theme/ThemeInitScript";
 import { WishlistProvider } from "@/components/commerce/WishlistProvider";
 import { CartProvider } from "@/components/commerce/CartProvider";
 import { PageViewTracker } from "@/components/layout/PageViewTracker";
@@ -49,12 +50,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       data-theme={DEFAULT_SITE_THEME}
       suppressHydrationWarning
     >
-      <head>
-        {/* Sets data-theme before first paint — must block to avoid theme flash */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/scripts/vairis-theme-init.js" />
-      </head>
       <body suppressHydrationWarning>
+        {/* beforeInteractive — Next injects into <head>; avoids React 19 raw <script> warning */}
+        <ThemeInitScript />
         {GA_ID && (
           <>
             <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
