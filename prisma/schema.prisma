@@ -276,6 +276,7 @@ model Order {
   financeTransactions  FinanceTransactionOrder[]
   invoices             Invoice[]
   inventoryAllocations InventoryAllocation[]
+  inventorySales       InventorySale[]
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 }
@@ -769,6 +770,7 @@ model OrderFinance {
 
 enum FinanceLineKind {
   DELIVERY
+  GST
   GOLD
   STONES
   DIAMONDS
@@ -885,13 +887,18 @@ model InventoryItem {
   customDescription String?
   metalPurity       String?
   weightGrams       Decimal?
-  /// Optional valuation per unit (INR) for stock on hand.
-  unitPrice         Decimal?
+  /// Cost basis per unit (INR) — used for stock valuation.
+  purchasePrice     Decimal?
+  /// Selling price per unit (INR); catalogue lines may use live price when unset.
+  soldPrice         Decimal?
+  /// Expected sale price (INR) for stock valuation header; falls back to live then purchase.
+  potentialPrice    Decimal?
   qtyOnHand         Int                   @default(0)
   holderId          String
   holder            InventoryHolder       @relation(fields: [holderId], references: [id])
   notes             String?
   allocations       InventoryAllocation[]
+  sales             InventorySale[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -916,6 +923,23 @@ model InventoryAllocation {
   @@index([inventoryItemId])
   @@index([orderId])
   @@index([orderItemId])
+}
+
+/// Manual mark-as-sold (order link or free-text reference).
+model InventorySale {
+  id                 String        @id @default(cuid())
+  inventoryItemId    String
+  inventoryItem      InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  qty                Int
+  orderId            String?
+  order              Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  /// Free-text order reference when no store order is linked.
+  unlinkedOrderLabel String?
+  soldAt             DateTime      @default(now())
+  createdAt          DateTime      @default(now())
+
+  @@index([inventoryItemId])
+  @@index([orderId])
 }
 
 /// Append-only log of inventory section mutations (who changed what).

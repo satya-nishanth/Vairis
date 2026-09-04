@@ -6,9 +6,16 @@ import { InventoryList } from '@/components/admin/InventoryList'
 export const dynamic = 'force-dynamic'
 
 export default async function InventoryPage() {
-  const [rows, holders] = await Promise.all([
+  const [rows, holders, soldQtyRows] = await Promise.all([
     prisma.inventoryItem.findMany({
-      include: inventoryItemInclude,
+      include: {
+        ...inventoryItemInclude,
+        sales: {
+          orderBy: { soldAt: 'desc' },
+          take: 1,
+          include: { order: { select: { id: true, contactName: true } } },
+        },
+      },
       orderBy: { updatedAt: 'desc' },
       take: 500,
     }),
@@ -16,23 +23,46 @@ export default async function InventoryPage() {
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
+    prisma.inventorySale.groupBy({
+      by: ['inventoryItemId'],
+      _sum: { qty: true },
+    }),
   ])
+
+  const soldQtyByItem = Object.fromEntries(
+    soldQtyRows.map((s) => [s.inventoryItemId, s._sum.qty ?? 0]),
+  )
 
   const variantIds = rows.map((r) => r.variantId).filter((id): id is string => id != null)
   const liveByVariantId = await getLiveUnitPricesByVariantId(variantIds)
 
-  const serialized = rows.map((r) => ({
-    id: r.id,
-    qtyOnHand: r.qtyOnHand,
-    unitPrice: r.unitPrice != null ? Number(r.unitPrice) : null,
-    liveUnitPrice: r.variantId ? (liveByVariantId[r.variantId] ?? null) : null,
-    customName: r.customName,
-    updatedAt: r.updatedAt.toISOString(),
-    holder: r.holder,
-    product: r.product,
-    variant: r.variant,
-    _count: r._count,
-  }))
+  const serialized = rows.map((r) => {
+    const latest = r.sales[0]
+    return {
+      id: r.id,
+      qtyOnHand: r.qtyOnHand,
+      qtySold: soldQtyByItem[r.id] ?? 0,
+      purchasePrice: r.purchasePrice != null ? Number(r.purchasePrice) : null,
+      soldPrice: r.soldPrice != null ? Number(r.soldPrice) : null,
+      potentialPrice: r.potentialPrice != null ? Number(r.potentialPrice) : null,
+      liveSoldPrice: r.variantId ? (liveByVariantId[r.variantId] ?? null) : null,
+      latestSale: latest
+        ? {
+            qty: latest.qty,
+            soldAt: latest.soldAt.toISOString(),
+            orderId: latest.orderId,
+            unlinkedOrderLabel: latest.unlinkedOrderLabel,
+            order: latest.order,
+          }
+        : null,
+      customName: r.customName,
+      updatedAt: r.updatedAt.toISOString(),
+      holder: r.holder,
+      product: r.product,
+      variant: r.variant,
+      _count: r._count,
+    }
+  })
 
   return (
     <div className="admin-page admin-page--inventory">

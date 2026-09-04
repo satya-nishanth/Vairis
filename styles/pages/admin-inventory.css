@@ -57,7 +57,8 @@
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6b7280;
+  color: #111827;
+  font-weight: 700;
   margin-bottom: 4px;
 }
 
@@ -116,6 +117,47 @@
 .inv-badge--unlinked {
   background: #fffbeb;
   color: #b45309;
+}
+
+.inv-badge--instock {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.inv-badge--sold {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.inv-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: #032b24;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inv-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.inv-modal {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
 }
 
 .inv-card {

@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
-import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import { calculatePrice, sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
@@ -65,6 +65,21 @@ const manualOrderSchema = z.object({
       }),
     )
     .min(1),
+  /**
+   * Optional selling-price components (order totals). Stored on the first
+   * order item as priceBreakdown. Purchase/cost stays finance-only.
+   */
+  sellingBreakdown: z
+    .object({
+      gold: z.number().min(0).max(100000000),
+      diamonds: z.number().min(0).max(100000000),
+      stones: z.number().min(0).max(100000000),
+      making: z.number().min(0).max(100000000),
+      wastage: z.number().min(0).max(100000000),
+      delivery: z.number().min(0).max(100000000),
+      gst: z.number().min(0).max(100000000),
+    })
+    .optional(),
 })
 
 /**
@@ -145,11 +160,32 @@ export async function POST(req: NextRequest) {
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
-  const itemRows = d.items.map((i) => {
+  const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
     const rate = rateMap[v.metalType]
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
-    if (rate != null) {
+
+    const manual = d.sellingBreakdown
+    const manualTotal =
+      manual != null
+        ? manual.gold +
+          manual.diamonds +
+          manual.stones +
+          manual.making +
+          manual.wastage +
+          manual.delivery +
+          manual.gst
+        : 0
+
+    if (index === 0 && manual != null && manualTotal > 0) {
+      priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
+        quantity: i.quantity,
+        goldRatePerGram: rate ?? 0,
+        weightGrams: Number(v.weightGrams),
+        metalType: v.metalType,
+        vaLabel: pricingConfig.vaLabel,
+      })
+    } else if (rate != null) {
       const breakdown = calculatePrice(
         {
           weightGrams: v.weightGrams.toString(),
@@ -293,7 +329,10 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { orderId: result.order.id, ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}) },
+    {
+      orderId: result.order.id,
+      ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}),
+    },
     { status: 201 },
   )
 }

@@ -66,12 +66,25 @@ export async function getLiveUnitPricesByVariantId(
   return out
 }
 
-export function effectiveInventoryUnitPrice(
-  unitPrice: number | null,
+export function effectiveInventorySoldPrice(
+  soldPrice: number | null,
   variantId: string | null,
   liveByVariantId: Record<string, number>,
 ): number | null {
-  if (unitPrice != null) return unitPrice
+  if (soldPrice != null) return soldPrice
   if (variantId && liveByVariantId[variantId] != null) return liveByVariantId[variantId]
+  return null
+}
+
+/** Header KPI unit price: potential → live catalogue → purchase. */
+export function effectiveInventoryHeaderPrice(
+  potentialPrice: number | null,
+  purchasePrice: number | null,
+  variantId: string | null,
+  liveByVariantId: Record<string, number>,
+): number | null {
+  if (potentialPrice != null) return potentialPrice
+  if (variantId && liveByVariantId[variantId] != null) return liveByVariantId[variantId]
+  if (purchasePrice != null) return purchasePrice
   return null
 }

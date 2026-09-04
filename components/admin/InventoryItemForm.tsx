@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { InventoryMarkSoldDialog } from '@/components/admin/InventoryMarkSoldDialog'
+import { inventoryDisplayName } from '@/lib/inventory'
 
 export type VariantOption = {
   variantId: string
@@ -15,7 +17,9 @@ export type HolderOption = { id: string; name: string }
 export type InventoryEditRow = {
   id: string
   qtyOnHand: number
-  unitPrice: number | null
+  purchasePrice: number | null
+  soldPrice: number | null
+  potentialPrice: number | null
   customName: string | null
   customDescription: string | null
   metalPurity: string | null
@@ -30,6 +34,13 @@ export type InventoryEditRow = {
     qty: number
     createdAt: string
     order: { id: string; contactName: string; status: string }
+  }[]
+  sales?: {
+    id: string
+    qty: number
+    soldAt: string
+    unlinkedOrderLabel: string | null
+    order: { id: string; contactName: string } | null
   }[]
 }
 
@@ -53,8 +64,14 @@ export function InventoryItemForm({
   const [metalPurity, setMetalPurity] = useState(initial?.metalPurity ?? '')
   const [weightGrams, setWeightGrams] = useState(initial?.weightGrams ?? '')
   const [qtyOnHand, setQtyOnHand] = useState(String(initial?.qtyOnHand ?? 1))
-  const [unitPrice, setUnitPrice] = useState(
-    initial?.unitPrice != null ? String(initial.unitPrice) : '',
+  const [purchasePrice, setPurchasePrice] = useState(
+    initial?.purchasePrice != null ? String(initial.purchasePrice) : '',
+  )
+  const [soldPrice, setSoldPrice] = useState(
+    initial?.soldPrice != null ? String(initial.soldPrice) : '',
+  )
+  const [potentialPrice, setPotentialPrice] = useState(
+    initial?.potentialPrice != null ? String(initial.potentialPrice) : '',
   )
   const [holderId, setHolderId] = useState(initial?.holderId ?? holders[0]?.id ?? '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
@@ -65,6 +82,7 @@ export function InventoryItemForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [livePrice, setLivePrice] = useState<number | null>(null)
+  const [markSoldOpen, setMarkSoldOpen] = useState(false)
 
   const selectedVariant = useMemo(
     () => variantOptions.find((v) => v.variantId === variantId) ?? null,
@@ -80,7 +98,7 @@ export function InventoryItemForm({
     setVariantId(v.variantId)
     setPickerSearch(v.label)
     setCataloguePickerOpen(false)
-    setUnitPrice('')
+    setSoldPrice('')
     setError(null)
   }
 
@@ -140,10 +158,16 @@ export function InventoryItemForm({
     }
     setSaving(true)
     setError(null)
-    const parsedUnitPrice =
-      unitPrice.trim() === '' ? null : Number(unitPrice)
-    if (parsedUnitPrice != null && (!Number.isFinite(parsedUnitPrice) || parsedUnitPrice <= 0)) {
-      setError('Enter a valid price per piece')
+    const parsedPurchase =
+      purchasePrice.trim() === '' ? null : Number(purchasePrice)
+    const parsedSold = soldPrice.trim() === '' ? null : Number(soldPrice)
+    const parsedPotential = potentialPrice.trim() === '' ? null : Number(potentialPrice)
+    if (
+      (parsedPurchase != null && (!Number.isFinite(parsedPurchase) || parsedPurchase <= 0)) ||
+      (parsedSold != null && (!Number.isFinite(parsedSold) || parsedSold <= 0)) ||
+      (parsedPotential != null && (!Number.isFinite(parsedPotential) || parsedPotential <= 0))
+    ) {
+      setError('Enter valid purchase, potential, and sold prices')
       setSaving(false)
       return
     }
@@ -153,7 +177,9 @@ export function InventoryItemForm({
           ? {
               variantId,
               qtyOnHand: Number(qtyOnHand),
-              unitPrice: parsedUnitPrice,
+              purchasePrice: parsedPurchase,
+              soldPrice: parsedSold,
+              potentialPrice: parsedPotential,
               holderId,
               notes: notes || null,
             }
@@ -163,7 +189,9 @@ export function InventoryItemForm({
               metalPurity: metalPurity || null,
               weightGrams: weightGrams ? Number(weightGrams) : null,
               qtyOnHand: Number(qtyOnHand),
-              unitPrice: parsedUnitPrice,
+              purchasePrice: parsedPurchase,
+              soldPrice: parsedSold,
+              potentialPrice: parsedPotential,
               holderId,
               notes: notes || null,
               ...(linkVariantId ? { linkVariantId } : {}),
@@ -176,7 +204,9 @@ export function InventoryItemForm({
             metalPurity: metalPurity || undefined,
             weightGrams: weightGrams ? Number(weightGrams) : undefined,
             qtyOnHand: Number(qtyOnHand),
-            unitPrice: parsedUnitPrice,
+            purchasePrice: parsedPurchase,
+            soldPrice: parsedSold,
+            potentialPrice: parsedPotential,
             holderId,
             notes: notes || undefined,
           }
@@ -189,13 +219,15 @@ export function InventoryItemForm({
           body: JSON.stringify(body),
         },
       )
-      const data = await res.json()
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
-        setError(data.error ?? 'Could not save')
+        setError(data.error ?? `Could not save (${res.status})`)
         return
       }
       router.push('/admin/inventory')
       router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save')
     } finally {
       setSaving(false)
     }
@@ -204,9 +236,9 @@ export function InventoryItemForm({
   async function remove() {
     if (!initial || !confirm('Delete this inventory line?')) return
     const res = await fetch(`/api/admin/inventory/items/${initial.id}`, { method: 'DELETE' })
-    const data = await res.json()
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
     if (!res.ok) {
-      setError(data.error ?? 'Could not delete')
+      setError(data.error ?? `Could not delete (${res.status})`)
       return
     }
     router.push('/admin/inventory')
@@ -403,7 +435,7 @@ export function InventoryItemForm({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
         <div className="inv-field">
           <label>Quantity on hand</label>
           <input
@@ -416,26 +448,57 @@ export function InventoryItemForm({
           />
         </div>
         <div className="inv-field">
+          <label>Purchase price (₹, optional)</label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={purchasePrice}
+            onChange={(e) => setPurchasePrice(e.target.value)}
+            placeholder="Cost per piece"
+          />
+        </div>
+        <div className="inv-field">
+          <label>Potential price (₹, optional)</label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={potentialPrice}
+            onChange={(e) => setPotentialPrice(e.target.value)}
+            placeholder="Expected sale price"
+          />
+          {usesCataloguePricing && (
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '4px 0 0' }}>
+              {potentialPrice.trim() === ''
+                ? livePrice != null
+                  ? `Header uses live ₹${livePrice.toLocaleString('en-IN')}, then purchase`
+                  : 'Header falls back to purchase when unset'
+                : 'Used for inventory header valuation'}
+            </p>
+          )}
+        </div>
+        <div className="inv-field">
           <label>
             {usesCataloguePricing
-              ? 'Override price per piece (₹, optional)'
-              : 'Price per piece (₹, optional)'}
+              ? 'Sold price override (₹, optional)'
+              : 'Sold price (₹, optional)'}
           </label>
           <input
             type="number"
             min={0}
             step={1}
-            value={unitPrice}
-            onChange={(e) => setUnitPrice(e.target.value)}
+            value={soldPrice}
+            onChange={(e) => setSoldPrice(e.target.value)}
             placeholder={usesCataloguePricing ? 'Leave blank for live price' : 'e.g. 85000'}
           />
           {usesCataloguePricing && (
             <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '4px 0 0' }}>
               {livePrice != null
-                ? unitPrice.trim() === ''
-                  ? `Using live catalogue price: ₹${livePrice.toLocaleString('en-IN')}`
+                ? soldPrice.trim() === ''
+                  ? `Using live catalogue sold price: ₹${livePrice.toLocaleString('en-IN')}`
                   : `Live catalogue price: ₹${livePrice.toLocaleString('en-IN')} — your entry overrides this`
-                : 'Live price unavailable — enter a price or check gold rates'}
+                : 'Live sold price unavailable — enter a price or check gold rates'}
             </p>
           )}
         </div>
@@ -455,6 +518,27 @@ export function InventoryItemForm({
         <label>Notes (optional)</label>
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
+
+      {isEdit && initial?.sales && initial.sales.length > 0 && (
+        <div style={{ marginTop: 16, fontSize: '0.8125rem' }}>
+          <strong>Marked sold</strong>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {initial.sales.map((s) => (
+              <li key={s.id}>
+                {s.qty} unit(s) on {new Date(s.soldAt).toLocaleDateString('en-IN')} →{' '}
+                {s.order ? (
+                  <a href={`/admin/orders/${s.order.id}`}>{s.order.contactName}</a>
+                ) : (
+                  <span>
+                    {s.unlinkedOrderLabel}{' '}
+                    <span style={{ color: '#9ca3af' }}>(not linked)</span>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isEdit && initial?.allocations && initial.allocations.length > 0 && (
         <div style={{ marginTop: 16, fontSize: '0.8125rem' }}>
@@ -483,6 +567,15 @@ export function InventoryItemForm({
         <button type="button" className="admin-btn admin-btn--secondary" onClick={() => router.back()}>
           Cancel
         </button>
+        {isEdit && Number(qtyOnHand) > 0 && (
+          <button
+            type="button"
+            className="admin-btn admin-btn--secondary"
+            onClick={() => setMarkSoldOpen(true)}
+          >
+            Mark sold
+          </button>
+        )}
         {isEdit && (
           <button
             type="button"
@@ -494,6 +587,20 @@ export function InventoryItemForm({
           </button>
         )}
       </div>
+
+      {isEdit && initial && (
+        <InventoryMarkSoldDialog
+          itemId={initial.id}
+          itemLabel={inventoryDisplayName({
+            customName: initial.customName,
+            product: initial.product,
+            variant: initial.variant,
+          })}
+          qtyOnHand={Number(qtyOnHand)}
+          open={markSoldOpen}
+          onClose={() => setMarkSoldOpen(false)}
+        />
+      )}
     </form>
   )
 }
