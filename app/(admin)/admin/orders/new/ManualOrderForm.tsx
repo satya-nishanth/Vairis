@@ -147,6 +147,7 @@ export function ManualOrderForm({
   const [lines, setLines] = useState<Line[]>([])
   const [paid, setPaid] = useState(true)
   const [paymentNote, setPaymentNote] = useState('')
+  const [paymentReceivedAt, setPaymentReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selling, setSelling] = useState<SellingBreakdown>(emptySelling)
@@ -455,6 +456,7 @@ export function ManualOrderForm({
         ...address,
         initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
         paymentNote: paymentNote || undefined,
+        paymentReceivedAt: paid ? paymentReceivedAt || undefined : undefined,
         items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId }) => ({
           variantId,
           quantity,
@@ -1260,6 +1262,18 @@ export function ManualOrderForm({
           <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
           Payment already received (UPI / bank transfer)
         </label>
+        {paid && (
+          <>
+            <label style={label}>Received On</label>
+            <input
+              style={input}
+              type="date"
+              required
+              value={paymentReceivedAt}
+              onChange={(e) => setPaymentReceivedAt(e.target.value)}
+            />
+          </>
+        )}
         <label style={label}>Payment reference note (shown on the order timeline)</label>
         <input
           style={input}

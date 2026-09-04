@@ -50,6 +50,11 @@ const manualOrderSchema = z.object({
   initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
   /** e.g. "Paid via GPay ref 12345" — lands in the order timeline. */
   paymentNote: z.string().trim().max(300).optional(),
+  /** Calendar date money was received (YYYY-MM-DD) — invoice "Received On". */
+  paymentReceivedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD required')
+    .optional(),
   /** When set, this order converts the quotation (must be QUOTED) inside the same transaction. */
   quotationId: z.string().trim().optional(),
   items: z
@@ -257,6 +262,10 @@ export async function POST(req: NextRequest) {
           state: d.state,
           pincode: d.pincode,
           quotationId: d.quotationId || null,
+          paymentReceivedAt:
+            d.initialStatus === 'PAYMENT_CONFIRMED' && d.paymentReceivedAt
+              ? new Date(`${d.paymentReceivedAt}T12:00:00.000Z`)
+              : null,
           items: {
             create: itemRows,
           },

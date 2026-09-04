@@ -277,6 +277,8 @@ model Order {
   invoices             Invoice[]
   inventoryAllocations InventoryAllocation[]
   inventorySales       InventorySale[]
+  // Offline/manual settlement date — preferred invoice Received On when set.
+  paymentReceivedAt    DateTime?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 }

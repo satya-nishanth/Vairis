@@ -65,7 +65,7 @@ export function InvoicePrintView({
             <span>{payload.payment.method || '—'}</span>
             <span>Reference</span>
             <span>{payload.payment.reference || '—'}</span>
-            <span>Received</span>
+            <span>Received On</span>
             <span>{payload.payment.received ? formatDate(payload.payment.received) : '—'}</span>
             <span>Status</span>
             <span className={paid ? 'inv-doc__gold' : ''}>{payload.payment.status || '—'}</span>
