@@ -1135,7 +1135,7 @@ export function ManualOrderForm({
                     <input
                       type="number"
                       min={0}
-                      step={1}
+                      step="0.01"
                       inputMode="decimal"
                       value={selling[f.key]}
                       onChange={(e) => setSelling((prev) => ({ ...prev, [f.key]: e.target.value }))}
