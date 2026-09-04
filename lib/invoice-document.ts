@@ -476,11 +476,14 @@ export type PrefillOrder = {
   city: string
   state: string
   pincode: string
+  /** Offline/manual settlement date (invoice Received On). */
+  paymentReceivedAt?: Date | string | null
   user: { name: string; email: string }
   payment: { razorpayPaymentId: string | null; razorpayOrderId: string; status: string; createdAt: Date } | null
   /** Present when this is a split child — payment may live on the parent. */
   parent?: {
     payment: { razorpayPaymentId: string | null; razorpayOrderId: string; status: string; createdAt: Date } | null
+    paymentReceivedAt?: Date | string | null
   } | null
   items: Array<{
     productName: string
@@ -528,6 +531,17 @@ function resolvedPayment(order: PrefillOrder): PrefillOrder['payment'] {
   return order.payment ?? order.parent?.payment ?? null
 }
 
+/** Manual `paymentReceivedAt`, else gateway Payment.createdAt (YYYY-MM-DD). */
+function resolvedReceivedOn(order: PrefillOrder): string {
+  const raw = order.paymentReceivedAt ?? order.parent?.paymentReceivedAt ?? null
+  if (raw) {
+    const d = raw instanceof Date ? raw : new Date(raw)
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+  }
+  const payment = resolvedPayment(order)
+  return payment ? payment.createdAt.toISOString().slice(0, 10) : ''
+}
+
 function stonesFromSnapshot(snap: OrderItemPriceSnapshot): InvoiceStoneRow[] {
   return (snap.stoneLines ?? []).map((s) => ({
     label: s.typeLabel || 'Diamond',
@@ -555,9 +569,10 @@ export function lineFromOrderItem(
   if (snap) {
     const wastagePct =
       snap.goldValue > 0 ? (snap.goldVA / snap.goldValue) * 100 : Number(config.vaGoldPct)
+    const snapStones = stonesFromSnapshot(snap)
     const stones =
-      stonesFromSnapshot(snap).length > 0
-        ? stonesFromSnapshot(snap)
+      snapStones.length > 0
+        ? snapStones
         : stoneRowsFromInputs(toStoneInputs(v.product.stones), withExchange)
 
     return recomputeLine(
@@ -574,13 +589,16 @@ export function lineFromOrderItem(
         goldValue: Number(snap.goldValue),
         wastagePct,
         wastage: Number(snap.goldVA),
-        makingPerGram: Number(v.makingChargePerGram),
-        flatMaking: Number(v.flatMakingCharge),
+        // Snapshot stores total making — prefer flat so unlock matches order amounts
+        // rather than catalogue ₹/g (can disagree on manual selling breakdowns).
+        makingPerGram: 0,
+        flatMaking: Number(snap.making),
         making: Number(snap.making),
         stones,
         stoneValue: Number(snap.stoneValue),
         miscCharges: Number(snap.miscCharges),
-        legacyStoneCharges: 0,
+        legacyStoneCharges:
+          Number(snap.stoneValue) > 0 && snapStones.length === 0 ? Number(snap.stoneValue) : 0,
         leadIncentive: 0,
         itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
         makingPlusWastage: Number(snap.making) + Number(snap.goldVA),
@@ -631,9 +649,9 @@ export function payloadFromOrder(
     billedTo: party,
     shippedTo: { ...party },
     payment: {
-      method: payment ? 'Online' : '',
+      method: payment ? 'Online' : paid ? 'Offline' : '',
       reference: payment?.razorpayPaymentId || payment?.razorpayOrderId || '',
-      received: payment ? payment.createdAt.toISOString().slice(0, 10) : '',
+      received: resolvedReceivedOn(order),
       status: paid ? 'Paid in full' : 'Unpaid',
     },
     invoiceDate: new Date().toISOString().slice(0, 10),
