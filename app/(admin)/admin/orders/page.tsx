@@ -38,6 +38,7 @@ const ALL_STATUS_KEYS = Object.keys(ORDER_STATUS_META) as OrderStatus[]
 const itemSelect = {
   productName: true,
   quantity: true,
+  priceBreakdown: true,
   variant: { select: { product: { select: { images: true } } } },
 } satisfies Prisma.OrderItemSelect
 
@@ -85,7 +86,48 @@ function frontImage(images: string[]): string | null {
 type RawItem = {
   productName: string
   quantity: number
+  priceBreakdown: unknown
   variant: { product: { images: string[] } }
+}
+
+type ChannelFilter = 'all' | 'manual' | 'online'
+type GstFilter = 'all' | 'yes' | 'no'
+
+function resolveChannel(param: string | undefined): ChannelFilter {
+  if (param === 'manual' || param === 'online') return param
+  return 'all'
+}
+
+function resolveGst(param: string | undefined): GstFilter {
+  if (param === 'yes' || param === 'no') return param
+  return 'all'
+}
+
+function ordersHref(parts: {
+  status?: string
+  channel?: ChannelFilter
+  gst?: GstFilter
+}): string {
+  const sp = new URLSearchParams()
+  if (parts.status && parts.status !== 'ALL') sp.set('status', parts.status)
+  if (parts.channel && parts.channel !== 'all') sp.set('channel', parts.channel)
+  if (parts.gst && parts.gst !== 'all') sp.set('gst', parts.gst)
+  const q = sp.toString()
+  return q ? `/admin/orders?${q}` : '/admin/orders'
+}
+
+function itemHasGst(breakdown: unknown): boolean {
+  if (!breakdown || typeof breakdown !== 'object') return false
+  const gst = (breakdown as { gst?: unknown }).gst
+  return typeof gst === 'number' && Number.isFinite(gst) && gst > 0
+}
+
+function orderGroupHasGst(o: {
+  items: { priceBreakdown: unknown }[]
+  children?: { items: { priceBreakdown: unknown }[] }[]
+}): boolean {
+  if (o.items.some((i) => itemHasGst(i.priceBreakdown))) return true
+  return (o.children ?? []).some((c) => c.items.some((i) => itemHasGst(i.priceBreakdown)))
 }
 
 type RawPayment = {
@@ -202,33 +244,53 @@ function mapRow(
 /**
  * Root orders only, with children nested.
  * Status filter: root matches OR any child matches (parent still shown with all children).
+ * Channel: Payment row present = online; absent = manual/offline.
+ * GST: any line (or child line) with priceBreakdown.gst > 0.
  */
-async function loadOrderGroups(whereStatus: OrderStatus | { in: OrderStatus[] } | undefined) {
-  if (!whereStatus) {
-    return prisma.order.findMany({
-      where: { parentOrderId: null },
+async function loadOrderGroups(opts: {
+  whereStatus: OrderStatus | { in: OrderStatus[] } | undefined
+  channel: ChannelFilter
+  gst: GstFilter
+}) {
+  const paymentWhere: Prisma.OrderWhereInput =
+    opts.channel === 'manual'
+      ? { payment: { is: null } }
+      : opts.channel === 'online'
+        ? { payment: { isNot: null } }
+        : {}
+
+  let rows
+  if (!opts.whereStatus) {
+    rows = await prisma.order.findMany({
+      where: { parentOrderId: null, ...paymentWhere },
       include: orderInclude,
       orderBy: { createdAt: 'desc' },
       take: 200,
     })
+  } else {
+    const matching = await prisma.order.findMany({
+      where: { status: opts.whereStatus },
+      select: { id: true, parentOrderId: true },
+      take: 300,
+    })
+    const rootIds = [...new Set(matching.map((m) => m.parentOrderId ?? m.id))]
+    if (rootIds.length === 0) return []
+
+    rows = await prisma.order.findMany({
+      where: { id: { in: rootIds }, parentOrderId: null, ...paymentWhere },
+      include: orderInclude,
+      orderBy: { createdAt: 'desc' },
+    })
   }
 
-  const matching = await prisma.order.findMany({
-    where: { status: whereStatus },
-    select: { id: true, parentOrderId: true },
-    take: 300,
-  })
-  const rootIds = [...new Set(matching.map((m) => m.parentOrderId ?? m.id))]
-  if (rootIds.length === 0) return []
-
-  return prisma.order.findMany({
-    where: { id: { in: rootIds }, parentOrderId: null },
-    include: orderInclude,
-    orderBy: { createdAt: 'desc' },
+  if (opts.gst === 'all') return rows
+  return rows.filter((o) => {
+    const has = orderGroupHasGst(o)
+    return opts.gst === 'yes' ? has : !has
   })
 }
 
-async function loadKpis(): Promise<OrdersKpi[]> {
+async function loadKpis(channel: ChannelFilter, gst: GstFilter): Promise<OrdersKpi[]> {
   // Count every work unit (root singles + child deliveries). Split parents
   // use SPLIT_INTO_DELIVERIES, so they never inflate these buckets.
   const [needsAction, inCrafting, outForDelivery] = await Promise.all([
@@ -242,19 +304,19 @@ async function loadKpis(): Promise<OrdersKpi[]> {
       key: 'PAYMENT_CONFIRMED',
       label: 'Needs action',
       count: needsAction,
-      href: '/admin/orders?status=PAYMENT_CONFIRMED',
+      href: ordersHref({ status: 'PAYMENT_CONFIRMED', channel, gst }),
     },
     {
       key: 'PREPARING',
       label: 'In crafting',
       count: inCrafting,
-      href: '/admin/orders?status=PREPARING',
+      href: ordersHref({ status: 'PREPARING', channel, gst }),
     },
     {
       key: 'OUT_FOR_DELIVERY',
       label: 'Out for delivery',
       count: outForDelivery,
-      href: '/admin/orders?status=OUT_FOR_DELIVERY',
+      href: ordersHref({ status: 'OUT_FOR_DELIVERY', channel, gst }),
     },
   ]
 }
@@ -263,17 +325,22 @@ async function loadKpis(): Promise<OrdersKpi[]> {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; channel?: string; gst?: string }>
 }) {
-  const { status } = await searchParams
-  const { activeChip, whereStatus, filterLabel } = resolveFilter(status)
+  const sp = await searchParams
+  const { activeChip, whereStatus, filterLabel } = resolveFilter(sp.status)
+  const channel = resolveChannel(sp.channel)
+  const gst = resolveGst(sp.gst)
 
   let ordersRaw: Awaited<ReturnType<typeof loadOrderGroups>> = []
   let kpis: OrdersKpi[] = []
   let dbMissing = false
 
   try {
-    ;[ordersRaw, kpis] = await Promise.all([loadOrderGroups(whereStatus), loadKpis()])
+    ;[ordersRaw, kpis] = await Promise.all([
+      loadOrderGroups({ whereStatus, channel, gst }),
+      loadKpis(channel, gst),
+    ])
   } catch (err) {
     console.error('[admin/orders] query failed', err)
     dbMissing = true
@@ -284,7 +351,7 @@ export default async function AdminOrdersPage({
   const chips = PRIMARY_CHIPS.map((c) => ({
     key: c.key,
     label: c.label,
-    href: c.key === 'ALL' ? '/admin/orders' : `/admin/orders?status=${c.key}`,
+    href: ordersHref({ status: c.key, channel, gst }),
   }))
 
   const primaryKeys = new Set(
@@ -293,8 +360,26 @@ export default async function AdminOrdersPage({
   const moreStatuses = ALL_STATUS_KEYS.filter((s) => !primaryKeys.has(s)).map((s) => ({
     key: s,
     label: ORDER_STATUS_META[s].label,
-    href: `/admin/orders?status=${s}`,
+    href: ordersHref({ status: s, channel, gst }),
   }))
+
+  const channelChips = [
+    { key: 'all', label: 'All channels', href: ordersHref({ status: activeChip, channel: 'all', gst }) },
+    { key: 'manual', label: 'Manual', href: ordersHref({ status: activeChip, channel: 'manual', gst }) },
+    { key: 'online', label: 'Online', href: ordersHref({ status: activeChip, channel: 'online', gst }) },
+  ]
+  const gstChips = [
+    { key: 'all', label: 'All tax', href: ordersHref({ status: activeChip, channel, gst: 'all' }) },
+    { key: 'yes', label: 'GST', href: ordersHref({ status: activeChip, channel, gst: 'yes' }) },
+    { key: 'no', label: 'No GST', href: ordersHref({ status: activeChip, channel, gst: 'no' }) },
+  ]
+
+  const extraLabels = [
+    channel === 'manual' ? 'Manual' : channel === 'online' ? 'Online' : null,
+    gst === 'yes' ? 'GST' : gst === 'no' ? 'No GST' : null,
+    filterLabel,
+  ].filter(Boolean) as string[]
+  const combinedFilterLabel = extraLabels.length ? extraLabels.join(' · ') : null
 
   return (
     <div className="admin-page admin-page--orders">
@@ -330,7 +415,11 @@ export default async function AdminOrdersPage({
           chips={chips}
           activeChip={activeChip}
           moreStatuses={moreStatuses}
-          filterLabel={filterLabel}
+          channelChips={channelChips}
+          activeChannel={channel}
+          gstChips={gstChips}
+          activeGst={gst}
+          filterLabel={combinedFilterLabel}
           kpis={kpis}
         />
       )}
