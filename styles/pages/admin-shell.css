@@ -254,6 +254,419 @@
   max-width: 100%;
 }
 
+/* —— Company Audit (Finance) —— */
+.company-audit__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 24px;
+  margin-bottom: 16px;
+}
+
+.company-audit__period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.company-audit__mode-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.company-audit__mode-pills button {
+  appearance: none;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.company-audit__mode-pills button.is-active {
+  border-color: #032b24;
+  background: #e8f2ef;
+  color: #032b24;
+}
+
+.company-audit__period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8125rem;
+}
+
+.company-audit__period label {
+  color: #6b7280;
+}
+
+.company-audit__period input[type='month'] {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  background: #fff;
+}
+
+.company-audit__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.company-audit__hint {
+  margin: 0 0 16px;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.company-audit__tabs {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.company-audit__tabs button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 8px 2px 10px;
+  font-size: 0.875rem;
+  color: #6b7280;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.company-audit__tabs button.is-active {
+  color: #111827;
+  font-weight: 600;
+  border-bottom-color: #032b24;
+}
+
+.company-audit__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.company-audit__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.company-audit__kpi {
+  display: block;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.company-audit__kpi:hover {
+  border-color: #032b24;
+}
+
+.company-audit__kpi-label {
+  font-size: 0.6875rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.company-audit__kpi-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 4px;
+  color: #111827;
+}
+
+.company-audit__kpi-note {
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.company-audit__grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 899px) {
+  .company-audit__grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.company-audit__panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.company-audit__panel h2 {
+  margin: 0 0 4px;
+  font-size: 0.9375rem;
+}
+
+.company-audit__sub {
+  margin: 0 0 14px;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.company-audit__bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.company-audit__bar-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.8125rem;
+  margin-bottom: 4px;
+}
+
+.company-audit__bar-track {
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.company-audit__bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 2px;
+}
+
+.company-audit__bar-sub {
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  margin-top: 3px;
+}
+
+.company-audit__bridge {
+  margin: 0;
+}
+
+.company-audit__bridge > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.875rem;
+}
+
+.company-audit__bridge dt {
+  color: #4b5563;
+  margin: 0;
+}
+
+.company-audit__bridge dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.company-audit__bridge .is-mid dd,
+.company-audit__bridge .is-total dd {
+  font-weight: 700;
+  color: #032b24;
+}
+
+.company-audit__bridge .is-total {
+  border-bottom: none;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.company-audit__footnote {
+  margin: 12px 0 0;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.company-audit__link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 0.8125rem;
+  color: #032b24;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.company-audit__link:hover {
+  text-decoration: underline;
+}
+
+.company-audit__books {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 767px) {
+  .company-audit__books {
+    grid-template-columns: 1fr;
+  }
+}
+
+.company-audit__book {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.company-audit__book h3 {
+  margin: 0 0 10px;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+}
+
+.company-audit__book dl {
+  margin: 0;
+}
+
+.company-audit__book dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.875rem;
+  padding: 4px 0;
+}
+
+.company-audit__book dt {
+  color: #6b7280;
+  margin: 0;
+}
+
+.company-audit__book dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.company-audit__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #f3f8f6;
+  border: 1px solid #d1e7e0;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: #374151;
+}
+
+.company-audit__legend strong {
+  color: #032b24;
+  margin-right: 4px;
+}
+
+.company-audit__table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.company-audit__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.company-audit__table th,
+.company-audit__table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: top;
+}
+
+.company-audit__table th {
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+
+.company-audit__sev {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.company-audit__group-row {
+  background: #f9fafb;
+}
+
+.company-audit__group-row:hover {
+  background: #f3f4f6;
+}
+
+.company-audit__group-row td {
+  border-bottom-color: #e5e7eb;
+}
+
+.company-audit__chevron {
+  display: inline-block;
+  width: 1em;
+  color: #6b7280;
+}
+
+.company-audit__child-row td {
+  background: #fff;
+}
+
+.company-audit__child-row:hover td {
+  background: #fafafa;
+}
+
 .admin-page--orders {
   width: 100%;
   max-width: 100%;
