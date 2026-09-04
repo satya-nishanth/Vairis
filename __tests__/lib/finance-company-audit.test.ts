@@ -43,7 +43,7 @@ describe('summarizeInventoryStock', () => {
 })
 
 describe('buildCompanyAuditExceptions', () => {
-  it('flags sheet mismatches, orphan inflows, missing purchase, large outflows', () => {
+  it('flags sheet mismatches, orphan inflows, missing valuation, large outflows', () => {
     const exceptions = buildCompanyAuditExceptions({
       mismatches: [
         {
@@ -99,12 +99,12 @@ describe('buildCompanyAuditExceptions', () => {
       expect.arrayContaining([
         'sheet_inflow_mismatch',
         'inflow_no_order',
-        'stock_missing_purchase',
         'stock_missing_valuation',
         'large_non_order_outflow',
         'sold_orphan',
       ]),
     )
+    expect(exceptions.map((e) => e.kind)).not.toContain('stock_missing_purchase')
     expect(exceptions[0].severity).toBe('red')
   })
 })

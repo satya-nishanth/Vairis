@@ -62,10 +62,6 @@ const EXCEPTION_GROUP_META: Record<
     summary: (n) => `${n} inflow${n === 1 ? '' : 's'} with no order link`,
     unit: 'inflow',
   },
-  stock_missing_purchase: {
-    summary: (n) => `${n} stock line${n === 1 ? '' : 's'} missing purchase price`,
-    unit: 'item',
-  },
   stock_missing_valuation: {
     summary: (n) => `${n} stock line${n === 1 ? '' : 's'} missing valuation`,
     unit: 'item',
@@ -421,7 +417,9 @@ export function CompanyAuditClient({
           <div className="company-audit__grid2">
             <section className="company-audit__panel">
               <h2>Where money sits</h2>
-              <p className="company-audit__sub">Net by account for {displayPeriod}</p>
+              <p className="company-audit__sub">
+                Calculated from transactions · Net by account for {displayPeriod}
+              </p>
               {cashByAccount.length === 0 ? (
                 <p style={{ color: MUTED, fontSize: '0.8125rem' }}>No accounts yet.</p>
               ) : (
@@ -459,7 +457,9 @@ export function CompanyAuditClient({
 
             <section className="company-audit__panel">
               <h2>P&amp;L bridge</h2>
-              <p className="company-audit__sub">Trading basis · {displayPeriod}</p>
+              <p className="company-audit__sub">
+                Calculated from order sheets · Trading basis · {displayPeriod}
+              </p>
               <dl className="company-audit__bridge">
                 <div>
                   <dt>Order income</dt>
@@ -499,6 +499,7 @@ export function CompanyAuditClient({
           <div className="company-audit__books">
             <section className="company-audit__book">
               <h3>Cash</h3>
+              <p className="company-audit__book-desc">From transactions</p>
               <dl>
                 <div>
                   <dt>Inflows</dt>
@@ -516,6 +517,7 @@ export function CompanyAuditClient({
             </section>
             <section className="company-audit__book">
               <h3>Orders</h3>
+              <p className="company-audit__book-desc">From order sheets</p>
               <dl>
                 <div>
                   <dt>Selling</dt>
@@ -533,6 +535,7 @@ export function CompanyAuditClient({
             </section>
             <section className="company-audit__book">
               <h3>Stock</h3>
+              <p className="company-audit__book-desc">From inventory</p>
               <dl>
                 <div>
                   <dt>@ cost</dt>

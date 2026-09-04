@@ -187,17 +187,6 @@ export function buildCompanyAuditExceptions(input: {
 
   for (const r of input.stockRows) {
     if (r.qtyOnHand <= 0) continue
-    if (r.purchasePrice == null) {
-      out.push({
-        id: `stock-purchase-${r.id}`,
-        severity: 'amber',
-        kind: 'stock_missing_purchase',
-        title: `Stock missing purchase · ${r.label}`,
-        detail: `${r.qtyOnHand} on hand — set purchase price for cost valuation`,
-        amount: null,
-        href: `/admin/inventory/${r.id}`,
-      })
-    }
     const header = effectiveInventoryHeaderPrice(
       r.potentialPrice,
       r.purchasePrice,
