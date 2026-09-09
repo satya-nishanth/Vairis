@@ -17,5 +17,10 @@
 @import "../styles/pages/auth.css";
 @import "../styles/pages/admin-form.css";
 @import "../styles/pages/admin-shell.css";
+@import "../styles/pages/admin-invoice.css";
+@import "../styles/pages/admin-order-journey.css";
+@import "../styles/pages/admin-orders.css";
+@import "../styles/pages/admin-cost-estimator.css";
+@import "../styles/pages/admin-inventory.css";
 @import "../styles/auth.css";
 @import "../styles/responsive.css";

@@ -1,0 +1,21 @@
+# Daily finance dashboard warnings → Discord (Vercel Hobby has no crons).
+# Repo secrets required: APP_URL, FINANCE_DIGEST_SECRET
+# App env required: FINANCE_DIGEST_SECRET (same value), DISCORD_FINANCE_WEBHOOK_URL,
+#                   NEXT_PUBLIC_APP_URL (links in the message)
+name: Finance Discord digest
+
+on:
+  schedule:
+    # 09:00 IST = 03:30 UTC
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/finance-digest
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.FINANCE_DIGEST_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/admin/finance-digest"

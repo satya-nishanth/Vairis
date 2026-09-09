@@ -8,6 +8,8 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {
     user: { findUnique: jest.fn() },
     productVariant: { findMany: jest.fn() },
+    goldRate: { findMany: jest.fn() },
+    pricingSettings: { findUnique: jest.fn() },
     order: { create: jest.fn() },
     quotation: {
       findUnique: jest.fn(),
@@ -51,6 +53,10 @@ describe('POST /api/admin/orders — quotation conversion', () => {
     ;(prisma.productVariant.findMany as jest.Mock).mockResolvedValue([
       { id: 'v1', product: { name: 'Bracelet' } },
     ])
+    // No metalType on the mocked variant above, so rateMap[v.metalType] is always undefined —
+    // priceBreakdown calc is skipped regardless of these; just satisfying the route's fetch.
+    ;(prisma.goldRate.findMany as jest.Mock).mockResolvedValue([])
+    ;(prisma.pricingSettings.findUnique as jest.Mock).mockResolvedValue(null)
   })
 
   it('converts a QUOTED quotation and closes its thread', async () => {

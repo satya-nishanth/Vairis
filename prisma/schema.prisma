@@ -90,18 +90,19 @@ model User {
 }
 
 model Address {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  user         User    @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
   label        String? // "Home", "Office"
-  contactName  String  @default("")
-  contactPhone String  @default("")
+  contactName  String   @default("")
+  contactPhone String   @default("")
   line1        String
   line2        String?
   city         String
   state        String
   pincode      String
-  isDefault    Boolean @default(false)
+  country      String   @default("IN") // "IN" = domestic; free text otherwise
+  isDefault    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   @@index([userId])
@@ -144,6 +145,7 @@ model Product {
   wishlists   Wishlist[]
   reviews     Review[]
   collections CollectionProduct[]
+  inventoryItems InventoryItem[]
 }
 
 /// Per-carat diamond pricing — one row per diamond type, two rates each
@@ -176,13 +178,12 @@ model ProductStone {
   @@index([productId, sortOrder])
 }
 
-/// Singleton (id=1). VA = Value Addition — disclosed % line on the price
-/// breakup applied to gold value and stone value. Label admin-editable.
+/// Singleton (id=1). Wastage = disclosed % on gold value only. Label admin-editable.
 model PricingSettings {
   id         Int      @id @default(1)
-  vaGoldPct  Decimal  @default(5)
-  vaStonePct Decimal  @default(5)
-  vaLabel    String   @default("Value Addition")
+  vaGoldPct  Decimal  @default(10)
+  vaStonePct Decimal  @default(0)
+  vaLabel    String   @default("Wastage")
   /// Storefront-wide default for whether prices are shown at all. Many
   /// products (no finalized diamond/gold cost yet) should read
   /// "Price on Request" instead of a computed number — Product.priceVisibility
@@ -212,6 +213,7 @@ model ProductVariant {
   sku                 String      @unique
   cartItems           CartItem[]
   orderItems          OrderItem[]
+  inventoryItems      InventoryItem[]
 }
 
 model GoldRate {
@@ -235,15 +237,15 @@ model CartItem {
 }
 
 model Order {
-  id             String       @id @default(cuid())
-  userId         String
-  user           User         @relation(fields: [userId], references: [id])
-  items          OrderItem[]
-  status         OrderStatus  @default(PAYMENT_PENDING)
-  promoCodeId    String?
-  promoCode      PromoCode?   @relation(fields: [promoCodeId], references: [id])
-  discountAmount Decimal      @default(0)
-  totalAmount   Decimal
+  id                 String        @id @default(cuid())
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  items              OrderItem[]
+  status             OrderStatus   @default(PAYMENT_PENDING)
+  promoCodeId        String?
+  promoCode          PromoCode?    @relation(fields: [promoCodeId], references: [id])
+  discountAmount     Decimal       @default(0)
+  totalAmount        Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
   depositAmount Decimal      @default(0)
@@ -255,6 +257,9 @@ model Order {
   city          String
   state         String
   pincode       String
+  country            String        @default("IN")
+  intlReviewRequired Boolean       @default(false)
+  intlReviewApproved Boolean       @default(false)
   payment       Payment?
   events        OrderEvent[]
   parentOrderId String?
@@ -266,9 +271,13 @@ model Order {
   children      Order[]      @relation("OrderSplit")
   refunds       OrderRefund[]
   notes         OrderNote[]
-  shipments     Shipment[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  shipments            Shipment[]
+  finance              OrderFinance?
+  financeTransactions  FinanceTransactionOrder[]
+  invoices             Invoice[]
+  inventoryAllocations InventoryAllocation[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 }
 
 model OrderEvent {
@@ -289,9 +298,13 @@ model OrderItem {
   variantId    String
   variant      ProductVariant @relation(fields: [variantId], references: [id])
   quantity     Int
+  /// Unit retail total (incl. GST) at create time — same as priceBreakdown.total when formula-priced.
   price        Decimal
+  /// Full pricing snapshot at create time (gold rate, gold/wastage/making/stones/GST). Null on legacy rows. Shape: OrderItemPriceSnapshot in lib/pricing.ts
+  priceBreakdown Json?
   productName  String
   withExchange Boolean        @default(false)
+  inventoryAllocations InventoryAllocation[]
 }
 
 model Payment {
@@ -570,6 +583,29 @@ model CatalogueComment {
   createdAt   DateTime  @default(now())
 }
 
+enum InvoiceStatus {
+  UNPAID
+  PAID
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  orderId      String?
+  order        Order?        @relation(fields: [orderId], references: [id])
+  status       InvoiceStatus @default(UNPAID)
+  /// Full document snapshot: seller, parties, lines, payment, notes.
+  payload      Json
+  taxableValue Decimal
+  gstAmount    Decimal
+  grandTotal   Decimal
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
 // ── Quotations ───────────────────────────────────────────────────────────────
 
 enum QuotationSource {
@@ -623,4 +659,281 @@ model HeroImage {
   updatedAt DateTime @updatedAt
 
   @@map("hero_images")
+}
+
+enum FinancePaidThrough {
+  VAIRIS_BANK
+  PERSONAL_FUNDS
+}
+
+enum FinanceAccountType {
+  PARTNER
+  COMPANY_BANK
+  CASH
+  OTHER
+}
+
+enum FinanceContactType {
+  CUSTOMER
+  VENDOR
+  OTHER
+}
+
+enum FinanceTransactionDirection {
+  INFLOW
+  OUTFLOW
+  TRANSFER
+}
+
+/// Config: wallets / people money can sit with. Email ties login → default account.
+model FinanceAccount {
+  id        String             @id @default(cuid())
+  name      String
+  email     String?            @unique
+  type      FinanceAccountType
+  active    Boolean            @default(true)
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  expensesAsAccount GeneralExpense[]     @relation("ExpenseAccount")
+  orderSheetsPaidTo OrderFinance[]       @relation("OrderPaidToAccount")
+  transactionsHandled FinanceTransaction[] @relation("TxHandledBy")
+  transactionsPaidThrough FinanceTransaction[] @relation("TxPaidThrough")
+  transactionsTransferTo FinanceTransaction[] @relation("TxTransferTo")
+}
+
+/// Config: customers / vendors / other counterparties on transactions.
+model FinanceContact {
+  id        String             @id @default(cuid())
+  name      String
+  type      FinanceContactType @default(OTHER)
+  email     String?
+  phone     String?
+  notes     String?
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  transactions FinanceTransaction[]
+}
+
+/// Config: expense/income categories for cashbook transactions.
+model FinanceCategory {
+  id        String                       @id @default(cuid())
+  name      String
+  direction FinanceTransactionDirection
+  active    Boolean                      @default(true)
+  sortOrder Int                          @default(0)
+  createdAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
+
+  transactions FinanceTransaction[]
+
+  @@unique([name, direction])
+  @@index([direction, active])
+}
+
+/// Operating spend, not tied to an order.
+/// account = who is accountable; paidThrough = which wallet actually moved.
+model GeneralExpense {
+  id          String              @id @default(cuid())
+  date        DateTime
+  description String
+  amount      Decimal
+  paidThrough FinancePaidThrough
+  accountId   String?
+  account     FinanceAccount?     @relation("ExpenseAccount", fields: [accountId], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([date])
+  @@index([accountId])
+}
+
+/// One CP/SP sheet per store Order. Totals = sum of line items.
+/// paidToAccount = where customer cash landed (not profit).
+model OrderFinance {
+  id             String             @id @default(cuid())
+  orderId        String             @unique
+  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paidToAccountId String
+  paidToAccount  FinanceAccount     @relation("OrderPaidToAccount", fields: [paidToAccountId], references: [id])
+  lines          OrderFinanceLine[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([createdAt])
+  @@index([paidToAccountId])
+}
+
+enum FinanceLineKind {
+  DELIVERY
+  GOLD
+  STONES
+  DIAMONDS
+  MAKING_CHARGES
+  WASTAGE_CHARGES
+}
+
+model OrderFinanceLine {
+  id            String           @id @default(cuid())
+  sheetId       String
+  sheet         OrderFinance     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  kind          FinanceLineKind
+  costPrice     Decimal
+  sellingPrice  Decimal
+  sortOrder     Int              @default(0)
+
+  @@index([sheetId])
+}
+
+/// Cashbook row: inflow, outflow, or transfer between wallets.
+/// account = who handled; paidThroughAccount = wallet used (From on transfer).
+/// transferToAccount = To wallet when direction is TRANSFER.
+/// contactId optional; contactName stores selected contact name or free text.
+model FinanceTransaction {
+  id                   String                       @id @default(cuid())
+  date                 DateTime
+  direction            FinanceTransactionDirection
+  amount               Decimal
+  description          String                       @default("")
+  accountId            String
+  account              FinanceAccount               @relation("TxHandledBy", fields: [accountId], references: [id])
+  paidThroughAccountId String
+  paidThroughAccount   FinanceAccount               @relation("TxPaidThrough", fields: [paidThroughAccountId], references: [id])
+  transferToAccountId  String?
+  transferToAccount    FinanceAccount?              @relation("TxTransferTo", fields: [transferToAccountId], references: [id])
+  categoryId           String?
+  category             FinanceCategory?             @relation(fields: [categoryId], references: [id])
+  contactId            String?
+  contact              FinanceContact?              @relation(fields: [contactId], references: [id])
+  contactName          String                       @default("")
+  /// Set when created from payment confirmation (not manual cashbook entry).
+  autoCreated          Boolean                      @default(false)
+  /// false = For review (default for auto-created); true = Reviewed (default for manual).
+  reviewComplete       Boolean                      @default(false)
+  /// Free-text order references when no store order exists to link.
+  unlinkedOrderLabels  String[]                     @default([])
+  orders               FinanceTransactionOrder[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  @@index([date])
+  @@index([accountId])
+  @@index([paidThroughAccountId])
+  @@index([transferToAccountId])
+  @@index([categoryId])
+  @@index([contactId])
+  @@index([autoCreated, reviewComplete, createdAt])
+}
+
+model FinanceTransactionOrder {
+  id            String             @id @default(cuid())
+  transactionId String
+  transaction   FinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, orderId])
+  @@index([orderId])
+}
+
+/// Append-only log of finance section mutations (who changed what).
+model FinanceAuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorEmail  String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  /// Human label for the touched row (contact name, account name, order sheet, etc.).
+  objectLabel String   @default("")
+  /// Optional deep link into the finance UI for that object.
+  objectHref  String?
+  summary     String
+  before      Json?
+  after       Json?
+
+  @@index([createdAt])
+  @@index([entityType, createdAt])
+  @@index([actorEmail, createdAt])
+}
+
+/// Physical stock location (workshop, store, karigar, etc.).
+model InventoryHolder {
+  id        String          @id @default(cuid())
+  name      String
+  active    Boolean         @default(true)
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     InventoryItem[]
+
+  @@index([active, sortOrder])
+}
+
+/// On-hand stock — linked to catalogue variant when sellable via manual order.
+model InventoryItem {
+  id                String                @id @default(cuid())
+  productId         String?
+  product           Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId         String?
+  variant           ProductVariant?       @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  customName        String?
+  customDescription String?
+  metalPurity       String?
+  weightGrams       Decimal?
+  /// Optional valuation per unit (INR) for stock on hand.
+  unitPrice         Decimal?
+  qtyOnHand         Int                   @default(0)
+  holderId          String
+  holder            InventoryHolder       @relation(fields: [holderId], references: [id])
+  notes             String?
+  allocations       InventoryAllocation[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([holderId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([qtyOnHand])
+}
+
+/// Stock consumed by a manual admin order (not online checkout).
+model InventoryAllocation {
+  id              String        @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId     String?
+  orderItem       OrderItem?    @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  qty             Int
+  createdAt       DateTime      @default(now())
+
+  @@index([inventoryItemId])
+  @@index([orderId])
+  @@index([orderItemId])
+}
+
+/// Append-only log of inventory section mutations (who changed what).
+model InventoryAuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorEmail  String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  objectLabel String   @default("")
+  objectHref  String?
+  summary     String
+  before      Json?
+  after       Json?
+
+  @@index([createdAt])
+  @@index([entityType, createdAt])
+  @@index([actorEmail, createdAt])
 }
