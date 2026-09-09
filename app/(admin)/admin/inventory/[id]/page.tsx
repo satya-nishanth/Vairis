@@ -35,6 +35,13 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
             order: { select: { id: true, contactName: true, status: true } },
           },
         },
+        sales: {
+          orderBy: { soldAt: 'desc' },
+          take: 20,
+          include: {
+            order: { select: { id: true, contactName: true } },
+          },
+        },
       },
     }),
     prisma.inventoryHolder.findMany({
@@ -48,7 +55,9 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
   const initial = {
     id: row.id,
     qtyOnHand: row.qtyOnHand,
-    unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
+    purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : null,
+    soldPrice: row.soldPrice != null ? Number(row.soldPrice) : null,
+    potentialPrice: row.potentialPrice != null ? Number(row.potentialPrice) : null,
     customName: row.customName,
     customDescription: row.customDescription,
     metalPurity: row.metalPurity,
@@ -61,6 +70,13 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
     allocations: row.allocations.map((a) => ({
       ...a,
       createdAt: a.createdAt.toISOString(),
+    })),
+    sales: row.sales.map((s) => ({
+      id: s.id,
+      qty: s.qty,
+      soldAt: s.soldAt.toISOString(),
+      unlinkedOrderLabel: s.unlinkedOrderLabel,
+      order: s.order,
     })),
   }
 

@@ -155,6 +155,29 @@ describe('order invoice from priceBreakdown', () => {
     expect(payload.lines[0].goldValue).toBeCloseTo(21516.35, 2)
     expect(payload.lines[0].taxable).toBeCloseTo(23737.17, 2)
   })
+
+  it('payloadFromOrder uses paymentReceivedAt for Received On when offline', () => {
+    const order: PrefillOrder = {
+      id: 'ord_offline',
+      status: 'PAYMENT_CONFIRMED',
+      createdAt: new Date('2026-08-24T10:00:00Z'),
+      paymentReceivedAt: new Date('2026-09-01T12:00:00Z'),
+      contactName: 'Test',
+      contactPhone: '9876543210',
+      addressLine1: '12 MG Road',
+      addressLine2: null,
+      city: 'Pune',
+      state: 'Maharashtra',
+      pincode: '411001',
+      user: { name: 'Test', email: 't@example.com' },
+      payment: null,
+      items: [orderItem],
+    }
+    const payload = payloadFromOrder(order, { GOLD_18K: 99999 }, DEFAULT_PRICING_CONFIG)
+    expect(payload.payment.status).toBe('Paid in full')
+    expect(payload.payment.method).toBe('Offline')
+    expect(payload.payment.received).toBe('2026-09-01')
+  })
 })
 
 describe('sellerDefaults', () => {

@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
-import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import { calculatePrice, sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
@@ -50,6 +50,11 @@ const manualOrderSchema = z.object({
   initialStatus: z.enum(['PAYMENT_PENDING', 'PAYMENT_CONFIRMED']),
   /** e.g. "Paid via GPay ref 12345" — lands in the order timeline. */
   paymentNote: z.string().trim().max(300).optional(),
+  /** Calendar date money was received (YYYY-MM-DD) — invoice "Received On". */
+  paymentReceivedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD required')
+    .optional(),
   /** When set, this order converts the quotation (must be QUOTED) inside the same transaction. */
   quotationId: z.string().trim().optional(),
   items: z
@@ -65,6 +70,21 @@ const manualOrderSchema = z.object({
       }),
     )
     .min(1),
+  /**
+   * Optional selling-price components (order totals). Stored on the first
+   * order item as priceBreakdown. Purchase/cost stays finance-only.
+   */
+  sellingBreakdown: z
+    .object({
+      gold: z.number().min(0).max(100000000),
+      diamonds: z.number().min(0).max(100000000),
+      stones: z.number().min(0).max(100000000),
+      making: z.number().min(0).max(100000000),
+      wastage: z.number().min(0).max(100000000),
+      delivery: z.number().min(0).max(100000000),
+      gst: z.number().min(0).max(100000000),
+    })
+    .optional(),
 })
 
 /**
@@ -145,11 +165,32 @@ export async function POST(req: NextRequest) {
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
-  const itemRows = d.items.map((i) => {
+  const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
     const rate = rateMap[v.metalType]
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
-    if (rate != null) {
+
+    const manual = d.sellingBreakdown
+    const manualTotal =
+      manual != null
+        ? manual.gold +
+          manual.diamonds +
+          manual.stones +
+          manual.making +
+          manual.wastage +
+          manual.delivery +
+          manual.gst
+        : 0
+
+    if (index === 0 && manual != null && manualTotal > 0) {
+      priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
+        quantity: i.quantity,
+        goldRatePerGram: rate ?? 0,
+        weightGrams: Number(v.weightGrams),
+        metalType: v.metalType,
+        vaLabel: pricingConfig.vaLabel,
+      })
+    } else if (rate != null) {
       const breakdown = calculatePrice(
         {
           weightGrams: v.weightGrams.toString(),
@@ -221,6 +262,10 @@ export async function POST(req: NextRequest) {
           state: d.state,
           pincode: d.pincode,
           quotationId: d.quotationId || null,
+          paymentReceivedAt:
+            d.initialStatus === 'PAYMENT_CONFIRMED' && d.paymentReceivedAt
+              ? new Date(`${d.paymentReceivedAt}T12:00:00.000Z`)
+              : null,
           items: {
             create: itemRows,
           },
@@ -293,7 +338,10 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { orderId: result.order.id, ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}) },
+    {
+      orderId: result.order.id,
+      ...(result.childOrderIds.length ? { childOrderIds: result.childOrderIds } : {}),
+    },
     { status: 201 },
   )
 }

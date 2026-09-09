@@ -9,10 +9,12 @@ export const FINANCE_LINE_KINDS = [
   'MAKING_CHARGES',
   'WASTAGE_CHARGES',
   'DELIVERY',
+  'GST',
 ] as const
 
 export const LINE_KIND_LABEL: Record<FinanceLineKind, string> = {
   DELIVERY: 'Delivery',
+  GST: 'GST',
   GOLD: 'Gold',
   STONES: 'Stones',
   DIAMONDS: 'Diamonds',
@@ -91,7 +93,8 @@ export function quotedAmountsFromBreakdown(
     STONES: 0,
     MAKING_CHARGES: roundMoney(b.making * q),
     WASTAGE_CHARGES: roundMoney((b.goldVA + b.stoneVA) * q),
-    DELIVERY: roundMoney((b.miscCharges + b.gst) * q),
+    DELIVERY: roundMoney(b.miscCharges * q),
+    GST: roundMoney(b.gst * q),
   }
 }
 

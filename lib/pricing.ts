@@ -91,6 +91,62 @@ export function toOrderItemPriceSnapshot(
   }
 }
 
+/**
+ * Build a unit price snapshot from admin-entered selling components
+ * (order-level amounts ÷ quantity). Maps finance-style line labels into
+ * PriceBreakdown fields used by order detail / finance quotes.
+ */
+export function sellingComponentsToUnitSnapshot(
+  selling: {
+    gold: number
+    diamonds: number
+    stones: number
+    making: number
+    wastage: number
+    delivery: number
+    gst: number
+  },
+  meta: {
+    quantity: number
+    goldRatePerGram: number
+    weightGrams: number
+    metalType?: string
+    vaLabel?: string
+  },
+): OrderItemPriceSnapshot {
+  const q = Math.max(1, meta.quantity)
+  const goldValue = selling.gold / q
+  const goldVA = selling.wastage / q
+  const making = selling.making / q
+  const stoneValue = (selling.diamonds + selling.stones) / q
+  const miscCharges = selling.delivery / q
+  const gst = selling.gst / q
+  const taxable = goldValue + goldVA + making + stoneValue + miscCharges
+  const total = taxable + gst
+  return toOrderItemPriceSnapshot(
+    {
+      goldValue,
+      goldVA,
+      making,
+      stoneValue,
+      stoneLines: [],
+      stoneVA: 0,
+      vaTotal: goldVA,
+      vaLabel: meta.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
+      miscCharges,
+      taxable,
+      gst,
+      total,
+      withExchange: false,
+    },
+    {
+      goldRatePerGram: meta.goldRatePerGram,
+      weightGrams: meta.weightGrams,
+      metalType: meta.metalType,
+    },
+  )
+}
+
 /** True when a JSON column looks like a usable price snapshot. */
 export function isOrderItemPriceSnapshot(v: unknown): v is OrderItemPriceSnapshot {
   if (!v || typeof v !== 'object') return false

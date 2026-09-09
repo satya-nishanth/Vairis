@@ -495,9 +495,11 @@ export default async function AdminOrderDetailPage({
                   label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
                   value: inr(Math.round(line.value)),
                 })),
-                ...(b.miscCharges ? [{ label: 'Misc', value: inr(Math.round(b.miscCharges)) }] : []),
+                ...(b.miscCharges
+                  ? [{ label: 'Delivery', value: inr(Math.round(b.miscCharges)) }]
+                  : []),
                 { label: 'Taxable', value: inr(Math.round(b.taxable)) },
-                { label: 'GST (3%)', value: inr(Math.round(b.gst)) },
+                { label: 'GST', value: inr(Math.round(b.gst)) },
                 { label: 'Line total', value: inr(Math.round(b.total)) },
               ]
               if (item.quantity > 1) {

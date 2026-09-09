@@ -80,6 +80,7 @@ function emptyAmounts(): Amounts {
     MAKING_CHARGES: { costPrice: '', sellingPrice: '' },
     WASTAGE_CHARGES: { costPrice: '', sellingPrice: '' },
     DELIVERY: { costPrice: '', sellingPrice: '' },
+    GST: { costPrice: '', sellingPrice: '' },
   }
 }
 
@@ -630,7 +631,7 @@ export function OrderFinanceManager({
                 <li>
                   <strong>Selling price</strong> — what the customer paid for that line. Prefills
                   from the order&apos;s checkout price breakdown (gold, diamonds, making, wastage,
-                  delivery/GST). Edit before saving if needed.
+                  delivery, GST). Edit before saving if needed.
                 </li>
               </ul>
               <p>
