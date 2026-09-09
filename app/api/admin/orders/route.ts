@@ -163,6 +163,28 @@ export async function POST(req: NextRequest) {
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+
+  // Mirrors ManualOrderForm's own `sellingMismatch` warning (client-side only,
+  // non-blocking) — reject server-side too, since priceBreakdown feeds
+  // invoices and finance quotes and must not silently disagree with the
+  // amount actually charged (order.price / totalAmount / grandTotal).
+  if (d.sellingBreakdown) {
+    const sellingTotal =
+      d.sellingBreakdown.gold +
+      d.sellingBreakdown.diamonds +
+      d.sellingBreakdown.stones +
+      d.sellingBreakdown.making +
+      d.sellingBreakdown.wastage +
+      d.sellingBreakdown.delivery +
+      d.sellingBreakdown.gst
+    if (Math.round(sellingTotal) !== total) {
+      return NextResponse.json(
+        { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
+        { status: 400 },
+      )
+    }
+  }
+
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
 
   const itemRows = d.items.map((i, index) => {
