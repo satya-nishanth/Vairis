@@ -125,9 +125,9 @@ describe('GET /api/cart', () => {
     const res = await GET()
     const data = await res.json()
     // goldValue 5g*6000=30000, goldVA 5%=1500, making 5*100=500,
-    // gst = (30000+1500)*0.03 + 500*0.05 = 945+25 = 970
-    // total = 30000+1500+500+970 = 32970
-    expect(data[0].unitPrice).toBe(32970)
+    // taxable = 30000+1500+500 = 32000, gst = taxable*3% = 960
+    // total = 32000+960 = 32960
+    expect(data[0].unitPrice).toBe(32960)
   })
 
   it('returns empty array when cart is empty', async () => {

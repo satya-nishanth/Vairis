@@ -49,6 +49,7 @@ function req(body: unknown) {
 describe('POST /api/admin/orders — quotation conversion', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    ;(requireAdmin as jest.Mock).mockResolvedValue({ user: { email: 'admin@thevairis.com', id: 'admin-1' } })
     ;(prisma.user.findUnique as jest.Mock).mockResolvedValue({ id: 'user-1' })
     ;(prisma.productVariant.findMany as jest.Mock).mockResolvedValue([
       { id: 'v1', product: { name: 'Bracelet' } },
@@ -68,7 +69,7 @@ describe('POST /api/admin/orders — quotation conversion', () => {
     ;(prisma.quotation.findUniqueOrThrow as jest.Mock).mockResolvedValue({
       id: 'q1', status: 'CONVERTED', discordThreadId: 'thread-1',
     })
-    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123' })
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123', items: [{ id: 'item-1' }] })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(201)
@@ -119,7 +120,7 @@ describe('POST /api/admin/orders — quotation conversion', () => {
   })
 
   it('works unchanged with no quotationId at all', async () => {
-    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-456' })
+    ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-456', items: [{ id: 'item-1' }] })
     const res = await POST(req(baseBody()))
     expect(res.status).toBe(201)
     expect(prisma.quotation.updateMany).not.toHaveBeenCalled()
