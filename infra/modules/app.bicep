@@ -89,6 +89,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'SHIPPING_MOCK', value: 'true' }
             { name: 'ADMIN_EMAILS', secretRef: 'admin-emails' }
             { name: 'FINANCE_EMAILS', secretRef: 'finance-emails' }
+            { name: 'FINANCE_DIGEST_SECRET', secretRef: 'finance-digest-secret' }
             { name: 'GOLD_SYNC_SECRET', secretRef: 'gold-sync-secret' }
             { name: 'ORDER_SWEEP_SECRET', secretRef: 'order-sweep-secret' }
             { name: 'METAL_PRICE_API_KEY', secretRef: 'metal-price-api-key' }
