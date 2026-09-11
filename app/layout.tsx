@@ -51,7 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       suppressHydrationWarning
     >
       <body suppressHydrationWarning>
-        {/* beforeInteractive — Next injects into <head>; avoids React 19 raw <script> warning */}
+        {/* SSR-only inject via useServerInsertedHTML — avoids React 19 script warning */}
         <ThemeInitScript />
         {GA_ID && (
           <>

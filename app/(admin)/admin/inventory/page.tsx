@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma'
+import { requireAdmin } from '@/lib/auth'
+import { isFinanceEmail } from '@/lib/finance-auth'
 import { inventoryItemInclude } from '@/lib/inventory'
 import { getLiveUnitPricesByVariantId } from '@/lib/inventory-pricing'
 import { InventoryList } from '@/components/admin/InventoryList'
@@ -6,6 +8,9 @@ import { InventoryList } from '@/components/admin/InventoryList'
 export const dynamic = 'force-dynamic'
 
 export default async function InventoryPage() {
+  const session = await requireAdmin()
+  const isFinance = isFinanceEmail(session.user.email)
+
   const [rows, holders, soldQtyRows] = await Promise.all([
     prisma.inventoryItem.findMany({
       include: {
@@ -42,9 +47,9 @@ export default async function InventoryPage() {
       id: r.id,
       qtyOnHand: r.qtyOnHand,
       qtySold: soldQtyByItem[r.id] ?? 0,
-      purchasePrice: r.purchasePrice != null ? Number(r.purchasePrice) : null,
+      purchasePrice: isFinance && r.purchasePrice != null ? Number(r.purchasePrice) : null,
       soldPrice: r.soldPrice != null ? Number(r.soldPrice) : null,
-      potentialPrice: r.potentialPrice != null ? Number(r.potentialPrice) : null,
+      potentialPrice: isFinance && r.potentialPrice != null ? Number(r.potentialPrice) : null,
       liveSoldPrice: r.variantId ? (liveByVariantId[r.variantId] ?? null) : null,
       latestSale: latest
         ? {
@@ -60,6 +65,14 @@ export default async function InventoryPage() {
       holder: r.holder,
       product: r.product,
       variant: r.variant,
+      purchaseBills: (r.purchaseBills ?? []).map((l) => ({
+        id: l.purchaseBill.id,
+        billNumber: l.purchaseBill.billNumber,
+        supplierName: l.purchaseBill.supplierName,
+        href: isFinance
+          ? `/admin/finance/purchase-bills?edit=${encodeURIComponent(l.purchaseBill.id)}`
+          : null,
+      })),
       _count: r._count,
     }
   })
@@ -71,7 +84,7 @@ export default async function InventoryPage() {
         Track physical stock and who holds each unit. Link items to the catalogue before selling via
         manual orders.
       </p>
-      <InventoryList initialRows={serialized} holders={holders} />
+      <InventoryList initialRows={serialized} holders={holders} isFinance={isFinance} />
     </div>
   )
 }

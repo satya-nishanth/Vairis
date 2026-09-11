@@ -194,5 +194,132 @@ export const inventoryItemInclude = {
   holder: { select: { id: true, name: true } },
   product: { select: { id: true, name: true, itemCode: true } },
   variant: { select: { id: true, sku: true, metalType: true, size: true } },
+  purchaseBills: {
+    select: {
+      purchaseBillId: true,
+      purchaseBill: {
+        select: {
+          id: true,
+          billNumber: true,
+          supplierName: true,
+          date: true,
+          description: true,
+          totalAmount: true,
+          lines: {
+            select: { description: true, amount: true, sortOrder: true },
+            orderBy: { sortOrder: 'asc' as const },
+            take: 3,
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
   _count: { select: { allocations: true } },
 } satisfies Prisma.InventoryItemInclude
+
+export type InventoryPurchaseBillRef = {
+  id: string
+  billNumber: string
+  supplierName: string
+  date: string
+  description: string
+  /** Finance-only — omitted when serializing for non-finance admins. */
+  totalAmount?: number
+  href: string | null
+}
+
+/** Serialize inventory item for admin API/UI; strip finance-only money when !isFinance. */
+export function serializeInventoryItemForAdmin(
+  row: {
+    id: string
+    productId: string | null
+    variantId: string | null
+    customName: string | null
+    customDescription: string | null
+    metalPurity: string | null
+    weightGrams: { toString(): string } | number | null
+    diamondCarats: { toString(): string } | number | null
+    stoneCarats: { toString(): string } | number | null
+    purchasePrice: { toString(): string } | number | null
+    soldPrice: { toString(): string } | number | null
+    potentialPrice: { toString(): string } | number | null
+    qtyOnHand: number
+    holderId: string
+    notes: string | null
+    createdAt: Date
+    updatedAt: Date
+    holder?: { id: string; name: string }
+    product?: { id: string; name: string; itemCode: string | null } | null
+    variant?: { id: string; sku: string; metalType: string; size: string | null } | null
+    purchaseBills?: {
+      purchaseBillId: string
+      purchaseBill: {
+        id: string
+        billNumber: string
+        supplierName: string
+        date: Date
+        description: string
+        totalAmount: { toString(): string } | number
+        lines?: { description: string; amount: { toString(): string } | number }[]
+      }
+    }[]
+    _count?: { allocations: number }
+    allocations?: unknown
+    sales?: unknown
+  },
+  isFinance: boolean,
+) {
+  const bills: InventoryPurchaseBillRef[] = (row.purchaseBills ?? []).map((l) => {
+    const lineSummary =
+      l.purchaseBill.lines && l.purchaseBill.lines.length > 0
+        ? l.purchaseBill.lines
+            .map((x) => x.description.trim())
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(' · ')
+        : ''
+    return {
+      id: l.purchaseBill.id,
+      billNumber: l.purchaseBill.billNumber,
+      supplierName: l.purchaseBill.supplierName,
+      date: l.purchaseBill.date.toISOString(),
+      description: l.purchaseBill.description.trim() || lineSummary || '',
+      ...(isFinance ? { totalAmount: Number(l.purchaseBill.totalAmount) } : {}),
+      href: isFinance
+        ? `/admin/finance/purchase-bills?edit=${encodeURIComponent(l.purchaseBill.id)}`
+        : null,
+    }
+  })
+
+  return {
+    id: row.id,
+    productId: row.productId,
+    variantId: row.variantId,
+    customName: row.customName,
+    customDescription: row.customDescription,
+    metalPurity: row.metalPurity,
+    weightGrams: row.weightGrams != null ? Number(row.weightGrams) : null,
+    diamondCarats: row.diamondCarats != null ? Number(row.diamondCarats) : null,
+    stoneCarats: row.stoneCarats != null ? Number(row.stoneCarats) : null,
+    soldPrice: row.soldPrice != null ? Number(row.soldPrice) : null,
+    ...(isFinance
+      ? {
+          purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : null,
+          potentialPrice: row.potentialPrice != null ? Number(row.potentialPrice) : null,
+        }
+      : {}),
+    qtyOnHand: row.qtyOnHand,
+    holderId: row.holderId,
+    notes: row.notes,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    holder: row.holder,
+    product: row.product,
+    variant: row.variant,
+    purchaseBills: bills,
+    _count: row._count,
+    allocations: row.allocations,
+    sales: row.sales,
+  }
+}

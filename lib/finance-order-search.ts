@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import type { FinanceLineKind, Prisma } from '@prisma/client'
 import { isPendingOrderSheet, sheetTotals } from '@/lib/finance'
+import { collectedByOrderIds, orderPaymentSummary } from '@/lib/finance-collections'
 
 /**
  * Order sheets are per delivery / line — hide multi-item parents:
@@ -20,6 +21,7 @@ const hitSelect = {
   grandTotal: true,
   status: true,
   createdAt: true,
+  parentOrderId: true,
   items: { select: { productName: true, quantity: true }, take: 4 },
   _count: { select: { items: true, children: true } },
   finance: {
@@ -33,6 +35,9 @@ const hitSelect = {
     },
   },
 } satisfies Prisma.OrderSelect
+
+/** Shared select for order hits (sheets + allocation). */
+export const financeOrderHitSelect = hitSelect
 
 function itemsLabel(
   items: { productName: string; quantity: number }[],
@@ -62,6 +67,15 @@ export type FinanceOrderHit = {
   selling: number | null
   profit: number | null
   paidToAccountName: string | null
+  /** Allocated inflows toward this order. */
+  collected: number
+  expected: number
+  balance: number
+  paymentStatus: 'unpaid' | 'partial' | 'settled' | 'overpaid'
+  parentOrderId: string | null
+  childCount: number
+  /** parent = has children or SPLIT; child = has parentOrderId; else standalone */
+  orderKind: 'standalone' | 'parent' | 'child'
   sheet: {
     paidToAccountId: string
     lines: {
@@ -73,13 +87,14 @@ export type FinanceOrderHit = {
   } | null
 }
 
-function mapHit(o: {
+export function mapFinanceOrderHit(o: {
   id: string
   contactName: string
   contactPhone: string
   grandTotal: { toString(): string } | number
   status: string
   createdAt: Date
+  parentOrderId: string | null
   items: { productName: string; quantity: number }[]
   _count: { items: number; children: number }
   finance: {
@@ -112,6 +127,16 @@ function mapHit(o: {
       )
     : null
 
+  const payment = orderPaymentSummary({
+    grandTotal: Number(o.grandTotal),
+    sheetSelling: totals?.selling ?? null,
+    collected: 0,
+  })
+
+  const isChild = Boolean(o.parentOrderId)
+  const isParent =
+    o._count.children > 0 || o.status === 'SPLIT_INTO_DELIVERIES' || (!isChild && o._count.items > 1)
+
   return {
     id: o.id,
     contactName: o.contactName,
@@ -126,6 +151,13 @@ function mapHit(o: {
     selling: totals ? totals.selling : null,
     profit: totals ? totals.profit : null,
     paidToAccountName: o.finance?.paidToAccount.name ?? null,
+    collected: payment.collected,
+    expected: payment.expected,
+    balance: payment.balance,
+    paymentStatus: payment.paymentStatus,
+    parentOrderId: o.parentOrderId,
+    childCount: o._count.children,
+    orderKind: isChild ? 'child' : isParent ? 'parent' : 'standalone',
     sheet: o.finance
       ? {
           paidToAccountId: o.finance.paidToAccountId,
@@ -133,6 +165,18 @@ function mapHit(o: {
         }
       : null,
   }
+}
+
+export async function attachFinanceOrderPayments(hits: FinanceOrderHit[]): Promise<FinanceOrderHit[]> {
+  const collected = await collectedByOrderIds(hits.map((h) => h.id))
+  return hits.map((h) => {
+    const payment = orderPaymentSummary({
+      grandTotal: h.grandTotal,
+      sheetSelling: h.selling,
+      collected: collected.get(h.id) ?? 0,
+    })
+    return { ...h, ...payment }
+  })
 }
 
 async function fetchSheetableOrders(where: Prisma.OrderWhereInput, take: number) {
@@ -147,10 +191,11 @@ async function fetchSheetableOrders(where: Prisma.OrderWhereInput, take: number)
     select: hitSelect,
   })
 
-  return orders
+  const hits = orders
     .filter((o) => !isMultiItemParent(o._count.items, o.status, o._count.children))
     .slice(0, take)
-    .map(mapHit)
+    .map(mapFinanceOrderHit)
+  return attachFinanceOrderPayments(hits)
 }
 
 /** Shared order search for finance UI (API + server page). */
@@ -175,6 +220,48 @@ export async function searchFinanceOrders(q: string) {
 /** Latest orders eligible for an order finance sheet. */
 export async function listRecentFinanceOrders(take = 40) {
   return fetchSheetableOrders({}, take)
+}
+
+/** Cash allocation: children + standalone only (never split parents). */
+async function fetchAllocatableOrders(where: Prisma.OrderWhereInput, take: number) {
+  const orders = await prisma.order.findMany({
+    where: {
+      AND: [
+        where,
+        { children: { none: {} } },
+        { status: { not: 'SPLIT_INTO_DELIVERIES' } },
+      ],
+    },
+    take,
+    orderBy: { createdAt: 'desc' },
+    select: hitSelect,
+  })
+  return attachFinanceOrderPayments(
+    orders.map(mapFinanceOrderHit).filter((h) => h.orderKind !== 'parent'),
+  )
+}
+
+const allocSearchWhere = (trimmed: string): Prisma.OrderWhereInput => ({
+  OR: [
+    { id: { contains: trimmed, mode: 'insensitive' } },
+    { contactName: { contains: trimmed, mode: 'insensitive' } },
+    { contactPhone: { contains: trimmed } },
+    { user: { email: { contains: trimmed, mode: 'insensitive' } } },
+    { items: { some: { productName: { contains: trimmed, mode: 'insensitive' } } } },
+    // Match child deliveries when searching a parent order id
+    { parent: { id: { contains: trimmed, mode: 'insensitive' } } },
+  ],
+})
+
+/** Order search for cashbook allocation — parent containers excluded. */
+export async function searchFinanceOrdersForAllocation(q: string) {
+  const trimmed = q.trim()
+  if (trimmed.length < 2) return []
+  return fetchAllocatableOrders(allocSearchWhere(trimmed), 40)
+}
+
+export async function listRecentFinanceOrdersForAllocation(take = 40) {
+  return fetchAllocatableOrders({}, take)
 }
 
 /** Statuses that should have a finance sheet filled (paid / in fulfilment). */

@@ -6,6 +6,7 @@ export type FinanceAuditAction = 'CREATE' | 'UPDATE' | 'DELETE'
 export type FinanceAuditEntity =
   | 'TRANSACTION'
   | 'ORDER_SHEET'
+  | 'PURCHASE_BILL'
   | 'ACCOUNT'
   | 'CONTACT'
   | 'CATEGORY'

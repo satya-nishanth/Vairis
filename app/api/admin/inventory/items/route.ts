@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAdmin } from '@/lib/auth'
+import { isFinanceEmail } from '@/lib/finance-auth'
 import { prisma } from '@/lib/prisma'
-import { inventoryItemInclude } from '@/lib/inventory'
+import { inventoryItemInclude, serializeInventoryItemForAdmin } from '@/lib/inventory'
 import {
   inventoryActorFromSession,
   inventoryItemAuditSnap,
@@ -23,12 +24,15 @@ const createSchema = z
     customDescription: z.string().trim().optional(),
     metalPurity: z.string().trim().optional(),
     weightGrams: z.number().positive().optional(),
+    diamondCarats: z.number().min(0).max(1000).nullable().optional(),
+    stoneCarats: z.number().min(0).max(1000).nullable().optional(),
     qtyOnHand: z.number().int().min(0).max(9999),
     purchasePrice: z.number().positive().max(100000000).nullable().optional(),
     soldPrice: z.number().positive().max(100000000).nullable().optional(),
     potentialPrice: z.number().positive().max(100000000).nullable().optional(),
     holderId: z.string().min(1),
     notes: z.string().trim().max(500).optional(),
+    purchaseBillIds: z.array(z.string().min(1)).optional(),
   })
   .superRefine((d, ctx) => {
     if (d.source === 'catalogue') {
@@ -41,7 +45,8 @@ const createSchema = z
   })
 
 export async function GET(req: NextRequest) {
-  await requireAdmin()
+  const session = await requireAdmin()
+  const isFinance = isFinanceEmail(session.user.email)
   const q = req.nextUrl.searchParams.get('q')?.trim().toLowerCase() ?? ''
   const holderId = req.nextUrl.searchParams.get('holderId') ?? undefined
   const linked = req.nextUrl.searchParams.get('linked')
@@ -72,17 +77,33 @@ export async function GET(req: NextRequest) {
       })
     : rows
 
-  return NextResponse.json(filtered)
+  return NextResponse.json(filtered.map((r) => serializeInventoryItemForAdmin(r, isFinance)))
 }
 
 export async function POST(req: NextRequest) {
   const session = await requireAdmin()
+  const isFinance = isFinanceEmail(session.user.email)
   const actor = inventoryActorFromSession(session)
   const parsed = createSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 })
   }
   const d = parsed.data
+
+  if (!isFinance) {
+    if (d.purchasePrice != null || d.potentialPrice != null) {
+      return NextResponse.json(
+        { error: 'Only finance admins can set purchase or potential price' },
+        { status: 403 },
+      )
+    }
+    if (d.purchaseBillIds && d.purchaseBillIds.length > 0) {
+      return NextResponse.json(
+        { error: 'Only finance admins can tag purchase bills' },
+        { status: 403 },
+      )
+    }
+  }
 
   const holder = await prisma.inventoryHolder.findUnique({ where: { id: d.holderId } })
   if (!holder) return NextResponse.json({ error: 'Holder not found' }, { status: 400 })
@@ -99,6 +120,14 @@ export async function POST(req: NextRequest) {
     variantId = variant.id
   }
 
+  const billIds = isFinance ? [...new Set(d.purchaseBillIds ?? [])] : []
+  if (billIds.length) {
+    const found = await prisma.purchaseBill.count({ where: { id: { in: billIds } } })
+    if (found !== billIds.length) {
+      return NextResponse.json({ error: 'One or more purchase bills not found' }, { status: 400 })
+    }
+  }
+
   const row = await prisma.inventoryItem.create({
     data: {
       productId,
@@ -107,12 +136,17 @@ export async function POST(req: NextRequest) {
       customDescription: d.customDescription || null,
       metalPurity: d.metalPurity || null,
       weightGrams: d.weightGrams ?? null,
-      purchasePrice: d.purchasePrice ?? null,
+      diamondCarats: d.diamondCarats ?? null,
+      stoneCarats: d.stoneCarats ?? null,
+      purchasePrice: isFinance ? (d.purchasePrice ?? null) : null,
       soldPrice: d.soldPrice ?? null,
-      potentialPrice: d.potentialPrice ?? null,
+      potentialPrice: isFinance ? (d.potentialPrice ?? null) : null,
       qtyOnHand: d.qtyOnHand,
       holderId: d.holderId,
       notes: d.notes || null,
+      ...(billIds.length
+        ? { purchaseBills: { create: billIds.map((purchaseBillId) => ({ purchaseBillId })) } }
+        : {}),
     },
     include: inventoryItemInclude,
   })
@@ -130,5 +164,5 @@ export async function POST(req: NextRequest) {
     after: snap,
   })
 
-  return NextResponse.json(row, { status: 201 })
+  return NextResponse.json(serializeInventoryItemForAdmin(row, isFinance), { status: 201 })
 }

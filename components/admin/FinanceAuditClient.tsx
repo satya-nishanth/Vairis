@@ -25,6 +25,7 @@ const MUTED = '#6b7280'
 const ENTITY_LABEL: Record<string, string> = {
   TRANSACTION: 'Transaction',
   ORDER_SHEET: 'Order sheet',
+  PURCHASE_BILL: 'Purchase bill',
   ACCOUNT: 'Account',
   CONTACT: 'Contact',
   CATEGORY: 'Category',
@@ -63,6 +64,13 @@ function resolveObject(r: FinanceAuditRow): { label: string; href: string | null
     const orderId = String(snap.orderId || r.entityId || '')
     const label = orderId ? shortFinanceId(orderId) : '—'
     const href = orderId ? `/admin/finance/orders?orderId=${encodeURIComponent(orderId)}` : r.objectHref
+    return { label, href }
+  }
+  if (r.entityType === 'PURCHASE_BILL') {
+    const id = String(snap.id || r.entityId || '')
+    const billNumber = typeof snap.billNumber === 'string' ? snap.billNumber.trim() : ''
+    const label = billNumber ? `#${billNumber}` : id ? shortFinanceId(id) : '—'
+    const href = id ? `/admin/finance/purchase-bills?edit=${encodeURIComponent(id)}` : r.objectHref
     return { label, href }
   }
   if (typeof snap.name === 'string' && snap.name.trim()) {

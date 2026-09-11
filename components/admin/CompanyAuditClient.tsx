@@ -50,34 +50,109 @@ function maxAbsNet(rows: CompanyAuditResult['cashByAccount']): number {
   return Math.max(1, ...rows.map((r) => Math.abs(r.net)))
 }
 
+type ExceptionSectionId = 'order_sheets' | 'transactions' | 'inventory' | 'purchase_invoices'
+
+const EXCEPTION_SECTIONS: { id: ExceptionSectionId; title: string }[] = [
+  { id: 'order_sheets', title: 'Order sheets' },
+  { id: 'transactions', title: 'Transactions' },
+  { id: 'inventory', title: 'Inventory' },
+  { id: 'purchase_invoices', title: 'Purchase invoices' },
+]
+
 const EXCEPTION_GROUP_META: Record<
   string,
-  { summary: (n: number) => string; unit: string }
+  { summary: (n: number) => string; unit: string; section: ExceptionSectionId }
 > = {
   sheet_inflow_mismatch: {
-    summary: (n) => `Sheet not equal to inflows for ${n} order${n === 1 ? '' : 's'}`,
+    summary: (n) => `Sheet SP ≠ allocated inflows for ${n} order${n === 1 ? '' : 's'}`,
     unit: 'order',
+    section: 'order_sheets',
   },
-  inflow_no_order: {
-    summary: (n) => `${n} inflow${n === 1 ? '' : 's'} with no order link`,
-    unit: 'inflow',
+  sheet_checkout_mismatch: {
+    summary: (n) => `Sheet SP ≠ checkout total for ${n} order${n === 1 ? '' : 's'}`,
+    unit: 'order',
+    section: 'order_sheets',
   },
-  stock_missing_valuation: {
-    summary: (n) => `${n} stock line${n === 1 ? '' : 's'} missing valuation`,
-    unit: 'item',
+  order_unpaid: {
+    summary: (n) => `${n} customer order${n === 1 ? '' : 's'} unpaid`,
+    unit: 'order',
+    section: 'order_sheets',
+  },
+  order_partial: {
+    summary: (n) => `${n} customer order${n === 1 ? '' : 's'} partially paid`,
+    unit: 'order',
+    section: 'order_sheets',
+  },
+  order_overpaid: {
+    summary: (n) => `${n} customer order${n === 1 ? '' : 's'} overpaid`,
+    unit: 'order',
+    section: 'order_sheets',
   },
   large_non_order_outflow: {
     summary: (n) => `${n} large non-order outflow${n === 1 ? '' : 's'}`,
     unit: 'outflow',
+    section: 'transactions',
+  },
+  txn_over_allocated: {
+    summary: (n) => `${n} over-allocated transaction${n === 1 ? '' : 's'}`,
+    unit: 'transaction',
+    section: 'transactions',
+  },
+  txn_partial_allocation: {
+    summary: (n) => `${n} transaction${n === 1 ? '' : 's'} partially allocated`,
+    unit: 'transaction',
+    section: 'transactions',
+  },
+  txn_unallocated_inflow: {
+    summary: (n) => `${n} fully unallocated inflow${n === 1 ? '' : 's'}`,
+    unit: 'inflow',
+    section: 'transactions',
+  },
+  txn_inflow_to_purchase_bill: {
+    summary: (n) => `${n} inflow${n === 1 ? '' : 's'} allocated to purchase bill`,
+    unit: 'inflow',
+    section: 'transactions',
+  },
+  txn_outflow_to_order: {
+    summary: (n) => `${n} outflow${n === 1 ? '' : 's'} allocated to customer order`,
+    unit: 'outflow',
+    section: 'transactions',
+  },
+  txn_for_review: {
+    summary: (n) => `${n} cashbook row${n === 1 ? '' : 's'} still for review`,
+    unit: 'transaction',
+    section: 'transactions',
+  },
+  stock_missing_valuation: {
+    summary: (n) => `${n} stock line${n === 1 ? '' : 's'} missing valuation`,
+    unit: 'item',
+    section: 'inventory',
   },
   sold_orphan: {
     summary: (n) => `${n} sold inventory record${n === 1 ? '' : 's'} without order ref`,
     unit: 'sale',
+    section: 'inventory',
+  },
+  purchase_bill_partial: {
+    summary: (n) => `${n} purchase bill${n === 1 ? '' : 's'} partially paid`,
+    unit: 'bill',
+    section: 'purchase_invoices',
+  },
+  purchase_bill_overpaid: {
+    summary: (n) => `${n} purchase bill${n === 1 ? '' : 's'} overpaid`,
+    unit: 'bill',
+    section: 'purchase_invoices',
+  },
+  purchase_bill_unpaid_aged: {
+    summary: (n) => `${n} unpaid purchase bill${n === 1 ? '' : 's'} older than 30 days`,
+    unit: 'bill',
+    section: 'purchase_invoices',
   },
 }
 
 type ExceptionGroup = {
   kind: string
+  section: ExceptionSectionId
   severity: AuditException['severity']
   summary: string
   amountTotal: number | null
@@ -101,12 +176,22 @@ function groupExceptions(exceptions: AuditException[]): ExceptionGroup[] {
     const hasAmount = items.some((e) => e.amount != null)
     return {
       kind,
+      section: meta?.section ?? 'transactions',
       severity: items[0]!.severity,
       summary: meta?.summary(items.length) ?? `${items.length} × ${kind}`,
       amountTotal: hasAmount ? amountTotal : null,
       items,
     }
   })
+}
+
+function sectionExceptionGroups(
+  groups: ExceptionGroup[],
+): { id: ExceptionSectionId; title: string; groups: ExceptionGroup[] }[] {
+  return EXCEPTION_SECTIONS.map((s) => ({
+    ...s,
+    groups: groups.filter((g) => g.section === s.id),
+  })).filter((s) => s.groups.length > 0)
 }
 
 function prettyPeriodLabel(
@@ -148,6 +233,10 @@ export function CompanyAuditClient({
 
   const displayPeriod = prettyPeriodLabel(mode, month, quarter, Number(year), periodLabel)
   const exceptionGroups = useMemo(() => groupExceptions(audit.exceptions), [audit.exceptions])
+  const exceptionSections = useMemo(
+    () => sectionExceptionGroups(exceptionGroups),
+    [exceptionGroups],
+  )
 
   function toggleGroup(kind: string) {
     setExpandedKinds((prev) => ({ ...prev, [kind]: !prev[kind] }))
@@ -555,9 +644,12 @@ export function CompanyAuditClient({
 
           <div className="company-audit__legend">
             <strong>Expected links</strong>
-            <span>Sheet selling ↔ Cash inflow</span>
+            <span>Sheet selling ↔ Allocated cash inflows</span>
+            <span>Sheet selling ↔ Checkout grand total</span>
             <span>Mark sold ↔ Stock qty</span>
             <span>Goods outflow ↔ Inventory purchase</span>
+            <span>Purchase bill ↔ Allocated outflows</span>
+            <span>Cash txn ↔ Full allocation + review</span>
           </div>
 
           <section className="company-audit__panel">
@@ -574,77 +666,98 @@ export function CompanyAuditClient({
                 Inventory if something new appears.
               </p>
             ) : (
-              <div className="company-audit__table-wrap">
-                <table className="company-audit__table">
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Issue</th>
-                      <th>Detail</th>
-                      <th style={{ textAlign: 'right' }}>Amount</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exceptionGroups.map((g) => {
-                      const sev = severityStyle(g.severity)
-                      const open = Boolean(expandedKinds[g.kind])
-                      return (
-                        <Fragment key={g.kind}>
-                          <tr
-                            className="company-audit__group-row"
-                            onClick={() => toggleGroup(g.kind)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <td>
-                              <span
-                                className="company-audit__sev"
-                                style={{ background: sev.bg, color: sev.color }}
-                              >
-                                {sev.label}
-                              </span>
-                            </td>
-                            <td style={{ fontWeight: 600 }}>
-                              <span className="company-audit__chevron" aria-hidden>
-                                {open ? '▾' : '▸'}
-                              </span>{' '}
-                              {g.summary}
-                            </td>
-                            <td style={{ color: MUTED, fontSize: '0.8125rem' }}>
-                              {open
-                                ? 'Click to collapse'
-                                : `Click to view ${g.items.length} item${g.items.length === 1 ? '' : 's'}`}
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                              {g.amountTotal != null ? inr(g.amountTotal) : '—'}
-                            </td>
-                            <td />
+              <div style={{ display: 'grid', gap: 20 }}>
+                {exceptionSections.map((sec) => (
+                  <div key={sec.id}>
+                    <h3
+                      style={{
+                        margin: '0 0 8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 700,
+                        color: '#111827',
+                      }}
+                    >
+                      {sec.title}{' '}
+                      <span style={{ fontWeight: 500, color: MUTED }}>
+                        · {sec.groups.reduce((n, g) => n + g.items.length, 0)}
+                      </span>
+                    </h3>
+                    <div className="company-audit__table-wrap">
+                      <table className="company-audit__table">
+                        <thead>
+                          <tr>
+                            <th>Severity</th>
+                            <th>Issue</th>
+                            <th>Detail</th>
+                            <th style={{ textAlign: 'right' }}>Amount</th>
+                            <th />
                           </tr>
-                          {open &&
-                            g.items.map((e) => (
-                              <tr key={e.id} className="company-audit__child-row">
-                                <td />
-                                <td style={{ fontWeight: 500, paddingLeft: 28 }}>{e.title}</td>
-                                <td style={{ color: MUTED, fontSize: '0.8125rem' }}>{e.detail}</td>
-                                <td style={{ textAlign: 'right' }}>
-                                  {e.amount != null ? inr(e.amount) : '—'}
-                                </td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <Link
-                                    href={e.href}
-                                    style={{ color: GREEN, fontSize: '0.8125rem' }}
-                                    onClick={(ev) => ev.stopPropagation()}
-                                  >
-                                    Open
-                                  </Link>
-                                </td>
-                              </tr>
-                            ))}
-                        </Fragment>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                          {sec.groups.map((g) => {
+                            const sev = severityStyle(g.severity)
+                            const open = Boolean(expandedKinds[g.kind])
+                            return (
+                              <Fragment key={g.kind}>
+                                <tr
+                                  className="company-audit__group-row"
+                                  onClick={() => toggleGroup(g.kind)}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  <td>
+                                    <span
+                                      className="company-audit__sev"
+                                      style={{ background: sev.bg, color: sev.color }}
+                                    >
+                                      {sev.label}
+                                    </span>
+                                  </td>
+                                  <td style={{ fontWeight: 600 }}>
+                                    <span className="company-audit__chevron" aria-hidden>
+                                      {open ? '▾' : '▸'}
+                                    </span>{' '}
+                                    {g.summary}
+                                  </td>
+                                  <td style={{ color: MUTED, fontSize: '0.8125rem' }}>
+                                    {open
+                                      ? 'Click to collapse'
+                                      : `Click to view ${g.items.length} item${g.items.length === 1 ? '' : 's'}`}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                    {g.amountTotal != null ? inr(g.amountTotal) : '—'}
+                                  </td>
+                                  <td />
+                                </tr>
+                                {open &&
+                                  g.items.map((e) => (
+                                    <tr key={e.id} className="company-audit__child-row">
+                                      <td />
+                                      <td style={{ fontWeight: 500, paddingLeft: 28 }}>{e.title}</td>
+                                      <td style={{ color: MUTED, fontSize: '0.8125rem' }}>
+                                        {e.detail}
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        {e.amount != null ? inr(e.amount) : '—'}
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        <Link
+                                          href={e.href}
+                                          style={{ color: GREEN, fontSize: '0.8125rem' }}
+                                          onClick={(ev) => ev.stopPropagation()}
+                                        >
+                                          Open
+                                        </Link>
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             <p className="company-audit__footnote">

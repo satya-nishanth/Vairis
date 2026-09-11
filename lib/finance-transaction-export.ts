@@ -6,6 +6,7 @@ export type FinanceTransactionExportRow = {
   date: Date
   direction: string
   amount: number
+  gstAmount: number
   description: string
   accountName: string | null
   paidThroughAccountName: string | null
@@ -33,6 +34,7 @@ export function buildTransactionsXlsx(rows: FinanceTransactionExportRow[]): Buff
         Source: r.autoCreated ? 'Auto-created' : 'Manual',
         'Handled by': r.accountName ?? '',
         Amount: r.amount,
+        GST: r.gstAmount || '',
         'Bank / transfer': bank,
         Category: r.categoryName ?? '',
         Contact: r.contactName ?? '',
