@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
-export type InventoryAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ALLOCATE' | 'SOLD'
+export type InventoryAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ALLOCATE' | 'RELEASE' | 'SOLD'
 export type InventoryAuditEntity = 'ITEM' | 'HOLDER' | 'ALLOCATION' | 'SALE'
 
 export type InventoryAuditActor = {
@@ -140,6 +140,15 @@ export function summarizeAllocation(input: {
   qtyAfter: number
 }): string {
   return `Allocated ${input.qty} unit(s) of “${input.itemLabel}” to order (${input.orderContactName}); qty now ${input.qtyAfter}`
+}
+
+export function summarizeRelease(input: {
+  qty: number
+  itemLabel: string
+  orderContactName: string
+  qtyAfter: number
+}): string {
+  return `Released ${input.qty} unit(s) of “${input.itemLabel}” from order (${input.orderContactName}); qty now ${input.qtyAfter}`
 }
 
 export function summarizeSale(input: {

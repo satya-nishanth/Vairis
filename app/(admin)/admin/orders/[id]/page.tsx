@@ -111,6 +111,9 @@ export default async function AdminOrderDetailPage({
         <span style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#032b24' }}>
           {ORDER_STATUS_META[order.status].label}
         </span>
+        <Link href={`/admin/orders/${order.id}/edit`} className="admin-btn">
+          Edit order
+        </Link>
         <Link href={`/admin/invoices/new?orderId=${order.id}`} className="admin-btn">
           Generate invoice
         </Link>
