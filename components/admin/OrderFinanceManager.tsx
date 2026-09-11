@@ -13,6 +13,7 @@ import {
   type OrderItemQuote,
 } from '@/lib/finance'
 import type { FinanceOrderHit } from '@/lib/finance-order-search'
+import { SETTLEMENT_LABEL, type SettlementStatus } from '@/lib/finance-settlement'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import type { FinanceLineKind, OrderStatus } from '@prisma/client'
 
@@ -59,6 +60,25 @@ type SheetFilter = 'all' | 'incomplete' | 'complete'
 const GREEN = '#032b24'
 const BORDER = '#e5e7eb'
 const MUTED = '#6b7280'
+
+function paymentStatusStyle(s: SettlementStatus): CSSProperties {
+  const map: Record<SettlementStatus, { bg: string; color: string }> = {
+    unpaid: { bg: '#fef2f2', color: '#b91c1c' },
+    partial: { bg: '#fffbeb', color: '#b45309' },
+    settled: { bg: '#dceee8', color: GREEN },
+    overpaid: { bg: '#eff6ff', color: '#1d4ed8' },
+  }
+  const m = map[s]
+  return {
+    display: 'inline-block',
+    padding: '4px 10px',
+    borderRadius: 999,
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    background: m.bg,
+    color: m.color,
+  }
+}
 const ORDERS_PATH = '/admin/finance/orders'
 
 const control: React.CSSProperties = {
@@ -427,22 +447,26 @@ export function OrderFinanceManager({
                 <th scope="col">Order ID</th>
                 <th scope="col">Status</th>
                 <th scope="col" className="order-sheet-hits__num">
-                  Purchasing price (from vendor)
+                  Selling price (to customer)
                 </th>
                 <th scope="col" className="order-sheet-hits__num">
-                  Selling price (to customer)
+                  Collected
+                </th>
+                <th scope="col">Payment</th>
+                <th scope="col">Paid to</th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Purchasing price (from vendor)
                 </th>
                 <th scope="col" className="order-sheet-hits__num">
                   Profit
                 </th>
-                <th scope="col">Paid to</th>
                 <th scope="col" />
               </tr>
             </thead>
             <tbody>
               {listOrders.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
+                  <td colSpan={12} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
                     {searching ? 'No matching orders' : 'No orders in this filter'}
                   </td>
                 </tr>
@@ -487,12 +511,21 @@ export function OrderFinanceManager({
                       {statusLabel(h.status)}
                     </Link>
                   </td>
-                  <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
                   <td className="order-sheet-hits__num">{moneyOrDash(h.selling)}</td>
+                  <td className="order-sheet-hits__num">{inr(h.collected)}</td>
+                  <td>
+                    <span
+                      title={`Expected ${inr(h.expected)} · balance ${inr(h.balance)}`}
+                      style={paymentStatusStyle(h.paymentStatus)}
+                    >
+                      {SETTLEMENT_LABEL[h.paymentStatus]}
+                    </span>
+                  </td>
+                  <td>{h.paidToAccountName || '—'}</td>
+                  <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
                   <td className="order-sheet-hits__num order-sheet-hits__num--strong">
                     {moneyOrDash(h.profit)}
                   </td>
-                  <td>{h.paidToAccountName || '—'}</td>
                   <td>
                     <Link
                       href={orderHref(h.id)}
@@ -543,6 +576,15 @@ export function OrderFinanceManager({
                 {h.contactPhone ? (
                   <div className="order-sheet-list-card__sub">{h.contactPhone}</div>
                 ) : null}
+                <div className="order-sheet-list-card__sub" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  <span
+                    title={`Expected ${inr(h.expected)} · balance ${inr(h.balance)}`}
+                    style={paymentStatusStyle(h.paymentStatus)}
+                  >
+                    {SETTLEMENT_LABEL[h.paymentStatus]}
+                  </span>
+                  <span>collected {inr(h.collected)}</span>
+                </div>
               </div>
               <span
                 className={`order-sheet-hits__pill ${h.sheetComplete ? 'is-yes' : 'is-no'}`}
@@ -558,20 +600,20 @@ export function OrderFinanceManager({
             </div>
             <div className="order-sheet-list-card__money">
               <div>
-                <span>Purchasing</span>
-                <strong>{moneyOrDash(h.purchasing)}</strong>
-              </div>
-              <div>
                 <span>Selling</span>
                 <strong>{moneyOrDash(h.selling)}</strong>
               </div>
               <div>
-                <span>Profit</span>
-                <strong>{moneyOrDash(h.profit)}</strong>
-              </div>
-              <div>
                 <span>Paid to</span>
                 <strong>{h.paidToAccountName || '—'}</strong>
+              </div>
+              <div>
+                <span>Purchasing</span>
+                <strong>{moneyOrDash(h.purchasing)}</strong>
+              </div>
+              <div>
+                <span>Profit</span>
+                <strong>{moneyOrDash(h.profit)}</strong>
               </div>
             </div>
             <Link

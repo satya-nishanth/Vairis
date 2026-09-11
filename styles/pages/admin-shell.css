@@ -801,6 +801,37 @@
   padding: 16px;
 }
 
+.finance-tx-form-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 1.05fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.finance-tx-form-split--single {
+  grid-template-columns: 1fr;
+}
+
+.finance-tx-form-split__alloc {
+  position: sticky;
+  top: 12px;
+}
+
+@media (max-width: 960px) {
+  .finance-tx-form-split {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-tx-form-split__alloc {
+    position: static;
+    order: 2;
+  }
+
+  .finance-tx-form-split__main {
+    order: 1;
+  }
+}
+
 /* —— Order finance sheet editor (C desktop / B mobile) —— */
 .order-sheet-form {
   background: #fff;

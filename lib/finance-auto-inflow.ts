@@ -74,6 +74,7 @@ export async function createAutoOrderPaymentInflow(
       autoCreated: true,
       reviewComplete: false,
       orders: { create: [{ orderId: opts.orderId }] },
+      allocations: { create: [{ orderId: opts.orderId, amount }] },
     },
     select: { id: true },
   })

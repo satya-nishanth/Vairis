@@ -274,6 +274,7 @@ model Order {
   shipments            Shipment[]
   finance              OrderFinance?
   financeTransactions  FinanceTransactionOrder[]
+  financeAllocations   FinanceAllocation[]
   invoices             Invoice[]
   inventoryAllocations InventoryAllocation[]
   inventorySales       InventorySale[]
@@ -719,6 +720,7 @@ model FinanceContact {
   updatedAt DateTime           @updatedAt
 
   transactions FinanceTransaction[]
+  purchaseBills PurchaseBill[]
 }
 
 /// Config: expense/income categories for cashbook transactions.
@@ -801,6 +803,8 @@ model FinanceTransaction {
   date                 DateTime
   direction            FinanceTransactionDirection
   amount               Decimal
+  /// GST portion of this cashbook line (INR). Amount remains the total moved.
+  gstAmount            Decimal                      @default(0)
   description          String                       @default("")
   accountId            String
   account              FinanceAccount               @relation("TxHandledBy", fields: [accountId], references: [id])
@@ -819,7 +823,11 @@ model FinanceTransaction {
   reviewComplete       Boolean                      @default(false)
   /// Free-text order references when no store order exists to link.
   unlinkedOrderLabels  String[]                     @default([])
+  /// Free-text inventory references when no inventory item is linked.
+  unlinkedInventoryLabels String[]                  @default([])
   orders               FinanceTransactionOrder[]
+  inventoryItems       FinanceTransactionInventory[]
+  allocations          FinanceAllocation[]
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
 
@@ -832,6 +840,75 @@ model FinanceTransaction {
   @@index([autoCreated, reviewComplete, createdAt])
 }
 
+/// Applies cashbook amount to an order invoice (AR) or purchase bill (AP).
+model FinanceAllocation {
+  id             String             @id @default(cuid())
+  transactionId  String
+  transaction    FinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  amount         Decimal
+  orderId        String?
+  order          Order?             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  purchaseBillId String?
+  purchaseBill   PurchaseBill?      @relation(fields: [purchaseBillId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([transactionId])
+  @@index([orderId])
+  @@index([purchaseBillId])
+}
+
+/// Supplier purchase invoice / bill (AP document).
+model PurchaseBill {
+  id                String                   @id @default(cuid())
+  /// Supplier's invoice / bill number (optional).
+  billNumber        String                   @default("")
+  date              DateTime
+  supplierContactId String?
+  supplierContact   FinanceContact?          @relation(fields: [supplierContactId], references: [id], onDelete: SetNull)
+  /// Denormalized / free-text supplier name.
+  supplierName      String                   @default("")
+  description       String                   @default("")
+  /// Optional GST portion of totalAmount.
+  gstAmount         Decimal                  @default(0)
+  /// Total amount owed on this bill (INR).
+  totalAmount       Decimal
+  notes             String                   @default("")
+  lines             PurchaseBillLine[]
+  attachments       PurchaseBillAttachment[]
+  allocations       FinanceAllocation[]
+  inventoryItems    InventoryItemPurchaseBill[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([date])
+  @@index([supplierContactId])
+  @@index([billNumber])
+}
+
+model PurchaseBillLine {
+  id          String       @id @default(cuid())
+  billId      String
+  bill        PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  description String       @default("")
+  amount      Decimal
+  sortOrder   Int          @default(0)
+
+  @@index([billId])
+}
+
+model PurchaseBillAttachment {
+  id          String       @id @default(cuid())
+  billId      String
+  bill        PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  url         String
+  fileName    String
+  contentType String       @default("")
+  createdAt   DateTime     @default(now())
+
+  @@index([billId])
+}
+
 model FinanceTransactionOrder {
   id            String             @id @default(cuid())
   transactionId String
@@ -841,6 +918,17 @@ model FinanceTransactionOrder {
 
   @@unique([transactionId, orderId])
   @@index([orderId])
+}
+
+model FinanceTransactionInventory {
+  id              String             @id @default(cuid())
+  transactionId   String
+  transaction     FinanceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  inventoryItemId String
+  inventoryItem   InventoryItem      @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, inventoryItemId])
+  @@index([inventoryItemId])
 }
 
 /// Append-only log of finance section mutations (who changed what).
@@ -889,6 +977,10 @@ model InventoryItem {
   customDescription String?
   metalPurity       String?
   weightGrams       Decimal?
+  /// Total diamond weight (carats) — physical breakup, not amounts.
+  diamondCarats     Decimal?
+  /// Other stone weight (carats) — physical breakup, not amounts.
+  stoneCarats       Decimal?
   /// Cost basis per unit (INR) — used for stock valuation.
   purchasePrice     Decimal?
   /// Selling price per unit (INR); catalogue lines may use live price when unset.
@@ -901,6 +993,8 @@ model InventoryItem {
   notes             String?
   allocations       InventoryAllocation[]
   sales             InventorySale[]
+  financeLinks      FinanceTransactionInventory[]
+  purchaseBills     InventoryItemPurchaseBill[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -908,6 +1002,19 @@ model InventoryItem {
   @@index([productId])
   @@index([variantId])
   @@index([qtyOnHand])
+}
+
+/// Links an inventory item to one or more supplier purchase bills.
+model InventoryItemPurchaseBill {
+  id              String        @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  purchaseBillId  String
+  purchaseBill    PurchaseBill  @relation(fields: [purchaseBillId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([inventoryItemId, purchaseBillId])
+  @@index([purchaseBillId])
 }
 
 /// Stock consumed by a manual admin order (not online checkout).

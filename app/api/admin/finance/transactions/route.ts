@@ -4,14 +4,26 @@ import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
 import { financeActorFromSession, logFinanceAudit, txObjectLabel } from '@/lib/finance-audit'
 import { dateInputToIstDate } from '@/lib/finance'
+import { allocationCreateNested, prepareAllocations } from '@/lib/finance-allocations'
+import {
+  financeTransactionInclude,
+  serializeFinanceTransaction,
+} from '@/lib/finance-transaction-serialize'
 
 export const dynamic = 'force-dynamic'
+
+const allocationSchema = z.object({
+  amount: z.number().positive('Allocation amount must be greater than 0'),
+  orderId: z.string().min(1).optional().nullable(),
+  purchaseBillId: z.string().min(1).optional().nullable(),
+})
 
 const schema = z
   .object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date is required'),
     direction: z.enum(['INFLOW', 'OUTFLOW', 'TRANSFER']),
     amount: z.number().positive('Amount must be greater than 0'),
+    gstAmount: z.number().min(0, 'GST cannot be negative').optional().default(0),
     description: z.string().trim().optional().default(''),
     accountId: z.string().min(1, 'Account is required'),
     paidThroughAccountId: z.string().min(1, 'Bank account is required'),
@@ -21,6 +33,9 @@ const schema = z
     contactName: z.string().trim().optional().default(''),
     orderIds: z.array(z.string()).optional().default([]),
     unlinkedOrderLabels: z.array(z.string().trim().min(1)).optional().default([]),
+    inventoryItemIds: z.array(z.string()).optional().default([]),
+    unlinkedInventoryLabels: z.array(z.string().trim().min(1)).optional().default([]),
+    allocations: z.array(allocationSchema).optional().default([]),
   })
   .superRefine((d, ctx) => {
     if (d.direction === 'TRANSFER') {
@@ -35,69 +50,6 @@ const schema = z
       }
     }
   })
-
-function serialize(row: {
-  id: string
-  date: Date
-  direction: string
-  amount: { toString(): string } | number
-  description: string
-  accountId: string
-  paidThroughAccountId: string
-  transferToAccountId: string | null
-  categoryId: string | null
-  contactId: string | null
-  contactName: string
-  autoCreated: boolean
-  reviewComplete: boolean
-  unlinkedOrderLabels: string[]
-  createdAt: Date
-  updatedAt: Date
-  account?: { id: string; name: string }
-  paidThroughAccount?: { id: string; name: string }
-  transferToAccount?: { id: string; name: string } | null
-  category?: { id: string; name: string } | null
-  contact?: { id: string; name: string } | null
-  orders?: { orderId: string; order: { id: string; contactName: string } }[]
-}) {
-  return {
-    id: row.id,
-    date: row.date.toISOString(),
-    direction: row.direction,
-    amount: Number(row.amount),
-    description: row.description,
-    accountId: row.accountId,
-    accountName: row.account?.name ?? null,
-    paidThroughAccountId: row.paidThroughAccountId,
-    paidThroughAccountName: row.paidThroughAccount?.name ?? null,
-    transferToAccountId: row.transferToAccountId,
-    transferToAccountName: row.transferToAccount?.name ?? null,
-    categoryId: row.categoryId,
-    categoryName: row.category?.name ?? null,
-    contactId: row.contactId,
-    contactName: row.contactName || row.contact?.name || null,
-    autoCreated: row.autoCreated,
-    reviewComplete: row.reviewComplete,
-    unlinkedOrderLabels: row.unlinkedOrderLabels ?? [],
-    orderIds: row.orders?.map((o) => o.orderId) ?? [],
-    orders:
-      row.orders?.map((o) => ({
-        id: o.order.id,
-        contactName: o.order.contactName,
-      })) ?? [],
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  }
-}
-
-const include = {
-  account: { select: { id: true, name: true } },
-  paidThroughAccount: { select: { id: true, name: true } },
-  transferToAccount: { select: { id: true, name: true } },
-  category: { select: { id: true, name: true } },
-  contact: { select: { id: true, name: true } },
-  orders: { include: { order: { select: { id: true, contactName: true } } } },
-} as const
 
 async function resolveContact(contactId: string | null | undefined, contactName: string) {
   const name = contactName.trim()
@@ -114,9 +66,9 @@ export async function GET() {
   if (gate.error) return gate.error
   const rows = await prisma.financeTransaction.findMany({
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    include,
+    include: financeTransactionInclude,
   })
-  return NextResponse.json(rows.map(serialize))
+  return NextResponse.json(rows.map(serializeFinanceTransaction))
 }
 
 export async function POST(req: NextRequest) {
@@ -168,14 +120,40 @@ export async function POST(req: NextRequest) {
     : await resolveContact(d.contactId, d.contactName ?? '')
   if ('error' in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 })
 
-  const orderIds = isTransfer ? [] : [...new Set(d.orderIds)]
+  const allocations = isTransfer ? [] : d.allocations
+  const prepared = await prepareAllocations(allocations, d.amount)
+  if ('error' in prepared) return NextResponse.json({ error: prepared.error }, { status: 400 })
+
+  const orderIds = isTransfer
+    ? []
+    : [...new Set([...d.orderIds, ...prepared.orderIds])]
   const unlinkedOrderLabels = isTransfer
     ? []
     : [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
+  const inventoryItemIds = isTransfer ? [] : [...new Set(d.inventoryItemIds)]
+  const unlinkedInventoryLabels = isTransfer
+    ? []
+    : [...new Set(d.unlinkedInventoryLabels.map((s) => s.trim()).filter(Boolean))]
+
+  const hasOrderLinks = orderIds.length > 0 || unlinkedOrderLabels.length > 0
+  const hasInventoryLinks = inventoryItemIds.length > 0 || unlinkedInventoryLabels.length > 0
+  if (hasOrderLinks && hasInventoryLinks) {
+    return NextResponse.json(
+      { error: 'Link to either orders or inventory, not both' },
+      { status: 400 },
+    )
+  }
+
   if (orderIds.length) {
     const found = await prisma.order.count({ where: { id: { in: orderIds } } })
     if (found !== orderIds.length) {
       return NextResponse.json({ error: 'One or more orders not found' }, { status: 400 })
+    }
+  }
+  if (inventoryItemIds.length) {
+    const found = await prisma.inventoryItem.count({ where: { id: { in: inventoryItemIds } } })
+    if (found !== inventoryItemIds.length) {
+      return NextResponse.json({ error: 'One or more inventory items not found' }, { status: 400 })
     }
   }
 
@@ -185,6 +163,7 @@ export async function POST(req: NextRequest) {
         date: dateInputToIstDate(d.date),
         direction: d.direction,
         amount: d.amount,
+        gstAmount: d.direction === 'TRANSFER' ? 0 : d.gstAmount,
         description: d.description ?? '',
         accountId: d.accountId,
         paidThroughAccountId: d.paidThroughAccountId,
@@ -195,11 +174,18 @@ export async function POST(req: NextRequest) {
         autoCreated: false,
         reviewComplete: true,
         unlinkedOrderLabels,
+        unlinkedInventoryLabels,
         orders: orderIds.length ? { create: orderIds.map((orderId) => ({ orderId })) } : undefined,
+        inventoryItems: inventoryItemIds.length
+          ? { create: inventoryItemIds.map((inventoryItemId) => ({ inventoryItemId })) }
+          : undefined,
+        allocations: prepared.rows.length
+          ? { create: allocationCreateNested(prepared.rows) }
+          : undefined,
       },
-      include,
+      include: financeTransactionInclude,
     })
-    const after = serialize(row)
+    const after = serializeFinanceTransaction(row)
     await logFinanceAudit({
       actor: financeActorFromSession(gate.session),
       action: 'CREATE',
