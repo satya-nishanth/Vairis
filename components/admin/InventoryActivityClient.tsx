@@ -61,6 +61,7 @@ function actionStyle(action: string): { background: string; color: string } {
   if (action === 'CREATE') return { background: '#dceee8', color: GREEN }
   if (action === 'DELETE') return { background: '#fce8e8', color: '#9f1239' }
   if (action === 'ALLOCATE') return { background: '#e0e7ff', color: '#3730a3' }
+  if (action === 'RELEASE') return { background: '#f3e8ff', color: '#6b21a8' }
   if (action === 'SOLD') return { background: '#fce7f3', color: '#9d174d' }
   return { background: '#fef3c7', color: '#92400e' }
 }
@@ -171,6 +172,8 @@ export function InventoryActivityClient({ initial }: { initial: InventoryAuditRo
           <option value="UPDATE">Update</option>
           <option value="DELETE">Delete</option>
           <option value="ALLOCATE">Allocate</option>
+          <option value="RELEASE">Release</option>
+          <option value="SOLD">Sold</option>
         </select>
       </div>
 

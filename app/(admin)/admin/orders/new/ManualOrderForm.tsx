@@ -37,6 +37,23 @@ const SELLING_FIELDS = [
 type SellingKey = (typeof SELLING_FIELDS)[number]['key']
 type SellingBreakdown = Record<SellingKey, string>
 
+export type ManualOrderEditPrefill = {
+  orderId: string
+  customer: Customer
+  address: {
+    contactName: string
+    contactPhone: string
+    addressLine1: string
+    addressLine2: string
+    city: string
+    state: string
+    pincode: string
+  }
+  lines: Line[]
+  /** Order-level selling components (numbers → form strings). */
+  selling?: Partial<Record<SellingKey, number>>
+}
+
 function emptySelling(): SellingBreakdown {
   return {
     gold: '',
@@ -47,6 +64,16 @@ function emptySelling(): SellingBreakdown {
     delivery: '',
     gst: '',
   }
+}
+
+function sellingFromPrefill(prefill?: ManualOrderEditPrefill['selling']): SellingBreakdown {
+  const base = emptySelling()
+  if (!prefill) return base
+  for (const f of SELLING_FIELDS) {
+    const n = prefill[f.key]
+    if (n != null && Number.isFinite(n)) base[f.key] = String(n)
+  }
+  return base
 }
 
 const CATEGORIES = [
@@ -105,32 +132,37 @@ export function ManualOrderForm({
   holders,
   quotation = null,
   isFinance = false,
+  editOrder = null,
 }: {
   variantOptions: VariantOption[]
   holders: HolderOption[]
   quotation?: Quotation
   isFinance?: boolean
+  editOrder?: ManualOrderEditPrefill | null
 }) {
   const router = useRouter()
+  const isEdit = Boolean(editOrder)
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Customer[]>([])
-  const [customer, setCustomer] = useState<Customer | null>(null)
+  const [customer, setCustomer] = useState<Customer | null>(editOrder?.customer ?? null)
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustomer, setNewCustomer] = useState({ name: '', email: '', mobile: '' })
   const [creatingCustomer, setCreatingCustomer] = useState(false)
 
   const [address, setAddress] = useState({
-    contactName: quotation?.customerName ?? '',
-    contactPhone: quotation?.customerMobile ?? '',
-    addressLine1: '',
-    addressLine2: '',
-    city: '',
-    state: '',
-    pincode: '',
+    contactName: editOrder?.address.contactName ?? quotation?.customerName ?? '',
+    contactPhone: editOrder?.address.contactPhone ?? quotation?.customerMobile ?? '',
+    addressLine1: editOrder?.address.addressLine1 ?? '',
+    addressLine2: editOrder?.address.addressLine2 ?? '',
+    city: editOrder?.address.city ?? '',
+    state: editOrder?.address.state ?? '',
+    pincode: editOrder?.address.pincode ?? '',
   })
 
-  const [itemMode, setItemMode] = useState<'catalogue' | 'inventory'>('catalogue')
+  const [itemMode, setItemMode] = useState<'catalogue' | 'inventory'>(
+    editOrder?.lines.some((l) => l.fromInventory) ? 'inventory' : 'catalogue',
+  )
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['key']>('ALL')
   const [itemSearch, setItemSearch] = useState('')
   const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([])
@@ -146,13 +178,14 @@ export function ManualOrderForm({
     potentialPrice: '',
   })
 
-  const [lines, setLines] = useState<Line[]>([])
+  const [lines, setLines] = useState<Line[]>(editOrder?.lines ?? [])
   const [paid, setPaid] = useState(true)
   const [paymentNote, setPaymentNote] = useState('')
   const [paymentReceivedAt, setPaymentReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [editNote, setEditNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selling, setSelling] = useState<SellingBreakdown>(emptySelling)
+  const [selling, setSelling] = useState<SellingBreakdown>(() => sellingFromPrefill(editOrder?.selling))
 
   const filteredVariants = useMemo(() => {
     const q = itemSearch.trim().toLowerCase()
@@ -455,20 +488,38 @@ export function ManualOrderForm({
       const body: Record<string, unknown> = {
         userId: customer.id,
         ...address,
-        initialStatus: paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING',
-        paymentNote: paymentNote || undefined,
-        paymentReceivedAt: paid ? paymentReceivedAt || undefined : undefined,
         items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId }) => ({
           variantId,
           quantity,
           unitPrice,
           inventoryItemId,
         })),
-        quotationId: quotation?.id,
       }
       if (hasSellingBreakdown) {
         body.sellingBreakdown = sellingParsed
       }
+
+      if (isEdit && editOrder) {
+        if (editNote.trim()) body.note = editNote.trim()
+        const res = await fetch(`/api/admin/orders/${editOrder.orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(data.error ?? 'Could not update order')
+          return
+        }
+        router.push(`/admin/orders/${editOrder.orderId}`)
+        router.refresh()
+        return
+      }
+
+      body.initialStatus = paid ? 'PAYMENT_CONFIRMED' : 'PAYMENT_PENDING'
+      body.paymentNote = paymentNote || undefined
+      body.paymentReceivedAt = paid ? paymentReceivedAt || undefined : undefined
+      body.quotationId = quotation?.id
 
       const res = await fetch('/api/admin/orders', {
         method: 'POST',
@@ -1255,37 +1306,56 @@ export function ManualOrderForm({
 
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>5 · Settlement</strong>
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: '0.8125rem',
-            margin: '10px 0 0',
-          }}
-        >
-          <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
-          Payment already received (UPI / bank transfer)
-        </label>
-        {paid && (
+        {!isEdit && (
           <>
-            <label style={label}>Received On</label>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: '0.8125rem',
+                margin: '10px 0 0',
+              }}
+            >
+              <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
+              Payment already received (UPI / bank transfer)
+            </label>
+            {paid && (
+              <>
+                <label style={label}>Received On</label>
+                <input
+                  style={input}
+                  type="date"
+                  required
+                  value={paymentReceivedAt}
+                  onChange={(e) => setPaymentReceivedAt(e.target.value)}
+                />
+              </>
+            )}
+            <label style={label}>Payment reference note (shown on the order timeline)</label>
             <input
               style={input}
-              type="date"
-              required
-              value={paymentReceivedAt}
-              onChange={(e) => setPaymentReceivedAt(e.target.value)}
+              value={paymentNote}
+              onChange={(e) => setPaymentNote(e.target.value)}
+              placeholder="e.g. GPay ref 402398765432"
             />
           </>
         )}
-        <label style={label}>Payment reference note (shown on the order timeline)</label>
-        <input
-          style={input}
-          value={paymentNote}
-          onChange={(e) => setPaymentNote(e.target.value)}
-          placeholder="e.g. GPay ref 402398765432"
-        />
+        {isEdit && (
+          <>
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: '10px 0 0' }}>
+              Status and payment are unchanged here — use the order detail page for lifecycle
+              transitions.
+            </p>
+            <label style={label}>Change note (optional, on timeline)</label>
+            <input
+              style={input}
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="e.g. Fixed GST vs Delivery mix-up"
+            />
+          </>
+        )}
 
         <div
           style={{
@@ -1329,7 +1399,7 @@ export function ManualOrderForm({
           cursor: 'pointer',
         }}
       >
-        {saving ? 'Creating…' : 'Create Order'}
+        {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create Order'}
       </button>
     </form>
   )
