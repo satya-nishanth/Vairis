@@ -18,6 +18,13 @@ export type InventorySaleRef = {
   order: { id: string; contactName: string } | null
 }
 
+export type InventoryListBillRef = {
+  id: string
+  billNumber: string
+  supplierName: string
+  href: string | null
+}
+
 export type InventoryListRow = {
   id: string
   qtyOnHand: number
@@ -32,6 +39,7 @@ export type InventoryListRow = {
   holder: { id: string; name: string }
   product: { id: string; name: string; itemCode: string | null } | null
   variant: { id: string; sku: string; metalType: string; size: string | null } | null
+  purchaseBills?: InventoryListBillRef[]
   _count?: { allocations: number }
 }
 
@@ -54,12 +62,19 @@ function saleRefLabel(sale: InventorySaleRef): React.ReactNode {
   return '—'
 }
 
+function billChipLabel(b: InventoryListBillRef) {
+  const num = b.billNumber.trim() || shortFinanceId(b.id)
+  return `#${num}`
+}
+
 export function InventoryList({
   initialRows,
   holders,
+  isFinance = false,
 }: {
   initialRows: InventoryListRow[]
   holders: { id: string; name: string }[]
+  isFinance?: boolean
 }) {
   const [q, setQ] = useState('')
   const [holderId, setHolderId] = useState('')
@@ -84,6 +99,7 @@ export function InventoryList({
         r.holder.name,
         r.latestSale?.order?.contactName,
         r.latestSale?.unlinkedOrderLabel,
+        ...(r.purchaseBills ?? []).map((b) => b.billNumber),
       ]
         .filter(Boolean)
         .join(' ')
@@ -93,6 +109,7 @@ export function InventoryList({
   }, [initialRows, q, holderId, linked, stock])
 
   const totalInventoryValue = useMemo(() => {
+    if (!isFinance) return 0
     const liveByVariantId = Object.fromEntries(
       rows
         .filter((r) => r.variant?.id && r.liveSoldPrice != null)
@@ -109,9 +126,10 @@ export function InventoryList({
       if (unit == null) return sum
       return sum + r.qtyOnHand * unit
     }, 0)
-  }, [rows])
+  }, [rows, isFinance])
 
   const valuedRowCount = useMemo(() => {
+    if (!isFinance) return 0
     const liveByVariantId = Object.fromEntries(
       rows
         .filter((r) => r.variant?.id && r.liveSoldPrice != null)
@@ -128,25 +146,29 @@ export function InventoryList({
         ) != null
       )
     }).length
-  }, [rows])
+  }, [rows, isFinance])
+
+  const colSpan = isFinance ? 10 : 8
 
   return (
     <>
       <InventorySubnav />
 
-      <div className="inv-kpi">
-        <div className="inv-kpi__card">
-          <div className="inv-kpi__label">Total inventory value</div>
-          <div className="inv-kpi__value">{inr(totalInventoryValue)}</div>
-          <div className="inv-kpi__meta">
-            {valuedRowCount > 0
-              ? `${valuedRowCount} in-stock line${valuedRowCount === 1 ? '' : 's'} · potential → live → purchase`
-              : rows.length > 0
-                ? 'Add potential, live catalogue, or purchase price on in-stock items'
-                : 'No stock lines in current view'}
+      {isFinance ? (
+        <div className="inv-kpi">
+          <div className="inv-kpi__card">
+            <div className="inv-kpi__label">Total inventory value</div>
+            <div className="inv-kpi__value">{inr(totalInventoryValue)}</div>
+            <div className="inv-kpi__meta">
+              {valuedRowCount > 0
+                ? `${valuedRowCount} in-stock line${valuedRowCount === 1 ? '' : 's'} · potential → live → purchase`
+                : rows.length > 0
+                  ? 'Add potential, live catalogue, or purchase price on in-stock items'
+                  : 'No stock lines in current view'}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="inv-toolbar">
         <div className="inv-field">
@@ -201,9 +223,10 @@ export function InventoryList({
               <th>Item</th>
               <th>Status</th>
               <th>Qty</th>
-              <th>Purchase / pc</th>
+              {isFinance ? <th>Purchase / pc</th> : null}
               <th>Sold / pc</th>
-              <th>Purchase total</th>
+              {isFinance ? <th>Purchase total</th> : null}
+              <th>Bills</th>
               <th>Sold to</th>
               <th>Holder</th>
               <th />
@@ -212,7 +235,7 @@ export function InventoryList({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ color: '#9ca3af', padding: 20 }}>
+                <td colSpan={colSpan} style={{ color: '#9ca3af', padding: 20 }}>
                   No inventory lines match.
                 </td>
               </tr>
@@ -227,6 +250,7 @@ export function InventoryList({
                 )
                 const isLiveSold = r.soldPrice == null && r.liveSoldPrice != null
                 const soldOut = r.qtyOnHand <= 0
+                const bills = r.purchaseBills ?? []
                 return (
                   <tr key={r.id}>
                     <td>
@@ -248,9 +272,11 @@ export function InventoryList({
                       )}
                     </td>
                     <td>{r.qtyOnHand}</td>
-                    <td style={{ color: '#6b7280' }}>
-                      {r.purchasePrice != null ? inr(r.purchasePrice) : '—'}
-                    </td>
+                    {isFinance ? (
+                      <td style={{ color: '#6b7280' }}>
+                        {r.purchasePrice != null ? inr(r.purchasePrice) : '—'}
+                      </td>
+                    ) : null}
                     <td style={{ color: '#6b7280' }}>
                       {effectiveSold != null ? (
                         <>
@@ -265,10 +291,28 @@ export function InventoryList({
                         '—'
                       )}
                     </td>
-                    <td style={{ fontWeight: 600 }}>
-                      {r.purchasePrice != null && r.qtyOnHand > 0
-                        ? inr(r.qtyOnHand * r.purchasePrice)
-                        : '—'}
+                    {isFinance ? (
+                      <td style={{ fontWeight: 600 }}>
+                        {r.purchasePrice != null && r.qtyOnHand > 0
+                          ? inr(r.qtyOnHand * r.purchasePrice)
+                          : '—'}
+                      </td>
+                    ) : null}
+                    <td style={{ fontSize: '0.75rem', maxWidth: 140 }}>
+                      {bills.length === 0
+                        ? '—'
+                        : bills.map((b, i) => (
+                            <span key={b.id}>
+                              {i > 0 ? ', ' : null}
+                              {b.href ? (
+                                <Link href={b.href} style={{ color: '#032b24', fontWeight: 500 }}>
+                                  {billChipLabel(b)}
+                                </Link>
+                              ) : (
+                                billChipLabel(b)
+                              )}
+                            </span>
+                          ))}
                     </td>
                     <td style={{ fontSize: '0.8125rem', maxWidth: 160 }}>
                       {r.latestSale ? saleRefLabel(r.latestSale) : '—'}

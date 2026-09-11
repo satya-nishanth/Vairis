@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma'
+import { requireAdmin } from '@/lib/auth'
+import { isFinanceEmail } from '@/lib/finance-auth'
 import { calculatePrice } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import { ManualOrderForm } from './ManualOrderForm'
@@ -18,6 +20,8 @@ export default async function NewManualOrderPage({
 }: {
   searchParams: Promise<{ quotationId?: string }>
 }) {
+  const session = await requireAdmin()
+  const isFinance = isFinanceEmail(session.user.email)
   const { quotationId } = await searchParams
 
   const [products, goldRates, pricingConfig, quotation, holders] = await Promise.all([
@@ -86,6 +90,7 @@ export default async function NewManualOrderPage({
         variantOptions={variantOptions}
         holders={holders}
         quotation={quotation}
+        isFinance={isFinance}
       />
     </div>
   )

@@ -3,14 +3,26 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
 import { financeActorFromSession, logFinanceAudit, txObjectLabel } from '@/lib/finance-audit'
-import { dateInputToIstDate } from '@/lib/finance'
+import { dateInputToIstDate, roundMoney } from '@/lib/finance'
+import { prepareAllocations } from '@/lib/finance-allocations'
+import {
+  financeTransactionInclude,
+  serializeFinanceTransaction,
+} from '@/lib/finance-transaction-serialize'
 
 export const dynamic = 'force-dynamic'
+
+const allocationSchema = z.object({
+  amount: z.number().positive('Allocation amount must be greater than 0'),
+  orderId: z.string().min(1).optional().nullable(),
+  purchaseBillId: z.string().min(1).optional().nullable(),
+})
 
 const schema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   direction: z.enum(['INFLOW', 'OUTFLOW', 'TRANSFER']).optional(),
   amount: z.number().positive().optional(),
+  gstAmount: z.number().min(0).optional(),
   description: z.string().trim().optional(),
   accountId: z.string().min(1).optional(),
   paidThroughAccountId: z.string().min(1).optional(),
@@ -20,72 +32,11 @@ const schema = z.object({
   contactName: z.string().trim().optional(),
   orderIds: z.array(z.string()).optional(),
   unlinkedOrderLabels: z.array(z.string().trim().min(1)).optional(),
-  /** Mark auto-created inflow as reviewed (admin ack). */
+  inventoryItemIds: z.array(z.string()).optional(),
+  unlinkedInventoryLabels: z.array(z.string().trim().min(1)).optional(),
+  allocations: z.array(allocationSchema).optional(),
   reviewComplete: z.boolean().optional(),
 })
-
-function serialize(row: {
-  id: string
-  date: Date
-  direction: string
-  amount: { toString(): string } | number
-  description: string
-  accountId: string
-  paidThroughAccountId: string
-  transferToAccountId: string | null
-  categoryId: string | null
-  contactId: string | null
-  contactName: string
-  autoCreated: boolean
-  reviewComplete: boolean
-  unlinkedOrderLabels: string[]
-  createdAt: Date
-  updatedAt: Date
-  account?: { id: string; name: string }
-  paidThroughAccount?: { id: string; name: string }
-  transferToAccount?: { id: string; name: string } | null
-  category?: { id: string; name: string } | null
-  contact?: { id: string; name: string } | null
-  orders?: { orderId: string; order: { id: string; contactName: string } }[]
-}) {
-  return {
-    id: row.id,
-    date: row.date.toISOString(),
-    direction: row.direction,
-    amount: Number(row.amount),
-    description: row.description,
-    accountId: row.accountId,
-    accountName: row.account?.name ?? null,
-    paidThroughAccountId: row.paidThroughAccountId,
-    paidThroughAccountName: row.paidThroughAccount?.name ?? null,
-    transferToAccountId: row.transferToAccountId,
-    transferToAccountName: row.transferToAccount?.name ?? null,
-    categoryId: row.categoryId,
-    categoryName: row.category?.name ?? null,
-    contactId: row.contactId,
-    contactName: row.contactName || row.contact?.name || null,
-    autoCreated: row.autoCreated,
-    reviewComplete: row.reviewComplete,
-    unlinkedOrderLabels: row.unlinkedOrderLabels ?? [],
-    orderIds: row.orders?.map((o) => o.orderId) ?? [],
-    orders:
-      row.orders?.map((o) => ({
-        id: o.order.id,
-        contactName: o.order.contactName,
-      })) ?? [],
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  }
-}
-
-const include = {
-  account: { select: { id: true, name: true } },
-  paidThroughAccount: { select: { id: true, name: true } },
-  transferToAccount: { select: { id: true, name: true } },
-  category: { select: { id: true, name: true } },
-  contact: { select: { id: true, name: true } },
-  orders: { include: { order: { select: { id: true, contactName: true } } } },
-} as const
 
 async function resolveContact(contactId: string | null | undefined, contactName: string | undefined) {
   if (contactId === undefined && contactName === undefined) return null
@@ -102,7 +53,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const gate = await requireFinanceApi()
   if (gate.error) return gate.error
   const { id } = await params
-  const existing = await prisma.financeTransaction.findUnique({ where: { id }, include })
+  const existing = await prisma.financeTransaction.findUnique({
+    where: { id },
+    include: financeTransactionInclude,
+  })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
@@ -111,17 +65,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const d = parsed.data
   const actor = financeActorFromSession(gate.session)
-  const before = serialize(existing)
+  const before = serializeFinanceTransaction(existing)
 
-  // Review-status-only patch (inline table control).
   const keys = Object.keys(d)
   if (keys.length === 1 && typeof d.reviewComplete === 'boolean') {
     const row = await prisma.financeTransaction.update({
       where: { id },
       data: { reviewComplete: d.reviewComplete },
-      include,
+      include: financeTransactionInclude,
     })
-    const after = serialize(row)
+    const after = serializeFinanceTransaction(row)
     await logFinanceAudit({
       actor,
       action: 'UPDATE',
@@ -141,6 +94,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const nextFrom = d.paidThroughAccountId ?? existing.paidThroughAccountId
   const nextTo =
     d.transferToAccountId !== undefined ? d.transferToAccountId : existing.transferToAccountId
+  const nextAmount = d.amount ?? Number(existing.amount)
 
   if (isTransfer) {
     if (!nextTo) {
@@ -204,13 +158,78 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: resolved.error }, { status: 400 })
   }
 
-  const orderIds = isTransfer ? [] : d.orderIds !== undefined ? [...new Set(d.orderIds)] : undefined
+  // Lowering `amount` without touching `allocations` leaves the existing
+  // allocation rows unrevalidated — prepareAllocations only runs against
+  // whatever `d.allocations` the caller sends. Re-check the untouched rows
+  // against nextAmount so an amount edit can't silently leave allocations
+  // exceeding the transaction (same "hard stop still at txn amount" rule
+  // prepareAllocations enforces when allocations ARE sent).
+  if (!isTransfer && d.amount !== undefined && d.allocations === undefined && existing.allocations.length > 0) {
+    const existingTotal = existing.allocations.reduce((s, a) => s + Number(a.amount), 0)
+    if (roundMoney(existingTotal) > roundMoney(nextAmount) + 0.009) {
+      return NextResponse.json(
+        { error: 'New amount is less than the total already allocated — adjust allocations first' },
+        { status: 400 },
+      )
+    }
+  }
+
+  let prepared:
+    | { rows: { amount: number; orderId: string | null; purchaseBillId: string | null }[]; orderIds: string[] }
+    | null = null
+  if (isTransfer) {
+    prepared = { rows: [], orderIds: [] }
+  } else if (d.allocations !== undefined) {
+    const p = await prepareAllocations(d.allocations, nextAmount)
+    if ('error' in p) return NextResponse.json({ error: p.error }, { status: 400 })
+    prepared = p
+  }
+
+  const orderIds = isTransfer
+    ? []
+    : d.orderIds !== undefined || prepared
+      ? [...new Set([...(d.orderIds ?? []), ...(prepared?.orderIds ?? [])])]
+      : undefined
   const unlinkedOrderLabels =
-    isTransfer ? [] : d.unlinkedOrderLabels !== undefined ? [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))] : undefined
+    isTransfer
+      ? []
+      : d.unlinkedOrderLabels !== undefined
+        ? [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
+        : undefined
+  const inventoryItemIds =
+    isTransfer ? [] : d.inventoryItemIds !== undefined ? [...new Set(d.inventoryItemIds)] : undefined
+  const unlinkedInventoryLabels =
+    isTransfer
+      ? []
+      : d.unlinkedInventoryLabels !== undefined
+        ? [...new Set(d.unlinkedInventoryLabels.map((s) => s.trim()).filter(Boolean))]
+        : undefined
+
+  const nextOrderIds = orderIds ?? existing.orders.map((o) => o.orderId)
+  const nextUnlinkedOrders = unlinkedOrderLabels ?? existing.unlinkedOrderLabels ?? []
+  const nextInvIds = inventoryItemIds ?? existing.inventoryItems.map((l) => l.inventoryItemId)
+  const nextUnlinkedInv = unlinkedInventoryLabels ?? existing.unlinkedInventoryLabels ?? []
+  if (
+    !isTransfer &&
+    (nextOrderIds.length > 0 || nextUnlinkedOrders.length > 0) &&
+    (nextInvIds.length > 0 || nextUnlinkedInv.length > 0)
+  ) {
+    return NextResponse.json(
+      { error: 'Link to either orders or inventory, not both' },
+      { status: 400 },
+    )
+  }
+
   if (orderIds?.length) {
     const found = await prisma.order.count({ where: { id: { in: orderIds } } })
     if (found !== orderIds.length) {
       return NextResponse.json({ error: 'One or more orders not found' }, { status: 400 })
+    }
+  }
+  if (inventoryItemIds?.length) {
+    const found = await prisma.inventoryItem.count({ where: { id: { in: inventoryItemIds } } })
+    if (found !== inventoryItemIds.length) {
+      return NextResponse.json({ error: 'One or more inventory items not found' }, { status: 400 })
     }
   }
 
@@ -223,12 +242,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         })
       }
     }
+    if (inventoryItemIds !== undefined || isTransfer) {
+      await tx.financeTransactionInventory.deleteMany({ where: { transactionId: id } })
+      if (inventoryItemIds?.length) {
+        await tx.financeTransactionInventory.createMany({
+          data: inventoryItemIds.map((inventoryItemId) => ({ transactionId: id, inventoryItemId })),
+        })
+      }
+    }
+    if (prepared) {
+      await tx.financeAllocation.deleteMany({ where: { transactionId: id } })
+      if (prepared.rows.length) {
+        await tx.financeAllocation.createMany({
+          data: prepared.rows.map((r) => ({
+            transactionId: id,
+            amount: r.amount,
+            orderId: r.orderId,
+            purchaseBillId: r.purchaseBillId,
+          })),
+        })
+      }
+    }
     return tx.financeTransaction.update({
       where: { id },
       data: {
         ...(d.date !== undefined ? { date: dateInputToIstDate(d.date) } : {}),
         ...(d.direction !== undefined ? { direction: d.direction } : {}),
         ...(d.amount !== undefined ? { amount: d.amount } : {}),
+        ...(d.gstAmount !== undefined
+          ? { gstAmount: isTransfer ? 0 : d.gstAmount }
+          : isTransfer
+            ? { gstAmount: 0 }
+            : {}),
         ...(d.description !== undefined ? { description: d.description } : {}),
         ...(d.accountId !== undefined ? { accountId: d.accountId } : {}),
         ...(d.paidThroughAccountId !== undefined
@@ -241,12 +286,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           : {}),
         ...(typeof d.reviewComplete === 'boolean' ? { reviewComplete: d.reviewComplete } : {}),
         ...(unlinkedOrderLabels !== undefined ? { unlinkedOrderLabels } : {}),
+        ...(unlinkedInventoryLabels !== undefined ? { unlinkedInventoryLabels } : {}),
+        ...(isTransfer ? { unlinkedOrderLabels: [], unlinkedInventoryLabels: [] } : {}),
       },
-      include,
+      include: financeTransactionInclude,
     })
   })
 
-  const after = serialize(row)
+  const after = serializeFinanceTransaction(row)
   await logFinanceAudit({
     actor,
     action: 'UPDATE',
@@ -265,9 +312,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const gate = await requireFinanceApi()
   if (gate.error) return gate.error
   const { id } = await params
-  const existing = await prisma.financeTransaction.findUnique({ where: { id }, include })
+  const existing = await prisma.financeTransaction.findUnique({
+    where: { id },
+    include: financeTransactionInclude,
+  })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const before = serialize(existing)
+  const before = serializeFinanceTransaction(existing)
   await prisma.financeTransaction.delete({ where: { id } })
   await logFinanceAudit({
     actor: financeActorFromSession(gate.session),

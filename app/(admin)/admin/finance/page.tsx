@@ -3,12 +3,10 @@ import { prisma } from '@/lib/prisma'
 import {
   summarizeDashboardKpis,
   summarizeTransactionFlows,
-  findSheetInflowMismatches,
   toDateInput,
   sheetTotals,
   shortFinanceId,
 } from '@/lib/finance'
-import { countPendingOrderSheets } from '@/lib/finance-order-search'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,33 +16,31 @@ const th: React.CSSProperties = { textAlign: 'left', padding: 10 }
 const td: React.CSSProperties = { padding: 10 }
 
 export default async function FinanceDashboardPage() {
-  const [expenses, sheets, accounts, transactions, forReviewCount, pendingSheetsCount] =
-    await Promise.all([
-      prisma.generalExpense.findMany({ include: { account: { select: { name: true } } } }),
-      prisma.orderFinance.findMany({
-        include: {
-          order: { select: { id: true, createdAt: true, contactName: true } },
-          lines: true,
-          paidToAccount: { select: { id: true, name: true, type: true } },
-        },
-      }),
-      prisma.financeAccount.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
-      prisma.financeTransaction.findMany({
-        select: {
-          date: true,
-          direction: true,
-          amount: true,
-          paidThroughAccountId: true,
-          transferToAccountId: true,
-          unlinkedOrderLabels: true,
-          orders: { select: { orderId: true } },
-        },
-      }),
-      prisma.financeTransaction.count({
-        where: { reviewComplete: false },
-      }),
-      countPendingOrderSheets(),
-    ])
+  const [expenses, sheets, accounts, transactions, forReviewCount] = await Promise.all([
+    prisma.generalExpense.findMany({ include: { account: { select: { name: true } } } }),
+    prisma.orderFinance.findMany({
+      include: {
+        order: { select: { id: true, createdAt: true, contactName: true } },
+        lines: true,
+        paidToAccount: { select: { id: true, name: true, type: true } },
+      },
+    }),
+    prisma.financeAccount.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
+    prisma.financeTransaction.findMany({
+      select: {
+        date: true,
+        direction: true,
+        amount: true,
+        paidThroughAccountId: true,
+        transferToAccountId: true,
+        unlinkedOrderLabels: true,
+        orders: { select: { orderId: true } },
+      },
+    }),
+    prisma.financeTransaction.count({
+      where: { reviewComplete: false },
+    }),
+  ])
 
   const sheetRows = sheets.map((s) => {
     const totals = sheetTotals(
@@ -72,17 +68,6 @@ export default async function FinanceDashboardPage() {
       amount: Number(t.amount),
       relatedToOrder: t.orders.length > 0 || t.unlinkedOrderLabels.length > 0,
     })),
-  )
-
-  const mismatches = findSheetInflowMismatches(
-    sheetRows,
-    transactions
-      .filter((t) => t.direction === 'INFLOW' && t.orders.length > 0)
-      .map((t) => ({
-        date: t.date,
-        amount: Number(t.amount),
-        orderIds: t.orders.map((o) => o.orderId),
-      })),
   )
 
   const byAccountFlows = summarizeTransactionFlows(
@@ -116,79 +101,6 @@ export default async function FinanceDashboardPage() {
           </div>
         ))}
       </div>
-
-      {mismatches.length > 0 && (
-        <details
-          role="alert"
-          style={{
-            marginBottom: 24,
-            padding: '14px 16px',
-            border: '1px solid #f59e0b',
-            borderRadius: 10,
-            background: '#fffbeb',
-          }}
-        >
-          <summary
-            style={{
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              color: '#92400e',
-              listStyle: 'none',
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-            <span>
-              Selling price and inflow transactions are not matching for {mismatches.length} order
-              {mismatches.length === 1 ? '' : 's'} — Please record those inflows on the transactions page. Tap to view
-            </span>
-            <span aria-hidden style={{ flexShrink: 0, fontSize: '0.75rem', opacity: 0.8 }}>
-              ▾
-            </span>
-          </summary>
-          <ul style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: '0.8125rem', color: '#78350f' }}>
-            {mismatches.map((m) => (
-              <li key={m.orderId} style={{ marginBottom: 4 }}>
-                <Link href={`/admin/finance/orders?orderId=${encodeURIComponent(m.orderId)}`} style={{ color: '#92400e', fontWeight: 600 }} title={m.orderId}>
-                  {shortFinanceId(m.orderId)}
-                </Link>
-                {' · '}
-                Sheet SP {inr(m.sheetSelling)} · Inflows {inr(m.inflowTotal)}
-                {' · '}
-                <Link href="/admin/finance/transactions?compose=1" style={{ color: '#92400e' }}>
-                  Record transaction
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {pendingSheetsCount > 0 && (
-        <div
-          role="status"
-          style={{
-            marginBottom: 24,
-            padding: '14px 16px',
-            border: '1px solid #f59e0b',
-            borderRadius: 10,
-            background: '#fffbeb',
-            fontSize: '0.875rem',
-            color: '#92400e',
-          }}
-        >
-          There {pendingSheetsCount === 1 ? 'is' : 'are'} {pendingSheetsCount} incomplete order sheet
-          {pendingSheetsCount === 1 ? '' : 's'} . Please fill{' '}
-          {pendingSheetsCount === 1 ? 'it' : 'them'} on the{' '}
-          <Link href="/admin/finance/orders" style={{ color: '#92400e', fontWeight: 600 }}>
-            order sheets page
-          </Link>
-          .
-        </div>
-      )}
 
       {forReviewCount > 0 && (
         <div

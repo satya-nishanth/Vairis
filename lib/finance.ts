@@ -38,6 +38,11 @@ export function toFinanceCategoryDirection(value: string): FinanceCategoryDirect
   return value === 'INFLOW' ? 'INFLOW' : 'OUTFLOW'
 }
 
+export function toFinanceTransactionDirection(value: string): FinanceTransactionDirection {
+  if (value === 'INFLOW' || value === 'TRANSFER') return value
+  return 'OUTFLOW'
+}
+
 export type FinanceLineInput = {
   kind: FinanceLineKind
   costPrice: number
@@ -274,8 +279,13 @@ export type TxExpenseRow = {
 export type OrderInflowTxRow = {
   date: Date
   amount: number
-  /** Orders linked on this INFLOW transaction. */
+  /** Orders linked on this INFLOW transaction (legacy join / fallback). */
   orderIds: string[]
+  /**
+   * Exact FinanceAllocation amounts per order. When present, used instead of
+   * splitting `amount` evenly across `orderIds`.
+   */
+  allocations?: { orderId: string; amount: number }[]
 }
 
 export type SheetInflowMismatch = {
@@ -318,8 +328,9 @@ export function summarizeDashboardKpis(
 }
 
 /**
- * Orders whose sheet selling total ≠ sum of linked INFLOW transactions
- * (shared multi-order inflows split evenly across linked orders).
+ * Orders whose sheet selling total ≠ sum of allocated INFLOW amounts.
+ * Prefers FinanceAllocation rows; falls back to even-split of linked join amounts
+ * for legacy cashbook rows without allocations.
  */
 export function findSheetInflowMismatches(
   sheets: OrderSheetRow[],
@@ -330,7 +341,15 @@ export function findSheetInflowMismatches(
   const inflowByOrder = new Map<string, number>()
 
   for (const t of inflows) {
-    if (!inRange(t.date) || t.orderIds.length === 0) continue
+    if (!inRange(t.date)) continue
+    if (t.allocations && t.allocations.length > 0) {
+      for (const a of t.allocations) {
+        if (!a.orderId) continue
+        inflowByOrder.set(a.orderId, (inflowByOrder.get(a.orderId) ?? 0) + a.amount)
+      }
+      continue
+    }
+    if (t.orderIds.length === 0) continue
     const share = t.amount / t.orderIds.length
     for (const orderId of t.orderIds) {
       inflowByOrder.set(orderId, (inflowByOrder.get(orderId) ?? 0) + share)

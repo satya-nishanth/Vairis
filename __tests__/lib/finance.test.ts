@@ -295,6 +295,41 @@ describe('findSheetInflowMismatches', () => {
       },
     ])
   })
+
+  it('prefers FinanceAllocation amounts over even-split of txn amount', () => {
+    const mismatches = findSheetInflowMismatches(
+      [
+        {
+          orderId: 'ord_a',
+          orderLabel: 'A',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 10000,
+          sellingPrice: 12000,
+          paidToAccountId: 'fa_bank',
+        },
+        {
+          orderId: 'ord_b',
+          orderLabel: 'B',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 5000,
+          sellingPrice: 8000,
+          paidToAccountId: 'fa_bank',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-05T12:00:00+05:30'),
+          amount: 20000,
+          orderIds: ['ord_a', 'ord_b'],
+          allocations: [
+            { orderId: 'ord_a', amount: 12000 },
+            { orderId: 'ord_b', amount: 8000 },
+          ],
+        },
+      ],
+    )
+    expect(mismatches).toEqual([])
+  })
 })
 
 describe('summarizeTransactionReport', () => {
