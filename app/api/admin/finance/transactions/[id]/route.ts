@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
 import { financeActorFromSession, logFinanceAudit, txObjectLabel } from '@/lib/finance-audit'
-import { dateInputToIstDate } from '@/lib/finance'
+import { dateInputToIstDate, roundMoney } from '@/lib/finance'
 import { prepareAllocations } from '@/lib/finance-allocations'
 import {
   financeTransactionInclude,
@@ -156,6 +156,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     : await resolveContact(d.contactId, d.contactName)
   if (resolved && 'error' in resolved) {
     return NextResponse.json({ error: resolved.error }, { status: 400 })
+  }
+
+  // Lowering `amount` without touching `allocations` leaves the existing
+  // allocation rows unrevalidated — prepareAllocations only runs against
+  // whatever `d.allocations` the caller sends. Re-check the untouched rows
+  // against nextAmount so an amount edit can't silently leave allocations
+  // exceeding the transaction (same "hard stop still at txn amount" rule
+  // prepareAllocations enforces when allocations ARE sent).
+  if (!isTransfer && d.amount !== undefined && d.allocations === undefined && existing.allocations.length > 0) {
+    const existingTotal = existing.allocations.reduce((s, a) => s + Number(a.amount), 0)
+    if (roundMoney(existingTotal) > roundMoney(nextAmount) + 0.009) {
+      return NextResponse.json(
+        { error: 'New amount is less than the total already allocated — adjust allocations first' },
+        { status: 400 },
+      )
+    }
   }
 
   let prepared:
