@@ -216,6 +216,18 @@ export function FinanceTransactionsManager({
     }
   }
 
+  function onContactTextChange(value: string) {
+    setContactText(value)
+    setContactId(null)
+    setContactOpen(true)
+  }
+
+  function pickContact(c: TxContact) {
+    setContactId(c.id)
+    setContactText(c.name)
+    setContactOpen(false)
+  }
+
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase()
     return rows.filter((r) => {
