@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toDateInput, shortFinanceId, type FinanceCategoryDirection, type FinanceTransactionDirection } from '@/lib/finance'
+import { toDateInput, shortFinanceId, roundMoney, type FinanceCategoryDirection, type FinanceTransactionDirection } from '@/lib/finance'
 import {
   FinanceAllocationEditor,
   allocationsFromRow,
@@ -170,6 +170,8 @@ export function FinanceTransactionsManager({
   const [contactOpen, setContactOpen] = useState(false)
   const contactWrapRef = useRef<HTMLDivElement>(null)
   const [allocations, setAllocations] = useState<AllocDraft[]>([])
+  /** Saved allocation amounts by order/bill id when edit started (for Due stubs). */
+  const [priorCredits, setPriorCredits] = useState<Record<string, number>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -303,7 +305,15 @@ export function FinanceTransactionsManager({
     setContactId(row.contactId)
     setContactText(row.contactName ?? '')
     setContactOpen(false)
-    setAllocations(allocationsFromRow(row))
+    const drafts = allocationsFromRow(row)
+    setAllocations(drafts)
+    const credits: Record<string, number> = {}
+    for (const a of drafts) {
+      const id = a.orderId ?? a.purchaseBillId
+      if (!id) continue
+      credits[id] = roundMoney((credits[id] ?? 0) + (Number(a.amount) || 0))
+    }
+    setPriorCredits(credits)
     setError('')
   }
 
@@ -322,6 +332,7 @@ export function FinanceTransactionsManager({
     setContactText('')
     setContactOpen(false)
     setAllocations([])
+    setPriorCredits({})
     setError('')
     router.push('/admin/finance/transactions')
   }
@@ -787,6 +798,8 @@ export function FinanceTransactionsManager({
                   allocations={allocations}
                   onChange={setAllocations}
                   txAmount={Number(amount) || 0}
+                  excludeTransactionId={editingId}
+                  priorCredits={priorCredits}
                 />
               </aside>
             )}

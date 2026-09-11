@@ -117,6 +117,7 @@ export async function GET(req: NextRequest) {
   if (gate.error) return gate.error
   const q = req.nextUrl.searchParams.get('q')?.trim() ?? ''
   const openOnly = req.nextUrl.searchParams.get('open') === '1'
+  const excludeTransactionId = req.nextUrl.searchParams.get('excludeTxn')?.trim() || undefined
 
   const rows = await prisma.purchaseBill.findMany({
     where: q
@@ -133,7 +134,10 @@ export async function GET(req: NextRequest) {
     include,
     take: q ? 40 : 200,
   })
-  const paidMap = await collectedByPurchaseBillIds(rows.map((r) => r.id))
+  const paidMap = await collectedByPurchaseBillIds(
+    rows.map((r) => r.id),
+    excludeTransactionId ? { excludeTransactionId } : undefined,
+  )
   let out = await Promise.all(rows.map((r) => serializeBill(r, paidMap.get(r.id) ?? 0)))
   if (openOnly) {
     out = out.filter((b) => b.paymentStatus === 'unpaid' || b.paymentStatus === 'partial')

@@ -16,12 +16,14 @@ export async function GET(req: NextRequest) {
   const recent = req.nextUrl.searchParams.get('recent') === '1'
   const openOnly = req.nextUrl.searchParams.get('open') === '1'
   const forAllocate = req.nextUrl.searchParams.get('scope') === 'allocate'
+  const excludeTransactionId = req.nextUrl.searchParams.get('excludeTxn')?.trim() || undefined
+  const allocOpts = excludeTransactionId ? { excludeTransactionId } : undefined
 
   let rows = forAllocate
     ? q.length >= 2
-      ? await searchFinanceOrdersForAllocation(q)
+      ? await searchFinanceOrdersForAllocation(q, allocOpts)
       : recent
-        ? await listRecentFinanceOrdersForAllocation(24)
+        ? await listRecentFinanceOrdersForAllocation(24, allocOpts)
         : []
     : q.length >= 2
       ? await searchFinanceOrders(q)

@@ -6,6 +6,7 @@ import {
   inventoryItemObjectLabel,
   logInventoryAudit,
   summarizeAllocation,
+  summarizeRelease,
   summarizeSale,
 } from '@/lib/inventory-audit'
 
@@ -103,6 +104,63 @@ export async function allocateInventoryForOrderItem(
       after: afterSnap,
       tx,
     })
+  }
+}
+
+/** Return allocated qty to on-hand and delete allocation rows for an order. */
+export async function releaseInventoryAllocationsForOrder(
+  tx: Prisma.TransactionClient,
+  input: { orderId: string; actor?: InventoryAuditActor },
+): Promise<void> {
+  const allocations = await tx.inventoryAllocation.findMany({
+    where: { orderId: input.orderId },
+    include: {
+      inventoryItem: {
+        include: {
+          holder: { select: { name: true } },
+          product: { select: { name: true } },
+          variant: { select: { sku: true, metalType: true, size: true } },
+        },
+      },
+    },
+  })
+  if (allocations.length === 0) return
+
+  const order = await tx.order.findUnique({
+    where: { id: input.orderId },
+    select: { contactName: true },
+  })
+
+  for (const a of allocations) {
+    const item = a.inventoryItem
+    await tx.inventoryItem.update({
+      where: { id: a.inventoryItemId },
+      data: { qtyOnHand: { increment: a.qty } },
+    })
+    await tx.inventoryAllocation.delete({ where: { id: a.id } })
+
+    if (input.actor) {
+      const beforeSnap = inventoryItemAuditSnap({ ...item, qtyOnHand: item.qtyOnHand })
+      const afterSnap = inventoryItemAuditSnap({ ...item, qtyOnHand: item.qtyOnHand + a.qty })
+      const label = inventoryItemObjectLabel(item)
+      await logInventoryAudit({
+        actor: input.actor,
+        action: 'RELEASE',
+        entityType: 'ALLOCATION',
+        entityId: a.orderItemId ?? a.id,
+        objectLabel: label,
+        objectHref: inventoryItemHref(item.id),
+        summary: summarizeRelease({
+          qty: a.qty,
+          itemLabel: label,
+          orderContactName: order?.contactName ?? 'Order',
+          qtyAfter: afterSnap.qtyOnHand,
+        }),
+        before: beforeSnap,
+        after: afterSnap,
+        tx,
+      })
+    }
   }
 }
 

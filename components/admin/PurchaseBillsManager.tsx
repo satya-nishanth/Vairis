@@ -75,6 +75,45 @@ function inr(n: number) {
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 }
 
+type SortKey = 'date' | 'bill' | 'supplier' | 'total' | 'paid' | 'balance' | 'status'
+type SortDir = 'asc' | 'desc'
+
+const STATUS_SORT_ORDER: Record<SettlementStatus, number> = {
+  unpaid: 0,
+  partial: 1,
+  settled: 2,
+  overpaid: 3,
+}
+
+const SORTABLE_COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
+  { key: 'date', label: 'Date' },
+  { key: 'bill', label: 'Bill' },
+  { key: 'supplier', label: 'Supplier' },
+  { key: 'total', label: 'Total' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'balance', label: 'Balance' },
+  { key: 'status', label: 'Status' },
+]
+
+function compareBills(a: PurchaseBillRow, b: PurchaseBillRow, key: SortKey): number {
+  switch (key) {
+    case 'date':
+      return new Date(a.date).getTime() - new Date(b.date).getTime()
+    case 'bill':
+      return (a.billNumber || a.id).localeCompare(b.billNumber || b.id, undefined, { sensitivity: 'base' })
+    case 'supplier':
+      return a.supplierName.localeCompare(b.supplierName, undefined, { sensitivity: 'base' })
+    case 'total':
+      return a.totalAmount - b.totalAmount
+    case 'paid':
+      return a.paid - b.paid
+    case 'balance':
+      return a.balance - b.balance
+    case 'status':
+      return STATUS_SORT_ORDER[a.paymentStatus] - STATUS_SORT_ORDER[b.paymentStatus]
+  }
+}
+
 export function PurchaseBillsManager({
   initial,
   contacts,
@@ -106,6 +145,8 @@ export function PurchaseBillsManager({
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | SettlementStatus>('all')
+  const [sortKey, setSortKey] = useState<SortKey>('date')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const showForm = compose || !!editingId
@@ -117,7 +158,7 @@ export function PurchaseBillsManager({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return rows.filter((r) => {
+    const list = rows.filter((r) => {
       if (statusFilter !== 'all' && r.paymentStatus !== statusFilter) return false
       if (!q) return true
       return (
@@ -127,7 +168,22 @@ export function PurchaseBillsManager({
         r.id.toLowerCase().includes(q)
       )
     })
-  }, [rows, query, statusFilter])
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...list].sort((a, b) => {
+      const cmp = compareBills(a, b, sortKey)
+      if (cmp !== 0) return cmp * dir
+      return new Date(b.date).getTime() - new Date(a.date).getTime()
+    })
+  }, [rows, query, statusFilter, sortKey, sortDir])
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDir(key === 'date' || key === 'total' || key === 'paid' || key === 'balance' ? 'desc' : 'asc')
+  }
 
   function resetForm() {
     setEditingId(null)
@@ -527,11 +583,34 @@ export function PurchaseBillsManager({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
             <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-              {['Date', 'Bill', 'Supplier', 'Total', 'Paid', 'Balance', 'Status', ''].map((h) => (
-                <th key={h || 'a'} style={{ padding: '10px 12px', fontSize: '0.75rem', color: MUTED, fontWeight: 600 }}>
-                  {h}
-                </th>
-              ))}
+              {SORTABLE_COLUMNS.map((col) => {
+                const active = sortKey === col.key
+                const arrow = active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+                return (
+                  <th key={col.key} style={{ padding: '10px 12px', fontSize: '0.75rem', color: MUTED, fontWeight: 600 }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(col.key)}
+                      aria-label={`Sort by ${col.label}${active ? `, ${sortDir}ending` : ''}`}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        padding: 0,
+                        margin: 0,
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        fontWeight: 600,
+                        color: active ? GREEN : MUTED,
+                        letterSpacing: 'inherit',
+                      }}
+                    >
+                      {col.label}
+                      {arrow}
+                    </button>
+                  </th>
+                )
+              })}
+              <th style={{ padding: '10px 12px', fontSize: '0.75rem', color: MUTED, fontWeight: 600 }} />
             </tr>
           </thead>
           <tbody>

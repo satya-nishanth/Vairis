@@ -20,6 +20,7 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Promos', href: '/admin/promos' },
   { label: 'Reviews', href: '/admin/reviews' },
   { label: 'Contacts', href: '/admin/contacts' },
+  { label: 'Customers', href: '/admin/customers' },
 ]
 
 function isActive(pathname: string, href: string) {
