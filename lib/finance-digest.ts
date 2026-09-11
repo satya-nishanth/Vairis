@@ -34,6 +34,9 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
         direction: true,
         amount: true,
         orders: { select: { orderId: true } },
+        allocations: {
+          select: { amount: true, orderId: true },
+        },
       },
     }),
     prisma.financeTransaction.count({ where: { reviewComplete: false } }),
@@ -61,12 +64,27 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
   const mismatches = findSheetInflowMismatches(
     sheetRows,
     transactions
-      .filter((t) => t.direction === 'INFLOW' && t.orders.length > 0)
-      .map((t) => ({
-        date: t.date,
-        amount: Number(t.amount),
-        orderIds: t.orders.map((o) => o.orderId),
-      })),
+      .filter(
+        (t) =>
+          t.direction === 'INFLOW' &&
+          (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
+      )
+      .map((t) => {
+        const orderAllocs = t.allocations
+          .filter((a) => a.orderId)
+          .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
+        return {
+          date: t.date,
+          amount: Number(t.amount),
+          orderIds: [
+            ...new Set([
+              ...t.orders.map((o) => o.orderId),
+              ...orderAllocs.map((a) => a.orderId),
+            ]),
+          ],
+          allocations: orderAllocs.length ? orderAllocs : undefined,
+        }
+      }),
   )
 
   return { pendingSheetsCount, forReviewCount, mismatches }

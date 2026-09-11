@@ -104,10 +104,12 @@ export function ManualOrderForm({
   variantOptions,
   holders,
   quotation = null,
+  isFinance = false,
 }: {
   variantOptions: VariantOption[]
   holders: HolderOption[]
   quotation?: Quotation
+  isFinance?: boolean
 }) {
   const router = useRouter()
 
@@ -350,8 +352,8 @@ export function ManualOrderForm({
       setError('Quantity must be a whole number ≥ 1')
       return
     }
-    const purchaseRaw = newInventory.purchasePrice.trim()
-    const potentialRaw = newInventory.potentialPrice.trim()
+    const purchaseRaw = isFinance ? newInventory.purchasePrice.trim() : ''
+    const potentialRaw = isFinance ? newInventory.potentialPrice.trim() : ''
     const purchasePrice = purchaseRaw === '' ? null : Number(purchaseRaw)
     const potentialPrice = potentialRaw === '' ? null : Number(potentialRaw)
     if (purchasePrice != null && (!Number.isFinite(purchasePrice) || purchasePrice <= 0)) {
@@ -374,8 +376,7 @@ export function ManualOrderForm({
           variantId: newInventory.variantId,
           holderId: newInventory.holderId,
           qtyOnHand: qty,
-          purchasePrice,
-          potentialPrice,
+          ...(isFinance ? { purchasePrice, potentialPrice } : {}),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -909,30 +910,34 @@ export function ManualOrderForm({
                           onChange={(e) => setNewInventory((n) => ({ ...n, qty: e.target.value }))}
                         />
                       </div>
-                      <div>
-                        <label style={label}>Purchase ₹ (optional)</label>
-                        <input
-                          style={input}
-                          inputMode="decimal"
-                          value={newInventory.purchasePrice}
-                          onChange={(e) =>
-                            setNewInventory((n) => ({ ...n, purchasePrice: e.target.value }))
-                          }
-                          placeholder="0"
-                        />
-                      </div>
-                      <div>
-                        <label style={label}>Potential ₹ (optional)</label>
-                        <input
-                          style={input}
-                          inputMode="decimal"
-                          value={newInventory.potentialPrice}
-                          onChange={(e) =>
-                            setNewInventory((n) => ({ ...n, potentialPrice: e.target.value }))
-                          }
-                          placeholder="0"
-                        />
-                      </div>
+                      {isFinance ? (
+                        <>
+                          <div>
+                            <label style={label}>Purchase ₹ (optional)</label>
+                            <input
+                              style={input}
+                              inputMode="decimal"
+                              value={newInventory.purchasePrice}
+                              onChange={(e) =>
+                                setNewInventory((n) => ({ ...n, purchasePrice: e.target.value }))
+                              }
+                              placeholder="0"
+                            />
+                          </div>
+                          <div>
+                            <label style={label}>Potential ₹ (optional)</label>
+                            <input
+                              style={input}
+                              inputMode="decimal"
+                              value={newInventory.potentialPrice}
+                              onChange={(e) =>
+                                setNewInventory((n) => ({ ...n, potentialPrice: e.target.value }))
+                              }
+                              placeholder="0"
+                            />
+                          </div>
+                        </>
+                      ) : null}
                     </div>
 
                     <button

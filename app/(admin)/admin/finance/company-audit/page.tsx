@@ -10,6 +10,12 @@ import {
   buildCompanyAudit,
   inventoryRowsForAudit,
 } from '@/lib/finance-company-audit'
+import {
+  collectedByOrderIds,
+  collectedByPurchaseBillIds,
+  orderPaymentSummary,
+  purchaseBillPaymentSummary,
+} from '@/lib/finance-collections'
 import { CompanyAuditClient } from '@/components/admin/CompanyAuditClient'
 import { inventoryDisplayName } from '@/lib/inventory'
 
@@ -28,77 +34,110 @@ export default async function CompanyAuditPage({
 }) {
   await requireFinance()
   const sp = await searchParams
-  const period = parseFinanceReportSearchParams(sp)
+  // Default: all time (Reports keep month default via shared parser).
+  const hasPeriodParam = Boolean(sp.period || sp.month || sp.quarter || sp.year)
+  const period = parseFinanceReportSearchParams(
+    hasPeriodParam ? sp : { ...sp, period: 'all' },
+  )
   const { start, end } = financeReportDateRange(period)
   const range = start && end ? { start, end } : undefined
   const initialTab = sp.tab === 'reconciliation' ? 'reconciliation' : 'overview'
 
-  const [sheets, accounts, transactions, inventoryItems, inventorySales] = await Promise.all([
-    prisma.orderFinance.findMany({
-      include: {
-        order: { select: { id: true, createdAt: true, contactName: true } },
-        lines: true,
-      },
-    }),
-    prisma.financeAccount.findMany({
-      where: { active: true },
-      orderBy: { sortOrder: 'asc' },
-    }),
-    prisma.financeTransaction.findMany({
-      select: {
-        id: true,
-        date: true,
-        direction: true,
-        amount: true,
-        description: true,
-        paidThroughAccountId: true,
-        transferToAccountId: true,
-        unlinkedOrderLabels: true,
-        orders: { select: { orderId: true } },
-      },
-    }),
-    prisma.inventoryItem.findMany({
-      select: {
-        id: true,
-        qtyOnHand: true,
-        purchasePrice: true,
-        potentialPrice: true,
-        variantId: true,
-        customName: true,
-        product: { select: { name: true } },
-        variant: { select: { sku: true, metalType: true, size: true } },
-      },
-    }),
-    prisma.inventorySale.findMany({
-      select: {
-        id: true,
-        inventoryItemId: true,
-        qty: true,
-        orderId: true,
-        unlinkedOrderLabel: true,
-        soldAt: true,
-        inventoryItem: {
-          select: {
-            customName: true,
-            product: { select: { name: true } },
-            variant: { select: { sku: true, metalType: true, size: true } },
+  const [sheets, accounts, transactions, inventoryItems, inventorySales, purchaseBills] =
+    await Promise.all([
+      prisma.orderFinance.findMany({
+        include: {
+          order: {
+            select: {
+              id: true,
+              createdAt: true,
+              contactName: true,
+              grandTotal: true,
+            },
+          },
+          lines: true,
+        },
+      }),
+      prisma.financeAccount.findMany({
+        where: { active: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
+      prisma.financeTransaction.findMany({
+        select: {
+          id: true,
+          date: true,
+          direction: true,
+          amount: true,
+          description: true,
+          reviewComplete: true,
+          paidThroughAccountId: true,
+          transferToAccountId: true,
+          unlinkedOrderLabels: true,
+          orders: { select: { orderId: true } },
+          allocations: {
+            select: { amount: true, orderId: true, purchaseBillId: true },
           },
         },
-      },
-      take: 500,
-      orderBy: { soldAt: 'desc' },
-    }),
-  ])
+      }),
+      prisma.inventoryItem.findMany({
+        select: {
+          id: true,
+          qtyOnHand: true,
+          purchasePrice: true,
+          potentialPrice: true,
+          variantId: true,
+          customName: true,
+          product: { select: { name: true } },
+          variant: { select: { sku: true, metalType: true, size: true } },
+        },
+      }),
+      prisma.inventorySale.findMany({
+        select: {
+          id: true,
+          inventoryItemId: true,
+          qty: true,
+          orderId: true,
+          unlinkedOrderLabel: true,
+          soldAt: true,
+          inventoryItem: {
+            select: {
+              customName: true,
+              product: { select: { name: true } },
+              variant: { select: { sku: true, metalType: true, size: true } },
+            },
+          },
+        },
+        take: 500,
+        orderBy: { soldAt: 'desc' },
+      }),
+      prisma.purchaseBill.findMany({
+        select: {
+          id: true,
+          billNumber: true,
+          supplierName: true,
+          date: true,
+          totalAmount: true,
+          supplierContact: { select: { name: true } },
+        },
+      }),
+    ])
 
   const yearSet = new Set<number>([period.year, new Date().getFullYear()])
   for (const t of transactions) yearSet.add(t.date.getFullYear())
   for (const s of sheets) yearSet.add(s.order.createdAt.getFullYear())
+  for (const b of purchaseBills) yearSet.add(b.date.getFullYear())
   const years = [...yearSet].sort((a, b) => b - a)
 
   const variantIds = inventoryItems
     .map((r) => r.variantId)
     .filter((id): id is string => id != null)
   const liveByVariantId = await getLiveUnitPricesByVariantId(variantIds)
+
+  const sheetOrderIds = sheets.map((s) => s.orderId)
+  const [paidByBill, collectedByOrder] = await Promise.all([
+    collectedByPurchaseBillIds(purchaseBills.map((b) => b.id)),
+    collectedByOrderIds(sheetOrderIds),
+  ])
 
   const sheetRows = sheets.map((s) => {
     const totals = sheetTotals(
@@ -115,6 +154,7 @@ export default async function CompanyAuditPage({
       cost: totals.cost,
       sellingPrice: totals.selling,
       paidToAccountId: s.paidToAccountId,
+      grandTotal: Number(s.order.grandTotal),
     }
   })
 
@@ -126,7 +166,10 @@ export default async function CompanyAuditPage({
       date: t.date,
       direction: t.direction,
       amount: Number(t.amount),
-      relatedToOrder: t.orders.length > 0 || t.unlinkedOrderLabels.length > 0,
+      relatedToOrder:
+        t.orders.length > 0 ||
+        t.unlinkedOrderLabels.length > 0 ||
+        t.allocations.some((a) => a.orderId || a.purchaseBillId),
     })),
     txFlow: transactions.map((t) => ({
       date: t.date,
@@ -137,28 +180,34 @@ export default async function CompanyAuditPage({
     })),
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
     orderInflows: transactions
-      .filter((t) => t.direction === 'INFLOW' && t.orders.length > 0)
-      .map((t) => ({
-        date: t.date,
-        amount: Number(t.amount),
-        orderIds: t.orders.map((o) => o.orderId),
-      })),
-    auditInflows: transactions
-      .filter((t) => t.direction === 'INFLOW')
-      .map((t) => ({
-        id: t.id,
-        date: t.date,
-        amount: Number(t.amount),
-        orderIds: t.orders.map((o) => o.orderId),
-        unlinkedOrderLabels: t.unlinkedOrderLabels,
-      })),
+      .filter(
+        (t) =>
+          t.direction === 'INFLOW' &&
+          (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
+      )
+      .map((t) => {
+        const orderAllocs = t.allocations
+          .filter((a) => a.orderId)
+          .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
+        const fromJoin = t.orders.map((o) => o.orderId)
+        const fromAlloc = orderAllocs.map((a) => a.orderId)
+        return {
+          date: t.date,
+          amount: Number(t.amount),
+          orderIds: [...new Set([...fromJoin, ...fromAlloc])],
+          allocations: orderAllocs.length ? orderAllocs : undefined,
+        }
+      }),
     auditOutflows: transactions
       .filter((t) => t.direction === 'OUTFLOW')
       .map((t) => ({
         id: t.id,
         date: t.date,
         amount: Number(t.amount),
-        relatedToOrder: t.orders.length > 0 || t.unlinkedOrderLabels.length > 0,
+        relatedToOrder:
+          t.orders.length > 0 ||
+          t.unlinkedOrderLabels.length > 0 ||
+          t.allocations.some((a) => a.orderId || a.purchaseBillId),
         description: t.description || null,
       })),
     stockRows,
@@ -172,6 +221,57 @@ export default async function CompanyAuditPage({
       soldAt: s.soldAt,
     })),
     liveByVariantId,
+    purchaseBills: purchaseBills.map((b) => {
+      const total = Number(b.totalAmount)
+      const paid = paidByBill.get(b.id) ?? 0
+      const summary = purchaseBillPaymentSummary(total, paid)
+      return {
+        id: b.id,
+        billNumber: b.billNumber,
+        supplierName: b.supplierName || b.supplierContact?.name || '',
+        date: b.date,
+        total: summary.total,
+        paid: summary.paid,
+        paymentStatus: summary.paymentStatus,
+      }
+    }),
+    orderPayments: sheetRows.map((s) => {
+      const summary = orderPaymentSummary({
+        grandTotal: s.grandTotal,
+        sheetSelling: s.sellingPrice,
+        collected: collectedByOrder.get(s.orderId) ?? 0,
+      })
+      return {
+        orderId: s.orderId,
+        label: s.orderLabel,
+        orderCreatedAt: s.orderCreatedAt,
+        expected: summary.expected,
+        collected: summary.collected,
+        paymentStatus: summary.paymentStatus,
+        grandTotal: s.grandTotal,
+        sheetSelling: s.sellingPrice > 0 ? s.sellingPrice : null,
+      }
+    }),
+    txAllocations: transactions.map((t) => {
+      let allocatedToOrders = 0
+      let allocatedToBills = 0
+      for (const a of t.allocations) {
+        const amt = Number(a.amount)
+        if (a.orderId) allocatedToOrders += amt
+        if (a.purchaseBillId) allocatedToBills += amt
+      }
+      return {
+        id: t.id,
+        date: t.date,
+        direction: t.direction,
+        amount: Number(t.amount),
+        allocatedAmount: allocatedToOrders + allocatedToBills,
+        allocatedToOrders,
+        allocatedToBills,
+        reviewComplete: t.reviewComplete,
+        description: t.description || null,
+      }
+    }),
     range,
   })
 

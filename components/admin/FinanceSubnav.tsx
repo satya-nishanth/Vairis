@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/admin/finance', label: 'Dashboard', exact: true },
   { href: '/admin/finance/transactions', label: 'Transactions' },
   { href: '/admin/finance/orders', label: 'Order sheets' },
+  { href: '/admin/finance/purchase-bills', label: 'Purchase bills' },
   { href: '/admin/finance/company-audit', label: 'Company Audit' },
   { href: '/admin/finance/reports', label: 'Reports' },
   { href: '/admin/finance/config', label: 'Config' },

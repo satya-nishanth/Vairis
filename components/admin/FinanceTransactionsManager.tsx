@@ -4,6 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toDateInput, shortFinanceId, type FinanceCategoryDirection, type FinanceTransactionDirection } from '@/lib/finance'
+import {
+  FinanceAllocationEditor,
+  allocationsFromRow,
+  allocationsToPayload,
+  type AllocDraft,
+} from '@/components/admin/FinanceAllocationEditor'
+import {
+  TX_ALLOCATION_LABEL,
+  type TxAllocationStatus,
+} from '@/lib/finance-tx-allocation-status'
 
 export type TxAccount = { id: string; name: string }
 export type TxContact = { id: string; name: string; type: string }
@@ -13,6 +23,7 @@ export type TxRow = {
   date: string
   direction: FinanceTransactionDirection
   amount: number
+  gstAmount: number
   description: string
   accountId: string
   accountName: string | null
@@ -30,18 +41,21 @@ export type TxRow = {
   orderIds: string[]
   unlinkedOrderLabels?: string[]
   orders?: { id: string; contactName: string }[]
-}
-
-type OrderRef =
-  | { kind: 'linked'; id: string; label: string }
-  | { kind: 'unlinked'; key: string; label: string }
-
-type OrderHit = {
-  id: string
-  contactName: string
-  contactPhone: string
-  grandTotal: number
-  status: string
+  inventoryItemIds?: string[]
+  unlinkedInventoryLabels?: string[]
+  inventoryItems?: { id: string; label: string }[]
+  allocations?: {
+    id?: string
+    amount: number
+    orderId: string | null
+    purchaseBillId: string | null
+    label: string
+    href?: string | null
+  }[]
+  allocatedAmount?: number
+  unallocatedAmount?: number
+  overAllocatedAmount?: number
+  allocationStatus?: TxAllocationStatus
 }
 
 const GREEN = '#032b24'
@@ -60,7 +74,7 @@ const field: React.CSSProperties = {
   minWidth: 0,
 }
 
-const req: React.CSSProperties = { color: '#dc2626', fontWeight: 600 }
+const req: React.CSSProperties = { color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }
 
 const control: React.CSSProperties = {
   width: '100%',
@@ -143,6 +157,7 @@ export function FinanceTransactionsManager({
   const [date, setDate] = useState(() => toDateInput(new Date()))
   const [direction, setDirection] = useState<FinanceTransactionDirection>('OUTFLOW')
   const [amount, setAmount] = useState('')
+  const [gstAmount, setGstAmount] = useState('')
   const [description, setDescription] = useState('')
   const [accountId, setAccountId] = useState(fallbackAccountId)
   const [paidThroughAccountId, setPaidThroughAccountId] = useState(fallbackAccountId)
@@ -154,12 +169,7 @@ export function FinanceTransactionsManager({
   const [contactText, setContactText] = useState('')
   const [contactOpen, setContactOpen] = useState(false)
   const contactWrapRef = useRef<HTMLDivElement>(null)
-  const [relatedToOrder, setRelatedToOrder] = useState(true)
-  const [selectedOrders, setSelectedOrders] = useState<OrderRef[]>([])
-  const [orderQuery, setOrderQuery] = useState('')
-  const [orderHits, setOrderHits] = useState<OrderHit[]>([])
-  const [orderSearchHint, setOrderSearchHint] = useState('')
-  const orderSearchSeq = useRef(0)
+  const [allocations, setAllocations] = useState<AllocDraft[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -170,7 +180,7 @@ export function FinanceTransactionsManager({
   const [showAllColumns, setShowAllColumns] = useState(false)
 
   const showForm = compose || !!editId || !!editingId
-  const tableColSpan = showAllColumns ? 13 : 11
+  const tableColSpan = showAllColumns ? 14 : 12
 
   const contactSuggestions = useMemo(() => {
     const q = contactText.trim().toLowerCase()
@@ -197,10 +207,7 @@ export function FinanceTransactionsManager({
       return cat && cat.direction === next ? prev : ''
     })
     if (next === 'TRANSFER') {
-      setRelatedToOrder(false)
-      setSelectedOrders([])
-      setOrderQuery('')
-      setOrderHits([])
+      setAllocations([])
       setContactId(null)
       setContactText('')
       if (!transferToAccountId || transferToAccountId === paidThroughAccountId) {
@@ -222,6 +229,10 @@ export function FinanceTransactionsManager({
         ...(r.orders?.map((o) => `${o.contactName} ${o.id}`) ?? []),
         ...r.orderIds,
         ...(r.unlinkedOrderLabels ?? []),
+        ...(r.inventoryItems?.map((i) => `${i.label} ${i.id}`) ?? []),
+        ...(r.inventoryItemIds ?? []),
+        ...(r.unlinkedInventoryLabels ?? []),
+        ...(r.allocations?.map((a) => a.label) ?? []),
       ]
         .join(' ')
         .toLowerCase()
@@ -267,6 +278,7 @@ export function FinanceTransactionsManager({
     setDate(toDateInput(new Date(row.date)))
     setDirection(row.direction)
     setAmount(String(row.amount))
+    setGstAmount(row.gstAmount ? String(row.gstAmount) : '')
     setDescription(row.description)
     setAccountId(row.accountId)
     setPaidThroughAccountId(row.paidThroughAccountId)
@@ -279,30 +291,7 @@ export function FinanceTransactionsManager({
     setContactId(row.contactId)
     setContactText(row.contactName ?? '')
     setContactOpen(false)
-    const hasOrders =
-      (row.orders?.length ?? 0) > 0 ||
-      row.orderIds.length > 0 ||
-      (row.unlinkedOrderLabels?.length ?? 0) > 0
-    setRelatedToOrder(row.direction === 'TRANSFER' ? false : hasOrders)
-    const refs: OrderRef[] = [
-      ...(row.orders?.map((o) => ({
-        kind: 'linked' as const,
-        id: o.id,
-        label: shortFinanceId(o.id),
-      })) ?? []),
-      ...row.orderIds
-        .filter((id) => !row.orders?.some((o) => o.id === id))
-        .map((id) => ({ kind: 'linked' as const, id, label: shortFinanceId(id) })),
-      ...(row.unlinkedOrderLabels ?? []).map((label) => ({
-        kind: 'unlinked' as const,
-        key: `u:${label}`,
-        label,
-      })),
-    ]
-    setSelectedOrders(refs)
-    setOrderQuery('')
-    setOrderHits([])
-    setOrderSearchHint('')
+    setAllocations(allocationsFromRow(row))
     setError('')
   }
 
@@ -311,6 +300,7 @@ export function FinanceTransactionsManager({
     setDate(toDateInput(new Date()))
     setDirection('OUTFLOW')
     setAmount('')
+    setGstAmount('')
     setDescription('')
     setAccountId(fallbackAccountId)
     setPaidThroughAccountId(fallbackAccountId)
@@ -319,11 +309,7 @@ export function FinanceTransactionsManager({
     setContactId(null)
     setContactText('')
     setContactOpen(false)
-    setRelatedToOrder(true)
-    setSelectedOrders([])
-    setOrderQuery('')
-    setOrderHits([])
-    setOrderSearchHint('')
+    setAllocations([])
     setError('')
     router.push('/admin/finance/transactions')
   }
@@ -332,93 +318,13 @@ export function FinanceTransactionsManager({
     leaveForm()
   }
 
-  function toggleRelatedToOrder(checked: boolean) {
-    setRelatedToOrder(checked)
-    if (!checked) {
-      setSelectedOrders([])
-      setOrderQuery('')
-      setOrderHits([])
-    }
-  }
-
-  function onContactTextChange(value: string) {
-    setContactText(value)
-    setContactOpen(true)
-    if (contactId) {
-      const selected = contacts.find((c) => c.id === contactId)
-      if (!selected || selected.name !== value) setContactId(null)
-    }
-  }
-
-  function pickContact(c: TxContact) {
-    setContactId(c.id)
-    setContactText(c.name)
-    setContactOpen(false)
-  }
-
-  async function searchOrders(q: string) {
-    setOrderQuery(q)
-    const seq = ++orderSearchSeq.current
-    if (q.trim().length < 2) {
-      setOrderHits([])
-      setOrderSearchHint(q.trim().length === 0 ? '' : 'Type at least 2 characters')
-      return
-    }
-    setOrderSearchHint('Searching…')
-    const res = await fetch(`/api/admin/finance/order-search?q=${encodeURIComponent(q.trim())}`)
-    if (seq !== orderSearchSeq.current) return
-    if (!res.ok) {
-      setOrderHits([])
-      setOrderSearchHint('Search failed — try again')
-      return
-    }
-    const hits = (await res.json()) as OrderHit[]
-    if (seq !== orderSearchSeq.current) return
-    setOrderHits(hits)
-    setOrderSearchHint(hits.length === 0 ? 'No orders found' : '')
-  }
-
-  function addOrder(hit: OrderHit) {
-    setSelectedOrders((prev) => {
-      if (prev.some((o) => o.kind === 'linked' && o.id === hit.id)) return prev
-      const label = shortFinanceId(hit.id)
-      return [...prev, { kind: 'linked', id: hit.id, label }]
-    })
-    setOrderQuery('')
-    setOrderHits([])
-    setOrderSearchHint('')
-  }
-
-  function addUnlinkedOrder(raw: string) {
-    const label = raw.trim()
-    if (!label) return
-    setSelectedOrders((prev) => {
-      if (prev.some((o) => o.kind === 'unlinked' && o.label.toLowerCase() === label.toLowerCase())) {
-        return prev
-      }
-      return [...prev, { kind: 'unlinked', key: `u:${label}`, label }]
-    })
-    setOrderQuery('')
-    setOrderHits([])
-    setOrderSearchHint('')
-  }
-
-  function removeOrder(ref: OrderRef) {
-    setSelectedOrders((prev) =>
-      prev.filter((o) => {
-        if (ref.kind === 'linked' && o.kind === 'linked') return o.id !== ref.id
-        if (ref.kind === 'unlinked' && o.kind === 'unlinked') return o.key !== ref.key
-        return true
-      }),
-    )
-  }
-
   async function save(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     const isTransfer = direction === 'TRANSFER'
-    if (!isTransfer && relatedToOrder && selectedOrders.length === 0) {
-      setError('Add at least one order or order reference when “Related to Order” is checked')
+    const allocationPayload = isTransfer ? [] : allocationsToPayload(allocations)
+    if (!isTransfer && allocations.length > 0 && allocationPayload.length === 0) {
+      setError('Enter an amount for each allocation')
       return
     }
     if (isTransfer) {
@@ -436,6 +342,7 @@ export function FinanceTransactionsManager({
       date,
       direction,
       amount: Number(amount),
+      gstAmount: isTransfer ? 0 : Number(gstAmount || 0),
       description,
       accountId,
       paidThroughAccountId,
@@ -443,14 +350,13 @@ export function FinanceTransactionsManager({
       categoryId: isTransfer ? null : categoryId || null,
       contactId: isTransfer ? null : contactId || null,
       contactName: isTransfer ? '' : contactText.trim(),
-      orderIds:
-        isTransfer || !relatedToOrder
-          ? []
-          : selectedOrders.filter((o) => o.kind === 'linked').map((o) => o.id),
-      unlinkedOrderLabels:
-        isTransfer || !relatedToOrder
-          ? []
-          : selectedOrders.filter((o) => o.kind === 'unlinked').map((o) => o.label),
+      orderIds: allocationPayload
+        .map((a) => a.orderId)
+        .filter((id): id is string => Boolean(id)),
+      unlinkedOrderLabels: [] as string[],
+      inventoryItemIds: [] as string[],
+      unlinkedInventoryLabels: [] as string[],
+      allocations: allocationPayload,
     }
     try {
       const res = await fetch(
@@ -477,6 +383,7 @@ export function FinanceTransactionsManager({
       setDate(toDateInput(new Date()))
       setDirection('OUTFLOW')
       setAmount('')
+      setGstAmount('')
       setDescription('')
       setAccountId(fallbackAccountId)
       setPaidThroughAccountId(fallbackAccountId)
@@ -485,11 +392,7 @@ export function FinanceTransactionsManager({
       setContactId(null)
       setContactText('')
       setContactOpen(false)
-      setRelatedToOrder(true)
-      setSelectedOrders([])
-      setOrderQuery('')
-      setOrderHits([])
-      setOrderSearchHint('')
+      setAllocations([])
       setError('')
     } finally {
       setSaving(false)
@@ -563,214 +466,14 @@ export function FinanceTransactionsManager({
 
   const txForm = (
         <form onSubmit={save} style={{ display: 'grid', gap: 18 }}>
-          <div>
-            {direction !== 'TRANSFER' && (
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={relatedToOrder}
-                onChange={(e) => toggleRelatedToOrder(e.target.checked)}
-                style={{
-                  width: 18,
-                  height: 18,
-                  marginTop: 1,
-                  accentColor: GREEN,
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                }}
-              />
-              <span>
-                <span style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#111827' }}>
-                  Related to Order
-                </span>
-                <span style={{ display: 'block', marginTop: 2, fontSize: '0.75rem', color: MUTED }}>
-                  Link to a store order, or add a name-only reference
-                </span>
-              </span>
-            </label>
-            )}
-
-            {direction !== 'TRANSFER' && relatedToOrder && (
-              <div style={{ marginTop: 14 }}>
-                <div style={field}>
-                  <span>
-                    Orders <span style={req}>*</span>
-                  </span>
-                  <div style={{ position: 'relative' }}>
-                    <span
-                      style={{
-                        position: 'absolute',
-                        left: 12,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        pointerEvents: 'none',
-                        display: 'flex',
-                      }}
-                    >
-                      <SearchIcon />
-                    </span>
-                    <input
-                      style={{ ...control, paddingLeft: 36, paddingRight: 36 }}
-                      value={orderQuery}
-                      onChange={(e) => void searchOrders(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          if (orderHits.length === 1) {
-                            addOrder(orderHits[0]!)
-                          } else if (orderQuery.trim()) {
-                            addUnlinkedOrder(orderQuery)
-                          }
-                        }
-                      }}
-                      placeholder="Search by name, phone, email, or order id..."
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                      inputMode="search"
-                      enterKeyHint="search"
-                    />
-                    <span
-                      aria-hidden
-                      style={{
-                        position: 'absolute',
-                        right: 12,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        color: '#9ca3af',
-                        fontSize: 10,
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                {orderSearchHint && orderHits.length === 0 && orderQuery.trim().length < 2 && (
-                  <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: MUTED }}>{orderSearchHint}</p>
-                )}
-
-                {orderQuery.trim().length >= 1 && (
-                  <button
-                    type="button"
-                    onClick={() => addUnlinkedOrder(orderQuery)}
-                    style={{
-                      marginTop: 8,
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '12px 14px',
-                      border: `1px dashed ${BORDER}`,
-                      borderRadius: 8,
-                      background: '#fafafa',
-                      fontSize: '0.8125rem',
-                      color: '#374151',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Add “{orderQuery.trim()}” — <span style={{ color: MUTED }}>not linked to order</span>
-                  </button>
-                )}
-
-                {orderHits.length > 0 && (
-                  <ul
-                    style={{
-                      listStyle: 'none',
-                      margin: '8px 0 0',
-                      padding: 0,
-                      border: `1px solid ${BORDER}`,
-                      borderRadius: 8,
-                      background: '#fff',
-                      maxHeight: 220,
-                      overflow: 'auto',
-                      WebkitOverflowScrolling: 'touch',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
-                    }}
-                  >
-                    {orderHits.map((h) => (
-                      <li key={h.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onPointerDown={(e) => {
-                            e.preventDefault()
-                            addOrder(h)
-                          }}
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '14px 12px',
-                            minHeight: 48,
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                            touchAction: 'manipulation',
-                            WebkitTapHighlightColor: 'rgba(3, 43, 36, 0.12)',
-                          }}
-                        >
-                          {shortFinanceId(h.id)}
-                          {h.contactName ? ` · ${h.contactName}` : ''} · {h.status} · ₹
-                          {h.grandTotal.toLocaleString('en-IN')}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {selectedOrders.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                    {selectedOrders.map((o) => (
-                      <span
-                        key={o.kind === 'linked' ? o.id : o.key}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          background: o.kind === 'linked' ? GREEN_CHIP : '#f3f4f6',
-                          color: o.kind === 'linked' ? GREEN : '#374151',
-                          borderRadius: 999,
-                          padding: '6px 10px 6px 12px',
-                          fontSize: '0.8125rem',
-                          fontWeight: 500,
-                        }}
-                      >
-                        <span>
-                          {o.label}
-                          {o.kind === 'unlinked' && (
-                            <span style={{ display: 'block', fontSize: '0.6875rem', color: MUTED, fontWeight: 400 }}>
-                              Not linked to order
-                            </span>
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeOrder(o)}
-                          aria-label="Remove order"
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: 8,
-                            margin: -8,
-                            lineHeight: 1,
-                            color: o.kind === 'linked' ? GREEN : MUTED,
-                            fontSize: 18,
-                            opacity: 0.7,
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
+          <div
+            className={
+              direction === 'TRANSFER'
+                ? 'finance-tx-form-split finance-tx-form-split--single'
+                : 'finance-tx-form-split'
+            }
+          >
+            <div className="finance-tx-form-split__main" style={{ display: 'grid', gap: 18, minWidth: 0 }}>
           <div
             style={{
               display: 'grid',
@@ -780,7 +483,8 @@ export function FinanceTransactionsManager({
           >
             <label style={field}>
               <span>
-                Who handled this transaction <span style={req}>*</span>
+                Who handled this transaction{'\u00a0'}
+                <span style={req}>*</span>
               </span>
               <select
                 style={selectControl}
@@ -799,7 +503,8 @@ export function FinanceTransactionsManager({
               <>
                 <label style={field}>
                   <span>
-                    From <span style={req}>*</span>
+                    From{'\u00a0'}
+                    <span style={req}>*</span>
                   </span>
                   <select
                     style={selectControl}
@@ -822,7 +527,8 @@ export function FinanceTransactionsManager({
                 </label>
                 <label style={field}>
                   <span>
-                    To <span style={req}>*</span>
+                    To{'\u00a0'}
+                    <span style={req}>*</span>
                   </span>
                   <select
                     style={selectControl}
@@ -843,7 +549,8 @@ export function FinanceTransactionsManager({
             ) : (
               <label style={field}>
                 <span>
-                  Which bank account was used <span style={req}>*</span>
+                  Which bank account was used{'\u00a0'}
+                  <span style={req}>*</span>
                 </span>
                 <select
                   style={selectControl}
@@ -951,7 +658,8 @@ export function FinanceTransactionsManager({
 
           <div style={field}>
             <span>
-              Direction <span style={req}>*</span>
+              Direction{'\u00a0'}
+              <span style={req}>*</span>
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
               {(
@@ -992,13 +700,15 @@ export function FinanceTransactionsManager({
           >
             <label style={field}>
               <span>
-                Date <span style={req}>*</span>
+                Date{'\u00a0'}
+                <span style={req}>*</span>
               </span>
               <input style={control} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </label>
             <label style={field}>
               <span>
-                Amount (₹) <span style={req}>*</span>
+                Amount (₹){'\u00a0'}
+                <span style={req}>*</span>
               </span>
               <input
                 style={control}
@@ -1011,6 +721,20 @@ export function FinanceTransactionsManager({
                 placeholder="0"
               />
             </label>
+            {direction !== 'TRANSFER' && (
+              <label style={field}>
+                <span>GST (₹)</span>
+                <input
+                  style={control}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={gstAmount}
+                  onChange={(e) => setGstAmount(e.target.value)}
+                  placeholder="0"
+                />
+              </label>
+            )}
           </div>
 
           <div
@@ -1042,6 +766,18 @@ export function FinanceTransactionsManager({
                 placeholder="Optional note"
               />
             </label>
+          </div>
+            </div>
+
+            {direction !== 'TRANSFER' && (
+              <aside className="finance-tx-form-split__alloc" style={{ minWidth: 0 }}>
+                <FinanceAllocationEditor
+                  allocations={allocations}
+                  onChange={setAllocations}
+                  txAmount={Number(amount) || 0}
+                />
+              </aside>
+            )}
           </div>
 
           {error && (
@@ -1244,23 +980,20 @@ export function FinanceTransactionsManager({
                 {showAllColumns && <th style={th}>Source</th>}
                 <th style={th}>Handled by</th>
                 <th style={th}>Amount</th>
+                <th style={th}>GST</th>
                 <th style={th}>Bank / transfer</th>
                 <th style={th}>Category</th>
                 <th style={th}>Contact</th>
                 <th style={th}>Description</th>
-                <th style={th}>Orders</th>
+                <th style={th}>Allocation</th>
+                <th style={th}>Allocated to</th>
                 <th style={th}>Review status</th>
                 <th style={th}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.map((r) => {
-                const orderLinks = r.orders?.length
-                  ? r.orders.map((o) => ({
-                      id: o.id,
-                      label: shortFinanceId(o.id),
-                    }))
-                  : r.orderIds.map((id) => ({ id, label: shortFinanceId(id) }))
+                const allocs = r.allocations ?? []
                 const isOut = r.direction === 'OUTFLOW'
                 const isTransfer = r.direction === 'TRANSFER'
                 const dirLabel = isTransfer ? 'Transfer' : isOut ? 'Out' : 'In'
@@ -1311,6 +1044,7 @@ export function FinanceTransactionsManager({
                     )}
                     <td style={td}>{r.accountName ?? r.accountId}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{inr(r.amount)}</td>
+                    <td style={td}>{r.gstAmount ? inr(r.gstAmount) : '—'}</td>
                     <td style={td}>
                       {isTransfer
                         ? `${r.paidThroughAccountName ?? '—'} → ${r.transferToAccountName ?? '—'}`
@@ -1331,36 +1065,78 @@ export function FinanceTransactionsManager({
                     >
                       {r.description || '—'}
                     </td>
-                    <td style={{ ...td, maxWidth: 220 }}>
-                      {!orderLinks.length && !(r.unlinkedOrderLabels?.length ?? 0) ? (
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      {isTransfer ? (
                         '—'
                       ) : (
-                        <>
-                          {orderLinks.map((o, i) => (
-                            <span key={o.id}>
-                              {i > 0 ? ', ' : null}
+                        (() => {
+                          const status = r.allocationStatus ?? (allocs.length === 0 ? 'unallocated' : 'allocated')
+                          const left = r.unallocatedAmount ?? 0
+                          const over = r.overAllocatedAmount ?? 0
+                          const bg =
+                            status === 'allocated'
+                              ? GREEN_CHIP
+                              : status === 'partial'
+                                ? '#fffbeb'
+                                : status === 'over_allocated'
+                                  ? '#eff6ff'
+                                  : '#f3f4f6'
+                          const color =
+                            status === 'allocated'
+                              ? GREEN
+                              : status === 'partial'
+                                ? '#b45309'
+                                : status === 'over_allocated'
+                                  ? '#1d4ed8'
+                                  : MUTED
+                          const detail =
+                            status === 'partial' && left > 0.009
+                              ? ` · ${inr(left)} left`
+                              : status === 'over_allocated' && over > 0.009
+                                ? ` · ${inr(over)} over`
+                                : ''
+                          return (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                borderRadius: 6,
+                                padding: '3px 8px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                background: bg,
+                                color,
+                              }}
+                            >
+                              {TX_ALLOCATION_LABEL[status]}
+                              {detail}
+                            </span>
+                          )
+                        })()
+                      )}
+                    </td>
+                    <td style={{ ...td, maxWidth: 240 }}>
+                      {allocs.length === 0 ? (
+                        '—'
+                      ) : (
+                        allocs.map((a, i) => (
+                          <span key={a.id ?? `${a.label}-${i}`}>
+                            {i > 0 ? ', ' : null}
+                            {a.href ? (
                               <Link
-                                href={`/admin/orders/${o.id}`}
-                                title={o.id}
+                                href={a.href}
                                 style={{ color: GREEN, fontWeight: 500, textDecoration: 'underline' }}
                               >
-                                {o.label}
+                                {a.label}
                               </Link>
+                            ) : (
+                              a.label
+                            )}
+                            <span style={{ color: MUTED, fontSize: '0.75rem' }}>
+                              {' '}
+                              ({inr(a.amount)})
                             </span>
-                          ))}
-                          {(r.unlinkedOrderLabels ?? []).map((label, i) => (
-                            <span key={`u:${label}`}>
-                              {orderLinks.length > 0 || i > 0 ? ', ' : null}
-                              <span title="Not linked to order">
-                                {label}
-                                <span style={{ color: MUTED, fontSize: '0.6875rem' }}>
-                                  {' '}
-                                  (not linked)
-                                </span>
-                              </span>
-                            </span>
-                          ))}
-                        </>
+                          </span>
+                        ))
                       )}
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>

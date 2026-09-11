@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       date: r.date,
       direction: r.direction,
       amount: Number(r.amount),
+      gstAmount: Number(r.gstAmount ?? 0),
       description: r.description,
       accountName: r.account?.name ?? null,
       paidThroughAccountName: r.paidThroughAccount?.name ?? null,
