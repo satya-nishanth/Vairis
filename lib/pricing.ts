@@ -161,6 +161,39 @@ export function isOrderItemPriceSnapshot(v: unknown): v is OrderItemPriceSnapsho
   )
 }
 
+/**
+ * Reverse of sellingComponentsToUnitSnapshot — order-level amounts for the
+ * admin edit form. Stone value lands on Diamonds (Stones stays 0), matching
+ * quotedAmountsFromBreakdown. Delivery ← miscCharges.
+ */
+export function unitSnapshotToSellingComponents(
+  snapshot: Pick<
+    OrderItemPriceSnapshot,
+    'goldValue' | 'goldVA' | 'making' | 'stoneValue' | 'miscCharges' | 'gst'
+  > & { stoneVA?: number },
+  quantity: number,
+): {
+  gold: number
+  diamonds: number
+  stones: number
+  making: number
+  wastage: number
+  delivery: number
+  gst: number
+} {
+  const q = Math.max(1, quantity)
+  const round = (n: number) => Math.round(n)
+  return {
+    gold: round(snapshot.goldValue * q),
+    diamonds: round(snapshot.stoneValue * q),
+    stones: 0,
+    making: round(snapshot.making * q),
+    wastage: round((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
+    delivery: round(snapshot.miscCharges * q),
+    gst: round(snapshot.gst * q),
+  }
+}
+
 export interface VariantPriceInput {
   weightGrams: number | string
   makingChargePerGram: number | string

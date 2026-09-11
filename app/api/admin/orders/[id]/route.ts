@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import type { OrderStatus } from '@prisma/client'
+import type { OrderStatus, Prisma } from '@prisma/client'
 import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
@@ -8,9 +8,18 @@ import {
   OFFLINE_SETTLEMENT_TRANSITIONS,
   REASON_REQUIRED,
   REASON_REQUIRED_TARGETS,
+  computeOrderAmounts,
 } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
+import { calculatePrice, sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import {
+  allocateInventoryForOrderItem,
+  InventoryError,
+  releaseInventoryAllocationsForOrder,
+} from '@/lib/inventory'
+import { inventoryActorFromSession } from '@/lib/inventory-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -244,4 +253,284 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (nextStatus === 'DELIVERED') void sendOrderDeliveredEmail(id)
 
   return NextResponse.json({ ok: true })
+}
+
+const editOrderSchema = z.object({
+  userId: z.string().min(1),
+  contactName: z.string().trim().min(2),
+  contactPhone: z.string().trim().regex(/^\d{10}$/, '10-digit mobile required'),
+  addressLine1: z.string().trim().min(5),
+  addressLine2: z.string().trim().optional(),
+  city: z.string().trim().min(2),
+  state: z.string().trim().min(2),
+  pincode: z.string().trim().regex(/^\d{6}$/, '6-digit pincode required'),
+  note: z.string().trim().max(500).optional(),
+  items: z
+    .array(
+      z.object({
+        variantId: z.string().min(1),
+        quantity: z.number().int().min(1).max(20),
+        unitPrice: z.number().positive().max(10000000),
+        inventoryItemId: z.string().min(1).optional(),
+      }),
+    )
+    .min(1),
+  sellingBreakdown: z
+    .object({
+      gold: z.number().min(0).max(100000000),
+      diamonds: z.number().min(0).max(100000000),
+      stones: z.number().min(0).max(100000000),
+      making: z.number().min(0).max(100000000),
+      wastage: z.number().min(0).max(100000000),
+      delivery: z.number().min(0).max(100000000),
+      gst: z.number().min(0).max(100000000),
+    })
+    .optional(),
+})
+
+/**
+ * PUT /api/admin/orders/[id] — rewrite customer, address, items, inventory
+ * allocations, and optional selling breakdown. Releases existing allocations
+ * then re-applies. Split parents are blocked (edit each child).
+ */
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireAdmin()
+  const inventoryActor = inventoryActorFromSession(session)
+  const { id } = await params
+
+  const parsed = editOrderSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? 'Invalid order' },
+      { status: 400 },
+    )
+  }
+  const d = parsed.data
+
+  const existing = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      children: { select: { id: true }, take: 1 },
+      inventoryAllocations: { select: { inventoryItemId: true, qty: true } },
+    },
+  })
+  if (!existing) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  if (existing.children.length > 0) {
+    return NextResponse.json(
+      { error: 'Split parent — edit each child delivery separately' },
+      { status: 400 },
+    )
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: d.userId } })
+  if (!user) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+
+  const releasedByItem = new Map<string, number>()
+  for (const a of existing.inventoryAllocations) {
+    releasedByItem.set(a.inventoryItemId, (releasedByItem.get(a.inventoryItemId) ?? 0) + a.qty)
+  }
+
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: d.items.map((i) => i.variantId) } },
+    include: {
+      product: {
+        include: {
+          stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+        },
+      },
+    },
+  })
+  const variantMap = new Map(variants.map((v) => [v.id, v]))
+  for (const item of d.items) {
+    if (!variantMap.has(item.variantId)) {
+      return NextResponse.json({ error: `Variant ${item.variantId} not found` }, { status: 400 })
+    }
+    if (item.inventoryItemId) {
+      const inv = await prisma.inventoryItem.findUnique({
+        where: { id: item.inventoryItemId },
+        select: { id: true, variantId: true, qtyOnHand: true },
+      })
+      if (!inv) {
+        return NextResponse.json({ error: 'Inventory item not found' }, { status: 400 })
+      }
+      if (!inv.variantId) {
+        return NextResponse.json(
+          { error: 'Inventory item must be linked to catalogue before selling' },
+          { status: 400 },
+        )
+      }
+      if (inv.variantId !== item.variantId) {
+        return NextResponse.json({ error: 'Inventory item does not match selected variant' }, { status: 400 })
+      }
+      const available = inv.qtyOnHand + (releasedByItem.get(inv.id) ?? 0)
+      if (available < item.quantity) {
+        return NextResponse.json(
+          { error: `Only ${available} unit(s) available in inventory` },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
+  // Same inventory line may appear on multiple order lines — check combined demand.
+  const demandByInv = new Map<string, number>()
+  for (const item of d.items) {
+    if (!item.inventoryItemId) continue
+    demandByInv.set(item.inventoryItemId, (demandByInv.get(item.inventoryItemId) ?? 0) + item.quantity)
+  }
+  for (const [invId, demand] of demandByInv) {
+    const inv = await prisma.inventoryItem.findUnique({
+      where: { id: invId },
+      select: { qtyOnHand: true },
+    })
+    if (!inv) continue
+    const available = inv.qtyOnHand + (releasedByItem.get(invId) ?? 0)
+    if (available < demand) {
+      return NextResponse.json(
+        { error: `Only ${available} unit(s) available in inventory for one of the lines` },
+        { status: 400 },
+      )
+    }
+  }
+
+  const [goldRates, pricingConfig] = await Promise.all([
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+  ])
+  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+
+  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+
+  if (d.sellingBreakdown) {
+    const sellingTotal =
+      d.sellingBreakdown.gold +
+      d.sellingBreakdown.diamonds +
+      d.sellingBreakdown.stones +
+      d.sellingBreakdown.making +
+      d.sellingBreakdown.wastage +
+      d.sellingBreakdown.delivery +
+      d.sellingBreakdown.gst
+    if (Math.round(sellingTotal) !== total) {
+      return NextResponse.json(
+        { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
+        { status: 400 },
+      )
+    }
+  }
+
+  const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+
+  const itemRows = d.items.map((i, index) => {
+    const v = variantMap.get(i.variantId)!
+    const rate = rateMap[v.metalType]
+    let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
+
+    const manual = d.sellingBreakdown
+    const manualTotal =
+      manual != null
+        ? manual.gold +
+          manual.diamonds +
+          manual.stones +
+          manual.making +
+          manual.wastage +
+          manual.delivery +
+          manual.gst
+        : 0
+
+    if (index === 0 && manual != null && manualTotal > 0) {
+      priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
+        quantity: i.quantity,
+        goldRatePerGram: rate ?? 0,
+        weightGrams: Number(v.weightGrams),
+        metalType: v.metalType,
+        vaLabel: pricingConfig.vaLabel,
+      })
+    } else if (rate != null) {
+      const breakdown = calculatePrice(
+        {
+          weightGrams: v.weightGrams.toString(),
+          makingChargePerGram: v.makingChargePerGram.toString(),
+          flatMakingCharge: v.flatMakingCharge.toString(),
+          stoneCharges: v.stoneCharges.toString(),
+          miscCharges: v.miscCharges.toString(),
+        },
+        rate,
+        {
+          stones: toStoneInputs(v.product.stones),
+          withExchange: false,
+          config: pricingConfig,
+        },
+      )
+      priceBreakdown = toOrderItemPriceSnapshot(breakdown, {
+        goldRatePerGram: rate,
+        weightGrams: Number(v.weightGrams),
+        metalType: v.metalType,
+      })
+    }
+    const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
+      variantId: i.variantId,
+      quantity: i.quantity,
+      price: Math.round(i.unitPrice),
+      productName: v.product.name,
+    }
+    if (priceBreakdown) {
+      row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
+    }
+    return row
+  })
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await releaseInventoryAllocationsForOrder(tx, { orderId: id, actor: inventoryActor })
+      await tx.orderItem.deleteMany({ where: { orderId: id } })
+
+      await tx.order.update({
+        where: { id },
+        data: {
+          userId: user.id,
+          totalAmount,
+          depositAmount,
+          grandTotal,
+          contactName: d.contactName,
+          contactPhone: d.contactPhone,
+          addressLine1: d.addressLine1,
+          addressLine2: d.addressLine2 || null,
+          city: d.city,
+          state: d.state,
+          pincode: d.pincode,
+          events: {
+            create: {
+              status: existing.status,
+              note: d.note?.trim() || 'Order details updated by admin (customer / address / items)',
+            },
+          },
+        },
+      })
+
+      for (let i = 0; i < itemRows.length; i++) {
+        const row = itemRows[i]!
+        const src = d.items[i]!
+        const orderItem = await tx.orderItem.create({
+          data: { ...row, orderId: id },
+        })
+        if (src.inventoryItemId) {
+          await allocateInventoryForOrderItem(tx, {
+            inventoryItemId: src.inventoryItemId,
+            orderId: id,
+            orderItemId: orderItem.id,
+            variantId: src.variantId,
+            qty: src.quantity,
+            actor: inventoryActor,
+          })
+        }
+      }
+    })
+  } catch (err) {
+    if (err instanceof InventoryError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
+    throw err
+  }
+
+  return NextResponse.json({ ok: true, orderId: id })
 }

@@ -140,9 +140,11 @@ function mapBill(b: {
   }
 }
 
-function stubFromAlloc(a: AllocDraft): DocRow {
+function stubFromAlloc(a: AllocDraft, priorCredit?: number): DocRow {
   const id = a.orderId ?? a.purchaseBillId ?? a.key
   const contact = a.label.includes(' — ') ? a.label.split(' — ').slice(1).join(' — ') : 'Selected'
+  // Prefer saved credit (due restored if this txn were removed); fall back to draft amount.
+  const due = round2(priorCredit && priorCredit > 0 ? priorCredit : Number(a.amount) || 0)
   return {
     id,
     kind: a.target,
@@ -150,9 +152,9 @@ function stubFromAlloc(a: AllocDraft): DocRow {
     contact,
     dateLabel: '—',
     itemLabel: '—',
-    total: Number(a.amount) || 0,
-    balance: Number(a.amount) || 0,
-    expected: Number(a.amount) || 0,
+    total: due,
+    balance: due,
+    expected: due,
   }
 }
 
@@ -167,11 +169,20 @@ export function FinanceAllocationEditor({
   onChange,
   disabled,
   txAmount,
+  /**
+   * When editing an existing transaction, exclude its saved allocations from
+   * Due / Paid so the UI does not double-count this txn against the bill/order.
+   */
+  excludeTransactionId = null,
+  /** Frozen saved amounts by order/bill id — used for stubs if a doc is missing from the open list. */
+  priorCredits = {},
 }: {
   allocations: AllocDraft[]
   onChange: (next: AllocDraft[]) => void
   disabled?: boolean
   txAmount?: number
+  excludeTransactionId?: string | null
+  priorCredits?: Record<string, number>
 }) {
   const [target, setTarget] = useState<'NONE' | 'ORDER' | 'PURCHASE_BILL'>(() => {
     if (!allocations.length) return 'NONE'
@@ -191,6 +202,12 @@ export function FinanceAllocationEditor({
     .filter(Boolean)
     .sort()
     .join('|')
+
+  function excludeQuery() {
+    return excludeTransactionId
+      ? `&excludeTxn=${encodeURIComponent(excludeTransactionId)}`
+      : ''
+  }
 
   // Sync chip when parent loads/edits an existing allocation (useState init only runs once).
   useEffect(() => {
@@ -222,8 +239,8 @@ export function FinanceAllocationEditor({
           if (target === 'ORDER') {
             const url =
               q.length >= 2
-                ? `/api/admin/finance/order-search?q=${encodeURIComponent(q)}&scope=allocate`
-                : `/api/admin/finance/order-search?recent=1&scope=allocate`
+                ? `/api/admin/finance/order-search?q=${encodeURIComponent(q)}&scope=allocate${excludeQuery()}`
+                : `/api/admin/finance/order-search?recent=1&scope=allocate${excludeQuery()}`
             const res = await fetch(url)
             const json = await res.json().catch(() => [])
             if (my !== seq.current) return
@@ -244,8 +261,8 @@ export function FinanceAllocationEditor({
           } else {
             const url =
               q.length >= 2
-                ? `/api/admin/finance/purchase-bills?q=${encodeURIComponent(q)}`
-                : `/api/admin/finance/purchase-bills?open=1`
+                ? `/api/admin/finance/purchase-bills?q=${encodeURIComponent(q)}${excludeQuery()}`
+                : `/api/admin/finance/purchase-bills?open=1${excludeQuery()}`
             const res = await fetch(url)
             const json = await res.json().catch(() => [])
             if (my !== seq.current) return
@@ -273,26 +290,26 @@ export function FinanceAllocationEditor({
       })()
     }, q.length >= 2 ? 250 : 0)
     return () => clearTimeout(t)
-    // selectedDocKey: refetch when linked docs change, not on every amount edit
+    // selectedDocKey / excludeTransactionId: refetch when linked docs or edit context change
     // eslint-disable-next-line react-hooks/exhaustive-deps -- allocations used via selectedIds snapshot
-  }, [query, target, disabled, selectedDocKey])
+  }, [query, target, disabled, selectedDocKey, excludeTransactionId])
 
   const listDocs = useMemo(() => {
     const selectedExtra: DocRow[] = []
     for (const a of allocations) {
       if (target === 'ORDER' && a.orderId && !docs.some((d) => d.id === a.orderId)) {
-        selectedExtra.push(stubFromAlloc(a))
+        selectedExtra.push(stubFromAlloc(a, priorCredits[a.orderId]))
       }
       if (
         target === 'PURCHASE_BILL' &&
         a.purchaseBillId &&
         !docs.some((d) => d.id === a.purchaseBillId)
       ) {
-        selectedExtra.push(stubFromAlloc(a))
+        selectedExtra.push(stubFromAlloc(a, priorCredits[a.purchaseBillId]))
       }
     }
     return [...selectedExtra, ...docs]
-  }, [docs, allocations, target])
+  }, [docs, allocations, target, priorCredits])
 
   function selectNone() {
     setTarget('NONE')
@@ -328,14 +345,12 @@ export function FinanceAllocationEditor({
   }
 
   function dueLabel(doc: DocRow, allocAmount: string) {
-    const due = doc.balance
+    const open = doc.balance
     const amt = Number(allocAmount) || 0
-    if (amt > 0.009 && due < amt - 0.009) {
-      const over = round2(amt - Math.max(0, due))
-      return { text: `Overpay ${inr(over)}`, color: '#1d4ed8' as const }
-    }
-    if (due > 0.009) return { text: `Due ${inr(due)}`, color: AMBER }
-    if (due < -0.009) return { text: `Overpaid ${inr(-due)}`, color: '#1d4ed8' as const }
+    // Remaining after this draft allocation (live as checkbox / amount changes).
+    const after = round2(open - amt)
+    if (after > 0.009) return { text: `Due ${inr(after)}`, color: AMBER }
+    if (after < -0.009) return { text: `Overpay ${inr(-after)}`, color: '#1d4ed8' as const }
     return { text: 'Settled', color: GREEN }
   }
 
@@ -651,7 +666,7 @@ export function FinanceAllocationEditor({
               >
                 {allocations.length === 0
                   ? 'No allocation yet'
-                  : `Allocate ${inr(allocatedSum)}${cash > 0 && remaining > 0.009 ? ` · ${inr(remaining)} left` : ''}`}
+                  : `Allocated ${inr(allocatedSum)}${cash > 0 && remaining > 0.009 ? ` · ${inr(remaining)} left` : cash > 0 ? ' · fully allocated' : ''}`}
               </div>
             </div>
           </>

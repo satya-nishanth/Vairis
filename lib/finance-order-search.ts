@@ -167,8 +167,14 @@ export function mapFinanceOrderHit(o: {
   }
 }
 
-export async function attachFinanceOrderPayments(hits: FinanceOrderHit[]): Promise<FinanceOrderHit[]> {
-  const collected = await collectedByOrderIds(hits.map((h) => h.id))
+export async function attachFinanceOrderPayments(
+  hits: FinanceOrderHit[],
+  opts?: { excludeTransactionId?: string },
+): Promise<FinanceOrderHit[]> {
+  const collected = await collectedByOrderIds(
+    hits.map((h) => h.id),
+    opts?.excludeTransactionId ? { excludeTransactionId: opts.excludeTransactionId } : undefined,
+  )
   return hits.map((h) => {
     const payment = orderPaymentSummary({
       grandTotal: h.grandTotal,
@@ -223,7 +229,11 @@ export async function listRecentFinanceOrders(take = 40) {
 }
 
 /** Cash allocation: children + standalone only (never split parents). */
-async function fetchAllocatableOrders(where: Prisma.OrderWhereInput, take: number) {
+async function fetchAllocatableOrders(
+  where: Prisma.OrderWhereInput,
+  take: number,
+  opts?: { excludeTransactionId?: string },
+) {
   const orders = await prisma.order.findMany({
     where: {
       AND: [
@@ -238,6 +248,7 @@ async function fetchAllocatableOrders(where: Prisma.OrderWhereInput, take: numbe
   })
   return attachFinanceOrderPayments(
     orders.map(mapFinanceOrderHit).filter((h) => h.orderKind !== 'parent'),
+    opts,
   )
 }
 
@@ -254,14 +265,20 @@ const allocSearchWhere = (trimmed: string): Prisma.OrderWhereInput => ({
 })
 
 /** Order search for cashbook allocation — parent containers excluded. */
-export async function searchFinanceOrdersForAllocation(q: string) {
+export async function searchFinanceOrdersForAllocation(
+  q: string,
+  opts?: { excludeTransactionId?: string },
+) {
   const trimmed = q.trim()
   if (trimmed.length < 2) return []
-  return fetchAllocatableOrders(allocSearchWhere(trimmed), 40)
+  return fetchAllocatableOrders(allocSearchWhere(trimmed), 40, opts)
 }
 
-export async function listRecentFinanceOrdersForAllocation(take = 40) {
-  return fetchAllocatableOrders({}, take)
+export async function listRecentFinanceOrdersForAllocation(
+  take = 40,
+  opts?: { excludeTransactionId?: string },
+) {
+  return fetchAllocatableOrders({}, take, opts)
 }
 
 /** Statuses that should have a finance sheet filled (paid / in fulfilment). */

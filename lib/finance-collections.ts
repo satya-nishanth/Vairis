@@ -6,12 +6,20 @@ import {
   type SettlementStatus,
 } from '@/lib/finance-settlement'
 
-export async function collectedByOrderIds(orderIds: string[]): Promise<Map<string, number>> {
+export async function collectedByOrderIds(
+  orderIds: string[],
+  opts?: { excludeTransactionId?: string },
+): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   if (!orderIds.length) return map
   const rows = await prisma.financeAllocation.groupBy({
     by: ['orderId'],
-    where: { orderId: { in: orderIds } },
+    where: {
+      orderId: { in: orderIds },
+      ...(opts?.excludeTransactionId
+        ? { transactionId: { not: opts.excludeTransactionId } }
+        : {}),
+    },
     _sum: { amount: true },
   })
   for (const r of rows) {
@@ -20,12 +28,20 @@ export async function collectedByOrderIds(orderIds: string[]): Promise<Map<strin
   return map
 }
 
-export async function collectedByPurchaseBillIds(billIds: string[]): Promise<Map<string, number>> {
+export async function collectedByPurchaseBillIds(
+  billIds: string[],
+  opts?: { excludeTransactionId?: string },
+): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   if (!billIds.length) return map
   const rows = await prisma.financeAllocation.groupBy({
     by: ['purchaseBillId'],
-    where: { purchaseBillId: { in: billIds } },
+    where: {
+      purchaseBillId: { in: billIds },
+      ...(opts?.excludeTransactionId
+        ? { transactionId: { not: opts.excludeTransactionId } }
+        : {}),
+    },
     _sum: { amount: true },
   })
   for (const r of rows) {
