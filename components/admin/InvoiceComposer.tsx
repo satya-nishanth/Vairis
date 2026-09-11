@@ -260,7 +260,8 @@ export function InvoiceComposer({
             onChange={(v) => setPayload((p) => ({ ...p, payment: { ...p.payment, reference: v } }))}
           />
           <Field
-            label="Received"
+            label="Received On"
+            type="date"
             value={payload.payment.received}
             onChange={(v) => setPayload((p) => ({ ...p, payment: { ...p.payment, received: v } }))}
           />
@@ -393,13 +394,14 @@ function LineEditor({
   const computed = recomputeLine(line, 'Wastage')
 
   function patch(partial: Partial<InvoiceLine>) {
+    // Formula drivers unlock live calc. Amount fields (goldValue/wastage/making/
+    // stoneValue/miscCharges) stay locked so order-breakdown edits keep snapshot totals.
     const unlockKeys = [
       'weightGrams',
       'goldRatePerGram',
       'wastagePct',
       'makingPerGram',
       'flatMaking',
-      'miscCharges',
       'legacyStoneCharges',
       'leadIncentive',
       'stones',
@@ -428,8 +430,8 @@ function LineEditor({
       </div>
       {line.lockedPricing ? (
         <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#065f46' }}>
-          Amounts from order checkout snapshot (not live rates). Editing weight/rate unlocks live
-          recalculation.
+          Amounts from order price breakdown (not live rates). Edit Gold/Wastage/Making/Stones ₹ to
+          adjust; editing weight or rate unlocks live recalculation.
         </p>
       ) : null}
       <div className="inv-composer__grid">
@@ -460,78 +462,126 @@ function LineEditor({
           value={line.goldRatePerGram}
           onChange={(v) => patch({ goldRatePerGram: Number(v) })}
         />
-        <Field
-          label="Wastage %"
-          type="number"
-          value={line.wastagePct}
-          onChange={(v) => patch({ wastagePct: Number(v) })}
-        />
-        <Field
-          label="Making ₹/g"
-          type="number"
-          value={line.makingPerGram}
-          onChange={(v) => patch({ makingPerGram: Number(v) })}
-        />
-        <Field
-          label="Flat making"
-          type="number"
-          value={line.flatMaking}
-          onChange={(v) => patch({ flatMaking: Number(v) })}
-        />
-        <Field
-          label="Lead incentive"
-          type="number"
-          value={line.leadIncentive}
-          onChange={(v) => patch({ leadIncentive: Number(v) })}
-        />
-        <Field
-          label="Misc / hallmark"
-          type="number"
-          value={line.miscCharges}
-          onChange={(v) => patch({ miscCharges: Number(v) })}
-        />
+        {line.lockedPricing ? (
+          <>
+            <Field
+              label="Gold ₹"
+              type="number"
+              value={line.goldValue}
+              onChange={(v) => patch({ goldValue: Number(v) })}
+            />
+            <Field
+              label="Wastage ₹"
+              type="number"
+              value={line.wastage}
+              onChange={(v) => patch({ wastage: Number(v) })}
+            />
+            <Field
+              label="Making ₹"
+              type="number"
+              value={line.making}
+              onChange={(v) => patch({ making: Number(v) })}
+            />
+            <Field
+              label="Stones ₹"
+              type="number"
+              value={line.stoneValue}
+              onChange={(v) => patch({ stoneValue: Number(v) })}
+            />
+            <Field
+              label="Misc / delivery ₹"
+              type="number"
+              value={line.miscCharges}
+              onChange={(v) => patch({ miscCharges: Number(v) })}
+            />
+          </>
+        ) : (
+          <>
+            <Field
+              label="Wastage %"
+              type="number"
+              value={line.wastagePct}
+              onChange={(v) => patch({ wastagePct: Number(v) })}
+            />
+            <Field
+              label="Making ₹/g"
+              type="number"
+              value={line.makingPerGram}
+              onChange={(v) => patch({ makingPerGram: Number(v) })}
+            />
+            <Field
+              label="Flat making"
+              type="number"
+              value={line.flatMaking}
+              onChange={(v) => patch({ flatMaking: Number(v) })}
+            />
+            <Field
+              label="Lead incentive"
+              type="number"
+              value={line.leadIncentive}
+              onChange={(v) => patch({ leadIncentive: Number(v) })}
+            />
+            <Field
+              label="Misc / hallmark"
+              type="number"
+              value={line.miscCharges}
+              onChange={(v) => patch({ miscCharges: Number(v) })}
+            />
+          </>
+        )}
       </div>
 
-      <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Diamonds (from product)</p>
-      {line.stones.map((s, i) => (
-        <div key={i} className="inv-composer__grid">
-          <Field label="Label" value={s.label} onChange={(v) => patchStone(i, { label: v })} />
-          <Field
-            label="Carat"
-            type="number"
-            value={s.caratWeight}
-            onChange={(v) => patchStone(i, { caratWeight: Number(v) })}
-          />
-          <Field
-            label="₹/ct"
-            type="number"
-            value={s.ratePerCarat}
-            onChange={(v) => patchStone(i, { ratePerCarat: Number(v) })}
-          />
+      {!line.lockedPricing ? (
+        <>
+          <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Diamonds (from product)</p>
+          {line.stones.map((s, i) => (
+            <div key={i} className="inv-composer__grid">
+              <Field label="Label" value={s.label} onChange={(v) => patchStone(i, { label: v })} />
+              <Field
+                label="Carat"
+                type="number"
+                value={s.caratWeight}
+                onChange={(v) => patchStone(i, { caratWeight: Number(v) })}
+              />
+              <Field
+                label="₹/ct"
+                type="number"
+                value={s.ratePerCarat}
+                onChange={(v) => patchStone(i, { ratePerCarat: Number(v) })}
+              />
+              <button
+                type="button"
+                className="admin-btn"
+                style={{ alignSelf: 'end', marginBottom: 10 }}
+                onClick={() => patch({ stones: line.stones.filter((_, j) => j !== i) })}
+              >
+                Remove stone
+              </button>
+            </div>
+          ))}
           <button
             type="button"
             className="admin-btn"
-            style={{ alignSelf: 'end', marginBottom: 10 }}
-            onClick={() => patch({ stones: line.stones.filter((_, j) => j !== i) })}
+            onClick={() =>
+              patch({
+                stones: [
+                  ...line.stones,
+                  { label: 'Diamond', caratWeight: 0, ratePerCarat: 0, value: 0, exchange: line.withExchange },
+                ],
+              })
+            }
           >
-            Remove stone
+            Add diamond
           </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        className="admin-btn"
-        onClick={() =>
-          patch({
-            stones: [
-              ...line.stones,
-              { label: 'Diamond', caratWeight: 0, ratePerCarat: 0, value: 0, exchange: line.withExchange },
-            ],
-          })
-        }
-      >
-        Add diamond
-      </button>
+        </>
+      ) : line.stones.length > 0 ? (
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 8 }}>
+          Stones detail:{' '}
+          {line.stones
+            .map((s) => `${s.label || 'Diamond'} ${s.caratWeight} ct × ₹${s.ratePerCarat}/ct`)
+            .join(' · ')}
+        </p>
+      ) : null}
       <p style={{ fontSize: '0.8rem', marginTop: 8 }}>
         Gold ₹{formatINRGrouped(computed.goldValue, 0)} · wastage ₹{formatINRGrouped(computed.wastage, 0)} · making ₹
         {formatINRGrouped(computed.making, 0)} · stones ₹{formatINRGrouped(computed.stoneValue, 0)} · taxable ₹

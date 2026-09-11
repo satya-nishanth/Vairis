@@ -1,8 +1,8 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
-export type InventoryAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ALLOCATE'
-export type InventoryAuditEntity = 'ITEM' | 'HOLDER' | 'ALLOCATION'
+export type InventoryAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ALLOCATE' | 'SOLD'
+export type InventoryAuditEntity = 'ITEM' | 'HOLDER' | 'ALLOCATION' | 'SALE'
 
 export type InventoryAuditActor = {
   actorEmail: string
@@ -56,7 +56,9 @@ export type InventoryItemAuditSnap = {
   id: string
   label: string
   qtyOnHand: number
-  unitPrice: number | null
+  purchasePrice: number | null
+  soldPrice: number | null
+  potentialPrice: number | null
   holderName: string
   variantSku: string | null
   notes: string | null
@@ -65,7 +67,9 @@ export type InventoryItemAuditSnap = {
 export function inventoryItemAuditSnap(row: {
   id: string
   qtyOnHand: number
-  unitPrice?: { toString(): string } | number | null
+  purchasePrice?: { toString(): string } | number | null
+  soldPrice?: { toString(): string } | number | null
+  potentialPrice?: { toString(): string } | number | null
   notes: string | null
   customName: string | null
   product: { name: string } | null
@@ -76,7 +80,9 @@ export function inventoryItemAuditSnap(row: {
     id: row.id,
     label: inventoryItemObjectLabel(row),
     qtyOnHand: row.qtyOnHand,
-    unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
+    purchasePrice: row.purchasePrice != null ? Number(row.purchasePrice) : null,
+    soldPrice: row.soldPrice != null ? Number(row.soldPrice) : null,
+    potentialPrice: row.potentialPrice != null ? Number(row.potentialPrice) : null,
     holderName: row.holder.name,
     variantSku: row.variant?.sku ?? null,
     notes: row.notes,
@@ -92,9 +98,17 @@ export function summarizeItemUpdate(before: InventoryItemAuditSnap, after: Inven
   if (before.qtyOnHand !== after.qtyOnHand) {
     parts.push(`qty ${before.qtyOnHand} → ${after.qtyOnHand}`)
   }
-  if (before.unitPrice !== after.unitPrice) {
+  if (before.purchasePrice !== after.purchasePrice) {
     const fmt = (n: number | null) => (n != null ? `₹${n.toLocaleString('en-IN')}` : 'none')
-    parts.push(`price ${fmt(before.unitPrice)} → ${fmt(after.unitPrice)}`)
+    parts.push(`purchase ${fmt(before.purchasePrice)} → ${fmt(after.purchasePrice)}`)
+  }
+  if (before.soldPrice !== after.soldPrice) {
+    const fmt = (n: number | null) => (n != null ? `₹${n.toLocaleString('en-IN')}` : 'none')
+    parts.push(`sold ${fmt(before.soldPrice)} → ${fmt(after.soldPrice)}`)
+  }
+  if (before.potentialPrice !== after.potentialPrice) {
+    const fmt = (n: number | null) => (n != null ? `₹${n.toLocaleString('en-IN')}` : 'none')
+    parts.push(`potential ${fmt(before.potentialPrice)} → ${fmt(after.potentialPrice)}`)
   }
   if (before.holderName !== after.holderName) {
     parts.push(`holder ${before.holderName} → ${after.holderName}`)
@@ -126,6 +140,15 @@ export function summarizeAllocation(input: {
   qtyAfter: number
 }): string {
   return `Allocated ${input.qty} unit(s) of “${input.itemLabel}” to order (${input.orderContactName}); qty now ${input.qtyAfter}`
+}
+
+export function summarizeSale(input: {
+  qty: number
+  itemLabel: string
+  orderLabel: string
+  qtyAfter: number
+}): string {
+  return `Marked ${input.qty} unit(s) of “${input.itemLabel}” sold → ${input.orderLabel}; qty now ${input.qtyAfter}`
 }
 
 export async function logInventoryAudit(opts: {

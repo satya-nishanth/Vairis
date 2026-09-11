@@ -1,4 +1,4 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot } from '@/lib/pricing'
+import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot, sellingComponentsToUnitSnapshot } from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
 describe('calculatePrice (estimator formula)', () => {
@@ -32,6 +32,35 @@ describe('calculatePrice (estimator formula)', () => {
     expect(snap.weightGrams).toBe(5)
     expect(isOrderItemPriceSnapshot(snap)).toBe(true)
     expect(isOrderItemPriceSnapshot(null)).toBe(false)
+  })
+
+  it('builds a unit snapshot from admin selling components (order totals ÷ qty)', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 60_000,
+        diamonds: 40_000,
+        stones: 0,
+        making: 8_000,
+        wastage: 6_000,
+        delivery: 2_000,
+        gst: 3_420,
+      },
+      {
+        quantity: 2,
+        goldRatePerGram: 6000,
+        weightGrams: 5,
+        metalType: 'GOLD_22K',
+      },
+    )
+    expect(snap.goldValue).toBe(30_000)
+    expect(snap.stoneValue).toBe(20_000)
+    expect(snap.making).toBe(4_000)
+    expect(snap.goldVA).toBe(3_000)
+    expect(snap.miscCharges).toBe(1_000)
+    expect(snap.gst).toBe(1_710)
+    expect(snap.taxable).toBe(58_000)
+    expect(snap.total).toBe(59_710)
+    expect(isOrderItemPriceSnapshot(snap)).toBe(true)
   })
 
   it('matches the tax-invoice sample line (4.200 g @ 6100, 10% wastage, making 1000/g, stones 53000)', () => {

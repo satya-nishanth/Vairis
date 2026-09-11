@@ -64,6 +64,10 @@ type OrdersWorkbenchProps = {
   chips: Chip[]
   activeChip: string
   moreStatuses: Chip[]
+  channelChips: Chip[]
+  activeChannel: string
+  gstChips: Chip[]
+  activeGst: string
   filterLabel: string | null
   kpis: OrdersKpi[]
 }
@@ -391,11 +395,16 @@ export function OrdersWorkbench({
   chips,
   activeChip,
   moreStatuses,
+  channelChips,
+  activeChannel,
+  gstChips,
+  activeGst,
   filterLabel,
   kpis,
 }: OrdersWorkbenchProps) {
   const [q, setQ] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(orders[0]?.id ?? null)
+  const [filtersOpen, setFiltersOpen] = useState(true)
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -414,6 +423,14 @@ export function OrdersWorkbench({
   }, [filtered, selectedId])
 
   const selected = findOrder(filtered, selectedId) ?? findOrder(orders, selectedId)
+
+  const activeFilterBits = [
+    activeChip !== 'ALL' ? chips.find((c) => c.key === activeChip)?.label ?? activeChip : null,
+    activeChannel !== 'all'
+      ? channelChips.find((c) => c.key === activeChannel)?.label ?? activeChannel
+      : null,
+    activeGst !== 'all' ? gstChips.find((c) => c.key === activeGst)?.label ?? activeGst : null,
+  ].filter(Boolean) as string[]
 
   return (
     <div className="orders-wb">
@@ -436,55 +453,122 @@ export function OrdersWorkbench({
         </div>
       </div>
 
-      <div className="orders-wb__kpis">
-        {kpis.map((k) => (
-          <Link
-            key={k.key}
-            href={k.href}
-            className={`orders-wb__kpi${activeChip === k.key ? ' is-active' : ''}`}
-          >
-            <span className="orders-wb__kpi-label">{k.label}</span>
-            <span className="orders-wb__kpi-value">{k.count}</span>
-          </Link>
-        ))}
-      </div>
+      <section className="orders-wb__panel">
+        <button
+          type="button"
+          className="orders-wb__panel-toggle"
+          aria-expanded={filtersOpen}
+          aria-controls="orders-wb-filters-panel"
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <span className="orders-wb__panel-toggle-text">
+            <strong>Filters &amp; queues</strong>
+            {activeFilterBits.length > 0 && (
+              <span className="orders-wb__panel-summary">{activeFilterBits.join(' · ')}</span>
+            )}
+          </span>
+          <span className="orders-wb__panel-chevron" aria-hidden>
+            {filtersOpen ? '▾' : '▸'}
+          </span>
+        </button>
 
-      <div className="orders-wb__filters">
-        <div className="orders-wb__chips" role="tablist" aria-label="Status filter">
-          {chips.map((c) => {
-            const active = c.key === activeChip
-            return (
-              <Link
-                key={c.key}
-                href={c.href}
-                role="tab"
-                aria-selected={active}
-                className={active ? 'orders-wb__chip is-active' : 'orders-wb__chip'}
-              >
-                {c.label}
-              </Link>
-            )
-          })}
-        </div>
-        <label className="orders-wb__more">
-          <span className="sr-only">More status filters</span>
-          <select
-            className="orders-wb__more-select"
-            value={moreStatuses.some((m) => m.key === activeChip) ? activeChip : ''}
-            onChange={(e) => {
-              const href = moreStatuses.find((m) => m.key === e.target.value)?.href
-              if (href) window.location.href = href
-            }}
-          >
-            <option value="">More filters</option>
-            {moreStatuses.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        {filtersOpen && (
+          <div id="orders-wb-filters-panel" className="orders-wb__panel-body">
+            <div className="orders-wb__panel-filters">
+              <div className="orders-wb__filter-row">
+                <span className="orders-wb__filter-label">Status</span>
+                <div className="orders-wb__chips" role="tablist" aria-label="Status filter">
+                  {chips.map((c) => {
+                    const active = c.key === activeChip
+                    return (
+                      <Link
+                        key={c.key}
+                        href={c.href}
+                        role="tab"
+                        aria-selected={active}
+                        className={active ? 'orders-wb__chip is-active' : 'orders-wb__chip'}
+                      >
+                        {c.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+                <label className="orders-wb__more">
+                  <span className="sr-only">More status filters</span>
+                  <select
+                    className="orders-wb__more-select"
+                    value={moreStatuses.some((m) => m.key === activeChip) ? activeChip : ''}
+                    onChange={(e) => {
+                      const href = moreStatuses.find((m) => m.key === e.target.value)?.href
+                      if (href) window.location.href = href
+                    }}
+                  >
+                    <option value="">More filters</option>
+                    {moreStatuses.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="orders-wb__filter-row">
+                <span className="orders-wb__filter-label">Channel</span>
+                <div className="orders-wb__chips" role="tablist" aria-label="Channel filter">
+                  {channelChips.map((c) => {
+                    const active = c.key === activeChannel
+                    return (
+                      <Link
+                        key={c.key}
+                        href={c.href}
+                        role="tab"
+                        aria-selected={active}
+                        className={active ? 'orders-wb__chip is-active' : 'orders-wb__chip'}
+                      >
+                        {c.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="orders-wb__filter-row">
+                <span className="orders-wb__filter-label">Tax</span>
+                <div className="orders-wb__chips" role="tablist" aria-label="GST filter">
+                  {gstChips.map((c) => {
+                    const active = c.key === activeGst
+                    return (
+                      <Link
+                        key={c.key}
+                        href={c.href}
+                        role="tab"
+                        aria-selected={active}
+                        className={active ? 'orders-wb__chip is-active' : 'orders-wb__chip'}
+                      >
+                        {c.label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="orders-wb__panel-kpis" aria-label="Order queues">
+              {kpis.map((k) => (
+                <Link
+                  key={k.key}
+                  href={k.href}
+                  className={`orders-wb__kpi${activeChip === k.key ? ' is-active' : ''}`}
+                >
+                  <span className="orders-wb__kpi-label">{k.label}</span>
+                  <span className="orders-wb__kpi-value">{k.count}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="orders-wb__split">
         <div className="orders-wb__list-pane">
