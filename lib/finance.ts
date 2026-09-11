@@ -38,6 +38,11 @@ export function toFinanceCategoryDirection(value: string): FinanceCategoryDirect
   return value === 'INFLOW' ? 'INFLOW' : 'OUTFLOW'
 }
 
+export function toFinanceTransactionDirection(value: string): FinanceTransactionDirection {
+  if (value === 'INFLOW' || value === 'TRANSFER') return value
+  return 'OUTFLOW'
+}
+
 export type FinanceLineInput = {
   kind: FinanceLineKind
   costPrice: number

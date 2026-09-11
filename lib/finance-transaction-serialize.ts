@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client'
-import { roundMoney, shortFinanceId } from '@/lib/finance'
+import { roundMoney, shortFinanceId, toFinanceTransactionDirection } from '@/lib/finance'
 import { txAllocationStatus } from '@/lib/finance-tx-allocation-status'
 
 export const financeTransactionInclude = {
@@ -91,7 +91,7 @@ export function serializeFinanceTransaction(row: {
   return {
     id: row.id,
     date: row.date.toISOString(),
-    direction: row.direction,
+    direction: toFinanceTransactionDirection(row.direction),
     amount,
     gstAmount: Number(row.gstAmount ?? 0),
     description: row.description,
