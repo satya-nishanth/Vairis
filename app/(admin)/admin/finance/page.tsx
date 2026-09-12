@@ -40,7 +40,8 @@ const EXCEPTION_HIGHLIGHT: Record<string, string> = {
 }
 
 export default async function FinanceDashboardPage() {
-  const [sheets, accounts, transactions, purchaseBills, forReviewCount] = await Promise.all([
+  const [sheets, accounts, transactions, purchaseBills, inventoryItems, forReviewCount] =
+    await Promise.all([
     prisma.orderFinance.findMany({
       include: {
         order: { select: { id: true, createdAt: true, contactName: true, grandTotal: true } },
@@ -76,10 +77,22 @@ export default async function FinanceDashboardPage() {
         supplierContact: { select: { name: true } },
       },
     }),
+    prisma.inventoryItem.findMany({
+      select: { qtyOnHand: true, purchasePrice: true },
+    }),
     prisma.financeTransaction.count({
       where: { reviewComplete: false },
     }),
   ])
+
+  let inventoryPurchasePrice = 0
+  let inventoryPurchaseLines = 0
+  for (const item of inventoryItems) {
+    if (item.qtyOnHand <= 0 || item.purchasePrice == null) continue
+    inventoryPurchasePrice += item.qtyOnHand * Number(item.purchasePrice)
+    inventoryPurchaseLines += 1
+  }
+  inventoryPurchasePrice = roundMoney(inventoryPurchasePrice)
 
   const sheetOrderIds = sheets.map((s) => s.orderId)
   const [collectedByOrder, paidByBill] = await Promise.all([
@@ -271,11 +284,28 @@ export default async function FinanceDashboardPage() {
       label: 'Cash inflow',
       value: inr(kpis.income),
       meta: 'Transaction inflows',
+      tip: 'Sum of all cashbook INFLOW transactions (customer payments and other money in). Source: Finance → Transactions, direction = Inflow. Transfers are not included.',
+    },
+    {
+      label: 'Inventory purchase',
+      value: inr(inventoryPurchasePrice),
+      meta:
+        inventoryPurchaseLines > 0
+          ? `${inventoryPurchaseLines} in-stock line${inventoryPurchaseLines === 1 ? '' : 's'}`
+          : 'Stock on hand × purchase / pc',
+      tip: 'Σ (qty on hand × purchase price per piece) for inventory items still in stock with a purchase price set. Same formula as Inventory → Purchase. Source: Inventory items (current snapshot, not cashbook).',
+    },
+    {
+      label: 'Orders purchase',
+      value: inr(kpis.purchasePrice),
+      meta: 'Cost from order sheets',
+      tip: 'Sum of purchasing / cost prices across all order finance sheets (sheet line costs, with round-off when enabled). Source: Finance → Order sheets. This is sold/order cost, not current warehouse stock.',
     },
     {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
       meta: 'Outflows excl. inventory purchases',
+      tip: 'Sum of all OUTFLOW transactions except inventory purchases: category name matching Inventory purchase(s), outflows allocated to purchase bills, or linked to inventory items. Source: Finance → Transactions.',
     },
   ]
 
@@ -284,6 +314,18 @@ export default async function FinanceDashboardPage() {
       <div className="finance-dash__kpis">
         {cards.map((c) => (
           <div key={c.label} className="finance-dash__kpi">
+            <div className="finance-dash__kpi-tip">
+              <button
+                type="button"
+                className="finance-dash__kpi-info"
+                aria-label={`About ${c.label}`}
+              >
+                i
+              </button>
+              <span className="finance-dash__kpi-tip-text" role="tooltip">
+                {c.tip}
+              </span>
+            </div>
             <div className="finance-dash__kpi-label">{c.label}</div>
             <div className="finance-dash__kpi-value">{c.value}</div>
             <div className="finance-dash__kpi-meta">{c.meta}</div>
