@@ -1102,6 +1102,115 @@
   overflow: hidden;
 }
 
+/* Transaction list multi-select filter dropdowns */
+.finance-filter-dd {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.finance-filter-dd__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 220px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.finance-filter-dd__btn.is-active {
+  border-color: #032b24;
+  background: #f3f8f6;
+}
+
+.finance-filter-dd__btn.is-open {
+  border-color: #032b24;
+  box-shadow: 0 0 0 2px rgba(3, 43, 36, 0.12);
+}
+
+.finance-filter-dd__summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finance-filter-dd__caret {
+  color: #9ca3af;
+  font-size: 0.6875rem;
+  flex-shrink: 0;
+}
+
+.finance-filter-dd__panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(280px, 85vw);
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.finance-filter-dd__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  color: #111827;
+  cursor: pointer;
+}
+
+.finance-filter-dd__option:hover {
+  background: #f3f8f6;
+}
+
+.finance-filter-dd__option input {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: #032b24;
+}
+
+.finance-filter-dd__empty {
+  padding: 10px 12px;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.finance-filter-dd__clear {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: none;
+  border-top: 1px solid #f3f4f6;
+  border-radius: 0 0 6px 6px;
+  background: transparent;
+  color: #032b24;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.finance-filter-dd__clear:hover {
+  background: #f9fafb;
+}
+
 .finance-tx-panel__top {
   display: flex;
   align-items: flex-start;

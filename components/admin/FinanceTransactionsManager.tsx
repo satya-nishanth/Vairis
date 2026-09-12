@@ -130,6 +130,81 @@ function SearchIcon() {
   )
 }
 
+type FilterMultiOption = { id: string; label: string }
+
+/** Checkbox multi-select dropdown for transaction list filters. Empty selection = all. */
+function FilterMultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+  allLabel = 'All',
+}: {
+  label: string
+  options: FilterMultiOption[]
+  value: string[]
+  onChange: (next: string[]) => void
+  allLabel?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const summary =
+    value.length === 0
+      ? `${label}: ${allLabel}`
+      : value.length === 1
+        ? `${label}: ${options.find((o) => o.id === value[0])?.label ?? '1'}`
+        : `${label}: ${value.length} selected`
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  }
+
+  return (
+    <div className="finance-filter-dd" ref={wrapRef}>
+      <button
+        type="button"
+        className={`finance-filter-dd__btn${value.length > 0 ? ' is-active' : ''}${open ? ' is-open' : ''}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="finance-filter-dd__summary">{summary}</span>
+        <span className="finance-filter-dd__caret" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className="finance-filter-dd__panel" role="listbox" aria-multiselectable aria-label={label}>
+          {options.length === 0 ? (
+            <div className="finance-filter-dd__empty">No options</div>
+          ) : (
+            options.map((o) => (
+              <label key={o.id} className="finance-filter-dd__option">
+                <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} />
+                <span>{o.label}</span>
+              </label>
+            ))
+          )}
+          {value.length > 0 ? (
+            <button type="button" className="finance-filter-dd__clear" onClick={() => onChange([])}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function FinanceTransactionsManager({
   initial,
   accounts,
@@ -172,10 +247,10 @@ export function FinanceTransactionsManager({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [dirFilter, setDirFilter] = useState<'ALL' | 'INFLOW' | 'OUTFLOW' | 'TRANSFER'>('ALL')
-  const [handledFilter, setHandledFilter] = useState('')
-  const [bankFilter, setBankFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  const [dirFilters, setDirFilters] = useState<string[]>([])
+  const [handledFilters, setHandledFilters] = useState<string[]>([])
+  const [bankFilters, setBankFilters] = useState<string[]>([])
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([])
   const [showAllColumns, setShowAllColumns] = useState(false)
 
   const showForm = compose || !!editId || !!editingId
@@ -193,10 +268,24 @@ export function FinanceTransactionsManager({
   )
 
   const categoryFilterOptions = useMemo(() => {
-    if (dirFilter === 'ALL') return categories
-    if (dirFilter === 'TRANSFER') return []
-    return categories.filter((c) => c.direction === dirFilter)
-  }, [categories, dirFilter])
+    if (dirFilters.length === 0) return categories
+    const dirs = new Set(dirFilters.filter((d) => d === 'INFLOW' || d === 'OUTFLOW'))
+    if (dirs.size === 0) return []
+    return categories.filter((c) => dirs.has(c.direction))
+  }, [categories, dirFilters])
+
+  function onDirFiltersChange(next: string[]) {
+    setDirFilters(next)
+    setCategoryFilters((prev) => {
+      if (next.length === 0) return prev
+      const dirs = new Set(next.filter((d) => d === 'INFLOW' || d === 'OUTFLOW'))
+      if (dirs.size === 0) return []
+      return prev.filter((id) => {
+        const cat = categories.find((c) => c.id === id)
+        return cat ? dirs.has(cat.direction) : false
+      })
+    })
+  }
 
   function changeDirection(next: FinanceTransactionDirection) {
     setDirection(next)
@@ -230,11 +319,18 @@ export function FinanceTransactionsManager({
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase()
     return rows.filter((r) => {
-      if (dirFilter !== 'ALL' && r.direction !== dirFilter) return false
-      if (handledFilter && r.accountId !== handledFilter) return false
-      if (bankFilter && r.paidThroughAccountId !== bankFilter && r.transferToAccountId !== bankFilter)
+      if (dirFilters.length > 0 && !dirFilters.includes(r.direction)) return false
+      if (handledFilters.length > 0 && !handledFilters.includes(r.accountId)) return false
+      if (
+        bankFilters.length > 0 &&
+        !bankFilters.includes(r.paidThroughAccountId) &&
+        !(r.transferToAccountId && bankFilters.includes(r.transferToAccountId))
+      ) {
         return false
-      if (categoryFilter && r.categoryId !== categoryFilter) return false
+      }
+      if (categoryFilters.length > 0 && (!r.categoryId || !categoryFilters.includes(r.categoryId))) {
+        return false
+      }
       if (!q) return true
       const orderText = [
         ...(r.orders?.map((o) => `${o.contactName} ${o.id}`) ?? []),
@@ -263,7 +359,7 @@ export function FinanceTransactionsManager({
         .toLowerCase()
       return hay.includes(q)
     })
-  }, [rows, query, dirFilter, handledFilter, bankFilter, categoryFilter])
+  }, [rows, query, dirFilters, handledFilters, bankFilters, categoryFilters])
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -457,17 +553,6 @@ export function FinanceTransactionsManager({
     verticalAlign: 'middle',
     color: '#111827',
   }
-
-  const filterChip = (active: boolean): React.CSSProperties => ({
-    border: `1px solid ${active ? GREEN : BORDER}`,
-    background: active ? GREEN_CHIP : '#fff',
-    color: active ? GREEN : '#374151',
-    borderRadius: 999,
-    padding: '6px 12px',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-  })
 
   const actionBtn: React.CSSProperties = {
     border: `1px solid ${BORDER}`,
@@ -906,76 +991,43 @@ export function FinanceTransactionsManager({
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {(
-              [
-                ['ALL', 'All'],
-                ['INFLOW', 'Inflow'],
-                ['OUTFLOW', 'Outflow'],
-                ['TRANSFER', 'Transfer'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setDirFilter(value)
-                  setCategoryFilter((prev) => {
-                    if (!prev || value === 'ALL' || value === 'TRANSFER') return value === 'TRANSFER' ? '' : prev
-                    const cat = categories.find((c) => c.id === prev)
-                    return cat && cat.direction === value ? prev : ''
-                  })
-                }}
-                style={filterChip(dirFilter === value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <FilterMultiSelect
+            label="Flow"
+            value={dirFilters}
+            onChange={onDirFiltersChange}
+            options={[
+              { id: 'INFLOW', label: 'Inflow' },
+              { id: 'OUTFLOW', label: 'Outflow' },
+              { id: 'TRANSFER', label: 'Transfer' },
+            ]}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={handledFilter}
-            onChange={(e) => setHandledFilter(e.target.value)}
-            aria-label="Filter by who handled"
-          >
-            <option value="">Handled by: All</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <FilterMultiSelect
+            label="Handled by"
+            value={handledFilters}
+            onChange={setHandledFilters}
+            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={bankFilter}
-            onChange={(e) => setBankFilter(e.target.value)}
-            aria-label="Filter by bank used"
-          >
-            <option value="">Bank used: All</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <FilterMultiSelect
+            label="Bank used"
+            value={bankFilters}
+            onChange={setBankFilters}
+            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="">Category: All</option>
-            {categoryFilterOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {dirFilter === 'ALL'
+          <FilterMultiSelect
+            label="Category"
+            value={categoryFilters}
+            onChange={setCategoryFilters}
+            options={categoryFilterOptions.map((c) => ({
+              id: c.id,
+              label:
+                dirFilters.length === 0
                   ? `${c.name} (${c.direction === 'INFLOW' ? 'In' : 'Out'})`
-                  : c.name}
-              </option>
-            ))}
-          </select>
+                  : c.name,
+            }))}
+          />
 
           <button
             type="button"
