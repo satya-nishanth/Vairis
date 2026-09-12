@@ -315,8 +315,17 @@ export type DashboardKpis = {
 /** Canonical category name excluded from dashboard general expenses. */
 export const INVENTORY_PURCHASES_CATEGORY = 'Inventory purchases'
 
+/** True for Inventory purchase(s) category — tolerant of singular/plural and common typos. */
 export function isInventoryPurchasesCategory(name: string | null | undefined): boolean {
-  return (name ?? '').trim().toLowerCase() === INVENTORY_PURCHASES_CATEGORY.toLowerCase()
+  const n = (name ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!n) return false
+  if (n === 'inventory purchases' || n === 'inventory purchase') return true
+  const compact = n.replace(/[^a-z]/g, '')
+  // "inventorypurchases", "inventorypurchase", typo "inventorypurcahses"
+  return (
+    compact.includes('inventory') &&
+    (compact.includes('purchas') || compact.includes('purcahs'))
+  )
 }
 
 export type TxExpenseRow = {
@@ -327,6 +336,10 @@ export type TxExpenseRow = {
   relatedToOrder: boolean
   /** Finance category name; used to exclude Inventory purchases from opex. */
   categoryName?: string | null
+  /** True when any allocation points at a purchase bill (goods / inventory buy). */
+  hasPurchaseBillAllocation?: boolean
+  /** True when txn is linked to inventory item(s) or unlinked inventory labels. */
+  hasInventoryLink?: boolean
 }
 
 export type OrderInflowTxRow = {
@@ -353,7 +366,8 @@ export type SheetInflowMismatch = {
  * income = Σ INFLOW transactions
  * selling / purchasePrice = Σ order-sheet totals
  * orderProfit = selling − purchase
- * generalExpenses = Σ OUTFLOW excluding "Inventory purchases" category
+ * generalExpenses = Σ OUTFLOW excluding Inventory purchases
+ *   (category name, purchase-bill allocations, or inventory item links)
  * profit = selling − purchase − generalExpenses
  */
 export function summarizeDashboardKpis(
@@ -371,13 +385,14 @@ export function summarizeDashboardKpis(
       .filter((t) => inRange(t.date) && t.direction === 'INFLOW')
       .reduce((s, t) => s + t.amount, 0),
   )
+  const isInventoryPurchaseOutflow = (t: TxExpenseRow) =>
+    isInventoryPurchasesCategory(t.categoryName) ||
+    Boolean(t.hasPurchaseBillAllocation) ||
+    Boolean(t.hasInventoryLink)
   const generalExpenses = roundMoney(
     transactions
       .filter(
-        (t) =>
-          inRange(t.date) &&
-          t.direction === 'OUTFLOW' &&
-          !isInventoryPurchasesCategory(t.categoryName),
+        (t) => inRange(t.date) && t.direction === 'OUTFLOW' && !isInventoryPurchaseOutflow(t),
       )
       .reduce((s, t) => s + t.amount, 0),
   )

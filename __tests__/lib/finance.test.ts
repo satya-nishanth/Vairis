@@ -272,6 +272,21 @@ describe('summarizeDashboardKpis', () => {
           categoryName: 'Inventory purchases',
         },
         {
+          date: new Date('2026-08-11T06:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 3000,
+          relatedToOrder: false,
+          categoryName: 'Inventory purcahses', // common typo in category name
+        },
+        {
+          date: new Date('2026-08-11T09:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 4000,
+          relatedToOrder: true,
+          categoryName: 'Materials',
+          hasPurchaseBillAllocation: true,
+        },
+        {
           date: new Date('2026-08-11T12:00:00+05:30'),
           direction: 'OUTFLOW',
           amount: 1500,

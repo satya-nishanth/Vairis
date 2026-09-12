@@ -73,8 +73,10 @@ export default async function CompanyAuditPage({
           paidThroughAccountId: true,
           transferToAccountId: true,
           unlinkedOrderLabels: true,
+          unlinkedInventoryLabels: true,
           category: { select: { name: true } },
           orders: { select: { orderId: true } },
+          inventoryItems: { select: { inventoryItemId: true } },
           allocations: {
             select: { amount: true, orderId: true, purchaseBillId: true },
           },
@@ -173,6 +175,9 @@ export default async function CompanyAuditPage({
         t.unlinkedOrderLabels.length > 0 ||
         t.allocations.some((a) => a.orderId || a.purchaseBillId),
       categoryName: t.category?.name ?? null,
+      hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
+      hasInventoryLink:
+        t.inventoryItems.length > 0 || (t.unlinkedInventoryLabels?.length ?? 0) > 0,
     })),
     txFlow: transactions.map((t) => ({
       date: t.date,
