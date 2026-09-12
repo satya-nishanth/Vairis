@@ -216,6 +216,15 @@
   cursor: pointer;
 }
 
+.inv-picker--order-hits {
+  max-height: 280px;
+}
+
+.inv-picker--order-hits button {
+  align-items: flex-start;
+  padding: 12px 10px;
+}
+
 .inv-picker button:hover {
   background: #f8fafc;
 }
