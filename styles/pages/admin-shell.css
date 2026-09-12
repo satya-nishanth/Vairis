@@ -1248,11 +1248,17 @@
   margin-top: 8px;
   overflow: hidden;
   background: #fff;
+  width: 100%;
+  max-width: 100%;
 }
 
 .order-sheet-hits__table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .order-sheet-hits__table {
@@ -1375,30 +1381,32 @@
   opacity: 0.75;
 }
 
+/* Fill large screens; keep a min width so smaller ones scroll instead of crushing. */
 .order-sheet-hits__table--wide {
   table-layout: fixed;
   width: 100%;
-  min-width: 1180px;
+  min-width: 1520px;
+  max-width: none;
 }
 
 .order-sheet-hits__col-contact {
-  width: 11%;
+  width: 10%;
 }
 
 .order-sheet-hits__col-item {
-  width: 12%;
+  width: 11%;
 }
 
 .order-sheet-hits__col-id {
-  width: 7%;
+  width: 6.5%;
 }
 
 .order-sheet-hits__col-status {
-  width: 9%;
+  width: 8.5%;
 }
 
 .order-sheet-hits__col-payment {
-  width: 8%;
+  width: 6.5%;
 }
 
 .order-sheet-hits__col-paidto {
@@ -1406,15 +1414,15 @@
 }
 
 .order-sheet-hits__col-num {
-  width: 8%;
+  width: 7.5%;
 }
 
 .order-sheet-hits__col-pct {
-  width: 6%;
+  width: 5%;
 }
 
 .order-sheet-hits__col-action {
-  width: 7%;
+  width: 6%;
 }
 
 .order-sheet-hits__table--wide thead tr:first-child th {
@@ -1427,6 +1435,8 @@
 .order-sheet-hits__table--wide td,
 .order-sheet-hits__table--wide th {
   max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .order-sheet-hits__table--wide tbody td {
