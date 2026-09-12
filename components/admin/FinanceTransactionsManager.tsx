@@ -132,6 +132,58 @@ function SearchIcon() {
 
 type FilterMultiOption = { id: string; label: string }
 
+type TxSortKey =
+  | 'id'
+  | 'date'
+  | 'direction'
+  | 'source'
+  | 'handled'
+  | 'amount'
+  | 'gst'
+  | 'bank'
+  | 'category'
+  | 'contact'
+  | 'description'
+  | 'allocation'
+  | 'review'
+
+type TxSortDir = 'asc' | 'desc'
+
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true })
+}
+
+function txSortValue(row: TxRow, key: TxSortKey): string | number {
+  switch (key) {
+    case 'id':
+      return row.id
+    case 'date':
+      return new Date(row.date).getTime()
+    case 'direction':
+      return row.direction
+    case 'source':
+      return row.autoCreated ? 1 : 0
+    case 'handled':
+      return (row.accountName ?? row.accountId ?? '').toLowerCase()
+    case 'amount':
+      return row.amount
+    case 'gst':
+      return row.gstAmount || 0
+    case 'bank':
+      return (row.paidThroughAccountName ?? row.paidThroughAccountId ?? '').toLowerCase()
+    case 'category':
+      return (row.categoryName ?? '').toLowerCase()
+    case 'contact':
+      return (row.contactName ?? '').toLowerCase()
+    case 'description':
+      return (row.description ?? '').toLowerCase()
+    case 'allocation':
+      return row.allocatedAmount ?? 0
+    case 'review':
+      return row.reviewComplete ? 1 : 0
+  }
+}
+
 /** Checkbox multi-select dropdown for transaction list filters. Empty selection = all. */
 function FilterMultiSelect({
   label,
@@ -252,6 +304,8 @@ export function FinanceTransactionsManager({
   const [bankFilters, setBankFilters] = useState<string[]>([])
   const [categoryFilters, setCategoryFilters] = useState<string[]>([])
   const [showAllColumns, setShowAllColumns] = useState(false)
+  const [sortKey, setSortKey] = useState<TxSortKey>('date')
+  const [sortDir, setSortDir] = useState<TxSortDir>('desc')
 
   const showForm = compose || !!editId || !!editingId
   const tableColSpan = showAllColumns ? 14 : 12
@@ -360,6 +414,72 @@ export function FinanceTransactionsManager({
       return hay.includes(q)
     })
   }, [rows, query, dirFilters, handledFilters, bankFilters, categoryFilters])
+
+  const filterTotals = useMemo(() => {
+    let inflow = 0
+    let outflow = 0
+    let transfer = 0
+    let gst = 0
+    for (const r of filteredRows) {
+      gst += r.gstAmount || 0
+      if (r.direction === 'INFLOW') inflow += r.amount
+      else if (r.direction === 'OUTFLOW') outflow += r.amount
+      else if (r.direction === 'TRANSFER') transfer += r.amount
+    }
+    return {
+      count: filteredRows.length,
+      inflow: roundMoney(inflow),
+      outflow: roundMoney(outflow),
+      transfer: roundMoney(transfer),
+      gst: roundMoney(gst),
+      net: roundMoney(inflow - outflow),
+    }
+  }, [filteredRows])
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows]
+    const dir = sortDir === 'asc' ? 1 : -1
+    list.sort((a, b) => {
+      const va = txSortValue(a, sortKey)
+      const vb = txSortValue(b, sortKey)
+      let cmp = 0
+      if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
+      else cmp = cmpStr(String(va), String(vb))
+      if (cmp !== 0) return cmp * dir
+      // Stable-ish tie-break: newer date first, then id
+      const td = new Date(b.date).getTime() - new Date(a.date).getTime()
+      if (td !== 0) return td
+      return cmpStr(a.id, b.id)
+    })
+    return list
+  }, [filteredRows, sortKey, sortDir])
+
+  function toggleSort(key: TxSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'date' || key === 'amount' || key === 'gst' || key === 'allocation' ? 'desc' : 'asc')
+    }
+  }
+
+  function sortTh(key: TxSortKey, label: string, align: 'left' | 'right' = 'left') {
+    const active = sortKey === key
+    return (
+      <th style={{ ...th, textAlign: align }} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button
+          type="button"
+          className={`finance-tx-sort${active ? ' is-active' : ''}`}
+          onClick={() => toggleSort(key)}
+        >
+          <span>{label}</span>
+          <span className="finance-tx-sort__ind" aria-hidden>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -1044,29 +1164,60 @@ export function FinanceTransactionsManager({
           </button>
         </div>
 
+        {filterTotals.count > 0 ? (
+          <div className="finance-tx-totals" role="status" aria-live="polite">
+            <div className="finance-tx-totals__title">
+              Totals · {filterTotals.count} transaction{filterTotals.count === 1 ? '' : 's'}
+              {filterTotals.count !== rows.length ? ` (filtered)` : ''}
+            </div>
+            <div className="finance-tx-totals__grid">
+              <div>
+                <span>Inflow</span>
+                <strong>{inr(filterTotals.inflow)}</strong>
+              </div>
+              <div>
+                <span>Outflow</span>
+                <strong>{inr(filterTotals.outflow)}</strong>
+              </div>
+              <div>
+                <span>Transfer</span>
+                <strong>{inr(filterTotals.transfer)}</strong>
+              </div>
+              <div>
+                <span>Net (in − out)</span>
+                <strong>{inr(filterTotals.net)}</strong>
+              </div>
+              <div>
+                <span>GST</span>
+                <strong>{inr(filterTotals.gst)}</strong>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
             <thead>
               <tr style={{ background: '#f7f7f5', textAlign: 'left' }}>
-                {showAllColumns && <th style={th}>Transaction ID</th>}
-                <th style={th}>Date</th>
-                <th style={th}>Flow</th>
-                {showAllColumns && <th style={th}>Source</th>}
-                <th style={th}>Handled by</th>
-                <th style={th}>Amount</th>
-                <th style={th}>GST</th>
-                <th style={th}>Bank / transfer</th>
-                <th style={th}>Category</th>
-                <th style={th}>Contact</th>
-                <th style={th}>Description</th>
-                <th style={th}>Allocation</th>
+                {showAllColumns && sortTh('id', 'Transaction ID')}
+                {sortTh('date', 'Date')}
+                {sortTh('direction', 'Flow')}
+                {showAllColumns && sortTh('source', 'Source')}
+                {sortTh('handled', 'Handled by')}
+                {sortTh('amount', 'Amount', 'right')}
+                {sortTh('gst', 'GST', 'right')}
+                {sortTh('bank', 'Bank / transfer')}
+                {sortTh('category', 'Category')}
+                {sortTh('contact', 'Contact')}
+                {sortTh('description', 'Description')}
+                {sortTh('allocation', 'Allocation')}
                 <th style={th}>Allocated to</th>
-                <th style={th}>Review status</th>
+                {sortTh('review', 'Review status')}
                 <th style={th}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((r) => {
+              {sortedRows.map((r) => {
                 const allocs = r.allocations ?? []
                 const isOut = r.direction === 'OUTFLOW'
                 const isTransfer = r.direction === 'TRANSFER'
@@ -1117,8 +1268,8 @@ export function FinanceTransactionsManager({
                       </td>
                     )}
                     <td style={td}>{r.accountName ?? r.accountId}</td>
-                    <td style={{ ...td, fontWeight: 600 }}>{inr(r.amount)}</td>
-                    <td style={td}>{r.gstAmount ? inr(r.gstAmount) : '—'}</td>
+                    <td style={{ ...td, fontWeight: 600, textAlign: 'right' }}>{inr(r.amount)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{r.gstAmount ? inr(r.gstAmount) : '—'}</td>
                     <td style={td}>
                       {isTransfer
                         ? `${r.paidThroughAccountName ?? '—'} → ${r.transferToAccountName ?? '—'}`
