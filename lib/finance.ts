@@ -294,9 +294,21 @@ export type TxFlowRow = {
 }
 
 export type DashboardKpis = {
+  /** Σ INFLOW transactions (cash received). */
   income: number
+  /** Σ order-sheet selling prices. */
+  selling: number
+  /** Σ order-sheet cost / purchase prices. */
   purchasePrice: number
+  /** selling − purchase (order-sheet margin). */
+  orderProfit: number
+  /** orderProfit as % of selling; null when selling is 0. */
+  orderProfitPct: number | null
+  /** Order sheets in range. */
+  sheetCount: number
+  /** Σ OUTFLOW transactions with no related order. */
   generalExpenses: number
+  /** selling − purchase − generalExpenses (legacy net). */
   profit: number
 }
 
@@ -329,10 +341,11 @@ export type SheetInflowMismatch = {
 
 /**
  * Dashboard cards:
- * income = Σ order-sheet selling prices
- * purchasePrice = Σ order-sheet cost prices
+ * income = Σ INFLOW transactions
+ * selling / purchasePrice = Σ order-sheet totals
+ * orderProfit = selling − purchase
  * generalExpenses = Σ OUTFLOW transactions with no related order
- * profit = income − purchasePrice − generalExpenses
+ * profit = selling − purchase − generalExpenses
  */
 export function summarizeDashboardKpis(
   sheets: OrderSheetRow[],
@@ -340,11 +353,14 @@ export function summarizeDashboardKpis(
   range?: { start: Date; end: Date },
 ): DashboardKpis {
   const inRange = (d: Date) => !range || (d >= range.start && d < range.end)
+  const sheetsInRange = sheets.filter((s) => inRange(s.orderCreatedAt))
+  const selling = roundMoney(sheetsInRange.reduce((s, r) => s + r.sellingPrice, 0))
+  const purchasePrice = roundMoney(sheetsInRange.reduce((s, r) => s + r.cost, 0))
+  const orderProfit = roundMoney(selling - purchasePrice)
   const income = roundMoney(
-    sheets.filter((s) => inRange(s.orderCreatedAt)).reduce((s, r) => s + r.sellingPrice, 0),
-  )
-  const purchasePrice = roundMoney(
-    sheets.filter((s) => inRange(s.orderCreatedAt)).reduce((s, r) => s + r.cost, 0),
+    transactions
+      .filter((t) => inRange(t.date) && t.direction === 'INFLOW')
+      .reduce((s, t) => s + t.amount, 0),
   )
   const generalExpenses = roundMoney(
     transactions
@@ -353,9 +369,13 @@ export function summarizeDashboardKpis(
   )
   return {
     income,
+    selling,
     purchasePrice,
+    orderProfit,
+    orderProfitPct: selling > 0.0001 ? Math.round((orderProfit / selling) * 1000) / 10 : null,
+    sheetCount: sheetsInRange.length,
     generalExpenses,
-    profit: roundMoney(income - purchasePrice - generalExpenses),
+    profit: roundMoney(orderProfit - generalExpenses),
   }
 }
 
