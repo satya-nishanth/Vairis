@@ -49,10 +49,42 @@ export type FinanceLineInput = {
   sellingPrice: number
 }
 
-export function sheetTotals(lines: FinanceLineInput[]): { cost: number; selling: number; profit: number } {
+export function sheetTotals(
+  lines: FinanceLineInput[],
+  opts?: { roundOffEnabled?: boolean },
+): {
+  cost: number
+  /** Effective selling (rounded to nearest ₹ when round-off is on). */
+  selling: number
+  sellingRaw: number
+  /** selling − sellingRaw when round-off is on; else 0. */
+  roundOff: number
+  profit: number
+  roundOffEnabled: boolean
+} {
   const cost = roundMoney(lines.reduce((s, l) => s + l.costPrice, 0))
-  const selling = roundMoney(lines.reduce((s, l) => s + l.sellingPrice, 0))
-  return { cost, selling, profit: orderProfit(selling, cost) }
+  const sellingRaw = roundMoney(lines.reduce((s, l) => s + l.sellingPrice, 0))
+  const roundOffEnabled = Boolean(opts?.roundOffEnabled)
+  if (!roundOffEnabled) {
+    return {
+      cost,
+      selling: sellingRaw,
+      sellingRaw,
+      roundOff: 0,
+      profit: orderProfit(sellingRaw, cost),
+      roundOffEnabled: false,
+    }
+  }
+  const selling = Math.round(sellingRaw)
+  const roundOff = roundMoney(selling - sellingRaw)
+  return {
+    cost,
+    selling,
+    sellingRaw,
+    roundOff,
+    profit: orderProfit(selling, cost),
+    roundOffEnabled: true,
+  }
 }
 
 /**

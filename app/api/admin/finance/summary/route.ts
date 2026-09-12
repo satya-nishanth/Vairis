@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         costPrice: Number(l.costPrice),
         sellingPrice: Number(l.sellingPrice),
       })),
+      { roundOffEnabled: s.roundOffEnabled },
     )
     return {
       orderCreatedAt: s.order.createdAt,

@@ -31,7 +31,33 @@ describe('sheetTotals / orderProfit', () => {
         { kind: 'GOLD', costPrice: 8000, sellingPrice: 12000 },
         { kind: 'DIAMONDS', costPrice: 3000, sellingPrice: 6000 },
       ]),
-    ).toEqual({ cost: 11000, selling: 18000, profit: 7000 })
+    ).toEqual({
+      cost: 11000,
+      selling: 18000,
+      sellingRaw: 18000,
+      roundOff: 0,
+      profit: 7000,
+      roundOffEnabled: false,
+    })
+  })
+
+  it('rounds selling to nearest rupee when enabled', () => {
+    expect(
+      sheetTotals(
+        [
+          { kind: 'GOLD', costPrice: 8000, sellingPrice: 12000.4 },
+          { kind: 'GST', costPrice: 0, sellingPrice: 360.26 },
+        ],
+        { roundOffEnabled: true },
+      ),
+    ).toEqual({
+      cost: 8000,
+      selling: 12361,
+      sellingRaw: 12360.66,
+      roundOff: 0.34,
+      profit: 4361,
+      roundOffEnabled: true,
+    })
   })
 
   it('allows negative profit', () => {

@@ -6,9 +6,25 @@ export type InventoryOrderHit = {
   contactPhone: string
   status: string
   createdAt: string
+  grandTotal: number
+  itemsLabel: string
 }
 
-/** Lightweight order search for inventory mark-as-sold picker. */
+function itemsLabel(
+  items: { productName: string; quantity: number }[],
+  itemCount: number,
+): string {
+  if (items.length === 0) return '—'
+  if (items.length === 1) {
+    const i = items[0]
+    return i.quantity > 1 ? `${i.productName} ×${i.quantity}` : i.productName
+  }
+  const first = items[0].productName
+  const more = Math.max(0, itemCount - 1)
+  return more > 0 ? `${first} +${more} more` : first
+}
+
+/** Order search for inventory mark-as-sold picker. */
 export async function searchInventoryOrders(q: string): Promise<InventoryOrderHit[]> {
   const needle = q.trim()
   if (needle.length < 2) return []
@@ -27,6 +43,9 @@ export async function searchInventoryOrders(q: string): Promise<InventoryOrderHi
       contactPhone: true,
       status: true,
       createdAt: true,
+      grandTotal: true,
+      items: { select: { productName: true, quantity: true }, take: 4 },
+      _count: { select: { items: true } },
     },
     orderBy: { createdAt: 'desc' },
     take: 20,
@@ -38,5 +57,7 @@ export async function searchInventoryOrders(q: string): Promise<InventoryOrderHi
     contactPhone: r.contactPhone,
     status: r.status,
     createdAt: r.createdAt.toISOString(),
+    grandTotal: Number(r.grandTotal),
+    itemsLabel: itemsLabel(r.items, r._count.items),
   }))
 }

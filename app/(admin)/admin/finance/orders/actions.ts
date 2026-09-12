@@ -41,9 +41,14 @@ export async function saveOrderSheetAction(formData: FormData) {
     costPrice: formMoney(formData, `cost_${kind}`),
     sellingPrice: formMoney(formData, `sell_${kind}`),
   }))
+  const roundOffEnabled =
+    formData.get('roundOffEnabled') === 'on' || formData.get('roundOffEnabled') === 'true'
 
   try {
-    await upsertOrderFinanceSheet({ orderId, paidToAccountId, lines }, session)
+    await upsertOrderFinanceSheet(
+      { orderId, paidToAccountId, lines, roundOffEnabled },
+      session,
+    )
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Save failed'
     redirect(`${ORDERS_PATH}?${orderQs}&error=${encodeURIComponent(msg)}`)

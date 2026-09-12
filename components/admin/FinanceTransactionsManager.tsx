@@ -135,7 +135,7 @@ export function FinanceTransactionsManager({
   accounts,
   contacts,
   categories,
-  defaultAccountId,
+  defaultAccountId: _defaultAccountId,
   compose = false,
   editId = null,
 }: {
@@ -150,7 +150,6 @@ export function FinanceTransactionsManager({
   editId?: string | null
 }) {
   const router = useRouter()
-  const fallbackAccountId = defaultAccountId ?? accounts[0]?.id ?? ''
   const [rows, setRows] = useState(initial)
   const [editingId, setEditingId] = useState<string | null>(editId)
   const formRef = useRef<HTMLElement>(null)
@@ -159,11 +158,9 @@ export function FinanceTransactionsManager({
   const [amount, setAmount] = useState('')
   const [gstAmount, setGstAmount] = useState('')
   const [description, setDescription] = useState('')
-  const [accountId, setAccountId] = useState(fallbackAccountId)
-  const [paidThroughAccountId, setPaidThroughAccountId] = useState(fallbackAccountId)
-  const [transferToAccountId, setTransferToAccountId] = useState(
-    () => accounts.find((a) => a.id !== fallbackAccountId)?.id ?? '',
-  )
+  const [accountId, setAccountId] = useState('')
+  const [paidThroughAccountId, setPaidThroughAccountId] = useState('')
+  const [transferToAccountId, setTransferToAccountId] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [contactId, setContactId] = useState<string | null>(null)
   const [contactText, setContactText] = useState('')
@@ -212,8 +209,8 @@ export function FinanceTransactionsManager({
       setAllocations([])
       setContactId(null)
       setContactText('')
-      if (!transferToAccountId || transferToAccountId === paidThroughAccountId) {
-        setTransferToAccountId(accounts.find((a) => a.id !== paidThroughAccountId)?.id ?? '')
+      if (transferToAccountId && transferToAccountId === paidThroughAccountId) {
+        setTransferToAccountId('')
       }
     }
   }
@@ -296,11 +293,7 @@ export function FinanceTransactionsManager({
     setDescription(row.description)
     setAccountId(row.accountId)
     setPaidThroughAccountId(row.paidThroughAccountId)
-    setTransferToAccountId(
-      row.transferToAccountId ??
-        accounts.find((a) => a.id !== row.paidThroughAccountId)?.id ??
-        '',
-    )
+    setTransferToAccountId(row.transferToAccountId ?? '')
     setCategoryId(row.categoryId ?? '')
     setContactId(row.contactId)
     setContactText(row.contactName ?? '')
@@ -324,9 +317,9 @@ export function FinanceTransactionsManager({
     setAmount('')
     setGstAmount('')
     setDescription('')
-    setAccountId(fallbackAccountId)
-    setPaidThroughAccountId(fallbackAccountId)
-    setTransferToAccountId(accounts.find((a) => a.id !== fallbackAccountId)?.id ?? '')
+    setAccountId('')
+    setPaidThroughAccountId('')
+    setTransferToAccountId('')
     setCategoryId('')
     setContactId(null)
     setContactText('')
@@ -408,9 +401,9 @@ export function FinanceTransactionsManager({
       setAmount('')
       setGstAmount('')
       setDescription('')
-      setAccountId(fallbackAccountId)
-      setPaidThroughAccountId(fallbackAccountId)
-      setTransferToAccountId(accounts.find((a) => a.id !== fallbackAccountId)?.id ?? '')
+      setAccountId('')
+      setPaidThroughAccountId('')
+      setTransferToAccountId('')
       setCategoryId('')
       setContactId(null)
       setContactText('')
@@ -515,6 +508,7 @@ export function FinanceTransactionsManager({
                 onChange={(e) => setAccountId(e.target.value)}
                 required
               >
+                <option value="">— Select —</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -536,11 +530,12 @@ export function FinanceTransactionsManager({
                       const from = e.target.value
                       setPaidThroughAccountId(from)
                       if (transferToAccountId === from) {
-                        setTransferToAccountId(accounts.find((a) => a.id !== from)?.id ?? '')
+                        setTransferToAccountId('')
                       }
                     }}
                     required
                   >
+                    <option value="">— Select —</option>
                     {accounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}
@@ -559,6 +554,7 @@ export function FinanceTransactionsManager({
                     onChange={(e) => setTransferToAccountId(e.target.value)}
                     required
                   >
+                    <option value="">— Select —</option>
                     {accounts
                       .filter((a) => a.id !== paidThroughAccountId)
                       .map((a) => (
@@ -581,6 +577,7 @@ export function FinanceTransactionsManager({
                   onChange={(e) => setPaidThroughAccountId(e.target.value)}
                   required
                 >
+                  <option value="">— Select —</option>
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}
@@ -771,7 +768,7 @@ export function FinanceTransactionsManager({
             <label style={field}>
               Category
               <select style={selectControl} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                <option value="">— None —</option>
+                <option value="">— Select —</option>
                 {categoriesForDirection.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}

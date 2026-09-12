@@ -42,6 +42,7 @@ type Editor = {
   amounts: Amounts
   paidToAccountId: string
   hasSheet: boolean
+  roundOffEnabled: boolean
 }
 
 /** Server-prefetched selection — avoids mobile client-fetch races. */
@@ -53,6 +54,7 @@ export type OrderSheetBoot = {
   lines: Line[]
   quotes: OrderItemQuote[]
   hasSheet?: boolean
+  roundOffEnabled?: boolean
 }
 
 type SheetFilter = 'all' | 'incomplete' | 'complete'
@@ -149,15 +151,16 @@ function parseAmounts(amounts: Amounts) {
 
 /** Deterministic — avoids SSR/client toLocaleString hydration mismatches. */
 function inr(n: number): string {
-  const v = Math.round(n)
-  const sign = v < 0 ? '-' : ''
-  const digits = String(Math.abs(v))
+  const rounded = Math.round(n * 100) / 100
+  const sign = rounded < 0 ? '-' : ''
+  const [intDigits, fracRaw] = Math.abs(rounded).toFixed(2).split('.')
   let out = ''
-  for (let i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 === 0) out += ','
-    out += digits[i]
+  for (let i = 0; i < intDigits.length; i++) {
+    if (i > 0 && (intDigits.length - i) % 3 === 0) out += ','
+    out += intDigits[i]
   }
-  return `₹${sign}${out}`
+  const frac = (fracRaw ?? '').replace(/0+$/, '')
+  return frac ? `₹${sign}${out}.${frac}` : `₹${sign}${out}`
 }
 
 function moneyOrDash(n: number | null | undefined): string {
@@ -234,6 +237,7 @@ export function OrderFinanceManager({
           amounts: amountsFromBoot(boot),
           paidToAccountId: boot.paidToAccountId || fallbackPaidTo,
           hasSheet: boot.hasSheet ?? boot.lines.length > 0,
+          roundOffEnabled: Boolean(boot.roundOffEnabled),
         }
       : {
           revision: 0,
@@ -243,6 +247,7 @@ export function OrderFinanceManager({
           amounts: emptyAmounts(),
           paidToAccountId: fallbackPaidTo,
           hasSheet: false,
+          roundOffEnabled: false,
         },
   )
   const [quotes] = useState<OrderItemQuote[]>(() => boot?.quotes ?? [])
@@ -257,7 +262,7 @@ export function OrderFinanceManager({
   const saveStatus = initialSaveError ? '' : initialSaveFlash ? 'Saved' : ''
 
   const parsedLines = parseAmounts(editor.amounts)
-  const totals = sheetTotals(parsedLines)
+  const totals = sheetTotals(parsedLines, { roundOffEnabled: editor.roundOffEnabled })
   const baseList = searching && (hits.length > 0 || Boolean(initialSearchQuery)) ? hits : recentOrders
   const listOrders = useMemo(() => {
     if (filter === 'incomplete') return baseList.filter((h) => !h.sheetComplete)
@@ -793,6 +798,14 @@ export function OrderFinanceManager({
                   <div className="order-sheet-totals__cell">
                     <span className="order-sheet-totals__label">Selling</span>
                     <strong>{inr(totals.selling)}</strong>
+                    {totals.roundOffEnabled && Math.abs(totals.roundOff) > 0.0001 ? (
+                      <span className="order-sheet-totals__sub">
+                        Raw {inr(totals.sellingRaw)} · Round off{' '}
+                        {totals.roundOff < 0
+                          ? `(${inr(Math.abs(totals.roundOff)).replace(/^₹/, '')})`
+                          : inr(totals.roundOff)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -845,9 +858,48 @@ export function OrderFinanceManager({
                   <div>
                     <span>Selling</span>
                     <strong>{inr(totals.selling)}</strong>
+                    {totals.roundOffEnabled && Math.abs(totals.roundOff) > 0.0001 ? (
+                      <span className="order-sheet-totals__sub">
+                        Raw {inr(totals.sellingRaw)} · Round off{' '}
+                        {totals.roundOff < 0
+                          ? `(${inr(Math.abs(totals.roundOff)).replace(/^₹/, '')})`
+                          : inr(totals.roundOff)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
+
+              <label
+                className="order-sheet-roundoff"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  marginTop: 14,
+                  fontSize: '0.875rem',
+                  color: '#111827',
+                  cursor: locked ? 'default' : 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  name="roundOffEnabled"
+                  value="true"
+                  checked={editor.roundOffEnabled}
+                  onChange={(e) =>
+                    setEditor((prev) => ({ ...prev, roundOffEnabled: e.target.checked }))
+                  }
+                  disabled={locked}
+                  style={{ marginTop: 3, width: 16, height: 16, accentColor: GREEN }}
+                />
+                <span>
+                  <strong style={{ fontWeight: 600 }}>Round off</strong>
+                  <span style={{ display: 'block', fontSize: '0.75rem', color: MUTED, marginTop: 2 }}>
+                    Round selling total to the nearest rupee (used for expected collections).
+                  </span>
+                </span>
+              </label>
 
               <label className="order-sheet-field" style={{ marginTop: 14 }}>
                 <span>Customer paid to (account holding cash)</span>

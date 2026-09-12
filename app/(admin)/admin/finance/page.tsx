@@ -49,6 +49,7 @@ export default async function FinanceDashboardPage() {
         costPrice: Number(l.costPrice),
         sellingPrice: Number(l.sellingPrice),
       })),
+      { roundOffEnabled: s.roundOffEnabled },
     )
     return {
       orderId: s.orderId,
@@ -178,6 +179,7 @@ export default async function FinanceDashboardPage() {
                   costPrice: Number(l.costPrice),
                   sellingPrice: Number(l.sellingPrice),
                 })),
+                { roundOffEnabled: s.roundOffEnabled },
               )
               return (
                 <li key={s.id}>

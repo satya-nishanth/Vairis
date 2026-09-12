@@ -27,6 +27,7 @@ const hitSelect = {
   finance: {
     select: {
       paidToAccountId: true,
+      roundOffEnabled: true,
       paidToAccount: { select: { name: true } },
       lines: {
         select: { id: true, kind: true, costPrice: true, sellingPrice: true },
@@ -66,6 +67,8 @@ export type FinanceOrderHit = {
   purchasing: number | null
   selling: number | null
   profit: number | null
+  roundOffEnabled: boolean
+  roundOff: number
   paidToAccountName: string | null
   /** Allocated inflows toward this order. */
   collected: number
@@ -99,6 +102,7 @@ export function mapFinanceOrderHit(o: {
   _count: { items: number; children: number }
   finance: {
     paidToAccountId: string
+    roundOffEnabled?: boolean
     paidToAccount: { name: string }
     lines: {
       id: string
@@ -117,6 +121,7 @@ export function mapFinanceOrderHit(o: {
       }))
     : null
 
+  const roundOffEnabled = Boolean(o.finance?.roundOffEnabled)
   const totals = lines
     ? sheetTotals(
         lines.map((l) => ({
@@ -124,6 +129,7 @@ export function mapFinanceOrderHit(o: {
           costPrice: l.costPrice,
           sellingPrice: l.sellingPrice,
         })),
+        { roundOffEnabled },
       )
     : null
 
@@ -150,6 +156,8 @@ export function mapFinanceOrderHit(o: {
     purchasing: totals ? totals.cost : null,
     selling: totals ? totals.selling : null,
     profit: totals ? totals.profit : null,
+    roundOffEnabled,
+    roundOff: totals?.roundOff ?? 0,
     paidToAccountName: o.finance?.paidToAccount.name ?? null,
     collected: payment.collected,
     expected: payment.expected,

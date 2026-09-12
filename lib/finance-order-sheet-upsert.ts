@@ -13,6 +13,7 @@ export type UpsertOrderSheetInput = {
   orderId: string
   paidToAccountId: string
   lines: UpsertOrderSheetLine[]
+  roundOffEnabled?: boolean
 }
 
 const sheetInclude = {
@@ -25,6 +26,7 @@ function serialize(row: {
   id: string
   orderId: string
   paidToAccountId: string
+  roundOffEnabled: boolean
   createdAt: Date
   updatedAt: Date
   lines: {
@@ -45,16 +47,19 @@ function serialize(row: {
       costPrice: Number(l.costPrice),
       sellingPrice: Number(l.sellingPrice),
     }))
-  const totals = sheetTotals(lines)
+  const totals = sheetTotals(lines, { roundOffEnabled: row.roundOffEnabled })
   return {
     id: row.id,
     orderId: row.orderId,
     paidToAccountId: row.paidToAccountId,
     paidToAccountName: row.paidToAccount?.name ?? null,
     customerPaidTo: row.paidToAccountId,
+    roundOffEnabled: row.roundOffEnabled,
+    roundOff: totals.roundOff,
     lines,
     cost: totals.cost,
     sellingPrice: totals.selling,
+    sellingRaw: totals.sellingRaw,
     profit: totals.profit,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -86,6 +91,8 @@ export async function upsertOrderFinanceSheet(
   })
   if (!account) throw new Error('Account not found')
 
+  const roundOffEnabled = Boolean(input.roundOffEnabled)
+
   const prior = await prisma.orderFinance.findUnique({
     where: { orderId: input.orderId },
     include: sheetInclude,
@@ -94,8 +101,15 @@ export async function upsertOrderFinanceSheet(
   const row = await prisma.$transaction(async (tx) => {
     const sheet = await tx.orderFinance.upsert({
       where: { orderId: input.orderId },
-      create: { orderId: input.orderId, paidToAccountId: input.paidToAccountId },
-      update: { paidToAccountId: input.paidToAccountId },
+      create: {
+        orderId: input.orderId,
+        paidToAccountId: input.paidToAccountId,
+        roundOffEnabled,
+      },
+      update: {
+        paidToAccountId: input.paidToAccountId,
+        roundOffEnabled,
+      },
     })
     await tx.orderFinanceLine.deleteMany({ where: { sheetId: sheet.id } })
     await tx.orderFinanceLine.createMany({
