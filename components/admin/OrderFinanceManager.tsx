@@ -313,7 +313,6 @@ export function OrderFinanceManager({
     }
   }, [listOrders])
 
-  const listLabel = searching ? 'Search results' : 'All orders'
   const quoteCols = quotes.length
   const linesGridStyle: CSSProperties = {
     gridTemplateColumns:
@@ -482,25 +481,19 @@ export function OrderFinanceManager({
   function renderListDesk() {
     return (
       <div className="order-sheet-hits order-sheet-desk">
-        <div className="order-sheet-hits__label">
-          {listLabel}
-          {filter !== 'all' ? ` · ${filter}` : ''}
-        </div>
         <div className="order-sheet-hits__table-wrap">
           <table className="order-sheet-hits__table order-sheet-hits__table--wide">
             <colgroup>
               <col className="order-sheet-hits__col-contact" />
               <col className="order-sheet-hits__col-item" />
               <col className="order-sheet-hits__col-num" />
-              <col className="order-sheet-hits__col-id" />
-              <col className="order-sheet-hits__col-status" />
-              <col className="order-sheet-hits__col-num" />
-              <col className="order-sheet-hits__col-num" />
-              <col className="order-sheet-hits__col-payment" />
-              <col className="order-sheet-hits__col-paidto" />
               <col className="order-sheet-hits__col-num" />
               <col className="order-sheet-hits__col-num" />
               <col className="order-sheet-hits__col-pct" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-payment" />
+              <col className="order-sheet-hits__col-paidto" />
+              <col className="order-sheet-hits__col-id" />
               <col className="order-sheet-hits__col-action" />
             </colgroup>
             <thead>
@@ -508,20 +501,10 @@ export function OrderFinanceManager({
                 <th scope="col">Contact</th>
                 <th scope="col">Item</th>
                 <th scope="col" className="order-sheet-hits__num">
-                  Amount
-                </th>
-                <th scope="col">Order ID</th>
-                <th scope="col">Status</th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Selling price (to customer)
+                  Selling price
                 </th>
                 <th scope="col" className="order-sheet-hits__num">
-                  Collected
-                </th>
-                <th scope="col">Payment</th>
-                <th scope="col">Paid to</th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Purchasing price (from vendor)
+                  Purchase price
                 </th>
                 <th scope="col" className="order-sheet-hits__num">
                   Profit
@@ -529,6 +512,12 @@ export function OrderFinanceManager({
                 <th scope="col" className="order-sheet-hits__num">
                   Profit %
                 </th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Collected
+                </th>
+                <th scope="col">Payment status</th>
+                <th scope="col">Paid to</th>
+                <th scope="col">Order ID</th>
                 <th scope="col" />
               </tr>
               {listOrders.length > 0 ? (
@@ -536,11 +525,7 @@ export function OrderFinanceManager({
                   <th scope="row" colSpan={2}>
                     Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
                   </th>
-                  <th className="order-sheet-hits__num">{inr(listTotals.amount)}</th>
-                  <th colSpan={2} />
                   <th className="order-sheet-hits__num">{inr(listTotals.selling)}</th>
-                  <th className="order-sheet-hits__num">{inr(listTotals.collected)}</th>
-                  <th colSpan={2} />
                   <th className="order-sheet-hits__num">{inr(listTotals.purchasing)}</th>
                   <th className="order-sheet-hits__num order-sheet-hits__num--strong">
                     {inr(listTotals.profit)}
@@ -548,6 +533,8 @@ export function OrderFinanceManager({
                   <th className="order-sheet-hits__num order-sheet-hits__num--strong">
                     {pctOrDash(listTotals.profitPct)}
                   </th>
+                  <th className="order-sheet-hits__num">{inr(listTotals.collected)}</th>
+                  <th colSpan={3} />
                   <th />
                 </tr>
               ) : null}
@@ -555,7 +542,7 @@ export function OrderFinanceManager({
             <tbody>
               {listOrders.length === 0 && (
                 <tr>
-                  <td colSpan={13} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
+                  <td colSpan={11} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
                     {searching ? 'No matching orders' : 'No orders in this filter'}
                   </td>
                 </tr>
@@ -580,27 +567,14 @@ export function OrderFinanceManager({
                       {h.itemsLabel || '—'}
                     </Link>
                   </td>
-                  <td className="order-sheet-hits__num">
-                    <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
-                      <span className="order-sheet-hits__amount">{inr(h.grandTotal)}</span>
-                    </Link>
-                  </td>
-                  <td>
-                    <Link
-                      href={orderHref(h.id)}
-                      className="order-sheet-hits__link order-sheet-hits__id"
-                      prefetch={false}
-                      title={h.id}
-                    >
-                      {shortFinanceId(h.id)}
-                    </Link>
-                  </td>
-                  <td>
-                    <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
-                      {statusLabel(h.status)}
-                    </Link>
-                  </td>
                   <td className="order-sheet-hits__num">{moneyOrDash(h.selling)}</td>
+                  <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
+                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {moneyOrDash(h.profit)}
+                  </td>
+                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {pctOrDash(profitPct(h.profit, h.selling))}
+                  </td>
                   <td className="order-sheet-hits__num">{inr(h.collected)}</td>
                   <td>
                     <span
@@ -611,12 +585,15 @@ export function OrderFinanceManager({
                     </span>
                   </td>
                   <td>{h.paidToAccountName || '—'}</td>
-                  <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
-                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
-                    {moneyOrDash(h.profit)}
-                  </td>
-                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
-                    {pctOrDash(profitPct(h.profit, h.selling))}
+                  <td>
+                    <Link
+                      href={orderHref(h.id)}
+                      className="order-sheet-hits__link order-sheet-hits__id"
+                      prefetch={false}
+                      title={h.id}
+                    >
+                      {shortFinanceId(h.id)}
+                    </Link>
                   </td>
                   <td>
                     <Link
@@ -648,10 +625,6 @@ export function OrderFinanceManager({
   function renderListMobile() {
     return (
       <div className="order-sheet-mobile-list order-sheet-mobile-stack">
-        <div className="order-sheet-hits__label" style={{ marginBottom: 8 }}>
-          {listLabel}
-          {filter !== 'all' ? ` · ${filter}` : ''}
-        </div>
         {listOrders.length === 0 && (
           <p style={{ fontSize: '0.8125rem', color: MUTED, margin: '8px 0' }}>
             {searching ? 'No matching orders' : 'No orders in this filter'}
@@ -1056,16 +1029,14 @@ export function OrderFinanceManager({
 
         <div className="order-sheet-list">
           <div className="order-sheet-list-pin">
-            {renderFilterChips()}
-
-            <div className="order-sheet-field">
-              <span id="order-sheet-search-label">Search (name, phone, email, id, item)</span>
+            <div className="order-sheet-toolbar">
+              {renderFilterChips()}
               <form className="order-sheet-search-row" onSubmit={onSearchSubmit}>
                 <input
                   ref={searchInputRef}
                   id="order-sheet-search-input"
                   name="q"
-                  aria-labelledby="order-sheet-search-label"
+                  aria-label="Search (name, phone, email, id, item)"
                   className="order-sheet-search-input"
                   style={{ ...control, flex: 1, fontSize: '16px' }}
                   placeholder="Name, phone, email, order ID or item…"
@@ -1082,35 +1053,31 @@ export function OrderFinanceManager({
                   Search
                 </button>
               </form>
-              <div className="order-sheet-search-actions">
-                <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
-                  Type at least 2 characters, then tap Search.
-                </p>
-                {searching && (
-                  <p className="order-sheet-search-hint">
-                    <button
-                      type="button"
-                      className="order-sheet-btn-ghost"
-                      style={{ padding: 0, textDecoration: 'underline' }}
-                      onClick={() => {
-                        setSearching(false)
-                        setHits([])
-                        setQuery('')
-                        setSearchHint('')
-                        if (searchInputRef.current) searchInputRef.current.value = ''
-                      }}
-                    >
-                      Clear search
-                    </button>
-                    {searchHint ? ` · ${searchHint}` : ''}
-                  </p>
-                )}
-                <Link href="/admin/orders/new" className="order-sheet-create-link">
-                  + Create order
-                </Link>
-              </div>
             </div>
-
+            <div className="order-sheet-search-actions">
+              <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
+                Type at least 2 characters, then tap Search.
+              </p>
+              {searching ? (
+                <p className="order-sheet-search-hint">
+                  <button
+                    type="button"
+                    className="order-sheet-btn-ghost"
+                    style={{ padding: 0, textDecoration: 'underline' }}
+                    onClick={() => {
+                      setSearching(false)
+                      setHits([])
+                      setQuery('')
+                      setSearchHint('')
+                      if (searchInputRef.current) searchInputRef.current.value = ''
+                    }}
+                  >
+                    Clear search
+                  </button>
+                  {searchHint ? ` · ${searchHint}` : ''}
+                </p>
+              ) : null}
+            </div>
             {listOrders.length > 0 ? (
               <div className="order-sheet-list-totals order-sheet-mobile-only">
                 <div className="order-sheet-list-totals__title">
