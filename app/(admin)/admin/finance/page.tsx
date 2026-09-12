@@ -59,6 +59,7 @@ export default async function FinanceDashboardPage() {
         paidThroughAccountId: true,
         transferToAccountId: true,
         unlinkedOrderLabels: true,
+        category: { select: { name: true } },
         orders: { select: { orderId: true } },
         allocations: { select: { amount: true, orderId: true, purchaseBillId: true } },
       },
@@ -112,6 +113,7 @@ export default async function FinanceDashboardPage() {
       t.orders.length > 0 ||
       t.unlinkedOrderLabels.length > 0 ||
       t.allocations.some((a) => a.orderId || a.purchaseBillId),
+    categoryName: t.category?.name ?? null,
   }))
 
   const kpis = summarizeDashboardKpis(sheetRows, txExpense)
@@ -261,28 +263,14 @@ export default async function FinanceDashboardPage() {
 
   const cards = [
     {
-      label: 'Income',
+      label: 'Cash inflow',
       value: inr(kpis.income),
       meta: 'Transaction inflows',
     },
     {
-      label: 'Purchase',
-      value: inr(kpis.purchasePrice),
-      meta: 'Cost from order sheets',
-    },
-    {
-      label: 'Order profit',
-      value: inr(kpis.orderProfit),
-      meta:
-        kpis.orderProfitPct != null
-          ? `${pctOrDash(kpis.orderProfitPct)} of selling`
-          : 'Selling − purchase',
-      emphasize: true,
-    },
-    {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
-      meta: 'Non-order outflows',
+      meta: 'Outflows excl. inventory purchases',
     },
   ]
 
@@ -290,10 +278,7 @@ export default async function FinanceDashboardPage() {
     <div className="finance-dash">
       <div className="finance-dash__kpis">
         {cards.map((c) => (
-          <div
-            key={c.label}
-            className={`finance-dash__kpi${c.emphasize ? ' finance-dash__kpi--accent' : ''}`}
-          >
+          <div key={c.label} className="finance-dash__kpi">
             <div className="finance-dash__kpi-label">{c.label}</div>
             <div className="finance-dash__kpi-value">{c.value}</div>
             <div className="finance-dash__kpi-meta">{c.meta}</div>
