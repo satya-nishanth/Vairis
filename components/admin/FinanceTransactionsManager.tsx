@@ -1059,17 +1059,7 @@ export function FinanceTransactionsManager({
 
   return (
     <div>
-      {!showForm ? (
-        <Link href="/admin/finance/transactions?compose=1" className="finance-tx-open-cta">
-          <span className="finance-tx-open-cta__plus" aria-hidden>
-            +
-          </span>
-          <span className="finance-tx-open-cta__text">
-            <span className="finance-tx-open-cta__title">Record transaction</span>
-            <span className="finance-tx-open-cta__sub">Add a new income or expense transaction</span>
-          </span>
-        </Link>
-      ) : (
+      {showForm ? (
         <section ref={formRef} className="finance-tx-panel">
           <div className="finance-tx-panel__top">
             <div>
@@ -1084,12 +1074,11 @@ export function FinanceTransactionsManager({
           </div>
           <div className="finance-tx-panel__body">{txForm}</div>
         </section>
-      )}
+      ) : null}
 
       <div className="finance-tx-list">
-        <div className="finance-tx-list__pin">
         <div className="finance-tx-list__filters">
-          <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 360 }}>
+          <div className="finance-tx-list__search">
             <span
               style={{
                 position: 'absolute',
@@ -1152,6 +1141,7 @@ export function FinanceTransactionsManager({
             <button
               type="button"
               onClick={clearAllFilters}
+              className="finance-tx-list__clear"
               style={{
                 ...btnGhost,
                 padding: '8px 14px',
@@ -1170,6 +1160,7 @@ export function FinanceTransactionsManager({
           <button
             type="button"
             onClick={() => setShowAllColumns((v) => !v)}
+            className="finance-tx-list__cols"
             style={{
               ...btnGhost,
               padding: '8px 14px',
@@ -1178,17 +1169,45 @@ export function FinanceTransactionsManager({
             }}
             aria-pressed={showAllColumns}
           >
-            {showAllColumns ? 'Hide extra columns' : 'Show all columns'}
+            <span className="finance-tx-list__cols-full">
+              {showAllColumns ? 'Hide extra columns' : 'Show all columns'}
+            </span>
+            <span className="finance-tx-list__cols-short" aria-hidden>
+              {showAllColumns ? 'Hide cols' : 'All cols'}
+            </span>
           </button>
+
+          {!showForm ? (
+            <Link
+              href="/admin/finance/transactions?compose=1"
+              className="finance-tx-open-cta finance-tx-open-cta--inline"
+              title="Add a new income or expense transaction"
+              aria-label="Record transaction"
+            >
+              <span className="finance-tx-open-cta__plus" aria-hidden>
+                +
+              </span>
+              <span className="finance-tx-open-cta__text">
+                <span className="finance-tx-open-cta__title">
+                  <span className="finance-tx-open-cta__label-full">Record transaction</span>
+                  <span className="finance-tx-open-cta__label-short">Record</span>
+                </span>
+                <span className="finance-tx-open-cta__sub">Add a new income or expense transaction</span>
+              </span>
+            </Link>
+          ) : null}
         </div>
 
         {filterTotals.count > 0 ? (
           <div className="finance-tx-totals" role="status" aria-live="polite">
-            <div className="finance-tx-totals__title">
-              Totals · {filterTotals.count} transaction{filterTotals.count === 1 ? '' : 's'}
-              {filterTotals.count !== rows.length ? ` (filtered)` : ''}
-            </div>
             <div className="finance-tx-totals__grid">
+              <div className="finance-tx-totals__count">
+                <span>Totals</span>
+                <strong>
+                  {filterTotals.count} txn{filterTotals.count === 1 ? '' : 's'}
+                  {filterTotals.count !== rows.length ? ' · filtered' : ''}
+                </strong>
+              </div>
               <div>
                 <span>Inflow</span>
                 <strong>{inr(filterTotals.inflow)}</strong>
@@ -1212,7 +1231,6 @@ export function FinanceTransactionsManager({
             </div>
           </div>
         ) : null}
-        </div>
 
         <div className="finance-tx-list__scroll">
           <table className="finance-tx-list__table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.8125rem' }}>
