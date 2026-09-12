@@ -10,6 +10,7 @@ import {
   buildCompanyAudit,
   inventoryRowsForAudit,
 } from '@/lib/finance-company-audit'
+import { getFinanceKpiSettings } from '@/lib/finance-settings'
 import {
   collectedByOrderIds,
   collectedByPurchaseBillIds,
@@ -43,7 +44,7 @@ export default async function CompanyAuditPage({
   const range = start && end ? { start, end } : undefined
   const initialTab = sp.tab === 'reconciliation' ? 'reconciliation' : 'overview'
 
-  const [sheets, accounts, transactions, inventoryItems, inventorySales, purchaseBills] =
+  const [sheets, accounts, transactions, inventoryItems, inventorySales, purchaseBills, kpiSettings] =
     await Promise.all([
       prisma.orderFinance.findMany({
         include: {
@@ -74,7 +75,8 @@ export default async function CompanyAuditPage({
           transferToAccountId: true,
           unlinkedOrderLabels: true,
           unlinkedInventoryLabels: true,
-          category: { select: { name: true } },
+          categoryId: true,
+          category: { select: { id: true, name: true } },
           orders: { select: { orderId: true } },
           inventoryItems: { select: { inventoryItemId: true } },
           allocations: {
@@ -123,6 +125,7 @@ export default async function CompanyAuditPage({
           supplierContact: { select: { name: true } },
         },
       }),
+      getFinanceKpiSettings(),
     ])
 
   const yearSet = new Set<number>([period.year, new Date().getFullYear()])
@@ -174,6 +177,7 @@ export default async function CompanyAuditPage({
         t.orders.length > 0 ||
         t.unlinkedOrderLabels.length > 0 ||
         t.allocations.some((a) => a.orderId || a.purchaseBillId),
+      categoryId: t.categoryId,
       categoryName: t.category?.name ?? null,
       hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
       hasInventoryLink:
@@ -281,6 +285,7 @@ export default async function CompanyAuditPage({
       }
     }),
     range,
+    kpiCategoryConfig: kpiSettings,
   })
 
   const MONTH_NAMES = [

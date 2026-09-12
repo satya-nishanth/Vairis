@@ -307,6 +307,21 @@ export function FinanceTransactionsManager({
   const [sortKey, setSortKey] = useState<TxSortKey>('date')
   const [sortDir, setSortDir] = useState<TxSortDir>('desc')
 
+  const filtersActive =
+    query.trim().length > 0 ||
+    dirFilters.length > 0 ||
+    handledFilters.length > 0 ||
+    bankFilters.length > 0 ||
+    categoryFilters.length > 0
+
+  function clearAllFilters() {
+    setQuery('')
+    setDirFilters([])
+    setHandledFilters([])
+    setBankFilters([])
+    setCategoryFilters([])
+  }
+
   const showForm = compose || !!editId || !!editingId
   const tableColSpan = showAllColumns ? 14 : 12
 
@@ -1148,6 +1163,25 @@ export function FinanceTransactionsManager({
                   : c.name,
             }))}
           />
+
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              style={{
+                ...btnGhost,
+                padding: '8px 14px',
+                fontSize: '0.75rem',
+                whiteSpace: 'nowrap',
+                color: '#032b24',
+                borderColor: '#b7d4cb',
+                background: '#f3f8f6',
+                fontWeight: 600,
+              }}
+            >
+              Clear all filters
+            </button>
+          ) : null}
 
           <button
             type="button"

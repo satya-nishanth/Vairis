@@ -4,11 +4,14 @@ import { useState } from 'react'
 import { FinanceAccountsManager, type AccountRow } from '@/components/admin/FinanceAccountsManager'
 import { FinanceContactsManager, type ContactRow } from '@/components/admin/FinanceContactsManager'
 import { FinanceCategoriesManager, type CategoryRow } from '@/components/admin/FinanceCategoriesManager'
+import { FinanceDashboardKpiSettings } from '@/components/admin/FinanceDashboardKpiSettings'
+import type { FinanceKpiSettings } from '@/lib/finance-settings'
 
 const TABS = [
   { id: 'accounts', label: 'Accounts' },
   { id: 'ledgers', label: 'Ledgers' },
   { id: 'categories', label: 'Categories' },
+  { id: 'dashboard', label: 'Dashboard KPIs' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'tags', label: 'Tags' },
 ] as const
@@ -45,16 +48,22 @@ export function FinanceConfigClient({
   accounts,
   contacts,
   categories,
+  kpiSettings,
 }: {
   accounts: AccountRow[]
   contacts: ContactRow[]
   categories: CategoryRow[]
+  kpiSettings: FinanceKpiSettings
 }) {
   const [tab, setTab] = useState<TabId>('accounts')
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }} role="tablist" aria-label="Config sections">
+      <div
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}
+        role="tablist"
+        aria-label="Config sections"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -92,6 +101,9 @@ export function FinanceConfigClient({
           </p>
           <FinanceCategoriesManager initial={categories} />
         </>
+      )}
+      {tab === 'dashboard' && (
+        <FinanceDashboardKpiSettings categories={categories} initial={kpiSettings} />
       )}
       {tab === 'ledgers' && <ComingSoon label="Ledgers" />}
       {tab === 'tags' && <ComingSoon label="Tags" />}

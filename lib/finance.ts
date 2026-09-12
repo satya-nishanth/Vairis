@@ -334,12 +334,20 @@ export type TxExpenseRow = {
   amount: number
   /** True when linked to one or more store orders / bills. */
   relatedToOrder: boolean
+  categoryId?: string | null
   /** Finance category name; used to exclude Inventory purchases from opex. */
   categoryName?: string | null
   /** True when any allocation points at a purchase bill (goods / inventory buy). */
   hasPurchaseBillAllocation?: boolean
   /** True when txn is linked to inventory item(s) or unlinked inventory labels. */
   hasInventoryLink?: boolean
+}
+
+export type DashboardKpiCategoryConfig = {
+  /** Empty = all INFLOW txs. Non-empty = only these category ids. */
+  cashInflowCategoryIds: string[]
+  /** Empty = OUTFLOW minus inventory heuristics. Non-empty = only these category ids. */
+  generalExpenseCategoryIds: string[]
 }
 
 export type OrderInflowTxRow = {
@@ -363,37 +371,51 @@ export type SheetInflowMismatch = {
 
 /**
  * Dashboard cards:
- * income = Σ INFLOW transactions
+ * income = Σ INFLOW (optionally filtered by cashInflowCategoryIds)
  * selling / purchasePrice = Σ order-sheet totals
  * orderProfit = selling − purchase
- * generalExpenses = Σ OUTFLOW excluding Inventory purchases
- *   (category name, purchase-bill allocations, or inventory item links)
+ * generalExpenses = Σ OUTFLOW (config categories, or legacy excl. inventory purchases)
  * profit = selling − purchase − generalExpenses
  */
 export function summarizeDashboardKpis(
   sheets: OrderSheetRow[],
   transactions: TxExpenseRow[],
   range?: { start: Date; end: Date },
+  categoryConfig?: DashboardKpiCategoryConfig,
 ): DashboardKpis {
   const inRange = (d: Date) => !range || (d >= range.start && d < range.end)
   const sheetsInRange = sheets.filter((s) => inRange(s.orderCreatedAt))
   const selling = roundMoney(sheetsInRange.reduce((s, r) => s + r.sellingPrice, 0))
   const purchasePrice = roundMoney(sheetsInRange.reduce((s, r) => s + r.cost, 0))
   const orderProfit = roundMoney(selling - purchasePrice)
+
+  const inflowIds = categoryConfig?.cashInflowCategoryIds ?? []
+  const expenseIds = categoryConfig?.generalExpenseCategoryIds ?? []
+  const inflowSet = inflowIds.length > 0 ? new Set(inflowIds) : null
+  const expenseSet = expenseIds.length > 0 ? new Set(expenseIds) : null
+
   const income = roundMoney(
     transactions
-      .filter((t) => inRange(t.date) && t.direction === 'INFLOW')
+      .filter((t) => {
+        if (!inRange(t.date) || t.direction !== 'INFLOW') return false
+        if (!inflowSet) return true
+        return Boolean(t.categoryId && inflowSet.has(t.categoryId))
+      })
       .reduce((s, t) => s + t.amount, 0),
   )
+
   const isInventoryPurchaseOutflow = (t: TxExpenseRow) =>
     isInventoryPurchasesCategory(t.categoryName) ||
     Boolean(t.hasPurchaseBillAllocation) ||
     Boolean(t.hasInventoryLink)
+
   const generalExpenses = roundMoney(
     transactions
-      .filter(
-        (t) => inRange(t.date) && t.direction === 'OUTFLOW' && !isInventoryPurchaseOutflow(t),
-      )
+      .filter((t) => {
+        if (!inRange(t.date) || t.direction !== 'OUTFLOW') return false
+        if (expenseSet) return Boolean(t.categoryId && expenseSet.has(t.categoryId))
+        return !isInventoryPurchaseOutflow(t)
+      })
       .reduce((s, t) => s + t.amount, 0),
   )
   return {
