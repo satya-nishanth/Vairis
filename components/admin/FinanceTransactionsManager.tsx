@@ -1086,25 +1086,9 @@ export function FinanceTransactionsManager({
         </section>
       )}
 
-      <div
-        style={{
-          background: '#fff',
-          border: `1px solid ${BORDER}`,
-          borderRadius: 12,
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 12,
-            alignItems: 'center',
-            padding: '14px 16px',
-            borderBottom: `1px solid ${BORDER}`,
-          }}
-        >
+      <div className="finance-tx-list">
+        <div className="finance-tx-list__pin">
+        <div className="finance-tx-list__filters">
           <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 360 }}>
             <span
               style={{
@@ -1228,9 +1212,10 @@ export function FinanceTransactionsManager({
             </div>
           </div>
         ) : null}
+        </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+        <div className="finance-tx-list__scroll">
+          <table className="finance-tx-list__table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.8125rem' }}>
             <thead>
               <tr style={{ background: '#f7f7f5', textAlign: 'left' }}>
                 {showAllColumns && sortTh('id', 'Transaction ID')}
