@@ -19,7 +19,7 @@ import {
   type InvoicePayload,
   type InvoiceStoneRow,
 } from '@/lib/invoice-document'
-import { formatINRGrouped } from '@/lib/invoice-tax'
+import { formatINRGrouped, INVOICE_GST_SCHEMES, normalizeInvoiceGstScheme } from '@/lib/invoice-tax'
 import type { PricingConfig } from '@/lib/pricing'
 
 type CatalogueProps = {
@@ -338,14 +338,41 @@ export function InvoiceComposer({
       </section>
 
       <section className="inv-composer__line">
-        <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>Totals</h3>
+        <h3 style={{ marginTop: 0, fontSize: '0.875rem' }}>GST</h3>
+        <div className="inv-composer__gst-schemes" role="radiogroup" aria-label="GST scheme">
+          {INVOICE_GST_SCHEMES.map((opt) => {
+            const selected = normalizeInvoiceGstScheme(payload.gstScheme) === opt.id
+            const detail =
+              opt.id === 'JEWELLERY'
+                ? 'CGST 1.5% + SGST 1.5% · or IGST 3%'
+                : 'CGST 0.75% + SGST 0.75% · or IGST 1.5%'
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                className={selected ? 'inv-composer__gst-scheme is-active' : 'inv-composer__gst-scheme'}
+                onClick={() => setPayload((p) => ({ ...p, gstScheme: opt.id }))}
+              >
+                <span className="inv-composer__gst-scheme-title">{opt.label}</span>
+                <span className="inv-composer__gst-scheme-detail">{detail}</span>
+                <span className="inv-composer__gst-scheme-hsn">HSN {opt.hsnCode}</span>
+              </button>
+            )
+          })}
+        </div>
+        <h3 style={{ marginTop: 16, fontSize: '0.875rem' }}>Totals</h3>
         <p>Taxable: ₹{formatINRGrouped(totals.taxable)}</p>
         {totals.intraState ? (
           <p>
-            CGST 1.5% ₹{formatINRGrouped(totals.cgst)} · SGST 1.5% ₹{formatINRGrouped(totals.sgst)}
+            CGST {totals.cgstRateLabel} ₹{formatINRGrouped(totals.cgst)} · SGST{' '}
+            {totals.cgstRateLabel} ₹{formatINRGrouped(totals.sgst)}
           </p>
         ) : (
-          <p>IGST 3% ₹{formatINRGrouped(totals.igst)}</p>
+          <p>
+            IGST {totals.igstRateLabel} ₹{formatINRGrouped(totals.igst)}
+          </p>
         )}
         <p>
           Round off {totals.roundOff < 0 ? `(${formatINRGrouped(Math.abs(totals.roundOff))})` : formatINRGrouped(totals.roundOff)}
