@@ -652,39 +652,6 @@ export function OrderFinanceManager({
           {listLabel}
           {filter !== 'all' ? ` · ${filter}` : ''}
         </div>
-        {listOrders.length > 0 ? (
-          <div className="order-sheet-list-totals">
-            <div className="order-sheet-list-totals__title">
-              Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
-            </div>
-            <div className="order-sheet-list-card__money">
-              <div>
-                <span>Amount</span>
-                <strong>{inr(listTotals.amount)}</strong>
-              </div>
-              <div>
-                <span>Selling</span>
-                <strong>{inr(listTotals.selling)}</strong>
-              </div>
-              <div>
-                <span>Collected</span>
-                <strong>{inr(listTotals.collected)}</strong>
-              </div>
-              <div>
-                <span>Purchasing</span>
-                <strong>{inr(listTotals.purchasing)}</strong>
-              </div>
-              <div>
-                <span>Profit</span>
-                <strong>{inr(listTotals.profit)}</strong>
-              </div>
-              <div>
-                <span>Profit %</span>
-                <strong>{pctOrDash(listTotals.profitPct)}</strong>
-              </div>
-            </div>
-          </div>
-        ) : null}
         {listOrders.length === 0 && (
           <p style={{ fontSize: '0.8125rem', color: MUTED, margin: '8px 0' }}>
             {searching ? 'No matching orders' : 'No orders in this filter'}
@@ -1087,63 +1054,101 @@ export function OrderFinanceManager({
           )}
         </div>
 
-        {renderFilterChips()}
+        <div className="order-sheet-list">
+          <div className="order-sheet-list-pin">
+            {renderFilterChips()}
 
-        <div className="order-sheet-field" style={{ marginTop: 14 }}>
-          <span id="order-sheet-search-label">Search (name, phone, email, id, item)</span>
-          <form className="order-sheet-search-row" onSubmit={onSearchSubmit}>
-            <input
-              ref={searchInputRef}
-              id="order-sheet-search-input"
-              name="q"
-              aria-labelledby="order-sheet-search-label"
-              className="order-sheet-search-input"
-              style={{ ...control, flex: 1, fontSize: '16px' }}
-              placeholder="Name, phone, email, order ID or item…"
-              defaultValue={initialSearchQuery ?? ''}
-              onChange={(e) => onSearchTyping(e.target.value)}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              enterKeyHint="search"
-              inputMode="text"
-            />
-            <button type="submit" className="order-sheet-search-btn">
-              Search
-            </button>
-          </form>
-          <div className="order-sheet-search-actions">
-            <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
-              Type at least 2 characters, then tap Search.
-            </p>
-            {searching && (
-              <p className="order-sheet-search-hint">
-                <button
-                  type="button"
-                  className="order-sheet-btn-ghost"
-                  style={{ padding: 0, textDecoration: 'underline' }}
-                  onClick={() => {
-                    setSearching(false)
-                    setHits([])
-                    setQuery('')
-                    setSearchHint('')
-                    if (searchInputRef.current) searchInputRef.current.value = ''
-                  }}
-                >
-                  Clear search
+            <div className="order-sheet-field">
+              <span id="order-sheet-search-label">Search (name, phone, email, id, item)</span>
+              <form className="order-sheet-search-row" onSubmit={onSearchSubmit}>
+                <input
+                  ref={searchInputRef}
+                  id="order-sheet-search-input"
+                  name="q"
+                  aria-labelledby="order-sheet-search-label"
+                  className="order-sheet-search-input"
+                  style={{ ...control, flex: 1, fontSize: '16px' }}
+                  placeholder="Name, phone, email, order ID or item…"
+                  defaultValue={initialSearchQuery ?? ''}
+                  onChange={(e) => onSearchTyping(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  enterKeyHint="search"
+                  inputMode="text"
+                />
+                <button type="submit" className="order-sheet-search-btn">
+                  Search
                 </button>
-                {searchHint ? ` · ${searchHint}` : ''}
-              </p>
-            )}
-            <Link href="/admin/orders/new" className="order-sheet-create-link">
-              + Create order
-            </Link>
-          </div>
-        </div>
+              </form>
+              <div className="order-sheet-search-actions">
+                <p className="order-sheet-search-mobile-hint order-sheet-mobile-only">
+                  Type at least 2 characters, then tap Search.
+                </p>
+                {searching && (
+                  <p className="order-sheet-search-hint">
+                    <button
+                      type="button"
+                      className="order-sheet-btn-ghost"
+                      style={{ padding: 0, textDecoration: 'underline' }}
+                      onClick={() => {
+                        setSearching(false)
+                        setHits([])
+                        setQuery('')
+                        setSearchHint('')
+                        if (searchInputRef.current) searchInputRef.current.value = ''
+                      }}
+                    >
+                      Clear search
+                    </button>
+                    {searchHint ? ` · ${searchHint}` : ''}
+                  </p>
+                )}
+                <Link href="/admin/orders/new" className="order-sheet-create-link">
+                  + Create order
+                </Link>
+              </div>
+            </div>
 
-        {renderListDesk()}
-        {renderListMobile()}
+            {listOrders.length > 0 ? (
+              <div className="order-sheet-list-totals order-sheet-mobile-only">
+                <div className="order-sheet-list-totals__title">
+                  Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+                </div>
+                <div className="order-sheet-list-card__money">
+                  <div>
+                    <span>Amount</span>
+                    <strong>{inr(listTotals.amount)}</strong>
+                  </div>
+                  <div>
+                    <span>Selling</span>
+                    <strong>{inr(listTotals.selling)}</strong>
+                  </div>
+                  <div>
+                    <span>Collected</span>
+                    <strong>{inr(listTotals.collected)}</strong>
+                  </div>
+                  <div>
+                    <span>Purchasing</span>
+                    <strong>{inr(listTotals.purchasing)}</strong>
+                  </div>
+                  <div>
+                    <span>Profit</span>
+                    <strong>{inr(listTotals.profit)}</strong>
+                  </div>
+                  <div>
+                    <span>Profit %</span>
+                    <strong>{pctOrDash(listTotals.profitPct)}</strong>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {renderListDesk()}
+          {renderListMobile()}
+        </div>
       </div>
     </div>
   )
