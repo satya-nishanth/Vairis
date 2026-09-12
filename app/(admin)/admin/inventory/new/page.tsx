@@ -16,6 +16,8 @@ async function loadVariantOptions() {
       variantId: v.id,
       productId: p.id,
       sku: v.sku,
+      metalType: v.metalType,
+      weightGrams: Number(v.weightGrams),
       label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
     })),
   )
