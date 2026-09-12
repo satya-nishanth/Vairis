@@ -3,21 +3,46 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { shortFinanceId } from '@/lib/finance'
+import { ORDER_STATUS_META } from '@/lib/orders'
+import type { OrderStatus } from '@prisma/client'
 
 type OrderHit = {
   id: string
   contactName: string
   contactPhone: string
   status: string
+  createdAt: string
+  grandTotal: number
+  itemsLabel: string
 }
 
 type OrderRef =
-  | { kind: 'linked'; id: string; label: string }
+  | { kind: 'linked'; id: string; label: string; detail?: string }
   | { kind: 'unlinked'; key: string; label: string }
 
 const GREEN = '#032b24'
 const BORDER = '#e5e7eb'
 const MUTED = '#6b7280'
+const sep = {
+  color: '#d1d5db',
+  margin: '0 6px',
+  userSelect: 'none' as const,
+}
+
+function inr(n: number) {
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+}
+
+function formatOrderDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function statusLabel(status: string): string {
+  const meta = ORDER_STATUS_META[status as OrderStatus]
+  return meta?.label ?? status
+}
 
 export function InventoryMarkSoldDialog({
   itemId,
@@ -68,7 +93,15 @@ export function InventoryMarkSoldDialog({
   if (!open) return null
 
   function addOrder(hit: OrderHit) {
-    setOrderRef({ kind: 'linked', id: hit.id, label: shortFinanceId(hit.id) })
+    const name = hit.contactName.trim() || '—'
+    setOrderRef({
+      kind: 'linked',
+      id: hit.id,
+      label: `#${shortFinanceId(hit.id)} · ${name}`,
+      detail: [hit.itemsLabel, inr(hit.grandTotal), statusLabel(hit.status)]
+        .filter(Boolean)
+        .join(' · '),
+    })
     setOrderQuery('')
     setOrderHits([])
     setError(null)
@@ -146,12 +179,17 @@ export function InventoryMarkSoldDialog({
           <label>Related order</label>
           {orderRef ? (
             <div className="inv-picker-selected">
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                  {orderRef.kind === 'linked' ? orderRef.label : orderRef.label}
-                </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{orderRef.label}</div>
+                {orderRef.kind === 'linked' && orderRef.detail ? (
+                  <p style={{ fontSize: '0.75rem', color: MUTED, margin: '4px 0 0' }}>
+                    {orderRef.detail}
+                  </p>
+                ) : null}
                 {orderRef.kind === 'unlinked' && (
-                  <p style={{ fontSize: '0.75rem', color: MUTED, margin: '4px 0 0' }}>Not linked to order</p>
+                  <p style={{ fontSize: '0.75rem', color: MUTED, margin: '4px 0 0' }}>
+                    Not linked to order
+                  </p>
                 )}
               </div>
               <button
@@ -202,15 +240,69 @@ export function InventoryMarkSoldDialog({
         )}
 
         {!orderRef && orderHits.length > 0 && (
-          <div className="inv-picker" style={{ marginBottom: 12 }}>
-            {orderHits.map((hit) => (
-              <button key={hit.id} type="button" onClick={() => addOrder(hit)}>
-                <span>
-                  {hit.contactName} · {shortFinanceId(hit.id)}
-                </span>
-                <span style={{ color: MUTED, fontSize: '0.75rem' }}>{hit.status}</span>
-              </button>
-            ))}
+          <div className="inv-picker inv-picker--order-hits" style={{ marginBottom: 12 }}>
+            {orderHits.map((hit) => {
+              const phone = hit.contactPhone?.trim()
+              return (
+                <button key={hit.id} type="button" onClick={() => addOrder(hit)}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'baseline',
+                        gap: '2px 0',
+                        fontSize: '0.8125rem',
+                        lineHeight: 1.45,
+                        color: '#111827',
+                      }}
+                    >
+                      <span style={{ fontWeight: 700 }}>#{shortFinanceId(hit.id)}</span>
+                      <span style={sep}>·</span>
+                      <span style={{ color: MUTED }}>{formatOrderDate(hit.createdAt)}</span>
+                      <span style={sep}>·</span>
+                      <span style={{ fontWeight: 600 }}>{hit.contactName.trim() || '—'}</span>
+                      {phone ? (
+                        <>
+                          <span style={sep}>·</span>
+                          <span style={{ color: MUTED }}>{phone}</span>
+                        </>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'baseline',
+                        gap: '2px 0',
+                        marginTop: 4,
+                        fontSize: '0.75rem',
+                        lineHeight: 1.4,
+                        color: MUTED,
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '100%',
+                          color: '#374151',
+                        }}
+                        title={hit.itemsLabel}
+                      >
+                        {hit.itemsLabel}
+                      </span>
+                      <span style={sep}>·</span>
+                      <span>{inr(hit.grandTotal)}</span>
+                      <span style={sep}>·</span>
+                      <span>{statusLabel(hit.status)}</span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
 

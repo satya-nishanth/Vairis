@@ -61,6 +61,7 @@ export default async function FinanceOrdersPage({
           finance: {
             select: {
               paidToAccountId: true,
+              roundOffEnabled: true,
               lines: {
                 select: { id: true, kind: true, costPrice: true, sellingPrice: true, sortOrder: true },
                 orderBy: { sortOrder: 'asc' },
@@ -101,6 +102,7 @@ export default async function FinanceOrdersPage({
         })),
         quotes,
         hasSheet: Boolean(order.finance),
+        roundOffEnabled: Boolean(order.finance?.roundOffEnabled),
       }
     }
   }

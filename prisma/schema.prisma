@@ -764,6 +764,8 @@ model OrderFinance {
   order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   paidToAccountId String
   paidToAccount  FinanceAccount     @relation("OrderPaidToAccount", fields: [paidToAccountId], references: [id])
+  /// When true, selling total is rounded to the nearest rupee (invoice-style round off).
+  roundOffEnabled Boolean           @default(false)
   lines          OrderFinanceLine[]
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt

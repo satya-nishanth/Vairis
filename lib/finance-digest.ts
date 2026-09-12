@@ -50,6 +50,7 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
         costPrice: Number(l.costPrice),
         sellingPrice: Number(l.sellingPrice),
       })),
+      { roundOffEnabled: s.roundOffEnabled },
     )
     return {
       orderId: s.orderId,
