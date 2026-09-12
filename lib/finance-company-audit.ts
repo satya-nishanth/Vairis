@@ -285,6 +285,18 @@ export function buildCompanyAuditExceptions(input: {
       })
     }
 
+    if (o.sheetSelling == null || o.sheetSelling <= 0.009) {
+      out.push({
+        id: `sheet-empty-${o.orderId}`,
+        severity: 'amber',
+        kind: 'sheet_empty',
+        title: `Empty order sheet · ${shortFinanceId(o.orderId)}`,
+        detail: `${label} · no selling prices entered on the finance sheet`,
+        amount: o.grandTotal > 0.009 ? o.grandTotal : null,
+        href: `/admin/finance/orders?orderId=${encodeURIComponent(o.orderId)}`,
+      })
+    }
+
     if (o.paymentStatus === 'settled' || o.expected <= 0.009) continue
     if (o.paymentStatus === 'unpaid') {
       out.push({

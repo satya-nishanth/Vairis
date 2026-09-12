@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { inventoryDisplayName } from '@/lib/inventory'
 import { InventorySubnav } from '@/components/admin/InventorySubnav'
 import { InventoryMarkSoldDialog } from '@/components/admin/InventoryMarkSoldDialog'
-import { effectiveInventorySoldPrice, effectiveInventoryHeaderPrice } from '@/lib/inventory-pricing'
+import { effectiveInventorySoldPrice } from '@/lib/inventory-pricing'
 import { shortFinanceId } from '@/lib/finance'
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
@@ -108,45 +108,42 @@ export function InventoryList({
     })
   }, [initialRows, q, holderId, linked, stock])
 
-  const totalInventoryValue = useMemo(() => {
-    if (!isFinance) return 0
-    const liveByVariantId = Object.fromEntries(
-      rows
-        .filter((r) => r.variant?.id && r.liveSoldPrice != null)
-        .map((r) => [r.variant!.id, r.liveSoldPrice!]),
-    )
-    return rows.reduce((sum, r) => {
-      if (r.qtyOnHand <= 0) return sum
-      const unit = effectiveInventoryHeaderPrice(
-        r.potentialPrice,
-        r.purchasePrice,
-        r.variant?.id ?? null,
-        liveByVariantId,
-      )
-      if (unit == null) return sum
-      return sum + r.qtyOnHand * unit
-    }, 0)
-  }, [rows, isFinance])
+  const inStock = useMemo(() => rows.filter((r) => r.qtyOnHand > 0), [rows])
 
-  const valuedRowCount = useMemo(() => {
-    if (!isFinance) return 0
-    const liveByVariantId = Object.fromEntries(
-      rows
-        .filter((r) => r.variant?.id && r.liveSoldPrice != null)
-        .map((r) => [r.variant!.id, r.liveSoldPrice!]),
+  const purchaseTotal = useMemo(() => {
+    if (!isFinance) return { value: 0, lines: 0 }
+    return inStock.reduce(
+      (acc, r) => {
+        if (r.purchasePrice == null) return acc
+        return { value: acc.value + r.qtyOnHand * r.purchasePrice, lines: acc.lines + 1 }
+      },
+      { value: 0, lines: 0 },
     )
-    return rows.filter((r) => {
-      if (r.qtyOnHand <= 0) return false
-      return (
-        effectiveInventoryHeaderPrice(
-          r.potentialPrice,
-          r.purchasePrice,
-          r.variant?.id ?? null,
-          liveByVariantId,
-        ) != null
-      )
-    }).length
-  }, [rows, isFinance])
+  }, [inStock, isFinance])
+
+  const potentialTotal = useMemo(
+    () =>
+      inStock.reduce(
+        (acc, r) => {
+          if (r.potentialPrice == null) return acc
+          return { value: acc.value + r.qtyOnHand * r.potentialPrice, lines: acc.lines + 1 }
+        },
+        { value: 0, lines: 0 },
+      ),
+    [inStock],
+  )
+
+  const liveTotal = useMemo(
+    () =>
+      inStock.reduce(
+        (acc, r) => {
+          if (r.liveSoldPrice == null) return acc
+          return { value: acc.value + r.qtyOnHand * r.liveSoldPrice, lines: acc.lines + 1 }
+        },
+        { value: 0, lines: 0 },
+      ),
+    [inStock],
+  )
 
   const colSpan = isFinance ? 10 : 8
 
@@ -154,21 +151,37 @@ export function InventoryList({
     <>
       <InventorySubnav />
 
-      {isFinance ? (
-        <div className="inv-kpi">
+      <div className="inv-kpi">
+        {isFinance ? (
           <div className="inv-kpi__card">
-            <div className="inv-kpi__label">Total inventory value</div>
-            <div className="inv-kpi__value">{inr(totalInventoryValue)}</div>
+            <div className="inv-kpi__label">Purchase</div>
+            <div className="inv-kpi__value">{inr(purchaseTotal.value)}</div>
             <div className="inv-kpi__meta">
-              {valuedRowCount > 0
-                ? `${valuedRowCount} in-stock line${valuedRowCount === 1 ? '' : 's'} · potential → live → purchase`
-                : rows.length > 0
-                  ? 'Add potential, live catalogue, or purchase price on in-stock items'
-                  : 'No stock lines in current view'}
+              {purchaseTotal.lines > 0
+                ? `${purchaseTotal.lines} in-stock line${purchaseTotal.lines === 1 ? '' : 's'} with purchase price`
+                : 'No purchase prices on in-stock items'}
             </div>
           </div>
+        ) : null}
+        <div className="inv-kpi__card">
+          <div className="inv-kpi__label">Potential price</div>
+          <div className="inv-kpi__value">{inr(potentialTotal.value)}</div>
+          <div className="inv-kpi__meta">
+            {potentialTotal.lines > 0
+              ? `${potentialTotal.lines} in-stock line${potentialTotal.lines === 1 ? '' : 's'} with potential price`
+              : 'No potential prices on in-stock items'}
+          </div>
         </div>
-      ) : null}
+        <div className="inv-kpi__card">
+          <div className="inv-kpi__label">Live price</div>
+          <div className="inv-kpi__value">{inr(liveTotal.value)}</div>
+          <div className="inv-kpi__meta">
+            {liveTotal.lines > 0
+              ? `${liveTotal.lines} catalogue-linked in-stock line${liveTotal.lines === 1 ? '' : 's'}`
+              : 'No live catalogue prices on in-stock items'}
+          </div>
+        </div>
+      </div>
 
       <div className="inv-toolbar">
         <div className="inv-field">
