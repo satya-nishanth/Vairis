@@ -414,6 +414,74 @@
   width: auto;
 }
 
+.inv-composer__gst-schemes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.inv-composer__gst-scheme {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  font: inherit;
+  color: #374151;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.inv-composer__gst-scheme:hover {
+  border-color: #9ca3af;
+  background: #fff;
+}
+
+.inv-composer__gst-scheme.is-active {
+  border-color: #032b24;
+  background: #f3faf7;
+  box-shadow: inset 0 0 0 1px #032b24;
+}
+
+.inv-composer__gst-scheme-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.inv-composer__gst-scheme.is-active .inv-composer__gst-scheme-title {
+  color: #032b24;
+}
+
+.inv-composer__gst-scheme-detail {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
+.inv-composer__gst-scheme-hsn {
+  margin-top: 4px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.inv-composer__gst-scheme.is-active .inv-composer__gst-scheme-hsn {
+  color: #032b24;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .inv-composer__gst-schemes {
+    grid-template-columns: 1fr;
+  }
+}
+
 .inv-picker__list {
   list-style: none;
   margin: 8px 0 12px;
