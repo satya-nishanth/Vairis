@@ -120,6 +120,9 @@ describe('splitInvoiceTax', () => {
     expect(t.igst).toBe(0)
     expect(t.grandTotal).toBe(165976)
     expect(t.roundOff).toBeCloseTo(-0.26, 2)
+    expect(t.cgstRateLabel).toBe('1.5%')
+    expect(t.igstRateLabel).toBe('3%')
+    expect(t.hsnCode).toBe('7113')
   })
 
   it('uses IGST for other states', () => {
@@ -129,6 +132,26 @@ describe('splitInvoiceTax', () => {
     expect(t.cgst).toBe(0)
     expect(t.sgst).toBe(0)
     expect(t.grandTotal).toBe(10300)
+  })
+
+  it('applies loose-diamond 1.5% as 0.75% CGST + 0.75% SGST in Maharashtra', () => {
+    const t = splitInvoiceTax(100000, 'Maharashtra (27)', 'LOOSE_DIAMONDS')
+    expect(t.gstAmount).toBe(1500)
+    expect(t.cgst).toBe(750)
+    expect(t.sgst).toBe(750)
+    expect(t.igst).toBe(0)
+    expect(t.grandTotal).toBe(101500)
+    expect(t.cgstRateLabel).toBe('0.75%')
+    expect(t.igstRateLabel).toBe('1.5%')
+    expect(t.hsnCode).toBe('7104')
+  })
+
+  it('applies loose-diamond IGST 1.5% outside Maharashtra', () => {
+    const t = splitInvoiceTax(100000, 'Karnataka', 'LOOSE_DIAMONDS')
+    expect(t.igst).toBe(1500)
+    expect(t.cgst).toBe(0)
+    expect(t.sgst).toBe(0)
+    expect(t.grandTotal).toBe(101500)
   })
 })
 

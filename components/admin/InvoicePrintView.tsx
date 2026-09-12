@@ -40,6 +40,8 @@ export function InvoicePrintView({
             <span>{formatDate(payload.invoiceDate)}</span>
             <span>Place of Supply</span>
             <span>{payload.placeOfSupply}</span>
+            <span>HSN</span>
+            <span>{totals.hsnCode}</span>
           </div>
         </div>
       </div>
@@ -47,7 +49,7 @@ export function InvoicePrintView({
       <div className="inv-doc__parties">
         <div>
           <div className="inv-doc__label">Billed To</div>
-          <div className="inv-doc__name">{payload.billedTo.name || '—'}</div>
+          <div className="inv-doc__name">{payload.billedTo.name || '-'}</div>
           <div className="inv-doc__addr">
             {payload.billedTo.lines}
             {payload.billedTo.phone ? `\n${payload.billedTo.phone}` : ''}
@@ -55,20 +57,20 @@ export function InvoicePrintView({
         </div>
         <div>
           <div className="inv-doc__label">Shipped To</div>
-          <div className="inv-doc__name">{payload.shippedTo.name || '—'}</div>
+          <div className="inv-doc__name">{payload.shippedTo.name || '-'}</div>
           <div className="inv-doc__addr">{payload.shippedTo.lines}</div>
         </div>
         <div>
           <div className="inv-doc__label">Payment</div>
           <div className="inv-doc__kv inv-doc__kv--left">
             <span>Method</span>
-            <span>{payload.payment.method || '—'}</span>
+            <span>{payload.payment.method || '-'}</span>
             <span>Reference</span>
-            <span>{payload.payment.reference || '—'}</span>
+            <span>{payload.payment.reference || '-'}</span>
             <span>Received On</span>
-            <span>{payload.payment.received ? formatDate(payload.payment.received) : '—'}</span>
+            <span>{payload.payment.received ? formatDate(payload.payment.received) : '-'}</span>
             <span>Status</span>
-            <span className={paid ? 'inv-doc__gold' : ''}>{payload.payment.status || '—'}</span>
+            <span className={paid ? 'inv-doc__gold' : ''}>{payload.payment.status || '-'}</span>
           </div>
         </div>
       </div>
@@ -129,7 +131,7 @@ export function InvoicePrintView({
               </td>
               <td>{line.quantity}</td>
               <td>{formatINRGrouped(line.itemValue, 0)}</td>
-              <td>3%</td>
+              <td>{totals.igstRateLabel}</td>
               <td className="inv-doc__strong">{formatINRGrouped(line.taxable)}</td>
             </tr>
           ))}
@@ -161,30 +163,30 @@ export function InvoicePrintView({
           {totals.intraState ? (
             <>
               <div>
-                <span>CGST @ 1.5%</span>
+                <span>CGST @ {totals.cgstRateLabel}</span>
                 <span>{formatINRGrouped(totals.cgst)}</span>
               </div>
               <div>
-                <span>SGST @ 1.5%</span>
+                <span>SGST @ {totals.cgstRateLabel}</span>
                 <span>{formatINRGrouped(totals.sgst)}</span>
               </div>
               <div className="inv-doc__muted-row">
-                <span>IGST @ 3%</span>
-                <span>—</span>
+                <span>IGST @ {totals.igstRateLabel}</span>
+                <span>-</span>
               </div>
             </>
           ) : (
             <>
               <div className="inv-doc__muted-row">
-                <span>CGST @ 1.5%</span>
-                <span>—</span>
+                <span>CGST @ {totals.cgstRateLabel}</span>
+                <span>-</span>
               </div>
               <div className="inv-doc__muted-row">
-                <span>SGST @ 1.5%</span>
-                <span>—</span>
+                <span>SGST @ {totals.cgstRateLabel}</span>
+                <span>-</span>
               </div>
               <div>
-                <span>IGST @ 3%</span>
+                <span>IGST @ {totals.igstRateLabel}</span>
                 <span>{formatINRGrouped(totals.igst)}</span>
               </div>
             </>
