@@ -246,7 +246,7 @@ describe('summarizeTransactionFlows', () => {
 })
 
 describe('summarizeDashboardKpis', () => {
-  it('income from txn inflows; order profit from sheets; opex = non-order outflows', () => {
+  it('income from txn inflows; opex = all outflows except Inventory purchases', () => {
     const k = summarizeDashboardKpis(
       [
         {
@@ -262,12 +262,21 @@ describe('summarizeDashboardKpis', () => {
           direction: 'OUTFLOW',
           amount: 2000,
           relatedToOrder: false,
+          categoryName: 'Rent',
         },
         {
           date: new Date('2026-08-11T00:00:00+05:30'),
           direction: 'OUTFLOW',
           amount: 5000,
           relatedToOrder: true,
+          categoryName: 'Inventory purchases',
+        },
+        {
+          date: new Date('2026-08-11T12:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 1500,
+          relatedToOrder: true,
+          categoryName: 'Marketing',
         },
         {
           date: new Date('2026-08-12T00:00:00+05:30'),
@@ -290,8 +299,8 @@ describe('summarizeDashboardKpis', () => {
       orderProfit: 8000,
       orderProfitPct: 44.4,
       sheetCount: 1,
-      generalExpenses: 2000,
-      profit: 6000,
+      generalExpenses: 3500,
+      profit: 4500,
     })
   })
 })

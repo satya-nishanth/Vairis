@@ -59,6 +59,7 @@ export default async function FinanceDashboardPage() {
         paidThroughAccountId: true,
         transferToAccountId: true,
         unlinkedOrderLabels: true,
+        category: { select: { name: true } },
         orders: { select: { orderId: true } },
         allocations: { select: { amount: true, orderId: true, purchaseBillId: true } },
       },
@@ -112,6 +113,7 @@ export default async function FinanceDashboardPage() {
       t.orders.length > 0 ||
       t.unlinkedOrderLabels.length > 0 ||
       t.allocations.some((a) => a.orderId || a.purchaseBillId),
+    categoryName: t.category?.name ?? null,
   }))
 
   const kpis = summarizeDashboardKpis(sheetRows, txExpense)
@@ -261,7 +263,7 @@ export default async function FinanceDashboardPage() {
 
   const cards = [
     {
-      label: 'Income',
+      label: 'Cash inflow',
       value: inr(kpis.income),
       meta: 'Transaction inflows',
     },
@@ -282,7 +284,7 @@ export default async function FinanceDashboardPage() {
     {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
-      meta: 'Non-order outflows',
+      meta: 'Outflows excl. inventory purchases',
     },
   ]
 

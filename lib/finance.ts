@@ -306,18 +306,27 @@ export type DashboardKpis = {
   orderProfitPct: number | null
   /** Order sheets in range. */
   sheetCount: number
-  /** Σ OUTFLOW transactions with no related order. */
+  /** Σ OUTFLOW transactions excluding Inventory purchases category. */
   generalExpenses: number
   /** selling − purchase − generalExpenses (legacy net). */
   profit: number
+}
+
+/** Canonical category name excluded from dashboard general expenses. */
+export const INVENTORY_PURCHASES_CATEGORY = 'Inventory purchases'
+
+export function isInventoryPurchasesCategory(name: string | null | undefined): boolean {
+  return (name ?? '').trim().toLowerCase() === INVENTORY_PURCHASES_CATEGORY.toLowerCase()
 }
 
 export type TxExpenseRow = {
   date: Date
   direction: 'INFLOW' | 'OUTFLOW' | 'TRANSFER'
   amount: number
-  /** True when linked to one or more store orders. */
+  /** True when linked to one or more store orders / bills. */
   relatedToOrder: boolean
+  /** Finance category name; used to exclude Inventory purchases from opex. */
+  categoryName?: string | null
 }
 
 export type OrderInflowTxRow = {
@@ -344,7 +353,7 @@ export type SheetInflowMismatch = {
  * income = Σ INFLOW transactions
  * selling / purchasePrice = Σ order-sheet totals
  * orderProfit = selling − purchase
- * generalExpenses = Σ OUTFLOW transactions with no related order
+ * generalExpenses = Σ OUTFLOW excluding "Inventory purchases" category
  * profit = selling − purchase − generalExpenses
  */
 export function summarizeDashboardKpis(
@@ -364,7 +373,12 @@ export function summarizeDashboardKpis(
   )
   const generalExpenses = roundMoney(
     transactions
-      .filter((t) => inRange(t.date) && !t.relatedToOrder && t.direction === 'OUTFLOW')
+      .filter(
+        (t) =>
+          inRange(t.date) &&
+          t.direction === 'OUTFLOW' &&
+          !isInventoryPurchasesCategory(t.categoryName),
+      )
       .reduce((s, t) => s + t.amount, 0),
   )
   return {
