@@ -268,20 +268,6 @@ export default async function FinanceDashboardPage() {
       meta: 'Transaction inflows',
     },
     {
-      label: 'Purchase',
-      value: inr(kpis.purchasePrice),
-      meta: 'Cost from order sheets',
-    },
-    {
-      label: 'Order profit',
-      value: inr(kpis.orderProfit),
-      meta:
-        kpis.orderProfitPct != null
-          ? `${pctOrDash(kpis.orderProfitPct)} of selling`
-          : 'Selling − purchase',
-      emphasize: true,
-    },
-    {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
       meta: 'Outflows excl. inventory purchases',
@@ -292,10 +278,7 @@ export default async function FinanceDashboardPage() {
     <div className="finance-dash">
       <div className="finance-dash__kpis">
         {cards.map((c) => (
-          <div
-            key={c.label}
-            className={`finance-dash__kpi${c.emphasize ? ' finance-dash__kpi--accent' : ''}`}
-          >
+          <div key={c.label} className="finance-dash__kpi">
             <div className="finance-dash__kpi-label">{c.label}</div>
             <div className="finance-dash__kpi-value">{c.value}</div>
             <div className="finance-dash__kpi-meta">{c.meta}</div>
