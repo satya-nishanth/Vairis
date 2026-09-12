@@ -434,12 +434,27 @@ export function FinanceTransactionsManager({
     let inflow = 0
     let outflow = 0
     let transfer = 0
+    let transferIn = 0
+    let transferOut = 0
     let gst = 0
     for (const r of filteredRows) {
       gst += r.gstAmount || 0
-      if (r.direction === 'INFLOW') inflow += r.amount
-      else if (r.direction === 'OUTFLOW') outflow += r.amount
-      else if (r.direction === 'TRANSFER') transfer += r.amount
+      if (r.direction === 'INFLOW') {
+        inflow += r.amount
+      } else if (r.direction === 'OUTFLOW') {
+        outflow += r.amount
+      } else if (r.direction === 'TRANSFER') {
+        transfer += r.amount
+        // Same convention as summarizeTransactionFlows: From = out, To = in.
+        // With no bank filter both legs count and cancel; with bank filter only matching legs.
+        const fromMatches =
+          bankFilters.length === 0 || bankFilters.includes(r.paidThroughAccountId)
+        const toMatches =
+          bankFilters.length === 0 ||
+          Boolean(r.transferToAccountId && bankFilters.includes(r.transferToAccountId))
+        if (fromMatches) transferOut += r.amount
+        if (toMatches) transferIn += r.amount
+      }
     }
     return {
       count: filteredRows.length,
@@ -447,9 +462,9 @@ export function FinanceTransactionsManager({
       outflow: roundMoney(outflow),
       transfer: roundMoney(transfer),
       gst: roundMoney(gst),
-      net: roundMoney(inflow - outflow),
+      net: roundMoney(inflow + transferIn - outflow - transferOut),
     }
-  }, [filteredRows])
+  }, [filteredRows, bankFilters])
 
   const sortedRows = useMemo(() => {
     const list = [...filteredRows]
@@ -1220,8 +1235,8 @@ export function FinanceTransactionsManager({
                 <span>Transfer</span>
                 <strong>{inr(filterTotals.transfer)}</strong>
               </div>
-              <div>
-                <span>Net (in − out)</span>
+              <div title="Inflow − outflow; transfers count To as + and From as − (bank filter uses matching legs only)">
+                <span>Net (in − out ± xfer)</span>
                 <strong>{inr(filterTotals.net)}</strong>
               </div>
               <div>
