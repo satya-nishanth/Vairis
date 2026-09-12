@@ -516,9 +516,9 @@ export function buildCompanyAudit(input: {
       unrealizedMargin: stock.unrealizedMargin,
     },
     bridge: {
-      income: realized.income,
+      income: realized.selling,
       cogs: realized.purchasePrice,
-      gross: roundMoney(realized.income - realized.purchasePrice),
+      gross: realized.orderProfit,
       opex: realized.generalExpenses,
       profit: realized.profit,
     },
@@ -531,9 +531,9 @@ export function buildCompanyAudit(input: {
         net: roundMoney(cashInflow - cashOutflow),
       },
       orders: {
-        selling: realized.income,
+        selling: realized.selling,
         cost: realized.purchasePrice,
-        margin: roundMoney(realized.income - realized.purchasePrice),
+        margin: realized.orderProfit,
       },
       stock,
     },

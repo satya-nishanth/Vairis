@@ -168,6 +168,19 @@ function moneyOrDash(n: number | null | undefined): string {
   return inr(n)
 }
 
+/** Profit as % of selling price. */
+function profitPct(profit: number | null | undefined, selling: number | null | undefined): number | null {
+  if (profit == null || selling == null || selling <= 0.0001) return null
+  return Math.round((profit / selling) * 1000) / 10
+}
+
+function pctOrDash(n: number | null | undefined): string {
+  if (n == null) return '—'
+  const rounded = Math.round(n * 10) / 10
+  const s = Number.isInteger(rounded) ? String(rounded) : String(rounded)
+  return `${s}%`
+}
+
 function orderHref(orderId: string) {
   return `${ORDERS_PATH}?orderId=${encodeURIComponent(orderId)}`
 }
@@ -269,6 +282,30 @@ export function OrderFinanceManager({
     if (filter === 'complete') return baseList.filter((h) => h.sheetComplete)
     return baseList
   }, [baseList, filter])
+
+  const listTotals = useMemo(() => {
+    let selling = 0
+    let collected = 0
+    let purchasing = 0
+    let profit = 0
+    let amount = 0
+    for (const h of listOrders) {
+      amount += h.grandTotal || 0
+      collected += h.collected || 0
+      if (h.selling != null) selling += h.selling
+      if (h.purchasing != null) purchasing += h.purchasing
+      if (h.profit != null) profit += h.profit
+    }
+    return {
+      amount,
+      selling,
+      collected,
+      purchasing,
+      profit,
+      profitPct: profitPct(profit, selling),
+    }
+  }, [listOrders])
+
   const listLabel = searching ? 'Search results' : 'All orders'
   const quoteCols = quotes.length
   const linesGridStyle: CSSProperties = {
@@ -444,11 +481,28 @@ export function OrderFinanceManager({
         </div>
         <div className="order-sheet-hits__table-wrap">
           <table className="order-sheet-hits__table order-sheet-hits__table--wide">
+            <colgroup>
+              <col className="order-sheet-hits__col-contact" />
+              <col className="order-sheet-hits__col-item" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-id" />
+              <col className="order-sheet-hits__col-status" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-payment" />
+              <col className="order-sheet-hits__col-paidto" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-num" />
+              <col className="order-sheet-hits__col-pct" />
+              <col className="order-sheet-hits__col-action" />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">Contact</th>
                 <th scope="col">Item</th>
-                <th scope="col">Amount</th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Amount
+                </th>
                 <th scope="col">Order ID</th>
                 <th scope="col">Status</th>
                 <th scope="col" className="order-sheet-hits__num">
@@ -465,13 +519,36 @@ export function OrderFinanceManager({
                 <th scope="col" className="order-sheet-hits__num">
                   Profit
                 </th>
+                <th scope="col" className="order-sheet-hits__num">
+                  Profit %
+                </th>
                 <th scope="col" />
               </tr>
+              {listOrders.length > 0 ? (
+                <tr className="order-sheet-hits__totals">
+                  <th scope="row" colSpan={2}>
+                    Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+                  </th>
+                  <th className="order-sheet-hits__num">{inr(listTotals.amount)}</th>
+                  <th colSpan={2} />
+                  <th className="order-sheet-hits__num">{inr(listTotals.selling)}</th>
+                  <th className="order-sheet-hits__num">{inr(listTotals.collected)}</th>
+                  <th colSpan={2} />
+                  <th className="order-sheet-hits__num">{inr(listTotals.purchasing)}</th>
+                  <th className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {inr(listTotals.profit)}
+                  </th>
+                  <th className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {pctOrDash(listTotals.profitPct)}
+                  </th>
+                  <th />
+                </tr>
+              ) : null}
             </thead>
             <tbody>
               {listOrders.length === 0 && (
                 <tr>
-                  <td colSpan={12} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
+                  <td colSpan={13} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
                     {searching ? 'No matching orders' : 'No orders in this filter'}
                   </td>
                 </tr>
@@ -496,7 +573,7 @@ export function OrderFinanceManager({
                       {h.itemsLabel || '—'}
                     </Link>
                   </td>
-                  <td>
+                  <td className="order-sheet-hits__num">
                     <Link href={orderHref(h.id)} className="order-sheet-hits__link" prefetch={false}>
                       <span className="order-sheet-hits__amount">{inr(h.grandTotal)}</span>
                     </Link>
@@ -530,6 +607,9 @@ export function OrderFinanceManager({
                   <td className="order-sheet-hits__num">{moneyOrDash(h.purchasing)}</td>
                   <td className="order-sheet-hits__num order-sheet-hits__num--strong">
                     {moneyOrDash(h.profit)}
+                  </td>
+                  <td className="order-sheet-hits__num order-sheet-hits__num--strong">
+                    {pctOrDash(profitPct(h.profit, h.selling))}
                   </td>
                   <td>
                     <Link
@@ -565,6 +645,39 @@ export function OrderFinanceManager({
           {listLabel}
           {filter !== 'all' ? ` · ${filter}` : ''}
         </div>
+        {listOrders.length > 0 ? (
+          <div className="order-sheet-list-totals">
+            <div className="order-sheet-list-totals__title">
+              Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+            </div>
+            <div className="order-sheet-list-card__money">
+              <div>
+                <span>Amount</span>
+                <strong>{inr(listTotals.amount)}</strong>
+              </div>
+              <div>
+                <span>Selling</span>
+                <strong>{inr(listTotals.selling)}</strong>
+              </div>
+              <div>
+                <span>Collected</span>
+                <strong>{inr(listTotals.collected)}</strong>
+              </div>
+              <div>
+                <span>Purchasing</span>
+                <strong>{inr(listTotals.purchasing)}</strong>
+              </div>
+              <div>
+                <span>Profit</span>
+                <strong>{inr(listTotals.profit)}</strong>
+              </div>
+              <div>
+                <span>Profit %</span>
+                <strong>{pctOrDash(listTotals.profitPct)}</strong>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {listOrders.length === 0 && (
           <p style={{ fontSize: '0.8125rem', color: MUTED, margin: '8px 0' }}>
             {searching ? 'No matching orders' : 'No orders in this filter'}
@@ -619,6 +732,10 @@ export function OrderFinanceManager({
               <div>
                 <span>Profit</span>
                 <strong>{moneyOrDash(h.profit)}</strong>
+              </div>
+              <div>
+                <span>Profit %</span>
+                <strong>{pctOrDash(profitPct(h.profit, h.selling))}</strong>
               </div>
             </div>
             <Link
@@ -783,6 +900,9 @@ export function OrderFinanceManager({
                   <div className="order-sheet-totals__cell order-sheet-totals__profit">
                     <span className="order-sheet-totals__label">Profit</span>
                     <strong>{inr(totals.profit)}</strong>
+                    <span className="order-sheet-totals__sub">
+                      {pctOrDash(profitPct(totals.profit, totals.selling))} of selling
+                    </span>
                   </div>
                   {quotes.map((q) => (
                     <div key={q.orderItemId} className="order-sheet-totals__cell">
@@ -844,6 +964,9 @@ export function OrderFinanceManager({
                   <div className="order-sheet-m-totals__profit">
                     <span>Profit</span>
                     <strong>{inr(totals.profit)}</strong>
+                    <span className="order-sheet-totals__sub">
+                      {pctOrDash(profitPct(totals.profit, totals.selling))} of selling
+                    </span>
                   </div>
                   {quotes.map((q) => (
                     <div key={q.orderItemId}>

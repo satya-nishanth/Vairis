@@ -246,7 +246,7 @@ describe('summarizeTransactionFlows', () => {
 })
 
 describe('summarizeDashboardKpis', () => {
-  it('income from order-sheet selling; profit = income − purchase − non-order outflows', () => {
+  it('income from txn inflows; order profit from sheets; opex = non-order outflows', () => {
     const k = summarizeDashboardKpis(
       [
         {
@@ -275,11 +275,21 @@ describe('summarizeDashboardKpis', () => {
           amount: 900,
           relatedToOrder: false,
         },
+        {
+          date: new Date('2026-08-13T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 17100,
+          relatedToOrder: true,
+        },
       ],
     )
     expect(k).toEqual({
       income: 18000,
+      selling: 18000,
       purchasePrice: 10000,
+      orderProfit: 8000,
+      orderProfitPct: 44.4,
+      sheetCount: 1,
       generalExpenses: 2000,
       profit: 6000,
     })
