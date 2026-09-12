@@ -2,6 +2,43 @@ import { GST_RATE } from '@/lib/pricing'
 
 export const MAHARASHTRA_GSTIN_PREFIX = '27'
 
+/** Jewellery articles (default): 3% GST. Loose diamonds: 1.5% GST. */
+export type InvoiceGstScheme = 'JEWELLERY' | 'LOOSE_DIAMONDS'
+
+export const INVOICE_GST_SCHEMES: {
+  id: InvoiceGstScheme
+  label: string
+  rate: number
+  halfLabel: string
+  fullLabel: string
+  hsnCode: string
+}[] = [
+  {
+    id: 'JEWELLERY',
+    label: 'Jewellery (3% GST)',
+    rate: GST_RATE,
+    halfLabel: '1.5%',
+    fullLabel: '3%',
+    hsnCode: '7113',
+  },
+  {
+    id: 'LOOSE_DIAMONDS',
+    label: 'Loose diamonds (1.5% GST)',
+    rate: 0.015,
+    halfLabel: '0.75%',
+    fullLabel: '1.5%',
+    hsnCode: '7104',
+  },
+]
+
+export function normalizeInvoiceGstScheme(v: unknown): InvoiceGstScheme {
+  return v === 'LOOSE_DIAMONDS' ? 'LOOSE_DIAMONDS' : 'JEWELLERY'
+}
+
+export function invoiceGstMeta(scheme: InvoiceGstScheme = 'JEWELLERY') {
+  return INVOICE_GST_SCHEMES.find((s) => s.id === scheme) ?? INVOICE_GST_SCHEMES[0]!
+}
+
 export function isMaharashtra(place: string): boolean {
   const s = place.trim()
   if (!s) return true
@@ -21,11 +58,26 @@ export type InvoiceTaxSplit = {
   intraState: boolean
   roundOff: number
   grandTotal: number
+  gstScheme: InvoiceGstScheme
+  /** Display rate for one CGST/SGST leg (e.g. "1.5%" or "0.75%"). */
+  cgstRateLabel: string
+  /** Display rate for IGST / total GST (e.g. "3%" or "1.5%"). */
+  igstRateLabel: string
+  /** HSN for the selected GST scheme (jewellery 7113 / loose diamonds 7104). */
+  hsnCode: string
 }
 
-/** Split 3% GST into CGST/SGST (Maharashtra) or IGST (other states), then round payable to a rupee. */
-export function splitInvoiceTax(taxable: number, placeOfSupply: string): InvoiceTaxSplit {
-  const gstAmount = taxable * GST_RATE
+/**
+ * Split GST into CGST/SGST (Maharashtra) or IGST (other states), then round payable to a rupee.
+ * Default jewellery = 3% (1.5% + 1.5%). Loose diamonds = 1.5% (0.75% + 0.75%).
+ */
+export function splitInvoiceTax(
+  taxable: number,
+  placeOfSupply: string,
+  scheme: InvoiceGstScheme = 'JEWELLERY',
+): InvoiceTaxSplit {
+  const meta = invoiceGstMeta(scheme)
+  const gstAmount = taxable * meta.rate
   const intraState = isMaharashtra(placeOfSupply)
   const cgst = intraState ? gstAmount / 2 : 0
   const sgst = intraState ? gstAmount / 2 : 0
@@ -33,7 +85,20 @@ export function splitInvoiceTax(taxable: number, placeOfSupply: string): Invoice
   const raw = taxable + gstAmount
   const grandTotal = Math.round(raw)
   const roundOff = grandTotal - raw
-  return { taxable, gstAmount, cgst, sgst, igst, intraState, roundOff, grandTotal }
+  return {
+    taxable,
+    gstAmount,
+    cgst,
+    sgst,
+    igst,
+    intraState,
+    roundOff,
+    grandTotal,
+    gstScheme: meta.id,
+    cgstRateLabel: meta.halfLabel,
+    igstRateLabel: meta.fullLabel,
+    hsnCode: meta.hsnCode,
+  }
 }
 
 const ONES = [

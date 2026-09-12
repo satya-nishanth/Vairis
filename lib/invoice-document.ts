@@ -6,7 +6,7 @@ import {
   type PricingConfig,
   type StoneInput,
 } from '@/lib/pricing'
-import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
+import { amountInWords, normalizeInvoiceGstScheme, splitInvoiceTax, type InvoiceGstScheme } from '@/lib/invoice-tax'
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
 import type { InvoiceStatus } from '@prisma/client'
 
@@ -139,6 +139,11 @@ export type InvoicePayload = {
   }
   invoiceDate: string
   placeOfSupply: string
+  /**
+   * GST regime for the tax footer. Default jewellery = 3% (1.5% CGST + 1.5% SGST).
+   * Loose diamonds = 1.5% (0.75% CGST + 0.75% SGST).
+   */
+  gstScheme?: InvoiceGstScheme
   notes: {
     exchange: string
     certification: string
@@ -252,7 +257,11 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
 export function totalsFromPayload(payload: InvoicePayload) {
   const lines = payload.lines.map((l) => recomputeLine(l, 'Wastage'))
   const taxable = lines.reduce((s, l) => s + l.taxable, 0)
-  const tax = splitInvoiceTax(taxable, payload.placeOfSupply)
+  const tax = splitInvoiceTax(
+    taxable,
+    payload.placeOfSupply,
+    normalizeInvoiceGstScheme(payload.gstScheme),
+  )
   return {
     lines,
     ...tax,
@@ -268,6 +277,7 @@ export function blankPayload(): InvoicePayload {
     payment: { method: '', reference: '', received: '', status: 'Unpaid' },
     invoiceDate: new Date().toISOString().slice(0, 10),
     placeOfSupply: 'Maharashtra (27)',
+    gstScheme: 'JEWELLERY',
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: [blankLine()],
   }
@@ -458,6 +468,7 @@ export function invoiceFromProducts(
     },
     invoiceDate: ctx.invoiceDate ?? new Date().toISOString().slice(0, 10),
     placeOfSupply: ctx.placeOfSupply || 'Maharashtra (27)',
+    gstScheme: 'JEWELLERY',
     notes: ctx.notes ?? { ...DEFAULT_INVOICE_NOTES },
     lines,
   }
@@ -658,6 +669,7 @@ export function payloadFromOrder(
     placeOfSupply: /maharashtra/i.test(order.state)
       ? 'Maharashtra (27)'
       : order.state || 'Maharashtra (27)',
+    gstScheme: 'JEWELLERY',
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: lines.length > 0 ? lines : [blankLine()],
   }

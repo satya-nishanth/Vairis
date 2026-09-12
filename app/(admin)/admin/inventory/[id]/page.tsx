@@ -18,6 +18,8 @@ async function loadVariantOptions() {
       variantId: v.id,
       productId: p.id,
       sku: v.sku,
+      metalType: v.metalType,
+      weightGrams: Number(v.weightGrams),
       label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
     })),
   )
@@ -33,7 +35,7 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
       include: {
         ...inventoryItemInclude,
         product: { select: { name: true } },
-        variant: { select: { sku: true, metalType: true, size: true } },
+        variant: { select: { sku: true, metalType: true, size: true, weightGrams: true } },
         allocations: {
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -74,7 +76,14 @@ export default async function EditInventoryPage({ params }: { params: Promise<{ 
     holderId: row.holderId,
     variantId: row.variantId,
     product: row.product,
-    variant: row.variant,
+    variant: row.variant
+      ? {
+          sku: row.variant.sku,
+          metalType: row.variant.metalType,
+          size: row.variant.size,
+          weightGrams: Number(row.variant.weightGrams),
+        }
+      : null,
     purchaseBills: (row.purchaseBills ?? []).map((l) => {
       const lineSummary =
         l.purchaseBill.lines && l.purchaseBill.lines.length > 0

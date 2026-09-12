@@ -73,6 +73,11 @@ const EXCEPTION_GROUP_META: Record<
     unit: 'order',
     section: 'order_sheets',
   },
+  sheet_empty: {
+    summary: (n) => `${n} empty order sheet${n === 1 ? '' : 's'}`,
+    unit: 'order',
+    section: 'order_sheets',
+  },
   order_unpaid: {
     summary: (n) => `${n} customer order${n === 1 ? '' : 's'} unpaid`,
     unit: 'order',

@@ -49,7 +49,7 @@ export default async function InventoryPage() {
       qtySold: soldQtyByItem[r.id] ?? 0,
       purchasePrice: isFinance && r.purchasePrice != null ? Number(r.purchasePrice) : null,
       soldPrice: r.soldPrice != null ? Number(r.soldPrice) : null,
-      potentialPrice: isFinance && r.potentialPrice != null ? Number(r.potentialPrice) : null,
+      potentialPrice: r.potentialPrice != null ? Number(r.potentialPrice) : null,
       liveSoldPrice: r.variantId ? (liveByVariantId[r.variantId] ?? null) : null,
       latestSale: latest
         ? {
