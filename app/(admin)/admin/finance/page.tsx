@@ -17,6 +17,7 @@ import {
   buildCompanyAuditExceptions,
   UNPAID_PURCHASE_BILL_AGE_DAYS,
 } from '@/lib/finance-company-audit'
+import { getFinanceKpiSettings } from '@/lib/finance-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,7 +62,8 @@ export default async function FinanceDashboardPage() {
         transferToAccountId: true,
         unlinkedOrderLabels: true,
         unlinkedInventoryLabels: true,
-        category: { select: { name: true } },
+        categoryId: true,
+        category: { select: { id: true, name: true } },
         orders: { select: { orderId: true } },
         inventoryItems: { select: { inventoryItemId: true } },
         allocations: { select: { amount: true, orderId: true, purchaseBillId: true } },
@@ -128,13 +130,15 @@ export default async function FinanceDashboardPage() {
       t.orders.length > 0 ||
       t.unlinkedOrderLabels.length > 0 ||
       t.allocations.some((a) => a.orderId || a.purchaseBillId),
+    categoryId: t.categoryId,
     categoryName: t.category?.name ?? null,
     hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
     hasInventoryLink:
       t.inventoryItems.length > 0 || (t.unlinkedInventoryLabels?.length ?? 0) > 0,
   }))
 
-  const kpis = summarizeDashboardKpis(sheetRows, txExpense)
+  const kpiSettings = await getFinanceKpiSettings()
+  const kpis = summarizeDashboardKpis(sheetRows, txExpense, undefined, kpiSettings)
 
   const byAccountFlows = summarizeTransactionFlows(
     transactions.map((t) => ({
@@ -283,11 +287,17 @@ export default async function FinanceDashboardPage() {
     {
       label: 'Cash inflow',
       value: inr(kpis.income),
-      meta: 'Transaction inflows',
-      tip: 'Sum of all cashbook INFLOW transactions (customer payments and other money in). Source: Finance → Transactions, direction = Inflow. Transfers are not included.',
+      meta:
+        kpiSettings.cashInflowCategoryIds.length > 0
+          ? `${kpiSettings.cashInflowCategoryIds.length} categor${kpiSettings.cashInflowCategoryIds.length === 1 ? 'y' : 'ies'} selected`
+          : 'Transaction inflows',
+      tip:
+        kpiSettings.cashInflowCategoryIds.length > 0
+          ? 'Sum of INFLOW transactions in the categories selected under Finance → Config → Dashboard KPIs. Uncategorized inflows are excluded when a list is set. Source: Transactions.'
+          : 'Sum of all cashbook INFLOW transactions. Configure categories under Finance → Config → Dashboard KPIs (empty = all inflows). Transfers are not included.',
     },
     {
-      label: 'Inventory purchase',
+      label: 'In-stock Inventory Purchase Price',
       value: inr(inventoryPurchasePrice),
       meta:
         inventoryPurchaseLines > 0
@@ -296,7 +306,7 @@ export default async function FinanceDashboardPage() {
       tip: 'Σ (qty on hand × purchase price per piece) for inventory items still in stock with a purchase price set. Same formula as Inventory → Purchase. Source: Inventory items (current snapshot, not cashbook).',
     },
     {
-      label: 'Orders purchase',
+      label: 'Orders Purchase Price',
       value: inr(kpis.purchasePrice),
       meta: 'Cost from order sheets',
       tip: 'Sum of purchasing / cost prices across all order finance sheets (sheet line costs, with round-off when enabled). Source: Finance → Order sheets. This is sold/order cost, not current warehouse stock.',
@@ -304,8 +314,14 @@ export default async function FinanceDashboardPage() {
     {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
-      meta: 'Outflows excl. inventory purchases',
-      tip: 'Sum of all OUTFLOW transactions except inventory purchases: category name matching Inventory purchase(s), outflows allocated to purchase bills, or linked to inventory items. Source: Finance → Transactions.',
+      meta:
+        kpiSettings.generalExpenseCategoryIds.length > 0
+          ? `${kpiSettings.generalExpenseCategoryIds.length} categor${kpiSettings.generalExpenseCategoryIds.length === 1 ? 'y' : 'ies'} selected`
+          : 'Outflows excl. inventory purchases',
+      tip:
+        kpiSettings.generalExpenseCategoryIds.length > 0
+          ? 'Sum of OUTFLOW transactions in the categories selected under Finance → Config → Dashboard KPIs. Source: Transactions.'
+          : 'Sum of all OUTFLOW transactions except inventory purchases (category / purchase bill / inventory link). Configure categories under Finance → Config → Dashboard KPIs (empty = this default).',
     },
   ]
 

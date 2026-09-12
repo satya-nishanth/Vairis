@@ -723,6 +723,15 @@ model FinanceContact {
   purchaseBills PurchaseBill[]
 }
 
+/// Singleton config for finance dashboard KPI category filters (id = 1).
+/// Empty arrays = legacy defaults (all matching direction / opex heuristics).
+model FinanceSettings {
+  id                         Int      @id @default(1)
+  cashInflowCategoryIds      String[] @default([])
+  generalExpenseCategoryIds  String[] @default([])
+  updatedAt                  DateTime @updatedAt
+}
+
 /// Config: expense/income categories for cashbook transactions.
 model FinanceCategory {
   id        String                       @id @default(cuid())
