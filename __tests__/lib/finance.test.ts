@@ -272,6 +272,21 @@ describe('summarizeDashboardKpis', () => {
           categoryName: 'Inventory purchases',
         },
         {
+          date: new Date('2026-08-11T06:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 3000,
+          relatedToOrder: false,
+          categoryName: 'Inventory purcahses', // common typo in category name
+        },
+        {
+          date: new Date('2026-08-11T09:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 4000,
+          relatedToOrder: true,
+          categoryName: 'Materials',
+          hasPurchaseBillAllocation: true,
+        },
+        {
           date: new Date('2026-08-11T12:00:00+05:30'),
           direction: 'OUTFLOW',
           amount: 1500,
@@ -302,6 +317,61 @@ describe('summarizeDashboardKpis', () => {
       generalExpenses: 3500,
       profit: 4500,
     })
+  })
+
+  it('respects configured cash inflow and general expense category ids', () => {
+    const k = summarizeDashboardKpis(
+      [
+        {
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 10000,
+          sellingPrice: 18000,
+          paidToAccountId: 'fa_anil',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-12T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 900,
+          relatedToOrder: false,
+          categoryId: 'cat_other_in',
+          categoryName: 'Other',
+        },
+        {
+          date: new Date('2026-08-13T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 17100,
+          relatedToOrder: true,
+          categoryId: 'cat_customer',
+          categoryName: 'Customer payment',
+        },
+        {
+          date: new Date('2026-08-10T00:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 2000,
+          relatedToOrder: false,
+          categoryId: 'cat_rent',
+          categoryName: 'Rent',
+        },
+        {
+          date: new Date('2026-08-11T12:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 1500,
+          relatedToOrder: true,
+          categoryId: 'cat_mkt',
+          categoryName: 'Marketing',
+        },
+      ],
+      undefined,
+      {
+        cashInflowCategoryIds: ['cat_customer'],
+        generalExpenseCategoryIds: ['cat_mkt'],
+      },
+    )
+    expect(k.income).toBe(17100)
+    expect(k.generalExpenses).toBe(1500)
+    expect(k.profit).toBe(6500)
   })
 })
 

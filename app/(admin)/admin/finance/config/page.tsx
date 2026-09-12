@@ -1,14 +1,16 @@
 import { prisma } from '@/lib/prisma'
 import { toFinanceCategoryDirection } from '@/lib/finance'
+import { getFinanceKpiSettings } from '@/lib/finance-settings'
 import { FinanceConfigClient } from '@/components/admin/FinanceConfigClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function FinanceConfigPage() {
-  const [accounts, contacts, categories] = await Promise.all([
+  const [accounts, contacts, categories, kpiSettings] = await Promise.all([
     prisma.financeAccount.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     prisma.financeContact.findMany({ orderBy: { name: 'asc' } }),
     prisma.financeCategory.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    getFinanceKpiSettings(),
   ])
 
   return (
@@ -39,6 +41,7 @@ export default async function FinanceConfigPage() {
           active: c.active,
           sortOrder: c.sortOrder,
         }))}
+      kpiSettings={kpiSettings}
     />
   )
 }

@@ -17,6 +17,7 @@ import {
   buildCompanyAuditExceptions,
   UNPAID_PURCHASE_BILL_AGE_DAYS,
 } from '@/lib/finance-company-audit'
+import { getFinanceKpiSettings } from '@/lib/finance-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,8 @@ const EXCEPTION_HIGHLIGHT: Record<string, string> = {
 }
 
 export default async function FinanceDashboardPage() {
-  const [sheets, accounts, transactions, purchaseBills, forReviewCount] = await Promise.all([
+  const [sheets, accounts, transactions, purchaseBills, inventoryItems, forReviewCount] =
+    await Promise.all([
     prisma.orderFinance.findMany({
       include: {
         order: { select: { id: true, createdAt: true, contactName: true, grandTotal: true } },
@@ -59,8 +61,11 @@ export default async function FinanceDashboardPage() {
         paidThroughAccountId: true,
         transferToAccountId: true,
         unlinkedOrderLabels: true,
-        category: { select: { name: true } },
+        unlinkedInventoryLabels: true,
+        categoryId: true,
+        category: { select: { id: true, name: true } },
         orders: { select: { orderId: true } },
+        inventoryItems: { select: { inventoryItemId: true } },
         allocations: { select: { amount: true, orderId: true, purchaseBillId: true } },
       },
     }),
@@ -74,10 +79,22 @@ export default async function FinanceDashboardPage() {
         supplierContact: { select: { name: true } },
       },
     }),
+    prisma.inventoryItem.findMany({
+      select: { qtyOnHand: true, purchasePrice: true },
+    }),
     prisma.financeTransaction.count({
       where: { reviewComplete: false },
     }),
   ])
+
+  let inventoryPurchasePrice = 0
+  let inventoryPurchaseLines = 0
+  for (const item of inventoryItems) {
+    if (item.qtyOnHand <= 0 || item.purchasePrice == null) continue
+    inventoryPurchasePrice += item.qtyOnHand * Number(item.purchasePrice)
+    inventoryPurchaseLines += 1
+  }
+  inventoryPurchasePrice = roundMoney(inventoryPurchasePrice)
 
   const sheetOrderIds = sheets.map((s) => s.orderId)
   const [collectedByOrder, paidByBill] = await Promise.all([
@@ -113,10 +130,15 @@ export default async function FinanceDashboardPage() {
       t.orders.length > 0 ||
       t.unlinkedOrderLabels.length > 0 ||
       t.allocations.some((a) => a.orderId || a.purchaseBillId),
+    categoryId: t.categoryId,
     categoryName: t.category?.name ?? null,
+    hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
+    hasInventoryLink:
+      t.inventoryItems.length > 0 || (t.unlinkedInventoryLabels?.length ?? 0) > 0,
   }))
 
-  const kpis = summarizeDashboardKpis(sheetRows, txExpense)
+  const kpiSettings = await getFinanceKpiSettings()
+  const kpis = summarizeDashboardKpis(sheetRows, txExpense, undefined, kpiSettings)
 
   const byAccountFlows = summarizeTransactionFlows(
     transactions.map((t) => ({
@@ -265,12 +287,41 @@ export default async function FinanceDashboardPage() {
     {
       label: 'Cash inflow',
       value: inr(kpis.income),
-      meta: 'Transaction inflows',
+      meta:
+        kpiSettings.cashInflowCategoryIds.length > 0
+          ? `${kpiSettings.cashInflowCategoryIds.length} categor${kpiSettings.cashInflowCategoryIds.length === 1 ? 'y' : 'ies'} selected`
+          : 'Transaction inflows',
+      tip:
+        kpiSettings.cashInflowCategoryIds.length > 0
+          ? 'Sum of INFLOW transactions in the categories selected under Finance → Config → Dashboard KPIs. Uncategorized inflows are excluded when a list is set. Source: Transactions.'
+          : 'Sum of all cashbook INFLOW transactions. Configure categories under Finance → Config → Dashboard KPIs (empty = all inflows). Transfers are not included.',
+    },
+    {
+      label: 'In-stock Inventory Purchase Price',
+      value: inr(inventoryPurchasePrice),
+      meta:
+        inventoryPurchaseLines > 0
+          ? `${inventoryPurchaseLines} in-stock line${inventoryPurchaseLines === 1 ? '' : 's'}`
+          : 'Stock on hand × purchase / pc',
+      tip: 'Σ (qty on hand × purchase price per piece) for inventory items still in stock with a purchase price set. Same formula as Inventory → Purchase. Source: Inventory items (current snapshot, not cashbook).',
+    },
+    {
+      label: 'Orders Purchase Price',
+      value: inr(kpis.purchasePrice),
+      meta: 'Cost from order sheets',
+      tip: 'Sum of purchasing / cost prices across all order finance sheets (sheet line costs, with round-off when enabled). Source: Finance → Order sheets. This is sold/order cost, not current warehouse stock.',
     },
     {
       label: 'General expenses',
       value: inr(kpis.generalExpenses),
-      meta: 'Outflows excl. inventory purchases',
+      meta:
+        kpiSettings.generalExpenseCategoryIds.length > 0
+          ? `${kpiSettings.generalExpenseCategoryIds.length} categor${kpiSettings.generalExpenseCategoryIds.length === 1 ? 'y' : 'ies'} selected`
+          : 'Outflows excl. inventory purchases',
+      tip:
+        kpiSettings.generalExpenseCategoryIds.length > 0
+          ? 'Sum of OUTFLOW transactions in the categories selected under Finance → Config → Dashboard KPIs. Source: Transactions.'
+          : 'Sum of all OUTFLOW transactions except inventory purchases (category / purchase bill / inventory link). Configure categories under Finance → Config → Dashboard KPIs (empty = this default).',
     },
   ]
 
@@ -279,6 +330,18 @@ export default async function FinanceDashboardPage() {
       <div className="finance-dash__kpis">
         {cards.map((c) => (
           <div key={c.label} className="finance-dash__kpi">
+            <div className="finance-dash__kpi-tip">
+              <button
+                type="button"
+                className="finance-dash__kpi-info"
+                aria-label={`About ${c.label}`}
+              >
+                i
+              </button>
+              <span className="finance-dash__kpi-tip-text" role="tooltip">
+                {c.tip}
+              </span>
+            </div>
             <div className="finance-dash__kpi-label">{c.label}</div>
             <div className="finance-dash__kpi-value">{c.value}</div>
             <div className="finance-dash__kpi-meta">{c.meta}</div>

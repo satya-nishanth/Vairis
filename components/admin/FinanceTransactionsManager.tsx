@@ -130,6 +130,133 @@ function SearchIcon() {
   )
 }
 
+type FilterMultiOption = { id: string; label: string }
+
+type TxSortKey =
+  | 'id'
+  | 'date'
+  | 'direction'
+  | 'source'
+  | 'handled'
+  | 'amount'
+  | 'gst'
+  | 'bank'
+  | 'category'
+  | 'contact'
+  | 'description'
+  | 'allocation'
+  | 'review'
+
+type TxSortDir = 'asc' | 'desc'
+
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true })
+}
+
+function txSortValue(row: TxRow, key: TxSortKey): string | number {
+  switch (key) {
+    case 'id':
+      return row.id
+    case 'date':
+      return new Date(row.date).getTime()
+    case 'direction':
+      return row.direction
+    case 'source':
+      return row.autoCreated ? 1 : 0
+    case 'handled':
+      return (row.accountName ?? row.accountId ?? '').toLowerCase()
+    case 'amount':
+      return row.amount
+    case 'gst':
+      return row.gstAmount || 0
+    case 'bank':
+      return (row.paidThroughAccountName ?? row.paidThroughAccountId ?? '').toLowerCase()
+    case 'category':
+      return (row.categoryName ?? '').toLowerCase()
+    case 'contact':
+      return (row.contactName ?? '').toLowerCase()
+    case 'description':
+      return (row.description ?? '').toLowerCase()
+    case 'allocation':
+      return row.allocatedAmount ?? 0
+    case 'review':
+      return row.reviewComplete ? 1 : 0
+  }
+}
+
+/** Checkbox multi-select dropdown for transaction list filters. Empty selection = all. */
+function FilterMultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+  allLabel = 'All',
+}: {
+  label: string
+  options: FilterMultiOption[]
+  value: string[]
+  onChange: (next: string[]) => void
+  allLabel?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const summary =
+    value.length === 0
+      ? `${label}: ${allLabel}`
+      : value.length === 1
+        ? `${label}: ${options.find((o) => o.id === value[0])?.label ?? '1'}`
+        : `${label}: ${value.length} selected`
+
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  }
+
+  return (
+    <div className="finance-filter-dd" ref={wrapRef}>
+      <button
+        type="button"
+        className={`finance-filter-dd__btn${value.length > 0 ? ' is-active' : ''}${open ? ' is-open' : ''}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="finance-filter-dd__summary">{summary}</span>
+        <span className="finance-filter-dd__caret" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className="finance-filter-dd__panel" role="listbox" aria-multiselectable aria-label={label}>
+          {options.length === 0 ? (
+            <div className="finance-filter-dd__empty">No options</div>
+          ) : (
+            options.map((o) => (
+              <label key={o.id} className="finance-filter-dd__option">
+                <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} />
+                <span>{o.label}</span>
+              </label>
+            ))
+          )}
+          {value.length > 0 ? (
+            <button type="button" className="finance-filter-dd__clear" onClick={() => onChange([])}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function FinanceTransactionsManager({
   initial,
   accounts,
@@ -172,11 +299,28 @@ export function FinanceTransactionsManager({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [dirFilter, setDirFilter] = useState<'ALL' | 'INFLOW' | 'OUTFLOW' | 'TRANSFER'>('ALL')
-  const [handledFilter, setHandledFilter] = useState('')
-  const [bankFilter, setBankFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  const [dirFilters, setDirFilters] = useState<string[]>([])
+  const [handledFilters, setHandledFilters] = useState<string[]>([])
+  const [bankFilters, setBankFilters] = useState<string[]>([])
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([])
   const [showAllColumns, setShowAllColumns] = useState(false)
+  const [sortKey, setSortKey] = useState<TxSortKey>('date')
+  const [sortDir, setSortDir] = useState<TxSortDir>('desc')
+
+  const filtersActive =
+    query.trim().length > 0 ||
+    dirFilters.length > 0 ||
+    handledFilters.length > 0 ||
+    bankFilters.length > 0 ||
+    categoryFilters.length > 0
+
+  function clearAllFilters() {
+    setQuery('')
+    setDirFilters([])
+    setHandledFilters([])
+    setBankFilters([])
+    setCategoryFilters([])
+  }
 
   const showForm = compose || !!editId || !!editingId
   const tableColSpan = showAllColumns ? 14 : 12
@@ -193,10 +337,24 @@ export function FinanceTransactionsManager({
   )
 
   const categoryFilterOptions = useMemo(() => {
-    if (dirFilter === 'ALL') return categories
-    if (dirFilter === 'TRANSFER') return []
-    return categories.filter((c) => c.direction === dirFilter)
-  }, [categories, dirFilter])
+    if (dirFilters.length === 0) return categories
+    const dirs = new Set(dirFilters.filter((d) => d === 'INFLOW' || d === 'OUTFLOW'))
+    if (dirs.size === 0) return []
+    return categories.filter((c) => dirs.has(c.direction))
+  }, [categories, dirFilters])
+
+  function onDirFiltersChange(next: string[]) {
+    setDirFilters(next)
+    setCategoryFilters((prev) => {
+      if (next.length === 0) return prev
+      const dirs = new Set(next.filter((d) => d === 'INFLOW' || d === 'OUTFLOW'))
+      if (dirs.size === 0) return []
+      return prev.filter((id) => {
+        const cat = categories.find((c) => c.id === id)
+        return cat ? dirs.has(cat.direction) : false
+      })
+    })
+  }
 
   function changeDirection(next: FinanceTransactionDirection) {
     setDirection(next)
@@ -230,11 +388,18 @@ export function FinanceTransactionsManager({
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase()
     return rows.filter((r) => {
-      if (dirFilter !== 'ALL' && r.direction !== dirFilter) return false
-      if (handledFilter && r.accountId !== handledFilter) return false
-      if (bankFilter && r.paidThroughAccountId !== bankFilter && r.transferToAccountId !== bankFilter)
+      if (dirFilters.length > 0 && !dirFilters.includes(r.direction)) return false
+      if (handledFilters.length > 0 && !handledFilters.includes(r.accountId)) return false
+      if (
+        bankFilters.length > 0 &&
+        !bankFilters.includes(r.paidThroughAccountId) &&
+        !(r.transferToAccountId && bankFilters.includes(r.transferToAccountId))
+      ) {
         return false
-      if (categoryFilter && r.categoryId !== categoryFilter) return false
+      }
+      if (categoryFilters.length > 0 && (!r.categoryId || !categoryFilters.includes(r.categoryId))) {
+        return false
+      }
       if (!q) return true
       const orderText = [
         ...(r.orders?.map((o) => `${o.contactName} ${o.id}`) ?? []),
@@ -263,7 +428,73 @@ export function FinanceTransactionsManager({
         .toLowerCase()
       return hay.includes(q)
     })
-  }, [rows, query, dirFilter, handledFilter, bankFilter, categoryFilter])
+  }, [rows, query, dirFilters, handledFilters, bankFilters, categoryFilters])
+
+  const filterTotals = useMemo(() => {
+    let inflow = 0
+    let outflow = 0
+    let transfer = 0
+    let gst = 0
+    for (const r of filteredRows) {
+      gst += r.gstAmount || 0
+      if (r.direction === 'INFLOW') inflow += r.amount
+      else if (r.direction === 'OUTFLOW') outflow += r.amount
+      else if (r.direction === 'TRANSFER') transfer += r.amount
+    }
+    return {
+      count: filteredRows.length,
+      inflow: roundMoney(inflow),
+      outflow: roundMoney(outflow),
+      transfer: roundMoney(transfer),
+      gst: roundMoney(gst),
+      net: roundMoney(inflow - outflow),
+    }
+  }, [filteredRows])
+
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows]
+    const dir = sortDir === 'asc' ? 1 : -1
+    list.sort((a, b) => {
+      const va = txSortValue(a, sortKey)
+      const vb = txSortValue(b, sortKey)
+      let cmp = 0
+      if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb
+      else cmp = cmpStr(String(va), String(vb))
+      if (cmp !== 0) return cmp * dir
+      // Stable-ish tie-break: newer date first, then id
+      const td = new Date(b.date).getTime() - new Date(a.date).getTime()
+      if (td !== 0) return td
+      return cmpStr(a.id, b.id)
+    })
+    return list
+  }, [filteredRows, sortKey, sortDir])
+
+  function toggleSort(key: TxSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'date' || key === 'amount' || key === 'gst' || key === 'allocation' ? 'desc' : 'asc')
+    }
+  }
+
+  function sortTh(key: TxSortKey, label: string, align: 'left' | 'right' = 'left') {
+    const active = sortKey === key
+    return (
+      <th style={{ ...th, textAlign: align }} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+        <button
+          type="button"
+          className={`finance-tx-sort${active ? ' is-active' : ''}`}
+          onClick={() => toggleSort(key)}
+        >
+          <span>{label}</span>
+          <span className="finance-tx-sort__ind" aria-hidden>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -457,17 +688,6 @@ export function FinanceTransactionsManager({
     verticalAlign: 'middle',
     color: '#111827',
   }
-
-  const filterChip = (active: boolean): React.CSSProperties => ({
-    border: `1px solid ${active ? GREEN : BORDER}`,
-    background: active ? GREEN_CHIP : '#fff',
-    color: active ? GREEN : '#374151',
-    borderRadius: 999,
-    padding: '6px 12px',
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-  })
 
   const actionBtn: React.CSSProperties = {
     border: `1px solid ${BORDER}`,
@@ -866,25 +1086,9 @@ export function FinanceTransactionsManager({
         </section>
       )}
 
-      <div
-        style={{
-          background: '#fff',
-          border: `1px solid ${BORDER}`,
-          borderRadius: 12,
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 12,
-            alignItems: 'center',
-            padding: '14px 16px',
-            borderBottom: `1px solid ${BORDER}`,
-          }}
-        >
+      <div className="finance-tx-list">
+        <div className="finance-tx-list__pin">
+        <div className="finance-tx-list__filters">
           <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180, maxWidth: 360 }}>
             <span
               style={{
@@ -906,76 +1110,62 @@ export function FinanceTransactionsManager({
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {(
-              [
-                ['ALL', 'All'],
-                ['INFLOW', 'Inflow'],
-                ['OUTFLOW', 'Outflow'],
-                ['TRANSFER', 'Transfer'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setDirFilter(value)
-                  setCategoryFilter((prev) => {
-                    if (!prev || value === 'ALL' || value === 'TRANSFER') return value === 'TRANSFER' ? '' : prev
-                    const cat = categories.find((c) => c.id === prev)
-                    return cat && cat.direction === value ? prev : ''
-                  })
-                }}
-                style={filterChip(dirFilter === value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <FilterMultiSelect
+            label="Flow"
+            value={dirFilters}
+            onChange={onDirFiltersChange}
+            options={[
+              { id: 'INFLOW', label: 'Inflow' },
+              { id: 'OUTFLOW', label: 'Outflow' },
+              { id: 'TRANSFER', label: 'Transfer' },
+            ]}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={handledFilter}
-            onChange={(e) => setHandledFilter(e.target.value)}
-            aria-label="Filter by who handled"
-          >
-            <option value="">Handled by: All</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <FilterMultiSelect
+            label="Handled by"
+            value={handledFilters}
+            onChange={setHandledFilters}
+            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={bankFilter}
-            onChange={(e) => setBankFilter(e.target.value)}
-            aria-label="Filter by bank used"
-          >
-            <option value="">Bank used: All</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <FilterMultiSelect
+            label="Bank used"
+            value={bankFilters}
+            onChange={setBankFilters}
+            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+          />
 
-          <select
-            style={{ ...selectControl, width: 'auto', minWidth: 140 }}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="">Category: All</option>
-            {categoryFilterOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {dirFilter === 'ALL'
+          <FilterMultiSelect
+            label="Category"
+            value={categoryFilters}
+            onChange={setCategoryFilters}
+            options={categoryFilterOptions.map((c) => ({
+              id: c.id,
+              label:
+                dirFilters.length === 0
                   ? `${c.name} (${c.direction === 'INFLOW' ? 'In' : 'Out'})`
-                  : c.name}
-              </option>
-            ))}
-          </select>
+                  : c.name,
+            }))}
+          />
+
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              style={{
+                ...btnGhost,
+                padding: '8px 14px',
+                fontSize: '0.75rem',
+                whiteSpace: 'nowrap',
+                color: '#032b24',
+                borderColor: '#b7d4cb',
+                background: '#f3f8f6',
+                fontWeight: 600,
+              }}
+            >
+              Clear all filters
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -992,29 +1182,61 @@ export function FinanceTransactionsManager({
           </button>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+        {filterTotals.count > 0 ? (
+          <div className="finance-tx-totals" role="status" aria-live="polite">
+            <div className="finance-tx-totals__title">
+              Totals · {filterTotals.count} transaction{filterTotals.count === 1 ? '' : 's'}
+              {filterTotals.count !== rows.length ? ` (filtered)` : ''}
+            </div>
+            <div className="finance-tx-totals__grid">
+              <div>
+                <span>Inflow</span>
+                <strong>{inr(filterTotals.inflow)}</strong>
+              </div>
+              <div>
+                <span>Outflow</span>
+                <strong>{inr(filterTotals.outflow)}</strong>
+              </div>
+              <div>
+                <span>Transfer</span>
+                <strong>{inr(filterTotals.transfer)}</strong>
+              </div>
+              <div>
+                <span>Net (in − out)</span>
+                <strong>{inr(filterTotals.net)}</strong>
+              </div>
+              <div>
+                <span>GST</span>
+                <strong>{inr(filterTotals.gst)}</strong>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        </div>
+
+        <div className="finance-tx-list__scroll">
+          <table className="finance-tx-list__table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.8125rem' }}>
             <thead>
               <tr style={{ background: '#f7f7f5', textAlign: 'left' }}>
-                {showAllColumns && <th style={th}>Transaction ID</th>}
-                <th style={th}>Date</th>
-                <th style={th}>Flow</th>
-                {showAllColumns && <th style={th}>Source</th>}
-                <th style={th}>Handled by</th>
-                <th style={th}>Amount</th>
-                <th style={th}>GST</th>
-                <th style={th}>Bank / transfer</th>
-                <th style={th}>Category</th>
-                <th style={th}>Contact</th>
-                <th style={th}>Description</th>
-                <th style={th}>Allocation</th>
+                {showAllColumns && sortTh('id', 'Transaction ID')}
+                {sortTh('date', 'Date')}
+                {sortTh('direction', 'Flow')}
+                {showAllColumns && sortTh('source', 'Source')}
+                {sortTh('handled', 'Handled by')}
+                {sortTh('amount', 'Amount', 'right')}
+                {sortTh('gst', 'GST', 'right')}
+                {sortTh('bank', 'Bank / transfer')}
+                {sortTh('category', 'Category')}
+                {sortTh('contact', 'Contact')}
+                {sortTh('description', 'Description')}
+                {sortTh('allocation', 'Allocation')}
                 <th style={th}>Allocated to</th>
-                <th style={th}>Review status</th>
+                {sortTh('review', 'Review status')}
                 <th style={th}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((r) => {
+              {sortedRows.map((r) => {
                 const allocs = r.allocations ?? []
                 const isOut = r.direction === 'OUTFLOW'
                 const isTransfer = r.direction === 'TRANSFER'
@@ -1065,8 +1287,8 @@ export function FinanceTransactionsManager({
                       </td>
                     )}
                     <td style={td}>{r.accountName ?? r.accountId}</td>
-                    <td style={{ ...td, fontWeight: 600 }}>{inr(r.amount)}</td>
-                    <td style={td}>{r.gstAmount ? inr(r.gstAmount) : '—'}</td>
+                    <td style={{ ...td, fontWeight: 600, textAlign: 'right' }}>{inr(r.amount)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{r.gstAmount ? inr(r.gstAmount) : '—'}</td>
                     <td style={td}>
                       {isTransfer
                         ? `${r.paidThroughAccountName ?? '—'} → ${r.transferToAccountName ?? '—'}`

@@ -6,6 +6,7 @@ import {
   summarizeTransactionFlows,
   type AccountFlowTotals,
   type AccountRef,
+  type DashboardKpiCategoryConfig,
   type DashboardKpis,
   type OrderInflowTxRow,
   type OrderSheetRow,
@@ -473,8 +474,14 @@ export function buildCompanyAudit(input: {
   orderPayments?: CompanyAuditOrderPaymentRow[]
   txAllocations?: CompanyAuditTxAllocRow[]
   range?: { start: Date; end: Date }
+  kpiCategoryConfig?: DashboardKpiCategoryConfig
 }): CompanyAuditResult {
-  const realized = summarizeDashboardKpis(input.sheets, input.txExpense, input.range)
+  const realized = summarizeDashboardKpis(
+    input.sheets,
+    input.txExpense,
+    input.range,
+    input.kpiCategoryConfig,
+  )
   const cashByAccount = summarizeTransactionFlows(input.txFlow, input.accounts, input.range)
   const cashOnHand = roundMoney(cashByAccount.reduce((s, a) => s + a.net, 0))
   const stock = summarizeInventoryStock(input.stockRows, input.liveByVariantId)
