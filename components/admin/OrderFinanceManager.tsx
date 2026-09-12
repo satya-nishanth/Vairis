@@ -149,18 +149,25 @@ function parseAmounts(amounts: Amounts) {
   }))
 }
 
-/** Deterministic — avoids SSR/client toLocaleString hydration mismatches. */
+/** Deterministic Indian grouping — avoids SSR/client toLocaleString hydration mismatches. */
 function inr(n: number): string {
   const rounded = Math.round(n * 100) / 100
   const sign = rounded < 0 ? '-' : ''
   const [intDigits, fracRaw] = Math.abs(rounded).toFixed(2).split('.')
-  let out = ''
-  for (let i = 0; i < intDigits.length; i++) {
-    if (i > 0 && (intDigits.length - i) % 3 === 0) out += ','
-    out += intDigits[i]
+  let grouped = intDigits
+  if (intDigits.length > 3) {
+    const last3 = intDigits.slice(-3)
+    let rest = intDigits.slice(0, -3)
+    const parts: string[] = []
+    while (rest.length > 2) {
+      parts.unshift(rest.slice(-2))
+      rest = rest.slice(0, -2)
+    }
+    if (rest) parts.unshift(rest)
+    grouped = `${parts.join(',')},${last3}`
   }
   const frac = (fracRaw ?? '').replace(/0+$/, '')
-  return frac ? `₹${sign}${out}.${frac}` : `₹${sign}${out}`
+  return frac ? `₹${sign}${grouped}.${frac}` : `₹${sign}${grouped}`
 }
 
 function moneyOrDash(n: number | null | undefined): string {
