@@ -119,6 +119,16 @@ describe('buildCompanyAuditExceptions', () => {
           grandTotal: 50_000,
           sheetSelling: 50_000,
         },
+        {
+          orderId: 'ord_empty',
+          label: 'Empty sheet cust',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 30_000,
+          collected: 0,
+          paymentStatus: 'unpaid',
+          grandTotal: 30_000,
+          sheetSelling: null,
+        },
       ],
       purchaseBills: [
         {
@@ -229,6 +239,7 @@ describe('buildCompanyAuditExceptions', () => {
         'order_partial',
         'order_overpaid',
         'sheet_checkout_mismatch',
+        'sheet_empty',
         'purchase_bill_partial',
         'purchase_bill_overpaid',
         'purchase_bill_unpaid_aged',

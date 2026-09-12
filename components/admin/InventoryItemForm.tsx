@@ -11,6 +11,8 @@ export type VariantOption = {
   productId: string
   label: string
   sku: string
+  metalType: string
+  weightGrams: number
 }
 
 export type HolderOption = { id: string; name: string }
@@ -43,7 +45,7 @@ export type InventoryEditRow = {
   holderId: string
   variantId: string | null
   product: { name: string } | null
-  variant: { sku: string; metalType: string; size: string | null } | null
+  variant: { sku: string; metalType: string; size: string | null; weightGrams?: number | null } | null
   purchaseBills?: InventoryBillRef[]
   allocations?: {
     id: string
@@ -529,6 +531,25 @@ export function InventoryItemForm({
               </div>
             )}
           </div>
+          {(selectedVariant || initial?.variant) && variantId ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="inv-field">
+                <label>Metal purity</label>
+                <div className="inv-readonly">
+                  {selectedVariant?.metalType ?? initial?.variant?.metalType ?? '—'}
+                </div>
+              </div>
+              <div className="inv-field">
+                <label>Metal weight (g)</label>
+                <div className="inv-readonly">
+                  {(() => {
+                    const w = selectedVariant?.weightGrams ?? initial?.variant?.weightGrams
+                    return w != null ? Number(w).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'
+                  })()}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
 
@@ -656,6 +677,20 @@ export function InventoryItemForm({
               )}
             </div>
           )}
+          {linkedVariant ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+              <div className="inv-field">
+                <label>Metal purity</label>
+                <div className="inv-readonly">{linkedVariant.metalType}</div>
+              </div>
+              <div className="inv-field">
+                <label>Metal weight (g)</label>
+                <div className="inv-readonly">
+                  {linkedVariant.weightGrams.toLocaleString('en-IN', { maximumFractionDigits: 3 })}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
