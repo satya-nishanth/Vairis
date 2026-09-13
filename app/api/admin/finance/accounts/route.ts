@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic'
 const schema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
-  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'OTHER']),
+  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']),
+  isVendorWallet: z.boolean().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -19,6 +20,7 @@ function serialize(row: {
   name: string
   email: string | null
   type: string
+  isVendorWallet: boolean
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -29,6 +31,7 @@ function serialize(row: {
     name: row.name,
     email: row.email,
     type: row.type,
+    isVendorWallet: row.isVendorWallet,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -62,6 +65,8 @@ export async function POST(req: NextRequest) {
         name: d.name,
         email,
         type: d.type,
+        // Keep flag in sync with type so dashboard grouping stays consistent
+        isVendorWallet: d.isVendorWallet ?? d.type === 'VENDOR',
         active: d.active ?? true,
         sortOrder: d.sortOrder ?? 0,
       },
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest) {
       entityId: row.id,
       objectLabel: row.name,
       objectHref: '/admin/finance/config',
-      summary: `Created account “${row.name}” (${row.type})`,
+      summary: `Created account “${row.name}” (${row.type}${row.isVendorWallet ? ', vendor wallet' : ''})`,
       after: serialize(row),
     })
     return NextResponse.json(serialize(row), { status: 201 })
