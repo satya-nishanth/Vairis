@@ -674,6 +674,7 @@ enum FinanceAccountType {
   PARTNER
   COMPANY_BANK
   CASH
+  VENDOR
   OTHER
 }
 
@@ -691,14 +692,16 @@ enum FinanceTransactionDirection {
 
 /// Config: wallets / people money can sit with. Email ties login → default account.
 model FinanceAccount {
-  id        String             @id @default(cuid())
-  name      String
-  email     String?            @unique
-  type      FinanceAccountType
-  active    Boolean            @default(true)
-  sortOrder Int                @default(0)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id             String             @id @default(cuid())
+  name           String
+  email          String?            @unique
+  type           FinanceAccountType
+  /// Grouped under Vendor wallets on dashboard By account (and Config list).
+  isVendorWallet Boolean            @default(false)
+  active         Boolean            @default(true)
+  sortOrder      Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   expensesAsAccount GeneralExpense[]     @relation("ExpenseAccount")
   orderSheetsPaidTo OrderFinance[]       @relation("OrderPaidToAccount")

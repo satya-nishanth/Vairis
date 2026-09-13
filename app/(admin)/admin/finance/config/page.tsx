@@ -20,6 +20,7 @@ export default async function FinanceConfigPage() {
         name: a.name,
         email: a.email,
         type: a.type,
+        isVendorWallet: a.isVendorWallet,
         active: a.active,
         sortOrder: a.sortOrder,
       }))}
