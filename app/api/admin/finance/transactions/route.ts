@@ -120,13 +120,10 @@ export async function POST(req: NextRequest) {
     : await resolveContact(d.contactId, d.contactName ?? '')
   if ('error' in resolved) return NextResponse.json({ error: resolved.error }, { status: 400 })
 
-  const allocations = isTransfer ? [] : d.allocations
-  const prepared = await prepareAllocations(allocations, d.amount)
+  const prepared = await prepareAllocations(d.allocations ?? [], d.amount)
   if ('error' in prepared) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  const orderIds = isTransfer
-    ? []
-    : [...new Set([...d.orderIds, ...prepared.orderIds])]
+  const orderIds = [...new Set([...d.orderIds, ...prepared.orderIds])]
   const unlinkedOrderLabels = isTransfer
     ? []
     : [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
