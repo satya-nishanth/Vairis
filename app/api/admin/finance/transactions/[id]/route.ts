@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireFinanceApi } from '@/lib/finance-auth'
 import { financeActorFromSession, logFinanceAudit, txObjectLabel } from '@/lib/finance-audit'
-import { dateInputToIstDate } from '@/lib/finance'
+import { dateInputToIstDate, roundMoney } from '@/lib/finance'
 import { prepareAllocations } from '@/lib/finance-allocations'
 import {
   financeTransactionInclude,
