@@ -17,6 +17,7 @@ const lineSchema = z.object({
 const upsertSchema = z.object({
   orderId: z.string().min(1),
   paidToAccountId: z.string().min(1, 'Paid-to account is required'),
+  purchaseFromAccountId: z.string().min(1).nullable().optional(),
   lines: z.array(lineSchema).min(1, 'Add at least one line'),
   roundOffEnabled: z.boolean().optional(),
 })
@@ -24,6 +25,7 @@ const upsertSchema = z.object({
 const sheetInclude = {
   lines: true,
   paidToAccount: { select: { id: true, name: true } },
+  purchaseFromAccount: { select: { id: true, name: true } },
   order: { select: { contactName: true, createdAt: true, grandTotal: true } },
 } as const
 
@@ -31,6 +33,7 @@ function serialize(row: {
   id: string
   orderId: string
   paidToAccountId: string
+  purchaseFromAccountId: string | null
   roundOffEnabled: boolean
   lines: {
     kind: FinanceLineKind
@@ -39,6 +42,7 @@ function serialize(row: {
     sortOrder: number
   }[]
   paidToAccount?: { id: string; name: string }
+  purchaseFromAccount?: { id: string; name: string } | null
   order?: { contactName: string; grandTotal: { toString(): string } | number }
 }) {
   const lines = [...row.lines]
@@ -54,6 +58,8 @@ function serialize(row: {
     orderId: row.orderId,
     paidToAccountId: row.paidToAccountId,
     paidToAccountName: row.paidToAccount?.name ?? null,
+    purchaseFromAccountId: row.purchaseFromAccountId,
+    purchaseFromAccountName: row.purchaseFromAccount?.name ?? null,
     customerPaidTo: row.paidToAccountId,
     roundOffEnabled: row.roundOffEnabled,
     roundOff: totals.roundOff,

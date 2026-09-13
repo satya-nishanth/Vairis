@@ -24,7 +24,7 @@ export default async function FinanceTransactionsPage({
     prisma.financeAccount.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, type: true, isVendorWallet: true },
     }),
     prisma.financeContact.findMany({
       where: { active: true },

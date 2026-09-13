@@ -98,10 +98,18 @@ export function InvoicePrintView({
                   </span>
                 </div>
                 <div className="inv-doc__muted">
-                  {[line.itemCode || line.sku, line.metalLabel, line.huid ? `HUID ${line.huid}` : '']
+                  {[
+                    line.sku
+                      ? `SKU: ${line.sku}`
+                      : line.itemCode
+                        ? `SKU: ${line.itemCode}`
+                        : '',
+                    line.metalLabel,
+                    line.huid ? `HUID: ${line.huid}` : '',
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
-                  {line.certs ? <div>{line.certs}</div> : null}
+                  {line.certs ? <div>Certificate No: {line.certs}</div> : null}
                 </div>
                 <div className="inv-doc__break">
                   {line.stones.map((s, si) => (
@@ -197,6 +205,12 @@ export function InvoicePrintView({
               {totals.roundOff < 0 ? `(${formatINRGrouped(Math.abs(totals.roundOff))})` : formatINRGrouped(totals.roundOff)}
             </span>
           </div>
+          {totals.discount > 0 ? (
+            <div className="inv-doc__round">
+              <span>Discount</span>
+              <span>({formatINRGrouped(totals.discount)})</span>
+            </div>
+          ) : null}
           <div className="inv-doc__payable">
             <span>Total Payable</span>
             <strong>₹{formatINRGrouped(totals.grandTotal, 0)}</strong>

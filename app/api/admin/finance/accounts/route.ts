@@ -11,6 +11,7 @@ const schema = z.object({
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
   type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']),
   isVendorWallet: z.boolean().optional(),
+  vendorOutflowSource: z.enum(['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']).optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -21,6 +22,7 @@ function serialize(row: {
   email: string | null
   type: string
   isVendorWallet: boolean
+  vendorOutflowSource: string
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -32,6 +34,7 @@ function serialize(row: {
     email: row.email,
     type: row.type,
     isVendorWallet: row.isVendorWallet,
+    vendorOutflowSource: row.vendorOutflowSource,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -60,13 +63,15 @@ export async function POST(req: NextRequest) {
   const d = parsed.data
   const email = d.email?.trim() ? d.email.trim().toLowerCase() : null
   try {
+    const isVendor = d.isVendorWallet ?? d.type === 'VENDOR'
     const row = await prisma.financeAccount.create({
       data: {
         name: d.name,
         email,
         type: d.type,
         // Keep flag in sync with type so dashboard grouping stays consistent
-        isVendorWallet: d.isVendorWallet ?? d.type === 'VENDOR',
+        isVendorWallet: isVendor,
+        vendorOutflowSource: isVendor ? (d.vendorOutflowSource ?? 'ORDER_SHEETS') : 'ORDER_SHEETS',
         active: d.active ?? true,
         sortOrder: d.sortOrder ?? 0,
       },

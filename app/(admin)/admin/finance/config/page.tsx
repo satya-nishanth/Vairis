@@ -21,6 +21,7 @@ export default async function FinanceConfigPage() {
         email: a.email,
         type: a.type,
         isVendorWallet: a.isVendorWallet,
+        vendorOutflowSource: a.vendorOutflowSource,
         active: a.active,
         sortOrder: a.sortOrder,
       }))}

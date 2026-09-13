@@ -32,15 +32,27 @@ export default async function FinanceOrdersPage({
   const saveError = sp.error?.trim() || null
   const initialFilter = parseFilter(sp.filter)
 
-  const [accounts, recentOrders, searchHits] = await Promise.all([
+  const [accounts, allVendors, recentOrders, searchHits] = await Promise.all([
     prisma.financeAccount.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, type: true, isVendorWallet: true },
+    }),
+    prisma.financeAccount.findMany({
+      where: {
+        active: true,
+        OR: [{ type: 'VENDOR' }, { isVendorWallet: true }],
+      },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, type: true, isVendorWallet: true, vendorOutflowSource: true },
     }),
     listRecentFinanceOrders(LIST_ORDERS),
     searchQ ? searchFinanceOrders(searchQ) : Promise.resolve([]),
   ])
+
+  let vendorAccounts = allVendors
+    .filter((v) => v.vendorOutflowSource === 'ORDER_SHEETS' || v.vendorOutflowSource === 'BOTH')
+    .map(({ id, name, type, isVendorWallet }) => ({ id, name, type, isVendorWallet }))
 
   const companyBank = accounts.find((a) => a.name.toLowerCase().includes('vairis')) ?? accounts[0]
   const fallbackPaidTo = companyBank?.id ?? accounts[0]?.id ?? ''
@@ -61,6 +73,7 @@ export default async function FinanceOrdersPage({
           finance: {
             select: {
               paidToAccountId: true,
+              purchaseFromAccountId: true,
               roundOffEnabled: true,
               lines: {
                 select: { id: true, kind: true, costPrice: true, sellingPrice: true, sortOrder: true },
@@ -94,6 +107,7 @@ export default async function FinanceOrdersPage({
           itemsLabel,
         },
         paidToAccountId: order.finance?.paidToAccountId || fallbackPaidTo,
+        purchaseFromAccountId: order.finance?.purchaseFromAccountId ?? null,
         lines: (order.finance?.lines ?? []).map((l) => ({
           id: l.id,
           kind: l.kind,
@@ -103,6 +117,23 @@ export default async function FinanceOrdersPage({
         quotes,
         hasSheet: Boolean(order.finance),
         roundOffEnabled: Boolean(order.finance?.roundOffEnabled),
+      }
+
+      // Keep a saved transactions-only vendor visible on edit so the select isn't blank.
+      const savedVendorId = boot.purchaseFromAccountId
+      if (savedVendorId && !vendorAccounts.some((v) => v.id === savedVendorId)) {
+        const orphan = allVendors.find((v) => v.id === savedVendorId)
+        if (orphan) {
+          vendorAccounts = [
+            ...vendorAccounts,
+            {
+              id: orphan.id,
+              name: `${orphan.name} (txns only)`,
+              type: orphan.type,
+              isVendorWallet: orphan.isVendorWallet,
+            },
+          ]
+        }
       }
     }
   }
@@ -118,6 +149,7 @@ export default async function FinanceOrdersPage({
       initialSaveError={saveError}
       initialFilter={initialFilter}
       accounts={accounts}
+      vendorAccounts={vendorAccounts}
       defaultPaidToAccountId={companyBank?.id ?? null}
       recentOrders={recentOrders}
     />

@@ -30,6 +30,55 @@ export const ACCOUNT_TYPE_LABEL: Record<FinanceAccountType, string> = {
   OTHER: 'Other',
 }
 
+export type VendorOutflowSource = 'ORDER_SHEETS' | 'TRANSACTIONS' | 'BOTH'
+
+export const VENDOR_OUTFLOW_SOURCE_LABEL: Record<VendorOutflowSource, string> = {
+  ORDER_SHEETS: 'Order sheets (purchase price)',
+  TRANSACTIONS: 'Transactions (cashbook outflows)',
+  BOTH: 'Both order sheets and transactions',
+}
+
+export const VENDOR_OUTFLOW_SOURCE_TIP =
+  'Order sheets: outflow is purchase (CP) on order sheets attributed to this vendor. ' +
+  'Transactions: outflow is OUTFLOW entries in the cashbook paid through this account. ' +
+  'Both: sums order-sheet CP and cashbook outflows. ' +
+  'Vendors set to transactions only do not appear in the order-sheet “Purchase from” list.'
+
+/** Vendors that can be selected as purchase-from on order sheets. */
+export function vendorAppearsOnOrderSheets(source: VendorOutflowSource | null | undefined) {
+  const s = source ?? 'ORDER_SHEETS'
+  return s === 'ORDER_SHEETS' || s === 'BOTH'
+}
+
+/** Dashboard tip for a vendor wallet Inflow cell (always cashbook). */
+export function vendorWalletInflowTip(_source?: VendorOutflowSource | null) {
+  return (
+    'Inflow: cashbook INFLOW transactions and transfers into this vendor wallet ' +
+    '(paid through / transfer To).'
+  )
+}
+
+/** Dashboard tip for a vendor wallet Outflow cell — follows account outflow setting. */
+export function vendorWalletOutflowTip(source?: VendorOutflowSource | null) {
+  const s = source ?? 'ORDER_SHEETS'
+  if (s === 'TRANSACTIONS') {
+    return (
+      'Outflow: cashbook OUTFLOW transactions and transfers from this wallet only. ' +
+      'Order-sheet purchase price is not included (Transactions).'
+    )
+  }
+  if (s === 'BOTH') {
+    return (
+      'Outflow: order-sheet purchase (CP) attributed to this vendor plus cashbook OUTFLOW / ' +
+      'transfers from this wallet (Both).'
+    )
+  }
+  return (
+    'Outflow: order-sheet purchase (CP) attributed to this vendor only. ' +
+    'Cashbook OUTFLOWs on this wallet are not included (Order sheets).'
+  )
+}
+
 /** Category config — inflow/outflow only (TRANSFER is for transactions, not categories). */
 export type FinanceCategoryDirection = 'INFLOW' | 'OUTFLOW'
 
@@ -254,12 +303,15 @@ export type OrderSheetRow = {
   cost: number
   sellingPrice: number
   paidToAccountId: string
+  purchaseFromAccountId?: string | null
 }
 
 export type AccountRef = {
   id: string
   name: string
   type: FinanceAccountType
+  isVendorWallet?: boolean
+  vendorOutflowSource?: VendorOutflowSource | null
 }
 
 export type AccountTotals = {
@@ -476,15 +528,53 @@ export function findSheetInflowMismatches(
   return out
 }
 
+/** Order-sheet purchase attributed to a vendor wallet (dashboard By account outflow). */
+export type SheetPurchaseOutflow = {
+  date: Date
+  accountId: string
+  amount: number
+}
+
+export function buildSheetPurchaseOutflows(
+  sheets: Pick<OrderSheetRow, 'orderCreatedAt' | 'cost' | 'purchaseFromAccountId'>[],
+): SheetPurchaseOutflow[] {
+  const out: SheetPurchaseOutflow[] = []
+  for (const s of sheets) {
+    const accountId = s.purchaseFromAccountId?.trim()
+    if (!accountId || s.cost <= 0) continue
+    out.push({ date: s.orderCreatedAt, accountId, amount: s.cost })
+  }
+  return out
+}
+
+function isVendorAccountRef(account: AccountRef) {
+  return account.type === 'VENDOR' || Boolean(account.isVendorWallet)
+}
+
+function vendorOutflowFromSheets(account: AccountRef) {
+  if (!isVendorAccountRef(account)) return false
+  const s = account.vendorOutflowSource ?? 'ORDER_SHEETS'
+  return s === 'ORDER_SHEETS' || s === 'BOTH'
+}
+
+function vendorOutflowFromTxns(account: AccountRef) {
+  if (!isVendorAccountRef(account)) return true
+  const s = account.vendorOutflowSource ?? 'ORDER_SHEETS'
+  return s === 'TRANSACTIONS' || s === 'BOTH'
+}
+
 /** Per-account inflow / outflow / net from ledger transactions (by wallet used).
- * Transfers: From (paidThrough) counts as outflow; To (transferTo) counts as inflow. */
+ * Transfers: From (paidThrough) counts as outflow; To (transferTo) counts as inflow.
+ * Vendor wallets: outflow from order-sheet CP, cashbook OUTFLOWs, or both — per vendorOutflowSource. */
 export function summarizeTransactionFlows(
   transactions: TxFlowRow[],
   accounts: AccountRef[],
   range?: { start: Date; end: Date },
+  sheetPurchaseOutflows: SheetPurchaseOutflow[] = [],
 ): AccountFlowTotals[] {
   const inRange = (d: Date) => !range || (d >= range.start && d < range.end)
   const txs = transactions.filter((t) => inRange(t.date))
+  const sheetOuts = sheetPurchaseOutflows.filter((s) => s.amount > 0 && inRange(s.date))
 
   return accounts.map((account) => {
     const inflow = roundMoney(
@@ -496,15 +586,19 @@ export function summarizeTransactionFlows(
         )
         .reduce((s, t) => s + t.amount, 0),
     )
-    const outflow = roundMoney(
-      txs
-        .filter(
-          (t) =>
-            (t.direction === 'OUTFLOW' && t.paidThroughAccountId === account.id) ||
-            (t.direction === 'TRANSFER' && t.paidThroughAccountId === account.id),
-        )
-        .reduce((s, t) => s + t.amount, 0),
-    )
+    const txnOutflow = txs
+      .filter(
+        (t) =>
+          (t.direction === 'OUTFLOW' && t.paidThroughAccountId === account.id) ||
+          (t.direction === 'TRANSFER' && t.paidThroughAccountId === account.id),
+      )
+      .reduce((s, t) => s + t.amount, 0)
+    const sheetOutflow = sheetOuts
+      .filter((s) => s.accountId === account.id)
+      .reduce((s, r) => s + r.amount, 0)
+    const useSheets = vendorOutflowFromSheets(account)
+    const useTxns = vendorOutflowFromTxns(account)
+    const outflow = roundMoney((useTxns ? txnOutflow : 0) + (useSheets ? sheetOutflow : 0))
     return {
       accountId: account.id,
       accountName: account.name,

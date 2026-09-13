@@ -16,6 +16,7 @@ import type { FinanceOrderHit } from '@/lib/finance-order-search'
 import { SETTLEMENT_LABEL, type SettlementStatus } from '@/lib/finance-settlement'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import type { FinanceLineKind, OrderStatus } from '@prisma/client'
+import { FinanceAccountSelectOptions, type FinanceAccountOpt } from '@/components/admin/FinanceAccountSelectOptions'
 
 type Line = {
   id?: string
@@ -30,8 +31,6 @@ function statusLabel(status: string): string {
   return ORDER_STATUS_META[status as OrderStatus]?.label ?? status
 }
 
-type AccountOpt = { id: string; name: string }
-
 type Amounts = Record<FinanceLineKind, { costPrice: string; sellingPrice: string }>
 
 type Editor = {
@@ -41,6 +40,7 @@ type Editor = {
   orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
   amounts: Amounts
   paidToAccountId: string
+  purchaseFromAccountId: string
   hasSheet: boolean
   roundOffEnabled: boolean
 }
@@ -51,6 +51,7 @@ export type OrderSheetBoot = {
   orderLabel: string
   orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
   paidToAccountId: string
+  purchaseFromAccountId: string | null
   lines: Line[]
   quotes: OrderItemQuote[]
   hasSheet?: boolean
@@ -215,6 +216,7 @@ function useIsNarrowOrderSheet() {
 
 export function OrderFinanceManager({
   accounts,
+  vendorAccounts,
   defaultPaidToAccountId,
   recentOrders = [],
   selectedOrderId = null,
@@ -225,7 +227,8 @@ export function OrderFinanceManager({
   initialSaveError = null,
   initialFilter = 'all',
 }: {
-  accounts: AccountOpt[]
+  accounts: FinanceAccountOpt[]
+  vendorAccounts: FinanceAccountOpt[]
   defaultPaidToAccountId: string | null
   recentOrders?: Hit[]
   selectedOrderId?: string | null
@@ -247,6 +250,10 @@ export function OrderFinanceManager({
     return n === 0 ? 'No matching orders found' : `${n} result${n === 1 ? '' : 's'}`
   })
   const [filter, setFilter] = useState<SheetFilter>(initialFilter)
+  const [customerFilter, setCustomerFilter] = useState('')
+  const [paymentFilter, setPaymentFilter] = useState<'all' | SettlementStatus>('all')
+  const [vendorFilter, setVendorFilter] = useState('all')
+  const [paidToFilter, setPaidToFilter] = useState('all')
   const [editor, setEditor] = useState<Editor>(() =>
     boot
       ? {
@@ -256,6 +263,7 @@ export function OrderFinanceManager({
           orderMeta: boot.orderMeta,
           amounts: amountsFromBoot(boot),
           paidToAccountId: boot.paidToAccountId || fallbackPaidTo,
+          purchaseFromAccountId: boot.purchaseFromAccountId ?? vendorAccounts[0]?.id ?? '',
           hasSheet: boot.hasSheet ?? boot.lines.length > 0,
           roundOffEnabled: Boolean(boot.roundOffEnabled),
         }
@@ -266,6 +274,7 @@ export function OrderFinanceManager({
           orderMeta: {},
           amounts: emptyAmounts(),
           paidToAccountId: fallbackPaidTo,
+          purchaseFromAccountId: vendorAccounts[0]?.id ?? '',
           hasSheet: false,
           roundOffEnabled: false,
         },
@@ -284,11 +293,55 @@ export function OrderFinanceManager({
   const parsedLines = parseAmounts(editor.amounts)
   const totals = sheetTotals(parsedLines, { roundOffEnabled: editor.roundOffEnabled })
   const baseList = searching && (hits.length > 0 || Boolean(initialSearchQuery)) ? hits : recentOrders
-  const listOrders = useMemo(() => {
+  const statusFiltered = useMemo(() => {
     if (filter === 'incomplete') return baseList.filter((h) => !h.sheetComplete)
     if (filter === 'complete') return baseList.filter((h) => h.sheetComplete)
     return baseList
   }, [baseList, filter])
+
+  const vendorOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const h of statusFiltered) {
+      if (h.purchaseFromAccountName) names.add(h.purchaseFromAccountName)
+    }
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [statusFiltered])
+
+  const paidToOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const h of statusFiltered) {
+      if (h.paidToAccountName) names.add(h.paidToAccountName)
+    }
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [statusFiltered])
+
+  const columnFiltersActive =
+    customerFilter.trim() !== '' ||
+    paymentFilter !== 'all' ||
+    vendorFilter !== 'all' ||
+    paidToFilter !== 'all'
+
+  const listOrders = useMemo(() => {
+    const q = customerFilter.trim().toLowerCase()
+    return statusFiltered.filter((h) => {
+      if (q) {
+        const hay = `${h.contactName} ${h.contactPhone}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      if (paymentFilter !== 'all' && h.paymentStatus !== paymentFilter) return false
+      if (vendorFilter === '__none__') {
+        if (h.purchaseFromAccountName) return false
+      } else if (vendorFilter !== 'all' && h.purchaseFromAccountName !== vendorFilter) {
+        return false
+      }
+      if (paidToFilter === '__none__') {
+        if (h.paidToAccountName) return false
+      } else if (paidToFilter !== 'all' && h.paidToAccountName !== paidToFilter) {
+        return false
+      }
+      return true
+    })
+  }, [statusFiltered, customerFilter, paymentFilter, vendorFilter, paidToFilter])
 
   const listTotals = useMemo(() => {
     let selling = 0
@@ -478,6 +531,73 @@ export function OrderFinanceManager({
     )
   }
 
+  function clearColumnFilters() {
+    setCustomerFilter('')
+    setPaymentFilter('all')
+    setVendorFilter('all')
+    setPaidToFilter('all')
+  }
+
+  function renderColumnFiltersMobile() {
+    return (
+      <div className="order-sheet-col-filters order-sheet-mobile-only">
+        <input
+          className="order-sheet-col-filters__input"
+          value={customerFilter}
+          onChange={(e) => setCustomerFilter(e.target.value)}
+          placeholder="Customer"
+          aria-label="Filter by customer"
+        />
+        <select
+          className="order-sheet-col-filters__select"
+          value={paymentFilter}
+          onChange={(e) => setPaymentFilter(e.target.value as 'all' | SettlementStatus)}
+          aria-label="Filter by payment status"
+        >
+          <option value="all">Payment: all</option>
+          {(Object.keys(SETTLEMENT_LABEL) as SettlementStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {SETTLEMENT_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        <select
+          className="order-sheet-col-filters__select"
+          value={vendorFilter}
+          onChange={(e) => setVendorFilter(e.target.value)}
+          aria-label="Filter by vendor"
+        >
+          <option value="all">Vendor: all</option>
+          <option value="__none__">No vendor</option>
+          {vendorOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          className="order-sheet-col-filters__select"
+          value={paidToFilter}
+          onChange={(e) => setPaidToFilter(e.target.value)}
+          aria-label="Filter by paid to"
+        >
+          <option value="all">Paid to: all</option>
+          <option value="__none__">No account</option>
+          {paidToOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        {columnFiltersActive ? (
+          <button type="button" className="order-sheet-btn-ghost" onClick={clearColumnFilters}>
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
   function renderListDesk() {
     return (
       <div className="order-sheet-hits order-sheet-desk">
@@ -492,6 +612,7 @@ export function OrderFinanceManager({
               <col className="order-sheet-hits__col-pct" />
               <col className="order-sheet-hits__col-num" />
               <col className="order-sheet-hits__col-payment" />
+              <col className="order-sheet-hits__col-vendor" />
               <col className="order-sheet-hits__col-paidto" />
               <col className="order-sheet-hits__col-id" />
               <col className="order-sheet-hits__col-action" />
@@ -516,14 +637,88 @@ export function OrderFinanceManager({
                   Collected
                 </th>
                 <th scope="col">Payment status</th>
+                <th scope="col">Vendor</th>
                 <th scope="col">Paid to</th>
                 <th scope="col">Order ID</th>
                 <th scope="col" />
+              </tr>
+              <tr className="order-sheet-hits__filters">
+                <th>
+                  <input
+                    className="order-sheet-hits__filter-input"
+                    value={customerFilter}
+                    onChange={(e) => setCustomerFilter(e.target.value)}
+                    placeholder="Customer…"
+                    aria-label="Filter by customer"
+                  />
+                </th>
+                <th />
+                <th colSpan={5} />
+                <th>
+                  <select
+                    className="order-sheet-hits__filter-select"
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value as 'all' | SettlementStatus)}
+                    aria-label="Filter by payment status"
+                  >
+                    <option value="all">All</option>
+                    {(Object.keys(SETTLEMENT_LABEL) as SettlementStatus[]).map((s) => (
+                      <option key={s} value={s}>
+                        {SETTLEMENT_LABEL[s]}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th>
+                  <select
+                    className="order-sheet-hits__filter-select"
+                    value={vendorFilter}
+                    onChange={(e) => setVendorFilter(e.target.value)}
+                    aria-label="Filter by vendor"
+                  >
+                    <option value="all">All</option>
+                    <option value="__none__">None</option>
+                    {vendorOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th>
+                  <select
+                    className="order-sheet-hits__filter-select"
+                    value={paidToFilter}
+                    onChange={(e) => setPaidToFilter(e.target.value)}
+                    aria-label="Filter by paid to"
+                  >
+                    <option value="all">All</option>
+                    <option value="__none__">None</option>
+                    {paidToOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+                <th>
+                  {columnFiltersActive ? (
+                    <button
+                      type="button"
+                      className="order-sheet-hits__filter-clear"
+                      onClick={clearColumnFilters}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </th>
+                <th />
               </tr>
               {listOrders.length > 0 ? (
                 <tr className="order-sheet-hits__totals">
                   <th scope="row" colSpan={2}>
                     Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+                    {columnFiltersActive ? ' (filtered)' : ''}
                   </th>
                   <th className="order-sheet-hits__num">{inr(listTotals.selling)}</th>
                   <th className="order-sheet-hits__num">{inr(listTotals.purchasing)}</th>
@@ -534,7 +729,7 @@ export function OrderFinanceManager({
                     {pctOrDash(listTotals.profitPct)}
                   </th>
                   <th className="order-sheet-hits__num">{inr(listTotals.collected)}</th>
-                  <th colSpan={3} />
+                  <th colSpan={4} />
                   <th />
                 </tr>
               ) : null}
@@ -542,8 +737,12 @@ export function OrderFinanceManager({
             <tbody>
               {listOrders.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
-                    {searching ? 'No matching orders' : 'No orders in this filter'}
+                  <td colSpan={12} style={{ padding: 16, color: MUTED, textAlign: 'center' }}>
+                    {searching
+                      ? 'No matching orders'
+                      : columnFiltersActive
+                        ? 'No orders match these filters'
+                        : 'No orders in this filter'}
                   </td>
                 </tr>
               )}
@@ -584,6 +783,7 @@ export function OrderFinanceManager({
                       {SETTLEMENT_LABEL[h.paymentStatus]}
                     </span>
                   </td>
+                  <td>{h.purchaseFromAccountName || '—'}</td>
                   <td>{h.paidToAccountName || '—'}</td>
                   <td>
                     <Link
@@ -615,6 +815,7 @@ export function OrderFinanceManager({
           <span>
             {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
             {searching ? '' : ' shown'}
+            {columnFiltersActive ? ' · filtered' : ''}
           </span>
           <Link href="/admin/orders/new">+ Create new order</Link>
         </div>
@@ -625,9 +826,14 @@ export function OrderFinanceManager({
   function renderListMobile() {
     return (
       <div className="order-sheet-mobile-list order-sheet-mobile-stack">
+        {renderColumnFiltersMobile()}
         {listOrders.length === 0 && (
           <p style={{ fontSize: '0.8125rem', color: MUTED, margin: '8px 0' }}>
-            {searching ? 'No matching orders' : 'No orders in this filter'}
+            {searching
+              ? 'No matching orders'
+              : columnFiltersActive
+                ? 'No orders match these filters'
+                : 'No orders in this filter'}
           </p>
         )}
         {listOrders.map((h) => (
@@ -667,6 +873,10 @@ export function OrderFinanceManager({
               <div>
                 <span>Selling</span>
                 <strong>{moneyOrDash(h.selling)}</strong>
+              </div>
+              <div>
+                <span>Vendor</span>
+                <strong>{h.purchaseFromAccountName || '—'}</strong>
               </div>
               <div>
                 <span>Paid to</span>
@@ -987,13 +1197,54 @@ export function OrderFinanceManager({
                   disabled={locked}
                 >
                   {accounts.length === 0 && <option value="">No accounts configured</option>}
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
+                  <FinanceAccountSelectOptions accounts={accounts} />
                 </select>
               </label>
+
+              {totals.cost > 0 && (
+                <label className="order-sheet-field" style={{ marginTop: 14 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    Purchase from (vendor)
+                    <span className="finance-dash__kpi-tip">
+                      <button
+                        type="button"
+                        className="finance-dash__kpi-info"
+                        aria-label="About purchase from vendor"
+                      >
+                        i
+                      </button>
+                      <span className="finance-dash__kpi-tip-text" role="tooltip">
+                        Which vendor wallet this purchase (CP) is attributed to. Only vendors whose
+                        dashboard outflow includes order sheets appear here. Counts as outflow when
+                        that vendor’s source is order sheets or both.
+                      </span>
+                    </span>
+                  </span>
+                  <select
+                    style={{
+                      ...control,
+                      fontSize: '16px',
+                      ...(locked ? { background: '#f3f4f6', color: '#9ca3af' } : null),
+                    }}
+                    name="purchaseFromAccountId"
+                    value={editor.purchaseFromAccountId}
+                    onChange={(e) =>
+                      setEditor((prev) => ({ ...prev, purchaseFromAccountId: e.target.value }))
+                    }
+                    disabled={locked}
+                    required
+                  >
+                    {vendorAccounts.length === 0 && (
+                      <option value="">Add a vendor account in Config first</option>
+                    )}
+                    {vendorAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               {renderSaveBar()}
             </form>
@@ -1082,6 +1333,7 @@ export function OrderFinanceManager({
               <div className="order-sheet-list-totals order-sheet-mobile-only">
                 <div className="order-sheet-list-totals__title">
                   Totals · {listOrders.length} order{listOrders.length === 1 ? '' : 's'}
+                  {columnFiltersActive ? ' (filtered)' : ''}
                 </div>
                 <div className="order-sheet-list-card__money">
                   <div>

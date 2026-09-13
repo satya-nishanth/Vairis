@@ -363,6 +363,17 @@ export function InvoiceComposer({
           })}
         </div>
         <h3 style={{ marginTop: 16, fontSize: '0.875rem' }}>Totals</h3>
+        <Field
+          label="Discount (₹, after GST)"
+          type="number"
+          value={payload.discount ?? ''}
+          onChange={(v) =>
+            setPayload((p) => ({
+              ...p,
+              discount: v.trim() === '' ? 0 : Math.max(0, Number(v) || 0),
+            }))
+          }
+        />
         <p>Taxable: ₹{formatINRGrouped(totals.taxable)}</p>
         {totals.intraState ? (
           <p>
@@ -375,9 +386,17 @@ export function InvoiceComposer({
           </p>
         )}
         <p>
-          Round off {totals.roundOff < 0 ? `(${formatINRGrouped(Math.abs(totals.roundOff))})` : formatINRGrouped(totals.roundOff)}
+          Round off{' '}
+          {totals.roundOff < 0
+            ? `(${formatINRGrouped(Math.abs(totals.roundOff))})`
+            : formatINRGrouped(totals.roundOff)}
         </p>
-        <p style={{ fontWeight: 600, fontSize: '1.125rem' }}>Payable ₹{formatINRGrouped(totals.grandTotal, 0)}</p>
+        {totals.discount > 0 ? (
+          <p>Discount ({formatINRGrouped(totals.discount)})</p>
+        ) : null}
+        <p style={{ fontWeight: 600, fontSize: '1.125rem' }}>
+          Payable ₹{formatINRGrouped(totals.grandTotal, 0)}
+        </p>
         <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>{totals.amountInWords}</p>
       </section>
     </div>

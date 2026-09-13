@@ -3,6 +3,7 @@ import {
   roundMoney,
   shortFinanceId,
   summarizeDashboardKpis,
+  buildSheetPurchaseOutflows,
   summarizeTransactionFlows,
   type AccountFlowTotals,
   type AccountRef,
@@ -482,7 +483,12 @@ export function buildCompanyAudit(input: {
     input.range,
     input.kpiCategoryConfig,
   )
-  const cashByAccount = summarizeTransactionFlows(input.txFlow, input.accounts, input.range)
+  const cashByAccount = summarizeTransactionFlows(
+    input.txFlow,
+    input.accounts,
+    input.range,
+    buildSheetPurchaseOutflows(input.sheets),
+  )
   const cashOnHand = roundMoney(cashByAccount.reduce((s, a) => s + a.net, 0))
   const stock = summarizeInventoryStock(input.stockRows, input.liveByVariantId)
 
