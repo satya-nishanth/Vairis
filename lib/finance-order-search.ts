@@ -27,8 +27,10 @@ const hitSelect = {
   finance: {
     select: {
       paidToAccountId: true,
+      purchaseFromAccountId: true,
       roundOffEnabled: true,
       paidToAccount: { select: { name: true } },
+      purchaseFromAccount: { select: { name: true } },
       lines: {
         select: { id: true, kind: true, costPrice: true, sellingPrice: true },
         orderBy: { sortOrder: 'asc' as const },
@@ -70,6 +72,7 @@ export type FinanceOrderHit = {
   roundOffEnabled: boolean
   roundOff: number
   paidToAccountName: string | null
+  purchaseFromAccountName: string | null
   /** Allocated inflows toward this order. */
   collected: number
   expected: number
@@ -81,6 +84,7 @@ export type FinanceOrderHit = {
   orderKind: 'standalone' | 'parent' | 'child'
   sheet: {
     paidToAccountId: string
+    purchaseFromAccountId: string | null
     lines: {
       id: string
       kind: string
@@ -102,8 +106,10 @@ export function mapFinanceOrderHit(o: {
   _count: { items: number; children: number }
   finance: {
     paidToAccountId: string
+    purchaseFromAccountId?: string | null
     roundOffEnabled?: boolean
     paidToAccount: { name: string }
+    purchaseFromAccount?: { name: string } | null
     lines: {
       id: string
       kind: string
@@ -159,6 +165,7 @@ export function mapFinanceOrderHit(o: {
     roundOffEnabled,
     roundOff: totals?.roundOff ?? 0,
     paidToAccountName: o.finance?.paidToAccount.name ?? null,
+    purchaseFromAccountName: o.finance?.purchaseFromAccount?.name ?? null,
     collected: payment.collected,
     expected: payment.expected,
     balance: payment.balance,
@@ -169,6 +176,7 @@ export function mapFinanceOrderHit(o: {
     sheet: o.finance
       ? {
           paidToAccountId: o.finance.paidToAccountId,
+          purchaseFromAccountId: o.finance.purchaseFromAccountId ?? null,
           lines: lines!,
         }
       : null,

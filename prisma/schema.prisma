@@ -678,6 +678,13 @@ enum FinanceAccountType {
   OTHER
 }
 
+/// How vendor wallet outflow is computed on the finance dashboard.
+enum VendorOutflowSource {
+  ORDER_SHEETS
+  TRANSACTIONS
+  BOTH
+}
+
 enum FinanceContactType {
   CUSTOMER
   VENDOR
@@ -698,6 +705,8 @@ model FinanceAccount {
   type           FinanceAccountType
   /// Grouped under Vendor wallets on dashboard By account (and Config list).
   isVendorWallet Boolean            @default(false)
+  /// Vendor only: outflow from order-sheet CP vs cashbook OUTFLOW txns (dashboard By account).
+  vendorOutflowSource VendorOutflowSource @default(ORDER_SHEETS)
   active         Boolean            @default(true)
   sortOrder      Int                @default(0)
   createdAt      DateTime           @default(now())
@@ -705,6 +714,7 @@ model FinanceAccount {
 
   expensesAsAccount GeneralExpense[]     @relation("ExpenseAccount")
   orderSheetsPaidTo OrderFinance[]       @relation("OrderPaidToAccount")
+  orderSheetsPurchaseFrom OrderFinance[] @relation("OrderPurchaseFromAccount")
   transactionsHandled FinanceTransaction[] @relation("TxHandledBy")
   transactionsPaidThrough FinanceTransaction[] @relation("TxPaidThrough")
   transactionsTransferTo FinanceTransaction[] @relation("TxTransferTo")
@@ -770,20 +780,24 @@ model GeneralExpense {
 
 /// One CP/SP sheet per store Order. Totals = sum of line items.
 /// paidToAccount = where customer cash landed (not profit).
+/// purchaseFromAccount = vendor wallet the purchase (CP) is attributed to (dashboard outflow).
 model OrderFinance {
-  id             String             @id @default(cuid())
-  orderId        String             @unique
-  order          Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  paidToAccountId String
-  paidToAccount  FinanceAccount     @relation("OrderPaidToAccount", fields: [paidToAccountId], references: [id])
+  id                    String             @id @default(cuid())
+  orderId               String             @unique
+  order                 Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paidToAccountId       String
+  paidToAccount         FinanceAccount     @relation("OrderPaidToAccount", fields: [paidToAccountId], references: [id])
+  purchaseFromAccountId String?
+  purchaseFromAccount   FinanceAccount?    @relation("OrderPurchaseFromAccount", fields: [purchaseFromAccountId], references: [id])
   /// When true, selling total is rounded to the nearest rupee (invoice-style round off).
-  roundOffEnabled Boolean           @default(false)
-  lines          OrderFinanceLine[]
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  roundOffEnabled       Boolean            @default(false)
+  lines                 OrderFinanceLine[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   @@index([createdAt])
   @@index([paidToAccountId])
+  @@index([purchaseFromAccountId])
 }
 
 enum FinanceLineKind {

@@ -243,6 +243,81 @@ describe('summarizeTransactionFlows', () => {
       net: -500,
     })
   })
+
+  it('vendor ORDER_SHEETS uses sheet CP outflow, not cashbook outflows', () => {
+    const vendorAccounts = [
+      {
+        id: 'fa_vendor',
+        name: 'Gold supplier',
+        type: 'VENDOR' as const,
+        vendorOutflowSource: 'ORDER_SHEETS' as const,
+      },
+    ]
+    const rows = summarizeTransactionFlows(
+      [
+        {
+          date: new Date('2026-08-11T00:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 9000,
+          paidThroughAccountId: 'fa_vendor',
+        },
+      ],
+      vendorAccounts,
+      undefined,
+      [{ date: new Date('2026-08-10T00:00:00+05:30'), accountId: 'fa_vendor', amount: 12000 }],
+    )
+    expect(rows[0]).toMatchObject({ inflow: 0, outflow: 12000, net: -12000 })
+  })
+
+  it('vendor TRANSACTIONS uses cashbook outflows, not sheet CP', () => {
+    const vendorAccounts = [
+      {
+        id: 'fa_vendor',
+        name: 'Gold supplier',
+        type: 'VENDOR' as const,
+        vendorOutflowSource: 'TRANSACTIONS' as const,
+      },
+    ]
+    const rows = summarizeTransactionFlows(
+      [
+        {
+          date: new Date('2026-08-11T00:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 9000,
+          paidThroughAccountId: 'fa_vendor',
+        },
+      ],
+      vendorAccounts,
+      undefined,
+      [{ date: new Date('2026-08-10T00:00:00+05:30'), accountId: 'fa_vendor', amount: 12000 }],
+    )
+    expect(rows[0]).toMatchObject({ inflow: 0, outflow: 9000, net: -9000 })
+  })
+
+  it('vendor BOTH sums sheet CP and cashbook outflows', () => {
+    const vendorAccounts = [
+      {
+        id: 'fa_vendor',
+        name: 'Gold supplier',
+        type: 'VENDOR' as const,
+        vendorOutflowSource: 'BOTH' as const,
+      },
+    ]
+    const rows = summarizeTransactionFlows(
+      [
+        {
+          date: new Date('2026-08-11T00:00:00+05:30'),
+          direction: 'OUTFLOW',
+          amount: 9000,
+          paidThroughAccountId: 'fa_vendor',
+        },
+      ],
+      vendorAccounts,
+      undefined,
+      [{ date: new Date('2026-08-10T00:00:00+05:30'), accountId: 'fa_vendor', amount: 12000 }],
+    )
+    expect(rows[0]).toMatchObject({ inflow: 0, outflow: 21000, net: -21000 })
+  })
 })
 
 describe('summarizeDashboardKpis', () => {

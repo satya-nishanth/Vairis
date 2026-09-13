@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ACCOUNT_TYPE_LABEL } from '@/lib/finance'
+import {
+  ACCOUNT_TYPE_LABEL,
+  VENDOR_OUTFLOW_SOURCE_LABEL,
+  VENDOR_OUTFLOW_SOURCE_TIP,
+  type VendorOutflowSource,
+} from '@/lib/finance'
 import type { FinanceAccountType } from '@prisma/client'
 import { FinanceCollapsible } from '@/components/admin/FinanceCollapsible'
 
@@ -12,6 +17,7 @@ export type AccountRow = {
   email: string | null
   type: FinanceAccountType
   isVendorWallet: boolean
+  vendorOutflowSource: VendorOutflowSource
   active: boolean
   sortOrder: number
 }
@@ -24,17 +30,37 @@ const input: React.CSSProperties = {
 }
 
 const TYPES: FinanceAccountType[] = ['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']
+const OUTFLOW_SOURCES: VendorOutflowSource[] = ['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']
 
 function isVendorAccount(row: Pick<AccountRow, 'type' | 'isVendorWallet'>) {
   return row.type === 'VENDOR' || row.isVendorWallet
 }
 
+function OutflowSourceTip() {
+  return (
+    <span className="finance-dash__kpi-tip" style={{ position: 'relative', top: 0, right: 0 }}>
+      <button
+        type="button"
+        className="finance-dash__kpi-info"
+        aria-label="About dashboard outflow source"
+      >
+        i
+      </button>
+      <span className="finance-dash__kpi-tip-text" role="tooltip">
+        {VENDOR_OUTFLOW_SOURCE_TIP}
+      </span>
+    </span>
+  )
+}
+
 function AccountTable({
   rows,
+  showOutflowSource,
   onEdit,
   onDeactivate,
 }: {
   rows: AccountRow[]
+  showOutflowSource?: boolean
   onEdit: (row: AccountRow) => void
   onDeactivate: (id: string) => void
 }) {
@@ -48,6 +74,7 @@ function AccountTable({
           <th style={{ padding: 8 }}>Account</th>
           <th style={{ padding: 8 }}>Email</th>
           <th style={{ padding: 8 }}>Type</th>
+          {showOutflowSource && <th style={{ padding: 8 }}>Dashboard outflow</th>}
           <th style={{ padding: 8 }}>Status</th>
           <th style={{ padding: 8 }} />
         </tr>
@@ -58,6 +85,9 @@ function AccountTable({
             <td style={{ padding: 8 }}>{r.name}</td>
             <td style={{ padding: 8 }}>{r.email ?? '—'}</td>
             <td style={{ padding: 8 }}>{ACCOUNT_TYPE_LABEL[r.type]}</td>
+            {showOutflowSource && (
+              <td style={{ padding: 8 }}>{VENDOR_OUTFLOW_SOURCE_LABEL[r.vendorOutflowSource]}</td>
+            )}
             <td style={{ padding: 8 }}>{r.active ? 'Active' : 'Inactive'}</td>
             <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
               <button type="button" className="admin-btn" onClick={() => onEdit(r)}>
@@ -84,12 +114,14 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
   const [email, setEmail] = useState('')
   const [type, setType] = useState<FinanceAccountType>('PARTNER')
   const [isVendorWallet, setIsVendorWallet] = useState(false)
+  const [vendorOutflowSource, setVendorOutflowSource] = useState<VendorOutflowSource>('ORDER_SHEETS')
   const [active, setActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const companyAccounts = useMemo(() => rows.filter((r) => !isVendorAccount(r)), [rows])
   const vendorWallets = useMemo(() => rows.filter((r) => isVendorAccount(r)), [rows])
+  const showVendorFields = type === 'VENDOR' || isVendorWallet
 
   function load(row: AccountRow) {
     setEditingId(row.id)
@@ -97,6 +129,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setEmail(row.email ?? '')
     setType(row.type)
     setIsVendorWallet(row.type === 'VENDOR' || row.isVendorWallet)
+    setVendorOutflowSource(row.vendorOutflowSource)
     setActive(row.active)
     setError('')
   }
@@ -107,6 +140,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setEmail('')
     setType('PARTNER')
     setIsVendorWallet(false)
+    setVendorOutflowSource('ORDER_SHEETS')
     setActive(true)
     setError('')
   }
@@ -116,11 +150,13 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setSaving(true)
     setError('')
     const nextType = type
+    const nextIsVendor = nextType === 'VENDOR' || isVendorWallet
     const body = {
       name,
       email: email.trim() || null,
       type: nextType,
-      isVendorWallet: nextType === 'VENDOR' || isVendorWallet,
+      isVendorWallet: nextIsVendor,
+      ...(nextIsVendor ? { vendorOutflowSource } : {}),
       active,
     }
     try {
@@ -188,6 +224,25 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
               ))}
             </select>
           </label>
+          {showVendorFields && (
+            <label style={{ fontSize: '0.75rem' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                Dashboard outflow from
+                <OutflowSourceTip />
+              </span>
+              <select
+                style={input}
+                value={vendorOutflowSource}
+                onChange={(e) => setVendorOutflowSource(e.target.value as VendorOutflowSource)}
+              >
+                {OUTFLOW_SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {VENDOR_OUTFLOW_SOURCE_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label style={{ fontSize: '0.75rem', display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             Active
@@ -215,9 +270,16 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
         Vendor wallets
       </h3>
       <p style={{ margin: '0 0 8px', fontSize: '0.75rem', color: '#6b7280' }}>
-        Accounts with type Vendor. Shown under By account → Vendor wallets on the dashboard.
+        Accounts with type Vendor. Shown under By account → Vendor wallets on the dashboard. Choose
+        whether outflow comes from order-sheet purchase price, cashbook outflows, or both.
+        Transactions-only vendors are hidden from order-sheet “Purchase from”.
       </p>
-      <AccountTable rows={vendorWallets} onEdit={load} onDeactivate={deactivate} />
+      <AccountTable
+        rows={vendorWallets}
+        showOutflowSource
+        onEdit={load}
+        onDeactivate={deactivate}
+      />
     </div>
   )
 }

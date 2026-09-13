@@ -161,6 +161,7 @@ export default async function CompanyAuditPage({
       cost: totals.cost,
       sellingPrice: totals.selling,
       paidToAccountId: s.paidToAccountId,
+      purchaseFromAccountId: s.purchaseFromAccountId,
       grandTotal: Number(s.order.grandTotal),
     }
   })
@@ -190,7 +191,13 @@ export default async function CompanyAuditPage({
       paidThroughAccountId: t.paidThroughAccountId,
       transferToAccountId: t.transferToAccountId,
     })),
-    accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
+    accounts: accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      isVendorWallet: a.isVendorWallet,
+      vendorOutflowSource: a.vendorOutflowSource,
+    })),
     orderInflows: transactions
       .filter(
         (t) =>

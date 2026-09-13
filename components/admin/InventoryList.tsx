@@ -121,38 +121,14 @@ export function InventoryList({
     )
   }, [inStock, isFinance])
 
-  const potentialTotal = useMemo(
-    () =>
-      inStock.reduce(
-        (acc, r) => {
-          if (r.potentialPrice == null) return acc
-          return { value: acc.value + r.qtyOnHand * r.potentialPrice, lines: acc.lines + 1 }
-        },
-        { value: 0, lines: 0 },
-      ),
-    [inStock],
-  )
-
-  const liveTotal = useMemo(
-    () =>
-      inStock.reduce(
-        (acc, r) => {
-          if (r.liveSoldPrice == null) return acc
-          return { value: acc.value + r.qtyOnHand * r.liveSoldPrice, lines: acc.lines + 1 }
-        },
-        { value: 0, lines: 0 },
-      ),
-    [inStock],
-  )
-
   const colSpan = isFinance ? 10 : 8
 
   return (
     <>
       <InventorySubnav />
 
-      <div className="inv-kpi">
-        {isFinance ? (
+      {isFinance ? (
+        <div className="inv-kpi">
           <div className="inv-kpi__card">
             <div className="inv-kpi__label">Purchase</div>
             <div className="inv-kpi__value">{inr(purchaseTotal.value)}</div>
@@ -162,26 +138,8 @@ export function InventoryList({
                 : 'No purchase prices on in-stock items'}
             </div>
           </div>
-        ) : null}
-        <div className="inv-kpi__card">
-          <div className="inv-kpi__label">Potential price</div>
-          <div className="inv-kpi__value">{inr(potentialTotal.value)}</div>
-          <div className="inv-kpi__meta">
-            {potentialTotal.lines > 0
-              ? `${potentialTotal.lines} in-stock line${potentialTotal.lines === 1 ? '' : 's'} with potential price`
-              : 'No potential prices on in-stock items'}
-          </div>
         </div>
-        <div className="inv-kpi__card">
-          <div className="inv-kpi__label">Live price</div>
-          <div className="inv-kpi__value">{inr(liveTotal.value)}</div>
-          <div className="inv-kpi__meta">
-            {liveTotal.lines > 0
-              ? `${liveTotal.lines} catalogue-linked in-stock line${liveTotal.lines === 1 ? '' : 's'}`
-              : 'No live catalogue prices on in-stock items'}
-          </div>
-        </div>
-      </div>
+      ) : null}
 
       <div className="inv-toolbar">
         <div className="inv-field">

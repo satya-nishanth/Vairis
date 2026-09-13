@@ -57,6 +57,8 @@ export type InvoiceTaxSplit = {
   igst: number
   intraState: boolean
   roundOff: number
+  /** Post-GST discount subtracted from the rounded amount (₹). */
+  discount: number
   grandTotal: number
   gstScheme: InvoiceGstScheme
   /** Display rate for one CGST/SGST leg (e.g. "1.5%" or "0.75%"). */
@@ -68,13 +70,15 @@ export type InvoiceTaxSplit = {
 }
 
 /**
- * Split GST into CGST/SGST (Maharashtra) or IGST (other states), then round payable to a rupee.
+ * Split GST into CGST/SGST (Maharashtra) or IGST (other states), round to a rupee,
+ * then subtract an optional post-GST discount from the payable.
  * Default jewellery = 3% (1.5% + 1.5%). Loose diamonds = 1.5% (0.75% + 0.75%).
  */
 export function splitInvoiceTax(
   taxable: number,
   placeOfSupply: string,
   scheme: InvoiceGstScheme = 'JEWELLERY',
+  discount = 0,
 ): InvoiceTaxSplit {
   const meta = invoiceGstMeta(scheme)
   const gstAmount = taxable * meta.rate
@@ -83,8 +87,10 @@ export function splitInvoiceTax(
   const sgst = intraState ? gstAmount / 2 : 0
   const igst = intraState ? 0 : gstAmount
   const raw = taxable + gstAmount
-  const grandTotal = Math.round(raw)
-  const roundOff = grandTotal - raw
+  const rounded = Math.round(raw)
+  const roundOff = rounded - raw
+  const discountAmt = Math.max(0, Number.isFinite(discount) ? discount : 0)
+  const grandTotal = Math.max(0, Math.round(rounded - discountAmt))
   return {
     taxable,
     gstAmount,
@@ -93,6 +99,7 @@ export function splitInvoiceTax(
     igst,
     intraState,
     roundOff,
+    discount: discountAmt,
     grandTotal,
     gstScheme: meta.id,
     cgstRateLabel: meta.halfLabel,
