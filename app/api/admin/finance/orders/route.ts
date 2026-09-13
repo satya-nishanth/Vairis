@@ -17,7 +17,11 @@ const lineSchema = z.object({
 const upsertSchema = z.object({
   orderId: z.string().min(1),
   paidToAccountId: z.string().min(1, 'Paid-to account is required'),
-  purchaseFromAccountId: z.string().min(1).nullable().optional(),
+  purchaseFromAccountId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : null)),
   lines: z.array(lineSchema).min(1, 'Add at least one line'),
   roundOffEnabled: z.boolean().optional(),
 })

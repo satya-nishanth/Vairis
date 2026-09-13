@@ -143,43 +143,55 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: resolved.error }, { status: 400 })
   }
 
+  // Lowering `amount` without touching `allocations` leaves the existing
+  // allocation rows unrevalidated — prepareAllocations only runs against
+  // whatever `d.allocations` the caller sends. Re-check the untouched rows
+  // against nextAmount so an amount edit can't silently leave allocations
+  // exceeding the transaction (same "hard stop still at txn amount" rule
+  // prepareAllocations enforces when allocations ARE sent).
+  if (d.amount !== undefined && d.allocations === undefined && existing.allocations.length > 0) {
+    const existingTotal = existing.allocations.reduce((s, a) => s + Number(a.amount), 0)
+    if (roundMoney(existingTotal) > roundMoney(nextAmount) + 0.009) {
+      return NextResponse.json(
+        { error: 'New amount is less than the total already allocated — adjust allocations first' },
+        { status: 400 },
+      )
+    }
+  }
+
   let prepared:
     | { rows: { amount: number; orderId: string | null; purchaseBillId: string | null }[]; orderIds: string[] }
     | null = null
-  if (isTransfer) {
-    prepared = { rows: [], orderIds: [] }
-  } else if (d.allocations !== undefined) {
+  if (d.allocations !== undefined) {
     const p = await prepareAllocations(d.allocations, nextAmount)
     if ('error' in p) return NextResponse.json({ error: p.error }, { status: 400 })
     prepared = p
   }
 
-  const orderIds = isTransfer
-    ? []
-    : d.orderIds !== undefined || prepared
+  const orderIds =
+    d.orderIds !== undefined || prepared
       ? [...new Set([...(d.orderIds ?? []), ...(prepared?.orderIds ?? [])])]
       : undefined
   const unlinkedOrderLabels =
-    isTransfer
-      ? []
-      : d.unlinkedOrderLabels !== undefined
-        ? [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
-        : undefined
-  const inventoryItemIds =
-    isTransfer ? [] : d.inventoryItemIds !== undefined ? [...new Set(d.inventoryItemIds)] : undefined
-  const unlinkedInventoryLabels =
-    isTransfer
-      ? []
-      : d.unlinkedInventoryLabels !== undefined
-        ? [...new Set(d.unlinkedInventoryLabels.map((s) => s.trim()).filter(Boolean))]
-        : undefined
+    d.unlinkedOrderLabels !== undefined
+      ? [...new Set(d.unlinkedOrderLabels.map((s) => s.trim()).filter(Boolean))]
+      : undefined
+  const inventoryItemIds = isTransfer
+    ? []
+    : d.inventoryItemIds !== undefined
+      ? [...new Set(d.inventoryItemIds)]
+      : undefined
+  const unlinkedInventoryLabels = isTransfer
+    ? []
+    : d.unlinkedInventoryLabels !== undefined
+      ? [...new Set(d.unlinkedInventoryLabels.map((s) => s.trim()).filter(Boolean))]
+      : undefined
 
   const nextOrderIds = orderIds ?? existing.orders.map((o) => o.orderId)
   const nextUnlinkedOrders = unlinkedOrderLabels ?? existing.unlinkedOrderLabels ?? []
   const nextInvIds = inventoryItemIds ?? existing.inventoryItems.map((l) => l.inventoryItemId)
   const nextUnlinkedInv = unlinkedInventoryLabels ?? existing.unlinkedInventoryLabels ?? []
   if (
-    !isTransfer &&
     (nextOrderIds.length > 0 || nextUnlinkedOrders.length > 0) &&
     (nextInvIds.length > 0 || nextUnlinkedInv.length > 0)
   ) {
@@ -203,17 +215,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const row = await prisma.$transaction(async (tx) => {
-    if (orderIds !== undefined || isTransfer) {
+    if (orderIds !== undefined) {
       await tx.financeTransactionOrder.deleteMany({ where: { transactionId: id } })
-      if (orderIds?.length) {
+      if (orderIds.length) {
         await tx.financeTransactionOrder.createMany({
           data: orderIds.map((orderId) => ({ transactionId: id, orderId })),
         })
       }
     }
-    if (inventoryItemIds !== undefined || isTransfer) {
+    if (inventoryItemIds !== undefined) {
       await tx.financeTransactionInventory.deleteMany({ where: { transactionId: id } })
-      if (inventoryItemIds?.length) {
+      if (inventoryItemIds.length) {
         await tx.financeTransactionInventory.createMany({
           data: inventoryItemIds.map((inventoryItemId) => ({ transactionId: id, inventoryItemId })),
         })
@@ -256,7 +268,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...(typeof d.reviewComplete === 'boolean' ? { reviewComplete: d.reviewComplete } : {}),
         ...(unlinkedOrderLabels !== undefined ? { unlinkedOrderLabels } : {}),
         ...(unlinkedInventoryLabels !== undefined ? { unlinkedInventoryLabels } : {}),
-        ...(isTransfer ? { unlinkedOrderLabels: [], unlinkedInventoryLabels: [] } : {}),
       },
       include: financeTransactionInclude,
     })

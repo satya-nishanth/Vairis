@@ -263,7 +263,7 @@ export function OrderFinanceManager({
           orderMeta: boot.orderMeta,
           amounts: amountsFromBoot(boot),
           paidToAccountId: boot.paidToAccountId || fallbackPaidTo,
-          purchaseFromAccountId: boot.purchaseFromAccountId ?? vendorAccounts[0]?.id ?? '',
+          purchaseFromAccountId: boot.purchaseFromAccountId ?? '',
           hasSheet: boot.hasSheet ?? boot.lines.length > 0,
           roundOffEnabled: Boolean(boot.roundOffEnabled),
         }
@@ -274,7 +274,7 @@ export function OrderFinanceManager({
           orderMeta: {},
           amounts: emptyAmounts(),
           paidToAccountId: fallbackPaidTo,
-          purchaseFromAccountId: vendorAccounts[0]?.id ?? '',
+          purchaseFromAccountId: '',
           hasSheet: false,
           roundOffEnabled: false,
         },
@@ -1214,9 +1214,9 @@ export function OrderFinanceManager({
                         i
                       </button>
                       <span className="finance-dash__kpi-tip-text" role="tooltip">
-                        Which vendor wallet this purchase (CP) is attributed to. Only vendors whose
-                        dashboard outflow includes order sheets appear here. Counts as outflow when
-                        that vendor’s source is order sheets or both.
+                        Optional. Which vendor wallet this purchase (CP) is attributed to. Leave blank
+                        if none. Only vendors whose dashboard outflow includes order sheets appear
+                        here; counts as outflow when that vendor’s source is order sheets or both.
                       </span>
                     </span>
                   </span>
@@ -1232,11 +1232,8 @@ export function OrderFinanceManager({
                       setEditor((prev) => ({ ...prev, purchaseFromAccountId: e.target.value }))
                     }
                     disabled={locked}
-                    required
                   >
-                    {vendorAccounts.length === 0 && (
-                      <option value="">Add a vendor account in Config first</option>
-                    )}
+                    <option value="">— None —</option>
                     {vendorAccounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}

@@ -98,13 +98,7 @@ export async function upsertOrderFinanceSheet(
   })
   if (!account) throw new Error('Account not found')
 
-  const totalsPreview = sheetTotals(
-    input.lines.map((l) => ({ kind: l.kind, costPrice: l.costPrice, sellingPrice: l.sellingPrice })),
-  )
   const purchaseFromId = input.purchaseFromAccountId?.trim() || null
-  if (totalsPreview.cost > 0 && !purchaseFromId) {
-    throw new Error('Pick the vendor this purchase is from')
-  }
   if (purchaseFromId) {
     const vendor = await prisma.financeAccount.findFirst({
       where: {
