@@ -150,6 +150,11 @@ export default async function FinanceDashboardPage() {
     })),
     accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
   )
+  const vendorWalletIds = new Set(
+    accounts.filter((a) => a.isVendorWallet || a.type === 'VENDOR').map((a) => a.id),
+  )
+  const byAccountMain = byAccountFlows.filter((p) => !vendorWalletIds.has(p.accountId))
+  const byAccountVendor = byAccountFlows.filter((p) => vendorWalletIds.has(p.accountId))
 
   const collections = { settled: 0, partial: 0, unpaid: 0, overpaid: 0, due: 0 }
   const orderPayments = sheetRows.map((s) => {
@@ -427,7 +432,7 @@ export default async function FinanceDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {byAccountFlows.map((p) => (
+              {byAccountMain.map((p) => (
                 <tr key={p.accountId}>
                   <td>{p.accountName}</td>
                   <td
@@ -439,7 +444,7 @@ export default async function FinanceDashboardPage() {
                   <td className="finance-dash__num">{inr(p.outflow)}</td>
                 </tr>
               ))}
-              {byAccountFlows.length === 0 && (
+              {byAccountMain.length === 0 && (
                 <tr>
                   <td colSpan={4} className="finance-dash__empty">
                     No accounts yet.
@@ -448,6 +453,39 @@ export default async function FinanceDashboardPage() {
               )}
             </tbody>
           </table>
+
+          {byAccountVendor.length > 0 ? (
+            <>
+              <h3 className="finance-dash__subsection-title">Vendor wallets</h3>
+              <p className="finance-dash__card-sub finance-dash__subsection-sub">
+                Money sitting with vendors — tagged in Config → Accounts.
+              </p>
+              <table className="finance-dash__table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th className="finance-dash__num">Net</th>
+                    <th className="finance-dash__num">Inflow</th>
+                    <th className="finance-dash__num">Outflow</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byAccountVendor.map((p) => (
+                    <tr key={p.accountId}>
+                      <td>{p.accountName}</td>
+                      <td
+                        className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                      >
+                        {inr(p.net)}
+                      </td>
+                      <td className="finance-dash__num">{inr(p.inflow)}</td>
+                      <td className="finance-dash__num">{inr(p.outflow)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : null}
         </section>
       </div>
 

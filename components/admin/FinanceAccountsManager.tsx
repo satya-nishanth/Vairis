@@ -11,6 +11,7 @@ export type AccountRow = {
   name: string
   email: string | null
   type: FinanceAccountType
+  isVendorWallet: boolean
   active: boolean
   sortOrder: number
 }
@@ -22,7 +23,58 @@ const input: React.CSSProperties = {
   fontSize: '0.8125rem',
 }
 
-const TYPES: FinanceAccountType[] = ['PARTNER', 'COMPANY_BANK', 'CASH', 'OTHER']
+const TYPES: FinanceAccountType[] = ['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']
+
+function isVendorAccount(row: Pick<AccountRow, 'type' | 'isVendorWallet'>) {
+  return row.type === 'VENDOR' || row.isVendorWallet
+}
+
+function AccountTable({
+  rows,
+  onEdit,
+  onDeactivate,
+}: {
+  rows: AccountRow[]
+  onEdit: (row: AccountRow) => void
+  onDeactivate: (id: string) => void
+}) {
+  if (rows.length === 0) {
+    return <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: '8px 0' }}>None yet.</p>
+  }
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff' }}>
+      <thead>
+        <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
+          <th style={{ padding: 8 }}>Account</th>
+          <th style={{ padding: 8 }}>Email</th>
+          <th style={{ padding: 8 }}>Type</th>
+          <th style={{ padding: 8 }}>Status</th>
+          <th style={{ padding: 8 }} />
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6', opacity: r.active ? 1 : 0.55 }}>
+            <td style={{ padding: 8 }}>{r.name}</td>
+            <td style={{ padding: 8 }}>{r.email ?? '—'}</td>
+            <td style={{ padding: 8 }}>{ACCOUNT_TYPE_LABEL[r.type]}</td>
+            <td style={{ padding: 8 }}>{r.active ? 'Active' : 'Inactive'}</td>
+            <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+              <button type="button" className="admin-btn" onClick={() => onEdit(r)}>
+                Edit
+              </button>{' '}
+              {r.active && (
+                <button type="button" className="admin-btn" onClick={() => onDeactivate(r.id)}>
+                  Deactivate
+                </button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
 
 export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
   const router = useRouter()
@@ -31,17 +83,20 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [type, setType] = useState<FinanceAccountType>('PARTNER')
+  const [isVendorWallet, setIsVendorWallet] = useState(false)
   const [active, setActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const editing = useMemo(() => rows.find((r) => r.id === editingId) ?? null, [rows, editingId])
+  const companyAccounts = useMemo(() => rows.filter((r) => !isVendorAccount(r)), [rows])
+  const vendorWallets = useMemo(() => rows.filter((r) => isVendorAccount(r)), [rows])
 
   function load(row: AccountRow) {
     setEditingId(row.id)
     setName(row.name)
     setEmail(row.email ?? '')
     setType(row.type)
+    setIsVendorWallet(row.type === 'VENDOR' || row.isVendorWallet)
     setActive(row.active)
     setError('')
   }
@@ -51,6 +106,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setName('')
     setEmail('')
     setType('PARTNER')
+    setIsVendorWallet(false)
     setActive(true)
     setError('')
   }
@@ -59,7 +115,14 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     e.preventDefault()
     setSaving(true)
     setError('')
-    const body = { name, email: email.trim() || null, type, active }
+    const nextType = type
+    const body = {
+      name,
+      email: email.trim() || null,
+      type: nextType,
+      isVendorWallet: nextType === 'VENDOR' || isVendorWallet,
+      active,
+    }
     try {
       const res = await fetch(
         editingId ? `/api/admin/finance/accounts/${editingId}` : '/api/admin/finance/accounts',
@@ -97,7 +160,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
 
   return (
     <div>
-      <FinanceCollapsible title={editing ? 'Edit account' : 'Add account'} forceOpen={!!editingId}>
+      <FinanceCollapsible title={editingId ? 'Edit account' : 'Add account'} forceOpen={!!editingId}>
         <form onSubmit={save} style={{ display: 'grid', gap: 10, maxWidth: 520 }}>
           <label style={{ fontSize: '0.75rem' }}>
             Name
@@ -109,7 +172,15 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
           </label>
           <label style={{ fontSize: '0.75rem' }}>
             Type
-            <select style={input} value={type} onChange={(e) => setType(e.target.value as FinanceAccountType)}>
+            <select
+              style={input}
+              value={type}
+              onChange={(e) => {
+                const next = e.target.value as FinanceAccountType
+                setType(next)
+                setIsVendorWallet(next === 'VENDOR')
+              }}
+            >
               {TYPES.map((t) => (
                 <option key={t} value={t}>
                   {ACCOUNT_TYPE_LABEL[t]}
@@ -124,9 +195,9 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
           {error && <p style={{ color: '#b91c1c', margin: 0, fontSize: '0.8125rem' }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="admin-btn" disabled={saving}>
-              {saving ? 'Saving…' : editing ? 'Update' : 'Add account'}
+              {saving ? 'Saving…' : editingId ? 'Update' : 'Add account'}
             </button>
-            {editing && (
+            {editingId && (
               <button type="button" className="admin-btn" onClick={reset}>
                 Cancel
               </button>
@@ -135,37 +206,18 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
         </form>
       </FinanceCollapsible>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', background: '#fff' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
-            <th style={{ padding: 8 }}>Account</th>
-            <th style={{ padding: 8 }}>Email</th>
-            <th style={{ padding: 8 }}>Type</th>
-            <th style={{ padding: 8 }}>Status</th>
-            <th style={{ padding: 8 }} />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} style={{ borderBottom: '1px solid #f3f4f6', opacity: r.active ? 1 : 0.55 }}>
-              <td style={{ padding: 8 }}>{r.name}</td>
-              <td style={{ padding: 8 }}>{r.email ?? '—'}</td>
-              <td style={{ padding: 8 }}>{ACCOUNT_TYPE_LABEL[r.type]}</td>
-              <td style={{ padding: 8 }}>{r.active ? 'Active' : 'Inactive'}</td>
-              <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
-                <button type="button" className="admin-btn" onClick={() => load(r)}>
-                  Edit
-                </button>{' '}
-                {r.active && (
-                  <button type="button" className="admin-btn" onClick={() => deactivate(r.id)}>
-                    Deactivate
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <h3 style={{ margin: '16px 0 8px', fontSize: '0.8125rem', fontWeight: 700, color: '#032b24' }}>
+        Accounts
+      </h3>
+      <AccountTable rows={companyAccounts} onEdit={load} onDeactivate={deactivate} />
+
+      <h3 style={{ margin: '20px 0 8px', fontSize: '0.8125rem', fontWeight: 700, color: '#032b24' }}>
+        Vendor wallets
+      </h3>
+      <p style={{ margin: '0 0 8px', fontSize: '0.75rem', color: '#6b7280' }}>
+        Accounts with type Vendor. Shown under By account → Vendor wallets on the dashboard.
+      </p>
+      <AccountTable rows={vendorWallets} onEdit={load} onDeactivate={deactivate} />
     </div>
   )
 }

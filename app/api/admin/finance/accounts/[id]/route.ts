@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic'
 const schema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
-  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'OTHER']).optional(),
+  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']).optional(),
+  isVendorWallet: z.boolean().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -19,6 +20,7 @@ function serialize(row: {
   name: string
   email: string | null
   type: string
+  isVendorWallet: boolean
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -29,6 +31,7 @@ function serialize(row: {
     name: row.name,
     email: row.email,
     type: row.type,
+    isVendorWallet: row.isVendorWallet,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -57,6 +60,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ? { email: d.email?.trim() ? d.email.trim().toLowerCase() : null }
           : {}),
         ...(d.type !== undefined ? { type: d.type } : {}),
+        ...(d.type !== undefined
+          ? { isVendorWallet: d.isVendorWallet ?? d.type === 'VENDOR' }
+          : d.isVendorWallet !== undefined
+            ? { isVendorWallet: d.isVendorWallet }
+            : {}),
         ...(d.active !== undefined ? { active: d.active } : {}),
         ...(d.sortOrder !== undefined ? { sortOrder: d.sortOrder } : {}),
       },

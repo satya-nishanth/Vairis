@@ -415,6 +415,18 @@
   color: #6b7280;
 }
 
+.finance-dash__subsection-title {
+  margin: 16px 0 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #032b24;
+  letter-spacing: 0.02em;
+}
+
+.finance-dash__subsection-sub {
+  margin: 2px 0 8px;
+}
+
 .finance-dash__summary-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));

@@ -26,6 +26,7 @@ export const ACCOUNT_TYPE_LABEL: Record<FinanceAccountType, string> = {
   PARTNER: 'Partner',
   COMPANY_BANK: 'Company bank',
   CASH: 'Cash',
+  VENDOR: 'Vendor',
   OTHER: 'Other',
 }
 
