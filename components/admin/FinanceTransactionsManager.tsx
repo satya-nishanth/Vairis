@@ -426,7 +426,6 @@ export function FinanceTransactionsManager({
       return cat && cat.direction === next ? prev : ''
     })
     if (next === 'TRANSFER') {
-      setAllocations([])
       setContactId(null)
       setContactText('')
       if (transferToAccountId && transferToAccountId === paidThroughAccountId) {
@@ -646,8 +645,8 @@ export function FinanceTransactionsManager({
     e.preventDefault()
     setError('')
     const isTransfer = direction === 'TRANSFER'
-    const allocationPayload = isTransfer ? [] : allocationsToPayload(allocations)
-    if (!isTransfer && allocations.length > 0 && allocationPayload.length === 0) {
+    const allocationPayload = allocationsToPayload(allocations)
+    if (allocations.length > 0 && allocationPayload.length === 0) {
       setError('Enter an amount for each allocation')
       return
     }
@@ -779,13 +778,7 @@ export function FinanceTransactionsManager({
 
   const txForm = (
         <form onSubmit={save} style={{ display: 'grid', gap: 18 }}>
-          <div
-            className={
-              direction === 'TRANSFER'
-                ? 'finance-tx-form-split finance-tx-form-split--single'
-                : 'finance-tx-form-split'
-            }
-          >
+          <div className="finance-tx-form-split">
             <div className="finance-tx-form-split__main" style={{ display: 'grid', gap: 18, minWidth: 0 }}>
           <div
             style={{
@@ -1068,17 +1061,15 @@ export function FinanceTransactionsManager({
           </div>
             </div>
 
-            {direction !== 'TRANSFER' && (
-              <aside className="finance-tx-form-split__alloc" style={{ minWidth: 0 }}>
-                <FinanceAllocationEditor
-                  allocations={allocations}
-                  onChange={setAllocations}
-                  txAmount={Number(amount) || 0}
-                  excludeTransactionId={editingId}
-                  priorCredits={priorCredits}
-                />
-              </aside>
-            )}
+            <aside className="finance-tx-form-split__alloc" style={{ minWidth: 0 }}>
+              <FinanceAllocationEditor
+                allocations={allocations}
+                onChange={setAllocations}
+                txAmount={Number(amount) || 0}
+                excludeTransactionId={editingId}
+                priorCredits={priorCredits}
+              />
+            </aside>
           </div>
 
           {error && (
