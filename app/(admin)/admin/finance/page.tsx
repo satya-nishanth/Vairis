@@ -1,11 +1,15 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import {
+  buildSheetPurchaseOutflows,
   findSheetInflowMismatches,
   summarizeDashboardKpis,
   summarizeTransactionFlows,
   sheetTotals,
   roundMoney,
+  vendorWalletInflowTip,
+  vendorWalletOutflowTip,
+  type VendorOutflowSource,
 } from '@/lib/finance'
 import {
   collectedByOrderIds,
@@ -118,9 +122,12 @@ export default async function FinanceDashboardPage() {
       cost: totals.cost,
       sellingPrice: totals.selling,
       paidToAccountId: s.paidToAccountId,
+      purchaseFromAccountId: s.purchaseFromAccountId,
       grandTotal: Number(s.order.grandTotal),
     }
   })
+
+  const sheetPurchaseOutflows = buildSheetPurchaseOutflows(sheetRows)
 
   const txExpense = transactions.map((t) => ({
     date: t.date,
@@ -148,13 +155,30 @@ export default async function FinanceDashboardPage() {
       paidThroughAccountId: t.paidThroughAccountId,
       transferToAccountId: t.transferToAccountId,
     })),
-    accounts.map((a) => ({ id: a.id, name: a.name, type: a.type })),
+    accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      isVendorWallet: a.isVendorWallet,
+      vendorOutflowSource: a.vendorOutflowSource,
+    })),
+    undefined,
+    sheetPurchaseOutflows,
   )
   const vendorWalletIds = new Set(
     accounts.filter((a) => a.isVendorWallet || a.type === 'VENDOR').map((a) => a.id),
   )
-  const byAccountMain = byAccountFlows.filter((p) => !vendorWalletIds.has(p.accountId))
-  const byAccountVendor = byAccountFlows.filter((p) => vendorWalletIds.has(p.accountId))
+  const vendorSourceById = new Map(
+    accounts
+      .filter((a) => a.isVendorWallet || a.type === 'VENDOR')
+      .map((a) => [a.id, (a.vendorOutflowSource ?? 'ORDER_SHEETS') as VendorOutflowSource]),
+  )
+  const byAccountMain = byAccountFlows
+    .filter((p) => !vendorWalletIds.has(p.accountId))
+    .sort((a, b) => a.accountName.localeCompare(b.accountName))
+  const byAccountVendor = byAccountFlows
+    .filter((p) => vendorWalletIds.has(p.accountId))
+    .sort((a, b) => a.accountName.localeCompare(b.accountName))
 
   const collections = { settled: 0, partial: 0, unpaid: 0, overpaid: 0, due: 0 }
   const orderPayments = sheetRows.map((s) => {
@@ -470,18 +494,53 @@ export default async function FinanceDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {byAccountVendor.map((p) => (
-                    <tr key={p.accountId}>
-                      <td>{p.accountName}</td>
-                      <td
-                        className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
-                      >
-                        {inr(p.net)}
-                      </td>
-                      <td className="finance-dash__num">{inr(p.inflow)}</td>
-                      <td className="finance-dash__num">{inr(p.outflow)}</td>
-                    </tr>
-                  ))}
+                  {byAccountVendor.map((p) => {
+                    const source = vendorSourceById.get(p.accountId) ?? 'ORDER_SHEETS'
+                    return (
+                      <tr key={p.accountId}>
+                        <td>{p.accountName}</td>
+                        <td
+                          className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                        >
+                          {inr(p.net)}
+                        </td>
+                        <td className="finance-dash__num">
+                          <span className="finance-dash__amt-with-tip">
+                            {inr(p.inflow)}
+                            <span className="finance-dash__kpi-tip finance-dash__cell-tip">
+                              <button
+                                type="button"
+                                className="finance-dash__kpi-info"
+                                aria-label={`About inflow for ${p.accountName}`}
+                              >
+                                i
+                              </button>
+                              <span className="finance-dash__kpi-tip-text" role="tooltip">
+                                {vendorWalletInflowTip(source)}
+                              </span>
+                            </span>
+                          </span>
+                        </td>
+                        <td className="finance-dash__num">
+                          <span className="finance-dash__amt-with-tip">
+                            {inr(p.outflow)}
+                            <span className="finance-dash__kpi-tip finance-dash__cell-tip">
+                              <button
+                                type="button"
+                                className="finance-dash__kpi-info"
+                                aria-label={`About outflow for ${p.accountName}`}
+                              >
+                                i
+                              </button>
+                              <span className="finance-dash__kpi-tip-text" role="tooltip">
+                                {vendorWalletOutflowTip(source)}
+                              </span>
+                            </span>
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </>

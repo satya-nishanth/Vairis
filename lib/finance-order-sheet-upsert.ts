@@ -12,6 +12,8 @@ export type UpsertOrderSheetLine = {
 export type UpsertOrderSheetInput = {
   orderId: string
   paidToAccountId: string
+  /** Vendor wallet the purchase (CP) is attributed to; required when CP > 0. */
+  purchaseFromAccountId?: string | null
   lines: UpsertOrderSheetLine[]
   roundOffEnabled?: boolean
 }
@@ -19,6 +21,7 @@ export type UpsertOrderSheetInput = {
 const sheetInclude = {
   lines: true,
   paidToAccount: { select: { id: true, name: true } },
+  purchaseFromAccount: { select: { id: true, name: true } },
   order: { select: { contactName: true, createdAt: true, grandTotal: true } },
 } as const
 
@@ -26,6 +29,7 @@ function serialize(row: {
   id: string
   orderId: string
   paidToAccountId: string
+  purchaseFromAccountId: string | null
   roundOffEnabled: boolean
   createdAt: Date
   updatedAt: Date
@@ -37,6 +41,7 @@ function serialize(row: {
     sortOrder: number
   }[]
   paidToAccount?: { id: string; name: string }
+  purchaseFromAccount?: { id: string; name: string } | null
   order?: { contactName: string; createdAt: Date; grandTotal: { toString(): string } | number }
 }) {
   const lines = [...row.lines]
@@ -53,6 +58,8 @@ function serialize(row: {
     orderId: row.orderId,
     paidToAccountId: row.paidToAccountId,
     paidToAccountName: row.paidToAccount?.name ?? null,
+    purchaseFromAccountId: row.purchaseFromAccountId,
+    purchaseFromAccountName: row.purchaseFromAccount?.name ?? null,
     customerPaidTo: row.paidToAccountId,
     roundOffEnabled: row.roundOffEnabled,
     roundOff: totals.roundOff,
@@ -91,6 +98,29 @@ export async function upsertOrderFinanceSheet(
   })
   if (!account) throw new Error('Account not found')
 
+  const totalsPreview = sheetTotals(
+    input.lines.map((l) => ({ kind: l.kind, costPrice: l.costPrice, sellingPrice: l.sellingPrice })),
+  )
+  const purchaseFromId = input.purchaseFromAccountId?.trim() || null
+  if (totalsPreview.cost > 0 && !purchaseFromId) {
+    throw new Error('Pick the vendor this purchase is from')
+  }
+  if (purchaseFromId) {
+    const vendor = await prisma.financeAccount.findFirst({
+      where: {
+        id: purchaseFromId,
+        active: true,
+        OR: [{ type: 'VENDOR' }, { isVendorWallet: true }],
+        vendorOutflowSource: { in: ['ORDER_SHEETS', 'BOTH'] },
+      },
+    })
+    if (!vendor) {
+      throw new Error(
+        'Vendor account not found (or is transactions-only — pick a vendor that uses order sheets)',
+      )
+    }
+  }
+
   const roundOffEnabled = Boolean(input.roundOffEnabled)
 
   const prior = await prisma.orderFinance.findUnique({
@@ -104,10 +134,12 @@ export async function upsertOrderFinanceSheet(
       create: {
         orderId: input.orderId,
         paidToAccountId: input.paidToAccountId,
+        purchaseFromAccountId: purchaseFromId,
         roundOffEnabled,
       },
       update: {
         paidToAccountId: input.paidToAccountId,
+        purchaseFromAccountId: purchaseFromId,
         roundOffEnabled,
       },
     })

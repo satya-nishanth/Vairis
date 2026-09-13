@@ -144,6 +144,8 @@ export type InvoicePayload = {
    * Loose diamonds = 1.5% (0.75% CGST + 0.75% SGST).
    */
   gstScheme?: InvoiceGstScheme
+  /** Discount in ₹ subtracted after GST + round-off (payable only). */
+  discount?: number
   notes: {
     exchange: string
     certification: string
@@ -257,10 +259,12 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
 export function totalsFromPayload(payload: InvoicePayload) {
   const lines = payload.lines.map((l) => recomputeLine(l, 'Wastage'))
   const taxable = lines.reduce((s, l) => s + l.taxable, 0)
+  const discount = Math.max(0, Number(payload.discount) || 0)
   const tax = splitInvoiceTax(
     taxable,
     payload.placeOfSupply,
     normalizeInvoiceGstScheme(payload.gstScheme),
+    discount,
   )
   return {
     lines,
@@ -278,6 +282,7 @@ export function blankPayload(): InvoicePayload {
     invoiceDate: new Date().toISOString().slice(0, 10),
     placeOfSupply: 'Maharashtra (27)',
     gstScheme: 'JEWELLERY',
+    discount: 0,
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: [blankLine()],
   }

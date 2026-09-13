@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { FinanceAccountSelectOptions, isVendorFinanceAccount } from '@/components/admin/FinanceAccountSelectOptions'
 import { toDateInput, shortFinanceId, roundMoney, type FinanceCategoryDirection, type FinanceTransactionDirection } from '@/lib/finance'
 import {
   FinanceAllocationEditor,
@@ -15,7 +16,12 @@ import {
   type TxAllocationStatus,
 } from '@/lib/finance-tx-allocation-status'
 
-export type TxAccount = { id: string; name: string }
+export type TxAccount = {
+  id: string
+  name: string
+  type?: string
+  isVendorWallet?: boolean
+}
 export type TxContact = { id: string; name: string; type: string }
 export type TxCategory = { id: string; name: string; direction: FinanceCategoryDirection }
 export type TxRow = {
@@ -130,7 +136,7 @@ function SearchIcon() {
   )
 }
 
-type FilterMultiOption = { id: string; label: string }
+type FilterMultiOption = { id: string; label: string; group?: string }
 
 type TxSortKey =
   | 'id'
@@ -220,6 +226,30 @@ function FilterMultiSelect({
     onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
   }
 
+  const grouped = useMemo(() => {
+    const hasGroups = options.some((o) => o.group)
+    if (!hasGroups) return [{ group: null as string | null, items: options }]
+    const map = new Map<string, FilterMultiOption[]>()
+    for (const o of options) {
+      const g = o.group ?? 'Other'
+      const list = map.get(g) ?? []
+      list.push(o)
+      map.set(g, list)
+    }
+    // Accounts before Vendors when both present
+    const order = ['Accounts', 'Vendors']
+    return [...map.entries()]
+      .sort(([a], [b]) => {
+        const ia = order.indexOf(a)
+        const ib = order.indexOf(b)
+        if (ia === -1 && ib === -1) return a.localeCompare(b)
+        if (ia === -1) return 1
+        if (ib === -1) return -1
+        return ia - ib
+      })
+      .map(([group, items]) => ({ group, items }))
+  }, [options])
+
   return (
     <div className="finance-filter-dd" ref={wrapRef}>
       <button
@@ -239,11 +269,16 @@ function FilterMultiSelect({
           {options.length === 0 ? (
             <div className="finance-filter-dd__empty">No options</div>
           ) : (
-            options.map((o) => (
-              <label key={o.id} className="finance-filter-dd__option">
-                <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} />
-                <span>{o.label}</span>
-              </label>
+            grouped.map(({ group, items }) => (
+              <div key={group ?? 'all'} className="finance-filter-dd__group">
+                {group ? <div className="finance-filter-dd__group-label">{group}</div> : null}
+                {items.map((o) => (
+                  <label key={o.id} className="finance-filter-dd__option">
+                    <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} />
+                    <span>{o.label}</span>
+                  </label>
+                ))}
+              </div>
             ))
           )}
           {value.length > 0 ? (
@@ -325,23 +360,50 @@ export function FinanceTransactionsManager({
   const showForm = compose || !!editId || !!editingId
   const tableColSpan = showAllColumns ? 14 : 12
 
+  const accountsSorted = useMemo(
+    () => [...accounts].sort((a, b) => a.name.localeCompare(b.name)),
+    [accounts],
+  )
+  const accountFilterOptions = useMemo(
+    () =>
+      accountsSorted.map((a) => ({
+        id: a.id,
+        label: a.name,
+        group: isVendorFinanceAccount(a) ? 'Vendors' : 'Accounts',
+      })),
+    [accountsSorted],
+  )
+  const contactsSorted = useMemo(
+    () => [...contacts].sort((a, b) => a.name.localeCompare(b.name)),
+    [contacts],
+  )
+  const categoriesSorted = useMemo(
+    () => [...categories].sort((a, b) => a.name.localeCompare(b.name)),
+    [categories],
+  )
+
   const contactSuggestions = useMemo(() => {
     const q = contactText.trim().toLowerCase()
-    if (!q) return contacts.slice(0, 8)
-    return contacts.filter((c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)).slice(0, 8)
-  }, [contactText, contacts])
+    if (!q) return contactsSorted.slice(0, 8)
+    return contactsSorted
+      .filter((c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [contactText, contactsSorted])
 
   const categoriesForDirection = useMemo(
-    () => (direction === 'TRANSFER' ? [] : categories.filter((c) => c.direction === direction)),
-    [categories, direction],
+    () =>
+      direction === 'TRANSFER'
+        ? []
+        : categoriesSorted.filter((c) => c.direction === direction),
+    [categoriesSorted, direction],
   )
 
   const categoryFilterOptions = useMemo(() => {
-    if (dirFilters.length === 0) return categories
+    if (dirFilters.length === 0) return categoriesSorted
     const dirs = new Set(dirFilters.filter((d) => d === 'INFLOW' || d === 'OUTFLOW'))
     if (dirs.size === 0) return []
-    return categories.filter((c) => dirs.has(c.direction))
-  }, [categories, dirFilters])
+    return categoriesSorted.filter((c) => dirs.has(c.direction))
+  }, [categoriesSorted, dirFilters])
 
   function onDirFiltersChange(next: string[]) {
     setDirFilters(next)
@@ -744,11 +806,7 @@ export function FinanceTransactionsManager({
                 required
               >
                 <option value="">— Select —</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                <FinanceAccountSelectOptions accounts={accounts} />
               </select>
             </label>
             {direction === 'TRANSFER' ? (
@@ -771,11 +829,7 @@ export function FinanceTransactionsManager({
                     required
                   >
                     <option value="">— Select —</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
+                    <FinanceAccountSelectOptions accounts={accounts} />
                   </select>
                 </label>
                 <label style={field}>
@@ -790,13 +844,7 @@ export function FinanceTransactionsManager({
                     required
                   >
                     <option value="">— Select —</option>
-                    {accounts
-                      .filter((a) => a.id !== paidThroughAccountId)
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
+                    <FinanceAccountSelectOptions accounts={accounts} excludeId={paidThroughAccountId} />
                   </select>
                 </label>
               </>
@@ -813,11 +861,7 @@ export function FinanceTransactionsManager({
                   required
                 >
                   <option value="">— Select —</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
+                  <FinanceAccountSelectOptions accounts={accounts} />
                 </select>
               </label>
             )}
@@ -1129,14 +1173,14 @@ export function FinanceTransactionsManager({
             label="Handled by"
             value={handledFilters}
             onChange={setHandledFilters}
-            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+            options={accountFilterOptions}
           />
 
           <FilterMultiSelect
             label="Bank used"
             value={bankFilters}
             onChange={setBankFilters}
-            options={accounts.map((a) => ({ id: a.id, label: a.name }))}
+            options={accountFilterOptions}
           />
 
           <FilterMultiSelect

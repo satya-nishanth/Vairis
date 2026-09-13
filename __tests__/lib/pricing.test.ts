@@ -153,6 +153,13 @@ describe('splitInvoiceTax', () => {
     expect(t.sgst).toBe(0)
     expect(t.grandTotal).toBe(101500)
   })
+
+  it('subtracts post-GST discount from rounded payable', () => {
+    const t = splitInvoiceTax(10000, 'Karnataka', 'JEWELLERY', 500)
+    expect(t.roundOff).toBe(0)
+    expect(t.discount).toBe(500)
+    expect(t.grandTotal).toBe(9800)
+  })
 })
 
 describe('amountInWords', () => {

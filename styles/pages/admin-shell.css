@@ -339,6 +339,25 @@
   display: block;
 }
 
+/* Order-sheet field tips: open upward + beat sticky save bar (z-index 25). */
+.order-sheet-field .finance-dash__kpi-tip {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 1;
+}
+
+.order-sheet-field .finance-dash__kpi-tip:hover,
+.order-sheet-field .finance-dash__kpi-tip:focus-within {
+  z-index: 40;
+}
+
+.order-sheet-field .finance-dash__kpi-tip-text {
+  top: auto;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+}
+
 .finance-dash__kpi-label {
   font-size: 0.6875rem;
   letter-spacing: 0.06em;
@@ -547,6 +566,44 @@
   text-align: right;
   width: 22%;
   font-variant-numeric: tabular-nums;
+}
+
+.finance-dash__amt-with-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.finance-dash__cell-tip {
+  position: relative;
+  top: auto;
+  right: auto;
+  flex-shrink: 0;
+}
+
+.finance-dash__cell-tip .finance-dash__kpi-info {
+  width: 16px;
+  height: 16px;
+  font-size: 0.625rem;
+}
+
+.finance-dash__cell-tip .finance-dash__kpi-tip-text {
+  top: auto;
+  bottom: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  width: min(240px, 70vw);
+  z-index: 30;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.finance-dash__cell-tip:hover,
+.finance-dash__cell-tip:focus-within {
+  z-index: 40;
 }
 
 .finance-dash__num {
@@ -1308,6 +1365,21 @@
   flex-shrink: 0;
 }
 
+.finance-filter-dd__group + .finance-filter-dd__group {
+  border-top: 1px solid #f3f4f6;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.finance-filter-dd__group-label {
+  padding: 6px 10px 2px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
 .finance-filter-dd__option {
   display: flex;
   align-items: flex-start;
@@ -1766,7 +1838,7 @@
 .order-sheet-hits__table--wide thead tr:first-child th {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 4;
   background: #fafafa;
   box-shadow: inset 0 -1px 0 #f3f4f6;
 }
@@ -1910,6 +1982,10 @@
   width: 8%;
 }
 
+.order-sheet-hits__col-vendor {
+  width: 9%;
+}
+
 .order-sheet-hits__col-paidto {
   width: 9%;
 }
@@ -1975,9 +2051,86 @@
   padding-bottom: 10px;
   white-space: nowrap;
   position: sticky;
-  top: 2rem;
+  top: 4.75rem;
   z-index: 2;
   box-shadow: inset 0 -1px 0 #bbf7d0;
+}
+
+.order-sheet-hits__filters th {
+  position: sticky;
+  top: 1.85rem;
+  z-index: 3;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: middle;
+  box-shadow: inset 0 -1px 0 #e5e7eb;
+}
+
+.order-sheet-hits__filter-input,
+.order-sheet-hits__filter-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 5px 7px;
+}
+
+.order-sheet-hits__filter-input:focus,
+.order-sheet-hits__filter-select:focus {
+  outline: none;
+  border-color: #032b24;
+}
+
+.order-sheet-hits__filter-clear {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.order-sheet-hits__filter-clear:hover {
+  border-color: #032b24;
+  color: #032b24;
+}
+
+.order-sheet-col-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.order-sheet-col-filters__input,
+.order-sheet-col-filters__select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.8125rem;
+  padding: 8px 10px;
+}
+
+.order-sheet-col-filters .order-sheet-btn-ghost {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 .order-sheet-hits__totals th.order-sheet-hits__num {
@@ -2246,6 +2399,7 @@
 
   /* No sticky chrome on mobile — free the viewport for the list */
   .order-sheet-hits__table--wide thead tr:first-child th,
+  .order-sheet-hits__filters th,
   .order-sheet-hits__totals th {
     position: static;
     top: auto;
@@ -2262,10 +2416,15 @@
     padding: 6px 10px;
   }
 
+  .order-sheet-hits__filters th {
+    top: 1.7rem;
+    padding: 4px 6px;
+  }
+
   .order-sheet-hits__totals th {
     padding-top: 6px;
     padding-bottom: 6px;
-    top: 1.85rem;
+    top: 4.35rem;
   }
 
   .order-sheet-search-actions {

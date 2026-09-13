@@ -11,6 +11,7 @@ const schema = z.object({
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
   type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']).optional(),
   isVendorWallet: z.boolean().optional(),
+  vendorOutflowSource: z.enum(['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']).optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -21,6 +22,7 @@ function serialize(row: {
   email: string | null
   type: string
   isVendorWallet: boolean
+  vendorOutflowSource: string
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -32,6 +34,7 @@ function serialize(row: {
     email: row.email,
     type: row.type,
     isVendorWallet: row.isVendorWallet,
+    vendorOutflowSource: row.vendorOutflowSource,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -52,6 +55,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const d = parsed.data
   try {
+    const nextIsVendor =
+      d.type !== undefined
+        ? (d.isVendorWallet ?? d.type === 'VENDOR')
+        : d.isVendorWallet !== undefined
+          ? d.isVendorWallet
+          : existing.isVendorWallet
     const row = await prisma.financeAccount.update({
       where: { id },
       data: {
@@ -60,11 +69,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ? { email: d.email?.trim() ? d.email.trim().toLowerCase() : null }
           : {}),
         ...(d.type !== undefined ? { type: d.type } : {}),
-        ...(d.type !== undefined
-          ? { isVendorWallet: d.isVendorWallet ?? d.type === 'VENDOR' }
-          : d.isVendorWallet !== undefined
-            ? { isVendorWallet: d.isVendorWallet }
-            : {}),
+        ...(d.type !== undefined || d.isVendorWallet !== undefined
+          ? { isVendorWallet: nextIsVendor }
+          : {}),
+        ...(d.vendorOutflowSource !== undefined && nextIsVendor
+          ? { vendorOutflowSource: d.vendorOutflowSource }
+          : {}),
         ...(d.active !== undefined ? { active: d.active } : {}),
         ...(d.sortOrder !== undefined ? { sortOrder: d.sortOrder } : {}),
       },

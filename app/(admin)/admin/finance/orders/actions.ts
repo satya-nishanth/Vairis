@@ -25,6 +25,7 @@ export async function saveOrderSheetAction(formData: FormData) {
 
   const orderId = String(formData.get('orderId') ?? '').trim()
   const paidToAccountId = String(formData.get('paidToAccountId') ?? '').trim()
+  const purchaseFromAccountId = String(formData.get('purchaseFromAccountId') ?? '').trim() || null
 
   if (!orderId) {
     redirect(`${ORDERS_PATH}?error=${encodeURIComponent('Missing order')}`)
@@ -46,7 +47,7 @@ export async function saveOrderSheetAction(formData: FormData) {
 
   try {
     await upsertOrderFinanceSheet(
-      { orderId, paidToAccountId, lines, roundOffEnabled },
+      { orderId, paidToAccountId, purchaseFromAccountId, lines, roundOffEnabled },
       session,
     )
   } catch (e) {
