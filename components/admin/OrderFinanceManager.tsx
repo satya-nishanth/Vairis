@@ -130,7 +130,7 @@ function cmpNum(a: number | null | undefined, b: number | null | undefined): num
   return a - b
 }
 
-function sheetSortValue(h: Hit, key: SheetSortKey): number | string {
+function sheetSortValue(h: Hit, key: SheetSortKey): number | string | null {
   switch (key) {
     case 'contact':
       return h.contactName || ''
