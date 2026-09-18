@@ -1,6 +1,7 @@
 import {
   findSheetInflowMismatches,
   roundMoney,
+  SHEET_RECONCILE_TOLERANCE_RUPEES,
   shortFinanceId,
   summarizeDashboardKpis,
   buildSheetPurchaseOutflows,
@@ -25,6 +26,11 @@ export const LARGE_OUTFLOW_THRESHOLD = 100_000
 
 /** Unpaid purchase bills at least this many days old surface as amber. */
 export const UNPAID_PURCHASE_BILL_AGE_DAYS = 30
+
+/** Capital / investment receipts are not expected to allocate to order invoices. */
+export function isInvestmentTxnDescription(description: string | null | undefined): boolean {
+  return /\binvest/i.test(description ?? '')
+}
 
 export type CompanyAuditStockRow = {
   id: string
@@ -74,6 +80,13 @@ export type CompanyAuditOrderPaymentRow = {
   grandTotal: number
   /** Sheet SP sum; null if no sheet lines / zero. */
   sheetSelling: number | null
+  /** True when Settled via manual settle (not Company bank). */
+  manuallySettled?: boolean
+  manuallySettledNote?: string | null
+  manuallySettledBy?: string | null
+  /** Ops marked settlement exception as reviewed (reconciliation). */
+  settlementExceptionReviewedAt?: Date | string | null
+  settlementExceptionReviewedBy?: string | null
 }
 
 export type CompanyAuditTxAllocRow = {
@@ -98,6 +111,11 @@ export type AuditException = {
   detail: string
   amount: number | null
   href: string
+  /** Present for settlement exceptions that can be marked reviewed. */
+  orderId?: string
+  reviewComplete?: boolean
+  reviewedBy?: string | null
+  reviewedAt?: string | null
 }
 
 export type CompanyAuditStockSummary = {
@@ -270,21 +288,19 @@ export function buildCompanyAuditExceptions(input: {
     if (!inRange(o.orderCreatedAt)) continue
     const label = o.label.trim() || shortFinanceId(o.orderId)
 
-    if (
-      o.sheetSelling != null &&
-      o.sheetSelling > 0.009 &&
-      roundMoney(o.sheetSelling) !== roundMoney(o.grandTotal)
-    ) {
+    if (o.sheetSelling != null && o.sheetSelling > 0.009) {
       const delta = roundMoney(o.sheetSelling - o.grandTotal)
-      out.push({
-        id: `sheet-checkout-${o.orderId}`,
-        severity: 'amber',
-        kind: 'sheet_checkout_mismatch',
-        title: `Sheet SP ≠ checkout · ${shortFinanceId(o.orderId)}`,
-        detail: `${label} · Sheet ₹${o.sheetSelling.toLocaleString('en-IN')} · Checkout ₹${o.grandTotal.toLocaleString('en-IN')}`,
-        amount: Math.abs(delta),
-        href: `/admin/finance/orders?orderId=${encodeURIComponent(o.orderId)}`,
-      })
+      if (Math.abs(delta) > SHEET_RECONCILE_TOLERANCE_RUPEES) {
+        out.push({
+          id: `sheet-checkout-${o.orderId}`,
+          severity: 'amber',
+          kind: 'sheet_checkout_mismatch',
+          title: `Sheet SP ≠ checkout · ${shortFinanceId(o.orderId)}`,
+          detail: `${label} · Sheet ₹${o.sheetSelling.toLocaleString('en-IN')} · Checkout ₹${o.grandTotal.toLocaleString('en-IN')}`,
+          amount: Math.abs(delta),
+          href: `/admin/finance/orders?orderId=${encodeURIComponent(o.orderId)}`,
+        })
+      }
     }
 
     if (o.sheetSelling == null || o.sheetSelling <= 0.009) {
@@ -299,7 +315,43 @@ export function buildCompanyAuditExceptions(input: {
       })
     }
 
-    if (o.paymentStatus === 'settled' || o.expected <= 0.009) continue
+    const isManualSettle = o.paymentStatus === 'settled' && Boolean(o.manuallySettled)
+    const isFullyPaidUnsettled = o.paymentStatus === 'fully_paid'
+    if (isFullyPaidUnsettled || isManualSettle) {
+      const reviewedAt = o.settlementExceptionReviewedAt
+        ? new Date(o.settlementExceptionReviewedAt)
+        : null
+      const reviewed = Boolean(reviewedAt && !Number.isNaN(reviewedAt.getTime()))
+      const reviewedBy = (o.settlementExceptionReviewedBy ?? '').trim() || null
+      const manualBy = (o.manuallySettledBy ?? '').trim() || null
+      const manualNote = (o.manuallySettledNote ?? '').trim()
+      out.push({
+        id: `order-settlement-recon-${o.orderId}`,
+        severity: reviewed ? 'info' : 'amber',
+        kind: 'order_settlement_recon',
+        title: isManualSettle
+          ? `Manually settled · ${shortFinanceId(o.orderId)}`
+          : `Fully paid · not settled · ${shortFinanceId(o.orderId)}`,
+        detail: isManualSettle
+          ? reviewed
+            ? `${label} · manual settle${manualBy ? ` by ${manualBy}` : ''}${manualNote ? ` · ${manualNote}` : ''} · Reviewed${reviewedBy ? ` by ${reviewedBy}` : ''}${reviewedAt ? ` · ${reviewedAt.toISOString().slice(0, 10)}` : ''}`
+            : `${label} · manual settle${manualBy ? ` by ${manualBy}` : ''}${manualNote ? ` · ${manualNote}` : ''} · not in Company bank`
+          : reviewed
+            ? `${label} · collected ₹${o.collected.toLocaleString('en-IN')} · Reviewed${reviewedBy ? ` by ${reviewedBy}` : ''}${reviewedAt ? ` · ${reviewedAt.toISOString().slice(0, 10)}` : ''}`
+            : `${label} · collected ₹${o.collected.toLocaleString('en-IN')} of ₹${o.expected.toLocaleString('en-IN')} · funds not in Company bank`,
+        amount: o.expected,
+        href: `/admin/finance/orders?orderId=${encodeURIComponent(o.orderId)}`,
+        orderId: o.orderId,
+        reviewComplete: reviewed,
+        reviewedBy,
+        reviewedAt: reviewedAt?.toISOString() ?? null,
+      })
+      continue
+    }
+
+    if (o.paymentStatus === 'settled' || o.expected <= 0.009) {
+      continue
+    }
     if (o.paymentStatus === 'unpaid') {
       out.push({
         id: `order-unpaid-${o.orderId}`,
@@ -405,7 +457,11 @@ export function buildCompanyAuditExceptions(input: {
         amount: meta.unallocatedAmount,
         href: `/admin/finance/transactions?edit=${encodeURIComponent(t.id)}`,
       })
-    } else if (meta.status === 'unallocated' && t.direction === 'INFLOW') {
+    } else if (
+      meta.status === 'unallocated' &&
+      t.direction === 'INFLOW' &&
+      !isInvestmentTxnDescription(t.description)
+    ) {
       out.push({
         id: `tx-unalloc-inflow-${t.id}`,
         severity: 'amber',

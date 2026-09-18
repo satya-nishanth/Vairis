@@ -56,6 +56,7 @@ function statusStyle(s: SettlementStatus): React.CSSProperties {
   const map: Record<SettlementStatus, { bg: string; color: string }> = {
     unpaid: { bg: '#fef2f2', color: '#b91c1c' },
     partial: { bg: '#fffbeb', color: '#b45309' },
+    fully_paid: { bg: '#ecfdf5', color: '#047857' },
     settled: { bg: '#dceee8', color: GREEN },
     overpaid: { bg: '#eff6ff', color: '#1d4ed8' },
   }
@@ -81,8 +82,9 @@ type SortDir = 'asc' | 'desc'
 const STATUS_SORT_ORDER: Record<SettlementStatus, number> = {
   unpaid: 0,
   partial: 1,
-  settled: 2,
-  overpaid: 3,
+  fully_paid: 2,
+  settled: 3,
+  overpaid: 4,
 }
 
 const SORTABLE_COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [

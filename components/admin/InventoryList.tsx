@@ -5,10 +5,15 @@ import { useMemo, useState } from 'react'
 import { inventoryDisplayName } from '@/lib/inventory'
 import { InventorySubnav } from '@/components/admin/InventorySubnav'
 import { InventoryMarkSoldDialog } from '@/components/admin/InventoryMarkSoldDialog'
-import { effectiveInventorySoldPrice } from '@/lib/inventory-pricing'
 import { shortFinanceId } from '@/lib/finance'
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+
+const fmtGrams = (n: number | null | undefined) =>
+  n == null || !Number.isFinite(n) ? '—' : `${n.toLocaleString('en-IN', { maximumFractionDigits: 3 })} g`
+
+const fmtCarats = (n: number | null | undefined) =>
+  n == null || !Number.isFinite(n) ? '—' : `${n.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ct`
 
 export type InventorySaleRef = {
   qty: number
@@ -32,6 +37,8 @@ export type InventoryListRow = {
   purchasePrice: number | null
   soldPrice: number | null
   potentialPrice: number | null
+  weightGrams: number | null
+  diamondCarats: number | null
   liveSoldPrice?: number | null
   latestSale: InventorySaleRef | null
   customName: string | null
@@ -41,6 +48,63 @@ export type InventoryListRow = {
   variant: { id: string; sku: string; metalType: string; size: string | null } | null
   purchaseBills?: InventoryListBillRef[]
   _count?: { allocations: number }
+}
+
+type InvSortKey =
+  | 'name'
+  | 'status'
+  | 'qty'
+  | 'weight'
+  | 'diamond'
+  | 'purchaseTotal'
+  | 'bills'
+  | 'soldTo'
+  | 'holder'
+
+type SortDir = 'asc' | 'desc'
+
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+}
+
+function cmpNum(a: number | null | undefined, b: number | null | undefined): number {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  return a - b
+}
+
+function soldToSortLabel(sale: InventorySaleRef | null): string {
+  if (!sale) return ''
+  if (sale.order?.contactName) return sale.order.contactName
+  if (sale.unlinkedOrderLabel) return sale.unlinkedOrderLabel
+  return ''
+}
+
+function compareInvRows(a: InventoryListRow, b: InventoryListRow, key: InvSortKey): number {
+  switch (key) {
+    case 'name':
+      return cmpStr(inventoryDisplayName(a), inventoryDisplayName(b))
+    case 'status':
+      return cmpNum(a.qtyOnHand > 0 ? 1 : 0, b.qtyOnHand > 0 ? 1 : 0)
+    case 'qty':
+      return cmpNum(a.qtyOnHand, b.qtyOnHand)
+    case 'weight':
+      return cmpNum(a.weightGrams, b.weightGrams)
+    case 'diamond':
+      return cmpNum(a.diamondCarats, b.diamondCarats)
+    case 'purchaseTotal': {
+      const ta = a.purchasePrice != null && a.qtyOnHand > 0 ? a.qtyOnHand * a.purchasePrice : null
+      const tb = b.purchasePrice != null && b.qtyOnHand > 0 ? b.qtyOnHand * b.purchasePrice : null
+      return cmpNum(ta, tb)
+    }
+    case 'bills':
+      return cmpNum(a.purchaseBills?.length ?? 0, b.purchaseBills?.length ?? 0)
+    case 'soldTo':
+      return cmpStr(soldToSortLabel(a.latestSale), soldToSortLabel(b.latestSale))
+    case 'holder':
+      return cmpStr(a.holder.name, b.holder.name)
+  }
 }
 
 function saleRefLabel(sale: InventorySaleRef): React.ReactNode {
@@ -80,11 +144,13 @@ export function InventoryList({
   const [holderId, setHolderId] = useState('')
   const [linked, setLinked] = useState<'all' | 'linked' | 'unlinked'>('all')
   const [stock, setStock] = useState<'all' | 'in_stock' | 'sold_out'>('all')
+  const [sortKey, setSortKey] = useState<InvSortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [markSold, setMarkSold] = useState<InventoryListRow | null>(null)
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return initialRows.filter((r) => {
+    const filtered = initialRows.filter((r) => {
       if (holderId && r.holder.id !== holderId) return false
       if (linked === 'linked' && !r.variant) return false
       if (linked === 'unlinked' && r.variant) return false
@@ -106,7 +172,13 @@ export function InventoryList({
         .toLowerCase()
       return hay.includes(needle)
     })
-  }, [initialRows, q, holderId, linked, stock])
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      const cmp = compareInvRows(a, b, sortKey)
+      if (cmp !== 0) return cmp * dir
+      return cmpStr(inventoryDisplayName(a), inventoryDisplayName(b))
+    })
+  }, [initialRows, q, holderId, linked, stock, sortKey, sortDir])
 
   const inStock = useMemo(() => rows.filter((r) => r.qtyOnHand > 0), [rows])
 
@@ -121,7 +193,39 @@ export function InventoryList({
     )
   }, [inStock, isFinance])
 
-  const colSpan = isFinance ? 10 : 8
+  const colSpan = isFinance ? 10 : 9
+
+  function toggleSort(key: InvSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    const numericDesc: InvSortKey[] = ['qty', 'weight', 'diamond', 'purchaseTotal', 'bills']
+    setSortDir(numericDesc.includes(key) ? 'desc' : 'asc')
+  }
+
+  function sortTh(key: InvSortKey, label: string, align: 'left' | 'right' = 'left') {
+    const active = sortKey === key
+    return (
+      <th
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        style={align === 'right' ? { textAlign: 'right' } : undefined}
+      >
+        <button
+          type="button"
+          className={`finance-tx-sort${active ? ' is-active' : ''}`}
+          onClick={() => toggleSort(key)}
+          style={align === 'right' ? { justifyContent: 'flex-end', width: '100%' } : undefined}
+        >
+          <span>{label}</span>
+          <span className="finance-tx-sort__ind" aria-hidden>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   return (
     <>
@@ -191,15 +295,15 @@ export function InventoryList({
         <table className="inv-table">
           <thead>
             <tr>
-              <th>Item</th>
-              <th>Status</th>
-              <th>Qty</th>
-              {isFinance ? <th>Purchase / pc</th> : null}
-              <th>Sold / pc</th>
-              {isFinance ? <th>Purchase total</th> : null}
-              <th>Bills</th>
-              <th>Sold to</th>
-              <th>Holder</th>
+              {sortTh('name', 'Item')}
+              {sortTh('status', 'Status')}
+              {sortTh('qty', 'Qty', 'right')}
+              {sortTh('weight', 'Gold weight', 'right')}
+              {sortTh('diamond', 'Diamond carats', 'right')}
+              {isFinance ? sortTh('purchaseTotal', 'Purchase total', 'right') : null}
+              {sortTh('bills', 'Bills')}
+              {sortTh('soldTo', 'Sold to')}
+              {sortTh('holder', 'Holder')}
               <th />
             </tr>
           </thead>
@@ -212,14 +316,6 @@ export function InventoryList({
               </tr>
             ) : (
               rows.map((r) => {
-                const liveByVariant =
-                  r.variant?.id && r.liveSoldPrice != null ? { [r.variant.id]: r.liveSoldPrice } : {}
-                const effectiveSold = effectiveInventorySoldPrice(
-                  r.soldPrice,
-                  r.variant?.id ?? null,
-                  liveByVariant,
-                )
-                const isLiveSold = r.soldPrice == null && r.liveSoldPrice != null
                 const soldOut = r.qtyOnHand <= 0
                 const bills = r.purchaseBills ?? []
                 return (
@@ -242,28 +338,13 @@ export function InventoryList({
                         </div>
                       )}
                     </td>
-                    <td>{r.qtyOnHand}</td>
-                    {isFinance ? (
-                      <td style={{ color: '#6b7280' }}>
-                        {r.purchasePrice != null ? inr(r.purchasePrice) : '—'}
-                      </td>
-                    ) : null}
-                    <td style={{ color: '#6b7280' }}>
-                      {effectiveSold != null ? (
-                        <>
-                          {inr(effectiveSold)}
-                          {isLiveSold && (
-                            <span style={{ display: 'block', fontSize: '0.6875rem', color: '#9ca3af' }}>
-                              live
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        '—'
-                      )}
+                    <td style={{ textAlign: 'right' }}>{r.qtyOnHand}</td>
+                    <td style={{ textAlign: 'right', color: '#6b7280' }}>{fmtGrams(r.weightGrams)}</td>
+                    <td style={{ textAlign: 'right', color: '#6b7280' }}>
+                      {fmtCarats(r.diamondCarats)}
                     </td>
                     {isFinance ? (
-                      <td style={{ fontWeight: 600 }}>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {r.purchasePrice != null && r.qtyOnHand > 0
                           ? inr(r.qtyOnHand * r.purchasePrice)
                           : '—'}
