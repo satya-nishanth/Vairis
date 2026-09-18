@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toDateInput, shortFinanceId } from '@/lib/finance'
-import { SETTLEMENT_LABEL, type SettlementStatus } from '@/lib/finance-settlement'
+import { SETTLEMENT_LABEL, type PurchaseBillSettlementStatus } from '@/lib/finance-settlement'
 
 export type PurchaseBillRow = {
   id: string
@@ -21,7 +21,7 @@ export type PurchaseBillRow = {
   attachments: { id?: string; url: string; fileName: string; contentType: string }[]
   paid: number
   balance: number
-  paymentStatus: SettlementStatus
+  paymentStatus: PurchaseBillSettlementStatus
   label: string
 }
 
@@ -52,11 +52,10 @@ const field: React.CSSProperties = {
   color: LABEL,
 }
 
-function statusStyle(s: SettlementStatus): React.CSSProperties {
-  const map: Record<SettlementStatus, { bg: string; color: string }> = {
+function statusStyle(s: PurchaseBillSettlementStatus): React.CSSProperties {
+  const map: Record<PurchaseBillSettlementStatus, { bg: string; color: string }> = {
     unpaid: { bg: '#fef2f2', color: '#b91c1c' },
     partial: { bg: '#fffbeb', color: '#b45309' },
-    fully_paid: { bg: '#ecfdf5', color: '#047857' },
     settled: { bg: '#dceee8', color: GREEN },
     overpaid: { bg: '#eff6ff', color: '#1d4ed8' },
   }
@@ -79,12 +78,11 @@ function inr(n: number) {
 type SortKey = 'date' | 'bill' | 'supplier' | 'total' | 'paid' | 'balance' | 'status'
 type SortDir = 'asc' | 'desc'
 
-const STATUS_SORT_ORDER: Record<SettlementStatus, number> = {
+const STATUS_SORT_ORDER: Record<PurchaseBillSettlementStatus, number> = {
   unpaid: 0,
   partial: 1,
-  fully_paid: 2,
-  settled: 3,
-  overpaid: 4,
+  settled: 2,
+  overpaid: 3,
 }
 
 const SORTABLE_COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
@@ -146,7 +144,7 @@ export function PurchaseBillsManager({
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | SettlementStatus>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | PurchaseBillSettlementStatus>('all')
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const fileRef = useRef<HTMLInputElement>(null)

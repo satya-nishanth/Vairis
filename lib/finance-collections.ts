@@ -4,6 +4,7 @@ import {
   orderExpectedAmount,
   orderPaymentStatus,
   settlementStatus,
+  type PurchaseBillSettlementStatus,
   type SettlementStatus,
 } from '@/lib/finance-settlement'
 
@@ -158,7 +159,7 @@ export type PurchaseBillPaymentSummary = {
   total: number
   paid: number
   balance: number
-  paymentStatus: SettlementStatus
+  paymentStatus: PurchaseBillSettlementStatus
 }
 
 export function purchaseBillPaymentSummary(total: number, paid: number): PurchaseBillPaymentSummary {
