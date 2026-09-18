@@ -1,4 +1,5 @@
 import type { FinanceAccountType, FinanceLineKind, FinancePaidThrough } from '@prisma/client'
+import { splitGemValues } from '@/lib/pricing'
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 
@@ -160,7 +161,8 @@ export function isPendingOrderSheet(
 }
 
 /** Map retail PriceBreakdown → finance sheet kinds (quoted / selling guidance).
- *  Value Addition (goldVA + stoneVA) → WASTAGE_CHARGES. */
+ *  Value Addition (goldVA + stoneVA) → WASTAGE_CHARGES.
+ *  Diamonds / Stones split via {@link splitGemValues}. */
 export function quotedAmountsFromBreakdown(
   b: {
     goldValue: number
@@ -170,14 +172,18 @@ export function quotedAmountsFromBreakdown(
     stoneVA: number
     miscCharges: number
     gst: number
+    diamondValue?: number | null
+    otherStoneValue?: number | null
+    stoneLines?: { typeLabel: string; value: number }[] | null
   },
   quantity = 1,
 ): Record<FinanceLineKind, number> {
   const q = Math.max(1, quantity)
+  const gems = splitGemValues(b)
   return {
     GOLD: roundMoney(b.goldValue * q),
-    DIAMONDS: roundMoney(b.stoneValue * q),
-    STONES: 0,
+    DIAMONDS: roundMoney(gems.diamonds * q),
+    STONES: roundMoney(gems.stones * q),
     MAKING_CHARGES: roundMoney(b.making * q),
     WASTAGE_CHARGES: roundMoney((b.goldVA + b.stoneVA) * q),
     DELIVERY: roundMoney(b.miscCharges * q),
@@ -406,13 +412,17 @@ export type DashboardKpiCategoryConfig = {
 export type OrderInflowTxRow = {
   date: Date
   amount: number
-  /** Orders linked on this INFLOW transaction (legacy join / fallback). */
+  /** Orders linked on this receipt transaction (legacy join / fallback). */
   orderIds: string[]
   /**
    * Exact FinanceAllocation amounts per order. When present, used instead of
    * splitting `amount` evenly across `orderIds`.
    */
   allocations?: { orderId: string; amount: number }[]
+  /** Defaults to INFLOW when omitted (legacy callers / tests). */
+  direction?: 'INFLOW' | 'TRANSFER'
+  /** True when TRANSFER destination is COMPANY_BANK (Vairis bank). */
+  transferToCompanyBank?: boolean
 }
 
 export type SheetInflowMismatch = {
@@ -420,6 +430,79 @@ export type SheetInflowMismatch = {
   orderLabel: string
   sheetSelling: number
   inflowTotal: number
+}
+
+/** One allocated (or even-split) receipt leg toward an order. */
+export type OrderReceiptCollectedLeg = {
+  orderId: string
+  amount: number
+  direction: 'INFLOW' | 'TRANSFER'
+  /** TRANSFER whose destination is COMPANY_BANK (Vairis bank). */
+  transferToCompanyBank?: boolean
+}
+
+/**
+ * Sheet SP vs checkout / allocated receipts — ignore ≤ ₹1 round-off
+ * (sheet line decimals vs whole-rupee checkout / bank amounts).
+ */
+export const SHEET_RECONCILE_TOLERANCE_RUPEES = 1
+
+/** Customer receipts: cash INFLOW or TRANSFER allocated / linked to orders. */
+export function isOrderReceiptDirection(direction: string): boolean {
+  return direction === 'INFLOW' || direction === 'TRANSFER'
+}
+
+/**
+ * Collected toward orders from receipt legs.
+ * Counts INFLOW + TRANSFER. When any TRANSFER→COMPANY_BANK exists for an order,
+ * INFLOW for that order is ignored so settle does not double-count.
+ */
+export function sumCollectedByOrderId(
+  legs: OrderReceiptCollectedLeg[],
+): Map<string, number> {
+  const hasCompanyBankTransfer = new Set<string>()
+  for (const leg of legs) {
+    if (leg.direction === 'TRANSFER' && leg.transferToCompanyBank) {
+      hasCompanyBankTransfer.add(leg.orderId)
+    }
+  }
+  const map = new Map<string, number>()
+  for (const leg of legs) {
+    if (leg.direction !== 'INFLOW' && leg.direction !== 'TRANSFER') continue
+    if (leg.direction === 'INFLOW' && hasCompanyBankTransfer.has(leg.orderId)) continue
+    map.set(leg.orderId, roundMoney((map.get(leg.orderId) ?? 0) + Number(leg.amount)))
+  }
+  return map
+}
+
+function receiptLegsFromInflowRows(
+  inflows: OrderInflowTxRow[],
+  inRange: (d: Date) => boolean,
+): OrderReceiptCollectedLeg[] {
+  const legs: OrderReceiptCollectedLeg[] = []
+  for (const t of inflows) {
+    if (!inRange(t.date)) continue
+    const direction: 'INFLOW' | 'TRANSFER' = t.direction ?? 'INFLOW'
+    const transferToCompanyBank = Boolean(t.transferToCompanyBank)
+    if (t.allocations && t.allocations.length > 0) {
+      for (const a of t.allocations) {
+        if (!a.orderId) continue
+        legs.push({
+          orderId: a.orderId,
+          amount: a.amount,
+          direction,
+          transferToCompanyBank,
+        })
+      }
+      continue
+    }
+    if (t.orderIds.length === 0) continue
+    const share = t.amount / t.orderIds.length
+    for (const orderId of t.orderIds) {
+      legs.push({ orderId, amount: share, direction, transferToCompanyBank })
+    }
+  }
+  return legs
 }
 
 /**
@@ -484,9 +567,9 @@ export function summarizeDashboardKpis(
 }
 
 /**
- * Orders whose sheet selling total ≠ sum of allocated INFLOW amounts.
- * Prefers FinanceAllocation rows; falls back to even-split of linked join amounts
- * for legacy cashbook rows without allocations.
+ * Orders whose sheet selling total ≠ collected receipts (INFLOW + TRANSFER;
+ * INFLOW ignored when a TRANSFER→COMPANY_BANK exists for the order).
+ * Prefers FinanceAllocation rows; falls back to even-split of linked join amounts.
  */
 export function findSheetInflowMismatches(
   sheets: OrderSheetRow[],
@@ -494,33 +577,15 @@ export function findSheetInflowMismatches(
   range?: { start: Date; end: Date },
 ): SheetInflowMismatch[] {
   const inRange = (d: Date) => !range || (d >= range.start && d < range.end)
-  const inflowByOrder = new Map<string, number>()
-
-  for (const t of inflows) {
-    if (!inRange(t.date)) continue
-    if (t.allocations && t.allocations.length > 0) {
-      for (const a of t.allocations) {
-        if (!a.orderId) continue
-        inflowByOrder.set(a.orderId, (inflowByOrder.get(a.orderId) ?? 0) + a.amount)
-      }
-      continue
-    }
-    if (t.orderIds.length === 0) continue
-    const share = t.amount / t.orderIds.length
-    for (const orderId of t.orderIds) {
-      inflowByOrder.set(orderId, (inflowByOrder.get(orderId) ?? 0) + share)
-    }
-  }
+  const inflowByOrder = sumCollectedByOrderId(receiptLegsFromInflowRows(inflows, inRange))
 
   const out: SheetInflowMismatch[] = []
   for (const s of sheets) {
     if (!s.orderId || !inRange(s.orderCreatedAt)) continue
     const sheetSelling = roundMoney(s.sellingPrice)
     const inflowTotal = roundMoney(inflowByOrder.get(s.orderId) ?? 0)
-    // Shared multi-order inflows split evenly (amount / orderIds.length) can
-    // leave a paisa or two of rounding drift per order without any real
-    // reconciliation problem — tolerate that instead of an exact ===.
-    if (Math.abs(sheetSelling - inflowTotal) <= 0.01) continue
+    // Paisa drift and whole-rupee checkout vs decimal sheet SP — tolerate ≤ ₹1.
+    if (Math.abs(sheetSelling - inflowTotal) <= SHEET_RECONCILE_TOLERANCE_RUPEES) continue
     out.push({
       orderId: s.orderId,
       orderLabel: s.orderLabel || s.orderId,

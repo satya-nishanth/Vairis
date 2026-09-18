@@ -11,6 +11,7 @@ import {
   summarizeTransactionFlows,
   summarizeDashboardKpis,
   findSheetInflowMismatches,
+  sumCollectedByOrderId,
   summarizeTransactionReport,
   toFinanceCategoryDirection,
   type FinanceTransactionDirection,
@@ -519,6 +520,159 @@ describe('findSheetInflowMismatches', () => {
       ],
     )
     expect(mismatches).toEqual([])
+  })
+
+  it('tolerates ≤ ₹1 sheet vs allocated receipt round-off', () => {
+    const mismatches = findSheetInflowMismatches(
+      [
+        {
+          orderId: 'ord_a',
+          orderLabel: 'Phani',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 50000,
+          sellingPrice: 75407.92,
+          paidToAccountId: 'fa_bank',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-05T12:00:00+05:30'),
+          amount: 75408,
+          orderIds: ['ord_a'],
+          allocations: [{ orderId: 'ord_a', amount: 75408 }],
+        },
+      ],
+    )
+    expect(mismatches).toEqual([])
+  })
+
+  it('counts TRANSFER allocations toward sheet receipts', () => {
+    const mismatches = findSheetInflowMismatches(
+      [
+        {
+          orderId: 'ord_a',
+          orderLabel: 'Priya',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 10000,
+          sellingPrice: 18000,
+          paidToAccountId: 'fa_bank',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-05T12:00:00+05:30'),
+          amount: 18000,
+          orderIds: ['ord_a'],
+          direction: 'TRANSFER',
+          allocations: [{ orderId: 'ord_a', amount: 18000 }],
+        },
+      ],
+    )
+    expect(mismatches).toEqual([])
+  })
+
+  it('ignores INFLOW when TRANSFER→COMPANY_BANK exists (no double-count on settle)', () => {
+    const mismatches = findSheetInflowMismatches(
+      [
+        {
+          orderId: 'ord_a',
+          orderLabel: 'Priya',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 10000,
+          sellingPrice: 18000,
+          paidToAccountId: 'fa_bank',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-05T11:00:00+05:30'),
+          amount: 18000,
+          orderIds: ['ord_a'],
+          direction: 'INFLOW',
+          allocations: [{ orderId: 'ord_a', amount: 18000 }],
+        },
+        {
+          date: new Date('2026-08-05T12:00:00+05:30'),
+          amount: 18000,
+          orderIds: ['ord_a'],
+          direction: 'TRANSFER',
+          transferToCompanyBank: true,
+          allocations: [{ orderId: 'ord_a', amount: 18000 }],
+        },
+      ],
+    )
+    expect(mismatches).toEqual([])
+  })
+
+  it('still sums INFLOW + non-company TRANSFER when no Vairis-bank settle', () => {
+    const mismatches = findSheetInflowMismatches(
+      [
+        {
+          orderId: 'ord_a',
+          orderLabel: 'Priya',
+          orderCreatedAt: new Date('2026-08-05T10:00:00+05:30'),
+          cost: 10000,
+          sellingPrice: 18000,
+          paidToAccountId: 'fa_partner',
+        },
+      ],
+      [
+        {
+          date: new Date('2026-08-05T11:00:00+05:30'),
+          amount: 10000,
+          orderIds: ['ord_a'],
+          direction: 'INFLOW',
+          allocations: [{ orderId: 'ord_a', amount: 10000 }],
+        },
+        {
+          date: new Date('2026-08-05T12:00:00+05:30'),
+          amount: 8000,
+          orderIds: ['ord_a'],
+          direction: 'TRANSFER',
+          transferToCompanyBank: false,
+          allocations: [{ orderId: 'ord_a', amount: 8000 }],
+        },
+      ],
+    )
+    expect(mismatches).toEqual([])
+  })
+})
+
+describe('sumCollectedByOrderId', () => {
+  it('sums INFLOW + TRANSFER', () => {
+    const map = sumCollectedByOrderId([
+      { orderId: 'o1', amount: 10_000, direction: 'INFLOW' },
+      { orderId: 'o1', amount: 5_000, direction: 'TRANSFER' },
+    ])
+    expect(map.get('o1')).toBe(15_000)
+  })
+
+  it('drops INFLOW when any TRANSFER→COMPANY_BANK exists for the order', () => {
+    const map = sumCollectedByOrderId([
+      { orderId: 'o1', amount: 18_000, direction: 'INFLOW' },
+      {
+        orderId: 'o1',
+        amount: 18_000,
+        direction: 'TRANSFER',
+        transferToCompanyBank: true,
+      },
+    ])
+    expect(map.get('o1')).toBe(18_000)
+  })
+
+  it('does not drop INFLOW for other orders', () => {
+    const map = sumCollectedByOrderId([
+      { orderId: 'o1', amount: 18_000, direction: 'INFLOW' },
+      {
+        orderId: 'o2',
+        amount: 9_000,
+        direction: 'TRANSFER',
+        transferToCompanyBank: true,
+      },
+      { orderId: 'o2', amount: 9_000, direction: 'INFLOW' },
+    ])
+    expect(map.get('o1')).toBe(18_000)
+    expect(map.get('o2')).toBe(9_000)
   })
 })
 

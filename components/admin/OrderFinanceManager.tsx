@@ -2,17 +2,20 @@
 
 import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { saveOrderSheetAction } from '@/app/(admin)/admin/finance/orders/actions'
 import { OrderSheetSaveButton } from '@/components/admin/OrderSheetSaveButton'
 import {
   FINANCE_LINE_KINDS,
   LINE_KIND_LABEL,
+  roundMoney,
   sheetTotals,
   shortFinanceId,
   sumSellingByKind,
   type OrderItemQuote,
 } from '@/lib/finance'
 import type { FinanceOrderHit } from '@/lib/finance-order-search'
+import type { OrderSheetPaymentRow } from '@/lib/finance-order-sheet-payments'
 import { SETTLEMENT_LABEL, type SettlementStatus } from '@/lib/finance-settlement'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import type { FinanceLineKind, OrderStatus } from '@prisma/client'
@@ -37,28 +40,131 @@ type Editor = {
   revision: number
   orderId: string
   orderLabel: string
-  orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
+  orderMeta: {
+    phone?: string
+    total?: number
+    status?: string
+    itemsLabel?: string
+    createdAt?: string
+  }
   amounts: Amounts
   paidToAccountId: string
   purchaseFromAccountId: string
   hasSheet: boolean
   roundOffEnabled: boolean
+  manuallySettled: boolean
+  manuallySettledNote: string
+  manuallySettledBy: string | null
+  manuallySettledAt: string | null
 }
 
 /** Server-prefetched selection — avoids mobile client-fetch races. */
 export type OrderSheetBoot = {
   orderId: string
   orderLabel: string
-  orderMeta: { phone?: string; total?: number; status?: string; itemsLabel?: string }
+  orderMeta: {
+    phone?: string
+    total?: number
+    status?: string
+    itemsLabel?: string
+    createdAt?: string
+  }
   paidToAccountId: string
   purchaseFromAccountId: string | null
   lines: Line[]
   quotes: OrderItemQuote[]
   hasSheet?: boolean
   roundOffEnabled?: boolean
+  manuallySettled?: boolean
+  manuallySettledNote?: string | null
+  manuallySettledBy?: string | null
+  manuallySettledAt?: string | null
+  paymentSummary?: {
+    expected: number
+    collected: number
+    balance: number
+    paymentStatus: SettlementStatus
+    settledInCompanyBank?: number
+  }
+  paymentGroups?: {
+    customer: { rows: OrderSheetPaymentRow[]; total: number }
+    vendor: { rows: OrderSheetPaymentRow[]; total: number }
+    misc: { rows: OrderSheetPaymentRow[]; total: number }
+  }
 }
 
 type SheetFilter = 'all' | 'incomplete' | 'complete'
+
+type SheetSortKey =
+  | 'contact'
+  | 'item'
+  | 'selling'
+  | 'purchasing'
+  | 'profit'
+  | 'profitPct'
+  | 'collected'
+  | 'payment'
+  | 'vendor'
+  | 'paidTo'
+  | 'orderId'
+  | 'createdAt'
+
+type SortDir = 'asc' | 'desc'
+
+const PAYMENT_SORT_RANK: Record<SettlementStatus, number> = {
+  unpaid: 0,
+  partial: 1,
+  fully_paid: 2,
+  settled: 3,
+  overpaid: 4,
+}
+
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+}
+
+function cmpNum(a: number | null | undefined, b: number | null | undefined): number {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  return a - b
+}
+
+function sheetSortValue(h: Hit, key: SheetSortKey): number | string | null {
+  switch (key) {
+    case 'contact':
+      return h.contactName || ''
+    case 'item':
+      return h.itemsLabel || ''
+    case 'selling':
+      return h.selling
+    case 'purchasing':
+      return h.purchasing
+    case 'profit':
+      return h.profit
+    case 'profitPct':
+      return profitPct(h.profit, h.selling)
+    case 'collected':
+      return h.collected
+    case 'payment':
+      return PAYMENT_SORT_RANK[h.paymentStatus] ?? 0
+    case 'vendor':
+      return h.purchaseFromAccountName || ''
+    case 'paidTo':
+      return h.paidToAccountName || ''
+    case 'orderId':
+      return h.id
+    case 'createdAt':
+      return new Date(h.createdAt).getTime() || 0
+  }
+}
+
+function compareSheetHits(a: Hit, b: Hit, key: SheetSortKey): number {
+  const va = sheetSortValue(a, key)
+  const vb = sheetSortValue(b, key)
+  if (typeof va === 'string' && typeof vb === 'string') return cmpStr(va, vb)
+  return cmpNum(va as number | null, vb as number | null)
+}
 
 const GREEN = '#032b24'
 const BORDER = '#e5e7eb'
@@ -68,6 +174,7 @@ function paymentStatusStyle(s: SettlementStatus): CSSProperties {
   const map: Record<SettlementStatus, { bg: string; color: string }> = {
     unpaid: { bg: '#fef2f2', color: '#b91c1c' },
     partial: { bg: '#fffbeb', color: '#b45309' },
+    fully_paid: { bg: '#ecfdf5', color: '#047857' },
     settled: { bg: '#dceee8', color: GREEN },
     overpaid: { bg: '#eff6ff', color: '#1d4ed8' },
   }
@@ -189,6 +296,64 @@ function pctOrDash(n: number | null | undefined): string {
   return `${s}%`
 }
 
+function formatSheetDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const day = d.getDate()
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+  const mon = months[d.getMonth()]
+  const year = d.getFullYear()
+  let h = d.getHours()
+  const m = d.getMinutes()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  const mm = m < 10 ? `0${m}` : String(m)
+  return `${day} ${mon} ${year}, ${h}:${mm} ${ampm}`
+}
+
+function formatPaymentDay(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+}
+
+function balanceStatusLabel(status: SettlementStatus | undefined, balance: number): string {
+  if (!status) return '—'
+  if (status === 'settled') return 'Settled'
+  if (status === 'fully_paid') return 'Fully Paid'
+  if (status === 'overpaid') return 'Overpaid'
+  if (status === 'partial') return `Balance ${inr(Math.max(0, balance))} due`
+  return SETTLEMENT_LABEL[status]
+}
+
 function orderHref(orderId: string) {
   return `${ORDERS_PATH}?orderId=${encodeURIComponent(orderId)}`
 }
@@ -254,6 +419,8 @@ export function OrderFinanceManager({
   const [paymentFilter, setPaymentFilter] = useState<'all' | SettlementStatus>('all')
   const [vendorFilter, setVendorFilter] = useState('all')
   const [paidToFilter, setPaidToFilter] = useState('all')
+  const [sortKey, setSortKey] = useState<SheetSortKey>('createdAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [editor, setEditor] = useState<Editor>(() =>
     boot
       ? {
@@ -265,7 +432,11 @@ export function OrderFinanceManager({
           paidToAccountId: boot.paidToAccountId || fallbackPaidTo,
           purchaseFromAccountId: boot.purchaseFromAccountId ?? '',
           hasSheet: boot.hasSheet ?? boot.lines.length > 0,
-          roundOffEnabled: Boolean(boot.roundOffEnabled),
+          roundOffEnabled: boot.roundOffEnabled ?? true,
+          manuallySettled: Boolean(boot.manuallySettled),
+          manuallySettledNote: boot.manuallySettledNote ?? '',
+          manuallySettledBy: boot.manuallySettledBy ?? null,
+          manuallySettledAt: boot.manuallySettledAt ?? null,
         }
       : {
           revision: 0,
@@ -276,10 +447,39 @@ export function OrderFinanceManager({
           paidToAccountId: fallbackPaidTo,
           purchaseFromAccountId: '',
           hasSheet: false,
-          roundOffEnabled: false,
+          roundOffEnabled: true,
+          manuallySettled: false,
+          manuallySettledNote: '',
+          manuallySettledBy: null,
+          manuallySettledAt: null,
         },
   )
+  const [settleNote, setSettleNote] = useState(() => boot?.manuallySettledNote ?? '')
+  const [settleBusy, setSettleBusy] = useState(false)
+  const [settleError, setSettleError] = useState('')
+  const [settleStatus, setSettleStatus] = useState('')
+  const [openSection, setOpenSection] = useState<{
+    prices: boolean
+    customer: boolean
+    vendor: boolean
+    misc: boolean
+  }>(() => ({
+    prices: true,
+    customer: false,
+    vendor: false,
+    misc: (boot?.paymentGroups?.misc.rows.length ?? 0) > 0,
+  }))
+  const paymentGroups = boot?.paymentGroups ?? {
+    customer: { rows: [], total: 0 },
+    vendor: { rows: [], total: 0 },
+    misc: { rows: [], total: 0 },
+  }
+  const paymentSummary = boot?.paymentSummary
+  const router = useRouter()
   const [quotes] = useState<OrderItemQuote[]>(() => boot?.quotes ?? [])
+  const toggleSection = (key: keyof typeof openSection) => {
+    setOpenSection((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
   const [error] = useState(() => {
     if (initialSaveError) return initialSaveError
     if (selectedOrderId && !boot) return 'Order not found'
@@ -323,7 +523,7 @@ export function OrderFinanceManager({
 
   const listOrders = useMemo(() => {
     const q = customerFilter.trim().toLowerCase()
-    return statusFiltered.filter((h) => {
+    const filtered = statusFiltered.filter((h) => {
       if (q) {
         const hay = `${h.contactName} ${h.contactPhone}`.toLowerCase()
         if (!hay.includes(q)) return false
@@ -341,7 +541,53 @@ export function OrderFinanceManager({
       }
       return true
     })
-  }, [statusFiltered, customerFilter, paymentFilter, vendorFilter, paidToFilter])
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      const cmp = compareSheetHits(a, b, sortKey)
+      if (cmp !== 0) return cmp * dir
+      return compareSheetHits(a, b, 'createdAt') * -1 || cmpStr(a.id, b.id)
+    })
+  }, [statusFiltered, customerFilter, paymentFilter, vendorFilter, paidToFilter, sortKey, sortDir])
+
+  function toggleSort(key: SheetSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    const numericFirstDesc: SheetSortKey[] = [
+      'selling',
+      'purchasing',
+      'profit',
+      'profitPct',
+      'collected',
+      'createdAt',
+    ]
+    setSortDir(numericFirstDesc.includes(key) ? 'desc' : 'asc')
+  }
+
+  function sortTh(key: SheetSortKey, label: string, align: 'left' | 'right' = 'left') {
+    const active = sortKey === key
+    return (
+      <th
+        scope="col"
+        className={align === 'right' ? 'order-sheet-hits__num' : undefined}
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        <button
+          type="button"
+          className={`finance-tx-sort${active ? ' is-active' : ''}`}
+          onClick={() => toggleSort(key)}
+          style={align === 'right' ? { justifyContent: 'flex-end', width: '100%' } : undefined}
+        >
+          <span>{label}</span>
+          <span className="finance-tx-sort__ind" aria-hidden>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   const listTotals = useMemo(() => {
     let selling = 0
@@ -619,27 +865,17 @@ export function OrderFinanceManager({
             </colgroup>
             <thead>
               <tr>
-                <th scope="col">Contact</th>
-                <th scope="col">Item</th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Selling price
-                </th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Purchase price
-                </th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Profit
-                </th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Profit %
-                </th>
-                <th scope="col" className="order-sheet-hits__num">
-                  Collected
-                </th>
-                <th scope="col">Payment status</th>
-                <th scope="col">Vendor</th>
-                <th scope="col">Paid to</th>
-                <th scope="col">Order ID</th>
+                {sortTh('contact', 'Contact')}
+                {sortTh('item', 'Item')}
+                {sortTh('selling', 'Selling price', 'right')}
+                {sortTh('purchasing', 'Purchase price', 'right')}
+                {sortTh('profit', 'Profit', 'right')}
+                {sortTh('profitPct', 'Profit %', 'right')}
+                {sortTh('collected', 'Collected', 'right')}
+                {sortTh('payment', 'Payment status')}
+                {sortTh('vendor', 'Vendor')}
+                {sortTh('paidTo', 'Paid to')}
+                {sortTh('orderId', 'Order ID')}
                 <th scope="col" />
               </tr>
               <tr className="order-sheet-hits__filters">
@@ -777,7 +1013,11 @@ export function OrderFinanceManager({
                   <td className="order-sheet-hits__num">{inr(h.collected)}</td>
                   <td>
                     <span
-                      title={`Expected ${inr(h.expected)} · balance ${inr(h.balance)}`}
+                      title={
+                        h.manuallySettled && h.manuallySettledNote
+                          ? `Manual settle · ${h.manuallySettledNote}\nExpected ${inr(h.expected)} · balance ${inr(h.balance)}`
+                          : `Expected ${inr(h.expected)} · balance ${inr(h.balance)}`
+                      }
                       style={paymentStatusStyle(h.paymentStatus)}
                     >
                       {SETTLEMENT_LABEL[h.paymentStatus]}
@@ -917,104 +1157,232 @@ export function OrderFinanceManager({
   }
 
   if (editor.orderId) {
+    const orderAmount =
+      totals.selling > 0.0001
+        ? totals.selling
+        : editor.orderMeta.total != null
+          ? editor.orderMeta.total
+          : 0
+    const profitPctVal = profitPct(
+      totals.profit,
+      totals.selling > 0.0001 ? totals.selling : orderAmount,
+    )
+    const balLabel = balanceStatusLabel(
+      paymentSummary?.paymentStatus,
+      paymentSummary?.balance ?? 0,
+    )
+    const payStatus = paymentSummary?.paymentStatus
+    const inCompanyBank = roundMoney(paymentSummary?.settledInCompanyBank ?? 0)
+    const expectedPay = paymentSummary?.expected ?? orderAmount
+    const settledViaCompanyBank =
+      expectedPay > 0 && inCompanyBank >= expectedPay - 0.009
+    const balSettled = payStatus === 'settled'
+    const balFullyPaid = payStatus === 'fully_paid'
+    const txComposeHref = '/admin/finance/transactions?compose=1'
+
+    const renderPaymentRows = (rows: OrderSheetPaymentRow[]) => {
+      if (rows.length === 0) {
+        return <p className="order-sheet-pay__empty">No payments recorded yet.</p>
+      }
+      return (
+        <ul className="order-sheet-pay__list">
+          {rows.map((row) => (
+            <li key={row.id}>
+              <Link href={row.href} className="order-sheet-pay__row" prefetch={false}>
+                <div className="order-sheet-pay__row-main">
+                  <div className="order-sheet-pay__row-left">
+                    <span className="order-sheet-pay__date">{formatPaymentDay(row.date)}</span>
+                    <span className="order-sheet-pay__flow">{row.label}</span>
+                  </div>
+                  <div className="order-sheet-pay__row-right">
+                    <strong className="order-sheet-pay__amt">{inr(row.amount)}</strong>
+                    {row.description ? (
+                      <span className="order-sheet-pay__note">{row.description}</span>
+                    ) : null}
+                  </div>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+
     return (
-      <div className="order-sheet-edit-page">
-        <Link href={filterHref(filter, query)} className="order-sheet-back">
-          ← All order sheets
-        </Link>
-        <div className="order-sheet-form__intro">
-          <h2 className="order-sheet-form__title">
-            {editor.hasSheet ? 'Edit order sheet' : 'Add order sheet'}
-          </h2>
-          <p className="order-sheet-form__hint">
-            Enter purchase and selling prices by line. Leave blank if not applicable (counts as ₹0).
-            Saving overwrites.
-          </p>
-          <details className="order-sheet-col-guide">
-            <summary className="order-sheet-col-guide__summary">
-              <span>How Quoted, Purchase &amp; Selling work</span>
-              <span aria-hidden className="order-sheet-col-guide__chevron">
-                ▾
+      <div className="order-sheet-detail">
+        <nav className="order-sheet-detail__crumbs" aria-label="Breadcrumb">
+          <Link href={filterHref(filter, query)} prefetch={false}>
+            Orders
+          </Link>
+          <span aria-hidden>›</span>
+          <span>Order Sheet</span>
+        </nav>
+
+        <header className="order-sheet-detail__head">
+          <div className="order-sheet-detail__titles">
+            <h1 className="order-sheet-detail__title">
+              Order Sheet{' '}
+              <span className="order-sheet-detail__oid" title={editor.orderId}>
+                {shortFinanceId(editor.orderId)}
               </span>
-            </summary>
-            <div className="order-sheet-col-guide__body">
-              <ul>
-                <li>
-                  <strong>Quoted</strong> — reference only (not saved). Live catalogue prices for
-                  each line, except <strong>Gold</strong>, which uses the gold value frozen on the
-                  order at checkout.
-                </li>
-                <li>
-                  <strong>Purchase price</strong> — what you paid the vendor for that line. Enter
-                  ₹0 / leave blank if not applicable. A sheet is complete when every line with a
-                  selling price also has a non-zero purchase price.
-                </li>
-                <li>
-                  <strong>Selling price</strong> — what the customer paid for that line. Prefills
-                  from the order&apos;s checkout price breakdown (gold, diamonds, making, wastage,
-                  delivery, GST). Edit before saving if needed.
-                </li>
-              </ul>
-              <p>
-                Profit on the sheet = sum of selling − sum of purchase. Blank fields count as ₹0.
-              </p>
+            </h1>
+          </div>
+          <div className="order-sheet-detail__head-actions">
+            <span className="order-sheet-detail__created">
+              Created: {formatSheetDate(editor.orderMeta.createdAt)}
+            </span>
+            <button
+              type="button"
+              className="order-sheet-detail__refresh"
+              onClick={() => router.refresh()}
+            >
+              Refresh
+            </button>
+          </div>
+        </header>
+
+        {error ? (
+          <p className="order-sheet-detail__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {!error && saveStatus ? (
+          <p className="order-sheet-detail__ok" role="status">
+            {saveStatus}
+          </p>
+        ) : null}
+
+        <div className="order-sheet-detail__summary" role="group" aria-label="Order summary">
+          <div className="order-sheet-detail__metric">
+            <span className="order-sheet-detail__metric-icon" aria-hidden>
+              ₹
+            </span>
+            <div>
+              <span className="order-sheet-detail__metric-label">Order Amount</span>
+              <strong className="order-sheet-detail__metric-value">{inr(orderAmount)}</strong>
             </div>
-          </details>
-          {error && (
-            <p style={{ color: '#b91c1c', fontSize: '0.8125rem', margin: '0 0 8px' }} role="alert">
-              {error}
-            </p>
-          )}
+          </div>
+          <div className="order-sheet-detail__metric">
+            <span className="order-sheet-detail__metric-icon" aria-hidden>
+              ↗
+            </span>
+            <div>
+              <span className="order-sheet-detail__metric-label">Profit</span>
+              <strong className="order-sheet-detail__metric-value">{inr(totals.profit)}</strong>
+            </div>
+          </div>
+          <div className="order-sheet-detail__metric">
+            <span className="order-sheet-detail__metric-icon" aria-hidden>
+              %
+            </span>
+            <div>
+              <span className="order-sheet-detail__metric-label">Profit %</span>
+              <strong className="order-sheet-detail__metric-value is-accent">
+                {pctOrDash(profitPctVal)}
+              </strong>
+            </div>
+          </div>
         </div>
 
-        <div className="order-sheet-editor">
-          <section className="order-sheet-panel">
-            <div className="order-sheet-selected">
-              <div>
-                <div className="order-sheet-selected__name" title={editor.orderId}>
-                  {editor.orderLabel || shortFinanceId(editor.orderId)}
-                  <span className="order-sheet-selected__id" title={editor.orderId}>
-                    {' '}
-                    · {shortFinanceId(editor.orderId)}
-                  </span>
-                </div>
-                <div className="order-sheet-selected__meta">
-                  {editor.orderMeta.status ? `${statusLabel(editor.orderMeta.status)} · ` : ''}
-                  {editor.orderMeta.total != null ? `Goods ${inr(editor.orderMeta.total)}` : ''}
-                  {editor.orderMeta.phone ? ` · ${editor.orderMeta.phone}` : ''}
-                </div>
-                {editor.orderMeta.itemsLabel ? (
-                  <div className="order-sheet-selected__quotes-summary">
-                    {editor.orderMeta.itemsLabel}
-                  </div>
-                ) : null}
-                {quotes.length > 0 && (
-                  <div className="order-sheet-selected__quotes-summary">
-                    {quotes.length} item{quotes.length === 1 ? '' : 's'} · Quoted Σ{' '}
-                    {inr(quotes.reduce((s, q) => s + q.quotedTotal, 0))}
-                  </div>
-                )}
-                <Link
-                  href={`/admin/orders/${editor.orderId}`}
-                  className="order-sheet-selected__open"
-                >
-                  Open order
-                </Link>
-              </div>
+        <section className="order-sheet-detail__order-card" aria-label="Order details">
+          <div className="order-sheet-detail__order-grid">
+            <div>
+              <span className="order-sheet-detail__field-label">Contact</span>
+              <strong className="order-sheet-detail__field-value">
+                {editor.orderLabel || '—'}
+              </strong>
+              {editor.orderMeta.phone ? (
+                <span className="order-sheet-detail__field-sub">{editor.orderMeta.phone}</span>
+              ) : null}
             </div>
-          </section>
+            <div>
+              <span className="order-sheet-detail__field-label">Item</span>
+              <strong className="order-sheet-detail__field-value">
+                {editor.orderMeta.itemsLabel || '—'}
+              </strong>
+              {quotes.length > 0 ? (
+                <span className="order-sheet-detail__field-sub">
+                  {quotes.length} line{quotes.length === 1 ? '' : 's'} · Quoted Σ{' '}
+                  {inr(quotes.reduce((s, q) => s + q.quotedTotal, 0))}
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <span className="order-sheet-detail__field-label">Status</span>
+              <strong className="order-sheet-detail__field-value">
+                {editor.orderMeta.status ? statusLabel(editor.orderMeta.status) : '—'}
+              </strong>
+              {editor.orderMeta.total != null ? (
+                <span className="order-sheet-detail__field-sub">
+                  Goods {inr(editor.orderMeta.total)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <Link
+            href={`/admin/orders/${editor.orderId}`}
+            className="order-sheet-detail__open-order"
+            prefetch={false}
+          >
+            Open order
+          </Link>
+        </section>
 
-          <section className="order-sheet-panel">
-            <h3 className="order-sheet-panel__heading">Purchase &amp; selling prices</h3>
+        <div className="order-sheet-accordions">
+          <section className={`order-sheet-accord${openSection.prices ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="order-sheet-accord__head"
+              aria-expanded={openSection.prices}
+              onClick={() => toggleSection('prices')}
+            >
+              <span>Purchase &amp; selling prices</span>
+              <span className="order-sheet-accord__chevron" aria-hidden>
+                {openSection.prices ? '▾' : '▸'}
+              </span>
+            </button>
+            {openSection.prices ? (
+              <div className="order-sheet-accord__body">
+                <details className="order-sheet-col-guide">
+                  <summary className="order-sheet-col-guide__summary">
+                    <span>How Quoted, Purchase &amp; Selling work</span>
+                    <span aria-hidden className="order-sheet-col-guide__chevron">
+                      ▾
+                    </span>
+                  </summary>
+                  <div className="order-sheet-col-guide__body">
+                    <ul>
+                      <li>
+                        <strong>Quoted</strong> — reference only (not saved). Live catalogue prices
+                        for each line, except <strong>Gold</strong>, which uses the gold value
+                        frozen on the order at checkout.
+                      </li>
+                      <li>
+                        <strong>Purchase price</strong> — what you paid the vendor for that line.
+                        Enter ₹0 / leave blank if not applicable. A sheet is complete when every
+                        line with a selling price also has a non-zero purchase price.
+                      </li>
+                      <li>
+                        <strong>Selling price</strong> — what the customer paid for that line.
+                        Prefills from the order&apos;s checkout price breakdown (gold, diamonds,
+                        making, wastage, delivery, GST). Edit before saving if needed.
+                      </li>
+                    </ul>
+                    <p>
+                      Profit on the sheet = sum of selling − sum of purchase. Blank fields count as
+                      ₹0.
+                    </p>
+                  </div>
+                </details>
 
-            {quotes.length === 0 && (
-              <p style={{ fontSize: '0.8125rem', color: MUTED, marginTop: 0 }}>
-                No line items on this order — quoted amounts unavailable. You can still enter
-                purchase and selling prices.
-              </p>
-            )}
+                {quotes.length === 0 && (
+                  <p className="order-sheet-accord__hint">
+                    No line items on this order — quoted amounts unavailable. You can still enter
+                    purchase and selling prices.
+                  </p>
+                )}
 
-            <form action={saveOrderSheetAction} className="order-sheet-sheet-form">
+                <form action={saveOrderSheetAction} className="order-sheet-sheet-form">
               <input type="hidden" name="orderId" value={editor.orderId} />
 
               <div className="order-sheet-lines-scroll order-sheet-desk">
@@ -1244,7 +1612,253 @@ export function OrderFinanceManager({
               )}
 
               {renderSaveBar()}
-            </form>
+                </form>
+              </div>
+            ) : null}
+          </section>
+
+          <section className={`order-sheet-accord${openSection.customer ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="order-sheet-accord__head"
+              aria-expanded={openSection.customer}
+              onClick={() => toggleSection('customer')}
+            >
+              <span>Customer payments</span>
+              <span className="order-sheet-accord__chevron" aria-hidden>
+                {openSection.customer ? '▾' : '▸'}
+              </span>
+            </button>
+            {openSection.customer ? (
+              <div className="order-sheet-accord__body">
+                <div className="order-sheet-pay__intro">
+                  <p className="order-sheet-pay__who">
+                    Customer — {editor.orderLabel || shortFinanceId(editor.orderId)}
+                  </p>
+                  <p className="order-sheet-pay__summary">
+                    Owed {inr(paymentSummary?.expected ?? orderAmount)} · Paid{' '}
+                    {inr(paymentSummary?.collected ?? paymentGroups.customer.total)} ·{' '}
+                    <span
+                      className={
+                        balSettled ? 'is-settled' : balFullyPaid ? 'is-settled' : 'is-open-bal'
+                      }
+                    >
+                      {balLabel}
+                    </span>
+                  </p>
+                </div>
+                {renderPaymentRows(paymentGroups.customer.rows)}
+                <Link href={txComposeHref} className="order-sheet-pay__add" prefetch={false}>
+                  + Add payment from customer
+                </Link>
+
+                <div className="order-sheet-settle">
+                  <h3 className="order-sheet-settle__title">Manual settle</h3>
+                  <p className="order-sheet-settle__hint">
+                    Settled is automatic when money reaches Company bank — an INFLOW paid through
+                    Company bank, or a TRANSFER into Company bank with this order attached. Use Mark
+                    settled when funds never reached Company bank; add a note explaining what
+                    happened to the money.
+                  </p>
+                  {settledViaCompanyBank && !editor.manuallySettled ? (
+                    <div className="order-sheet-settle__badge">
+                      Already settled via Company bank ({inr(inCompanyBank)} of {inr(expectedPay)}
+                      ).
+                    </div>
+                  ) : null}
+                  {editor.manuallySettled ? (
+                    <div className="order-sheet-settle__badge">
+                      <strong>Manually settled</strong>
+                      {editor.manuallySettledBy ? ` by ${editor.manuallySettledBy}` : ''}
+                      {editor.manuallySettledAt
+                        ? ` · ${formatSheetDate(editor.manuallySettledAt)}`
+                        : ''}
+                      {editor.manuallySettledNote ? (
+                        <div className="order-sheet-settle__note">{editor.manuallySettledNote}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!settledViaCompanyBank ? (
+                    <>
+                      <label className="order-sheet-field">
+                        <span>
+                          Notes{' '}
+                          {editor.manuallySettled
+                            ? '(update / required to re-save)'
+                            : '(required)'}
+                        </span>
+                        <textarea
+                          value={settleNote}
+                          onChange={(e) => setSettleNote(e.target.value)}
+                          rows={3}
+                          placeholder="What happened to the funds (e.g. held in partner wallet)…"
+                          style={{ ...control, resize: 'vertical', minHeight: 72 }}
+                          disabled={settleBusy}
+                        />
+                      </label>
+                      {settleError ? (
+                        <p className="order-sheet-detail__error" role="alert">
+                          {settleError}
+                        </p>
+                      ) : null}
+                      {settleStatus ? (
+                        <p className="order-sheet-detail__ok" role="status">
+                          {settleStatus}
+                        </p>
+                      ) : null}
+                      <div className="order-sheet-settle__actions">
+                        <button
+                          type="button"
+                          className="order-sheet-row-action"
+                          disabled={settleBusy || !settleNote.trim()}
+                          onClick={async () => {
+                            setSettleBusy(true)
+                            setSettleError('')
+                            setSettleStatus('')
+                            try {
+                              const res = await fetch(
+                                `/api/admin/finance/orders/${encodeURIComponent(editor.orderId)}/settle`,
+                                {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    settle: true,
+                                    note: settleNote.trim(),
+                                  }),
+                                },
+                              )
+                              const data = await res.json().catch(() => ({}))
+                              if (!res.ok) throw new Error(data.error || 'Failed to settle')
+                              setEditor((prev) => ({
+                                ...prev,
+                                hasSheet: true,
+                                manuallySettled: true,
+                                manuallySettledNote:
+                                  data.manuallySettledNote ?? settleNote.trim(),
+                                manuallySettledBy: data.manuallySettledBy ?? null,
+                                manuallySettledAt:
+                                  data.manuallySettledAt ?? new Date().toISOString(),
+                              }))
+                              setSettleStatus('Marked settled')
+                              router.refresh()
+                            } catch (e) {
+                              setSettleError(
+                                e instanceof Error ? e.message : 'Failed to settle',
+                              )
+                            } finally {
+                              setSettleBusy(false)
+                            }
+                          }}
+                        >
+                          {settleBusy
+                            ? 'Saving…'
+                            : editor.manuallySettled
+                              ? 'Update settle notes'
+                              : 'Mark settled'}
+                        </button>
+                        {editor.manuallySettled ? (
+                          <button
+                            type="button"
+                            className="order-sheet-row-action order-sheet-row-action--ghost"
+                            disabled={settleBusy}
+                            onClick={async () => {
+                              setSettleBusy(true)
+                              setSettleError('')
+                              setSettleStatus('')
+                              try {
+                                const res = await fetch(
+                                  `/api/admin/finance/orders/${encodeURIComponent(editor.orderId)}/settle`,
+                                  {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ settle: false }),
+                                  },
+                                )
+                                const data = await res.json().catch(() => ({}))
+                                if (!res.ok) throw new Error(data.error || 'Failed to clear')
+                                setEditor((prev) => ({
+                                  ...prev,
+                                  manuallySettled: false,
+                                  manuallySettledNote: '',
+                                  manuallySettledBy: null,
+                                  manuallySettledAt: null,
+                                }))
+                                setSettleNote('')
+                                setSettleStatus('Manual settle cleared')
+                                router.refresh()
+                              } catch (e) {
+                                setSettleError(
+                                  e instanceof Error ? e.message : 'Failed to clear',
+                                )
+                              } finally {
+                                setSettleBusy(false)
+                              }
+                            }}
+                          >
+                            Clear manual settle
+                          </button>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className={`order-sheet-accord${openSection.vendor ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="order-sheet-accord__head"
+              aria-expanded={openSection.vendor}
+              onClick={() => toggleSection('vendor')}
+            >
+              <span>Vendor payments</span>
+              <span className="order-sheet-accord__chevron" aria-hidden>
+                {openSection.vendor ? '▾' : '▸'}
+              </span>
+            </button>
+            {openSection.vendor ? (
+              <div className="order-sheet-accord__body">
+                <div className="order-sheet-pay__intro">
+                  <p className="order-sheet-pay__summary">
+                    Paid to vendors {inr(paymentGroups.vendor.total)}
+                  </p>
+                </div>
+                {renderPaymentRows(paymentGroups.vendor.rows)}
+                <Link href={txComposeHref} className="order-sheet-pay__add" prefetch={false}>
+                  + Add vendor payment
+                </Link>
+              </div>
+            ) : null}
+          </section>
+
+          <section className={`order-sheet-accord${openSection.misc ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="order-sheet-accord__head"
+              aria-expanded={openSection.misc}
+              onClick={() => toggleSection('misc')}
+            >
+              <span>Misc payments</span>
+              <span className="order-sheet-accord__chevron" aria-hidden>
+                {openSection.misc ? '▾' : '▸'}
+              </span>
+            </button>
+            {openSection.misc ? (
+              <div className="order-sheet-accord__body">
+                <div className="order-sheet-pay__intro">
+                  <p className="order-sheet-pay__who">General expense allocated to this order</p>
+                  <p className="order-sheet-pay__summary">
+                    Total {inr(paymentGroups.misc.total)}
+                  </p>
+                </div>
+                {renderPaymentRows(paymentGroups.misc.rows)}
+                <Link href={txComposeHref} className="order-sheet-pay__add" prefetch={false}>
+                  + Add misc payment
+                </Link>
+              </div>
+            ) : null}
           </section>
         </div>
       </div>

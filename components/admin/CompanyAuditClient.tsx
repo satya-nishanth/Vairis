@@ -2,13 +2,26 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, Fragment } from 'react'
+import { useMemo, useState, Fragment, type CSSProperties } from 'react'
 import type { FinanceReportMode } from '@/lib/finance'
 import type { AuditException, CompanyAuditResult } from '@/lib/finance-company-audit'
 
 const GREEN = '#032b24'
+const GREEN_CHIP = '#dceee8'
 const BORDER = '#e5e7eb'
 const MUTED = '#6b7280'
+
+const reviewSelectBase: CSSProperties = {
+  width: 'auto',
+  minWidth: 120,
+  padding: '6px 28px 6px 10px',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  borderRadius: 8,
+  border: '1px solid',
+  appearance: 'auto',
+  cursor: 'pointer',
+}
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 
@@ -50,13 +63,19 @@ function maxAbsNet(rows: CompanyAuditResult['cashByAccount']): number {
   return Math.max(1, ...rows.map((r) => Math.abs(r.net)))
 }
 
-type ExceptionSectionId = 'order_sheets' | 'transactions' | 'inventory' | 'purchase_invoices'
+type ExceptionSectionId =
+  | 'order_sheets'
+  | 'transactions'
+  | 'inventory'
+  | 'purchase_invoices'
+  | 'settlements'
 
 const EXCEPTION_SECTIONS: { id: ExceptionSectionId; title: string }[] = [
   { id: 'order_sheets', title: 'Order sheets' },
   { id: 'transactions', title: 'Transactions' },
   { id: 'inventory', title: 'Inventory' },
   { id: 'purchase_invoices', title: 'Purchase invoices' },
+  { id: 'settlements', title: 'Settlements' },
 ]
 
 const EXCEPTION_GROUP_META: Record<
@@ -153,6 +172,11 @@ const EXCEPTION_GROUP_META: Record<
     unit: 'bill',
     section: 'purchase_invoices',
   },
+  order_settlement_recon: {
+    summary: (n) => `${n} settlement exception${n === 1 ? '' : 's'} for review`,
+    unit: 'order',
+    section: 'settlements',
+  },
 }
 
 type ExceptionGroup = {
@@ -179,11 +203,15 @@ function groupExceptions(exceptions: AuditException[]): ExceptionGroup[] {
     const meta = EXCEPTION_GROUP_META[kind]
     const amountTotal = items.reduce((s, e) => s + (e.amount ?? 0), 0)
     const hasAmount = items.some((e) => e.amount != null)
+    const countForSummary =
+      kind === 'order_settlement_recon'
+        ? items.filter((e) => !e.reviewComplete).length
+        : items.length
     return {
       kind,
       section: meta?.section ?? 'transactions',
       severity: items[0]!.severity,
-      summary: meta?.summary(items.length) ?? `${items.length} × ${kind}`,
+      summary: meta?.summary(countForSummary) ?? `${countForSummary} × ${kind}`,
       amountTotal: hasAmount ? amountTotal : null,
       items,
     }
@@ -235,6 +263,8 @@ export function CompanyAuditClient({
   const [quarter, setQuarter] = useState(quarterValue)
   const [year, setYear] = useState(String(yearValue))
   const [expandedKinds, setExpandedKinds] = useState<Record<string, boolean>>({})
+  const [reviewBusyId, setReviewBusyId] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState('')
 
   const displayPeriod = prettyPeriodLabel(mode, month, quarter, Number(year), periodLabel)
   const exceptionGroups = useMemo(() => groupExceptions(audit.exceptions), [audit.exceptions])
@@ -242,6 +272,28 @@ export function CompanyAuditClient({
     () => sectionExceptionGroups(exceptionGroups),
     [exceptionGroups],
   )
+
+  async function setSettlementReviewed(orderId: string, reviewed: boolean) {
+    setReviewBusyId(orderId)
+    setReviewError('')
+    try {
+      const res = await fetch(
+        `/api/admin/finance/orders/${encodeURIComponent(orderId)}/settlement-review`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewed }),
+        },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to update review')
+      router.refresh()
+    } catch (e) {
+      setReviewError(e instanceof Error ? e.message : 'Failed to update review')
+    } finally {
+      setReviewBusyId(null)
+    }
+  }
 
   function toggleGroup(kind: string) {
     setExpandedKinds((prev) => ({ ...prev, [kind]: !prev[kind] }))
@@ -672,6 +724,11 @@ export function CompanyAuditClient({
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 20 }}>
+                {reviewError ? (
+                  <p style={{ color: '#b91c1c', fontSize: '0.8125rem', margin: 0 }} role="alert">
+                    {reviewError}
+                  </p>
+                ) : null}
                 {exceptionSections.map((sec) => (
                   <div key={sec.id}>
                     <h3
@@ -684,7 +741,13 @@ export function CompanyAuditClient({
                     >
                       {sec.title}{' '}
                       <span style={{ fontWeight: 500, color: MUTED }}>
-                        · {sec.groups.reduce((n, g) => n + g.items.length, 0)}
+                        ·{' '}
+                        {sec.groups.reduce((n, g) => {
+                          if (g.kind === 'order_settlement_recon') {
+                            return n + g.items.filter((e) => !e.reviewComplete).length
+                          }
+                          return n + g.items.length
+                        }, 0)}
                       </span>
                     </h3>
                     <div className="company-audit__table-wrap">
@@ -745,13 +808,51 @@ export function CompanyAuditClient({
                                         {e.amount != null ? inr(e.amount) : '—'}
                                       </td>
                                       <td style={{ textAlign: 'right' }}>
-                                        <Link
-                                          href={e.href}
-                                          style={{ color: GREEN, fontSize: '0.8125rem' }}
-                                          onClick={(ev) => ev.stopPropagation()}
+                                        <div
+                                          style={{
+                                            display: 'inline-flex',
+                                            gap: 10,
+                                            alignItems: 'center',
+                                            justifyContent: 'flex-end',
+                                            flexWrap: 'wrap',
+                                          }}
                                         >
-                                          Open
-                                        </Link>
+                                          {e.kind === 'order_settlement_recon' && e.orderId ? (
+                                            <select
+                                              aria-label="Review status"
+                                              value={e.reviewComplete ? 'reviewed' : 'for_review'}
+                                              disabled={reviewBusyId === e.orderId}
+                                              onClick={(ev) => ev.stopPropagation()}
+                                              onChange={(ev) => {
+                                                ev.stopPropagation()
+                                                void setSettlementReviewed(
+                                                  e.orderId!,
+                                                  ev.target.value === 'reviewed',
+                                                )
+                                              }}
+                                              style={{
+                                                ...reviewSelectBase,
+                                                color: e.reviewComplete ? GREEN : '#b45309',
+                                                backgroundColor: e.reviewComplete
+                                                  ? GREEN_CHIP
+                                                  : '#fffbeb',
+                                                borderColor: e.reviewComplete
+                                                  ? '#b7d4cb'
+                                                  : '#fcd34d',
+                                              }}
+                                            >
+                                              <option value="for_review">For review</option>
+                                              <option value="reviewed">Reviewed</option>
+                                            </select>
+                                          ) : null}
+                                          <Link
+                                            href={e.href}
+                                            style={{ color: GREEN, fontSize: '0.8125rem' }}
+                                            onClick={(ev) => ev.stopPropagation()}
+                                          >
+                                            Open
+                                          </Link>
+                                        </div>
                                       </td>
                                     </tr>
                                   ))}
@@ -766,7 +867,9 @@ export function CompanyAuditClient({
               </div>
             )}
             <p className="company-audit__footnote">
-              Exceptions clear when the underlying record is fixed — no dismiss in v1.
+              Most exceptions clear when the underlying record is fixed. Settlements lists Fully
+              Paid (not in Company bank) and manually settled orders; use the review dropdown to
+              tag who checked each row.
             </p>
           </section>
         </div>

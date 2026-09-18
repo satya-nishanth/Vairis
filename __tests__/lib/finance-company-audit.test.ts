@@ -120,6 +120,16 @@ describe('buildCompanyAuditExceptions', () => {
           sheetSelling: 50_000,
         },
         {
+          orderId: 'ord_fp',
+          label: 'Fully paid cust',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 80_000,
+          collected: 80_000,
+          paymentStatus: 'fully_paid',
+          grandTotal: 80_000,
+          sheetSelling: 80_000,
+        },
+        {
           orderId: 'ord_empty',
           label: 'Empty sheet cust',
           orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
@@ -249,11 +259,168 @@ describe('buildCompanyAuditExceptions', () => {
         'txn_inflow_to_purchase_bill',
         'txn_outflow_to_order',
         'txn_for_review',
+        'order_settlement_recon',
       ]),
     )
     expect(exceptions.map((e) => e.kind)).not.toContain('inflow_no_order')
     expect(exceptions[0].severity).toBe('red')
     const aged = exceptions.find((e) => e.kind === 'purchase_bill_unpaid_aged')
     expect(aged?.detail).toContain(String(UNPAID_PURCHASE_BILL_AGE_DAYS))
+  })
+
+  it('tolerates ≤ ₹1 sheet vs checkout round-off', () => {
+    const exceptions = buildCompanyAuditExceptions({
+      asOf,
+      mismatches: [],
+      outflows: [],
+      stockRows: [],
+      sales: [],
+      liveByVariantId: {},
+      orderPayments: [
+        {
+          orderId: 'ord_round',
+          label: 'Bhanu',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 106_483,
+          collected: 106_483,
+          paymentStatus: 'settled',
+          grandTotal: 106_483,
+          sheetSelling: 106_482.56,
+        },
+        {
+          orderId: 'ord_rupee',
+          label: 'Aditya',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 137_657,
+          collected: 137_657,
+          paymentStatus: 'settled',
+          grandTotal: 137_657,
+          sheetSelling: 137_658,
+        },
+      ],
+    })
+    expect(exceptions.map((e) => e.kind)).not.toContain('sheet_checkout_mismatch')
+  })
+
+  it('skips unallocated inflow warnings for investment receipts', () => {
+    const exceptions = buildCompanyAuditExceptions({
+      asOf,
+      mismatches: [],
+      outflows: [],
+      stockRows: [],
+      sales: [],
+      liveByVariantId: {},
+      txAllocations: [
+        {
+          id: 'tx_inv',
+          date: new Date('2026-03-15T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 50_000,
+          allocatedAmount: 0,
+          allocatedToOrders: 0,
+          allocatedToBills: 0,
+          reviewComplete: true,
+          description: 'Fractional Investment',
+        },
+        {
+          id: 'tx_typo',
+          date: new Date('2026-03-19T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 25_000,
+          allocatedAmount: 0,
+          allocatedToOrders: 0,
+          allocatedToBills: 0,
+          reviewComplete: true,
+          description: 'Farctional Investment',
+        },
+        {
+          id: 'tx_cash',
+          date: new Date('2026-03-19T00:00:00+05:30'),
+          direction: 'INFLOW',
+          amount: 10_000,
+          allocatedAmount: 0,
+          allocatedToOrders: 0,
+          allocatedToBills: 0,
+          reviewComplete: true,
+          description: 'Customer advance',
+        },
+      ],
+    })
+    const unalloc = exceptions.filter((e) => e.kind === 'txn_unallocated_inflow')
+    expect(unalloc).toHaveLength(1)
+    expect(unalloc[0].id).toBe('tx-unalloc-inflow-tx_cash')
+  })
+
+  it('lists fully paid unsettled and manually settled orders for settlement recon', () => {
+    const exceptions = buildCompanyAuditExceptions({
+      asOf,
+      mismatches: [],
+      outflows: [],
+      stockRows: [],
+      sales: [],
+      liveByVariantId: {},
+      orderPayments: [
+        {
+          orderId: 'ord_open',
+          label: 'Open settle',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 10_000,
+          collected: 10_000,
+          paymentStatus: 'fully_paid',
+          grandTotal: 10_000,
+          sheetSelling: 10_000,
+        },
+        {
+          orderId: 'ord_manual',
+          label: 'Manual settle',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 15_000,
+          collected: 15_000,
+          paymentStatus: 'settled',
+          grandTotal: 15_000,
+          sheetSelling: 15_000,
+          manuallySettled: true,
+          manuallySettledBy: 'ops@vairis.in',
+          manuallySettledNote: 'Held in partner wallet',
+        },
+        {
+          orderId: 'ord_rev',
+          label: 'Reviewed settle',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 20_000,
+          collected: 20_000,
+          paymentStatus: 'fully_paid',
+          grandTotal: 20_000,
+          sheetSelling: 20_000,
+          settlementExceptionReviewedAt: new Date('2026-09-08T00:00:00+05:30'),
+          settlementExceptionReviewedBy: 'ops@vairis.in',
+        },
+        {
+          orderId: 'ord_ok',
+          label: 'Settled already',
+          orderCreatedAt: new Date('2026-09-01T00:00:00+05:30'),
+          expected: 5_000,
+          collected: 5_000,
+          paymentStatus: 'settled',
+          grandTotal: 5_000,
+          sheetSelling: 5_000,
+          manuallySettled: false,
+        },
+      ],
+    })
+    const settle = exceptions.filter((e) => e.kind === 'order_settlement_recon')
+    expect(settle).toHaveLength(3)
+    const open = settle.find((e) => e.orderId === 'ord_open')
+    const manual = settle.find((e) => e.orderId === 'ord_manual')
+    const rev = settle.find((e) => e.orderId === 'ord_rev')
+    expect(open?.reviewComplete).toBe(false)
+    expect(open?.severity).toBe('amber')
+    expect(manual?.title).toMatch(/^Manually settled/)
+    expect(manual?.detail).toContain('Held in partner wallet')
+    expect(rev?.reviewComplete).toBe(true)
+    expect(rev?.reviewedBy).toBe('ops@vairis.in')
+    expect(rev?.severity).toBe('info')
+    expect(rev?.detail).toContain('Reviewed by ops@vairis.in')
+    expect(settle.find((e) => e.orderId === 'ord_ok')).toBeUndefined()
   })
 })

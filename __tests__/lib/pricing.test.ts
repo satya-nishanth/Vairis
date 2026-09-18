@@ -54,6 +54,8 @@ describe('calculatePrice (estimator formula)', () => {
     )
     expect(snap.goldValue).toBe(30_000)
     expect(snap.stoneValue).toBe(20_000)
+    expect(snap.diamondValue).toBe(20_000)
+    expect(snap.otherStoneValue).toBe(0)
     expect(snap.making).toBe(4_000)
     expect(snap.goldVA).toBe(3_000)
     expect(snap.miscCharges).toBe(1_000)
@@ -86,7 +88,50 @@ describe('calculatePrice (estimator formula)', () => {
     expect(b.goldVA).toBe(2562)
     expect(b.making).toBe(4200)
     expect(b.stoneValue).toBe(53000)
+    expect(b.diamondValue).toBe(53000)
+    expect(b.otherStoneValue).toBe(0)
     expect(b.taxable).toBe(85382)
+  })
+
+  it('splits ruby into otherStoneValue and diamond lines into diamondValue', () => {
+    const b = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 500,
+        miscCharges: 0,
+      },
+      1000,
+      {
+        config: DEFAULT_PRICING_CONFIG,
+        stones: [
+          { caratWeight: 1, ratePerCarat: 10000, ratePerCaratExchange: 10000, typeLabel: 'Colourless Diamond' },
+          { caratWeight: 0.5, ratePerCarat: 2000, ratePerCaratExchange: 2000, typeLabel: 'Ruby' },
+        ],
+      },
+    )
+    expect(b.diamondValue).toBe(10000)
+    expect(b.otherStoneValue).toBe(1500) // ruby 1000 + legacy 500
+    expect(b.stoneValue).toBe(11500)
+  })
+
+  it('preserves diamonds vs stones when building selling-component snapshots', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 8_000,
+        stones: 2_000,
+        making: 1_000,
+        wastage: 500,
+        delivery: 0,
+        gst: 500,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.diamondValue).toBe(8_000)
+    expect(snap.otherStoneValue).toBe(2_000)
+    expect(snap.stoneValue).toBe(10_000)
   })
 
   it('does not apply stone VA even when vaStonePct is set', () => {

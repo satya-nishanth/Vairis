@@ -2,6 +2,13 @@ import { prisma } from '@/lib/prisma'
 import { OrderFinanceManager, type OrderSheetBoot } from '@/components/admin/OrderFinanceManager'
 import { getOrderItemQuotes } from '@/lib/finance-order-quotes'
 import { listRecentFinanceOrders, searchFinanceOrders } from '@/lib/finance-order-search'
+import { loadOrderSheetPaymentGroups } from '@/lib/finance-order-sheet-payments'
+import {
+  collectedByOrderIds,
+  orderPaymentSummary,
+  settledInCompanyBankByOrderIds,
+} from '@/lib/finance-collections'
+import { sheetTotals } from '@/lib/finance'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,7 +66,7 @@ export default async function FinanceOrdersPage({
 
   let boot: OrderSheetBoot | null = null
   if (selectedOrderId) {
-    const [order, quotes] = await Promise.all([
+    const [order, quotes, paymentGroups, collectedMap, inBankMap] = await Promise.all([
       prisma.order.findUnique({
         where: { id: selectedOrderId },
         select: {
@@ -68,6 +75,7 @@ export default async function FinanceOrdersPage({
           contactPhone: true,
           grandTotal: true,
           status: true,
+          createdAt: true,
           items: { select: { productName: true, quantity: true }, take: 4 },
           _count: { select: { items: true } },
           finance: {
@@ -75,6 +83,9 @@ export default async function FinanceOrdersPage({
               paidToAccountId: true,
               purchaseFromAccountId: true,
               roundOffEnabled: true,
+              manuallySettledAt: true,
+              manuallySettledNote: true,
+              manuallySettledBy: true,
               lines: {
                 select: { id: true, kind: true, costPrice: true, sellingPrice: true, sortOrder: true },
                 orderBy: { sortOrder: 'asc' },
@@ -84,6 +95,9 @@ export default async function FinanceOrdersPage({
         },
       }),
       getOrderItemQuotes(selectedOrderId),
+      loadOrderSheetPaymentGroups(selectedOrderId),
+      collectedByOrderIds([selectedOrderId]),
+      settledInCompanyBankByOrderIds([selectedOrderId]),
     ])
 
     if (order) {
@@ -97,6 +111,28 @@ export default async function FinanceOrdersPage({
         itemsLabel = more > 0 ? `${items[0].productName} +${more} more` : items[0].productName
       }
 
+      const sheetLines = (order.finance?.lines ?? []).map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        costPrice: Number(l.costPrice),
+        sellingPrice: Number(l.sellingPrice),
+      }))
+      const sheetTot = sheetTotals(
+        sheetLines.map((l) => ({
+          kind: l.kind as never,
+          costPrice: l.costPrice,
+          sellingPrice: l.sellingPrice,
+        })),
+        { roundOffEnabled: Boolean(order.finance?.roundOffEnabled) },
+      )
+      const payment = orderPaymentSummary({
+        grandTotal: Number(order.grandTotal),
+        sheetSelling: sheetTot.selling > 0 ? sheetTot.selling : null,
+        collected: collectedMap.get(order.id) ?? 0,
+        settledInCompanyBank: inBankMap.get(order.id) ?? 0,
+        manuallySettled: Boolean(order.finance?.manuallySettledAt),
+      })
+
       boot = {
         orderId: order.id,
         orderLabel: order.contactName || order.id,
@@ -105,18 +141,28 @@ export default async function FinanceOrdersPage({
           total: Number(order.grandTotal),
           status: order.status,
           itemsLabel,
+          createdAt: order.createdAt.toISOString(),
         },
         paidToAccountId: order.finance?.paidToAccountId || fallbackPaidTo,
         purchaseFromAccountId: order.finance?.purchaseFromAccountId ?? null,
-        lines: (order.finance?.lines ?? []).map((l) => ({
-          id: l.id,
-          kind: l.kind,
-          costPrice: Number(l.costPrice),
-          sellingPrice: Number(l.sellingPrice),
-        })),
+        lines: sheetLines,
         quotes,
         hasSheet: Boolean(order.finance),
-        roundOffEnabled: Boolean(order.finance?.roundOffEnabled),
+        roundOffEnabled: order.finance
+          ? Boolean(order.finance.roundOffEnabled)
+          : true,
+        manuallySettled: Boolean(order.finance?.manuallySettledAt),
+        manuallySettledNote: order.finance?.manuallySettledNote ?? null,
+        manuallySettledBy: order.finance?.manuallySettledBy ?? null,
+        manuallySettledAt: order.finance?.manuallySettledAt?.toISOString() ?? null,
+        paymentSummary: {
+          expected: payment.expected,
+          collected: payment.collected,
+          balance: payment.balance,
+          paymentStatus: payment.paymentStatus,
+          settledInCompanyBank: inBankMap.get(order.id) ?? 0,
+        },
+        paymentGroups,
       }
 
       // Keep a saved transactions-only vendor visible on edit so the select isn't blank.
