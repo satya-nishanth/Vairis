@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import type { FinanceLineKind, Prisma } from '@prisma/client'
 import { isPendingOrderSheet, sheetTotals } from '@/lib/finance'
-import { collectedByOrderIds, orderPaymentSummary } from '@/lib/finance-collections'
+import { collectedByOrderIds, orderPaymentSummary, settledInCompanyBankByOrderIds } from '@/lib/finance-collections'
+import type { SettlementStatus } from '@/lib/finance-settlement'
 
 /**
  * Order sheets are per delivery / line — hide multi-item parents:
@@ -77,7 +78,10 @@ export type FinanceOrderHit = {
   collected: number
   expected: number
   balance: number
-  paymentStatus: 'unpaid' | 'partial' | 'settled' | 'overpaid'
+  paymentStatus: SettlementStatus
+  /** OrderFinance.manuallySettledAt set — company-bank gate overridden. */
+  manuallySettled: boolean
+  manuallySettledNote: string | null
   parentOrderId: string | null
   childCount: number
   /** parent = has children or SPLIT; child = has parentOrderId; else standalone */
@@ -170,6 +174,8 @@ export function mapFinanceOrderHit(o: {
     expected: payment.expected,
     balance: payment.balance,
     paymentStatus: payment.paymentStatus,
+    manuallySettled: false,
+    manuallySettledNote: null,
     parentOrderId: o.parentOrderId,
     childCount: o._count.children,
     orderKind: isChild ? 'child' : isParent ? 'parent' : 'standalone',
@@ -187,17 +193,38 @@ export async function attachFinanceOrderPayments(
   hits: FinanceOrderHit[],
   opts?: { excludeTransactionId?: string },
 ): Promise<FinanceOrderHit[]> {
-  const collected = await collectedByOrderIds(
-    hits.map((h) => h.id),
-    opts?.excludeTransactionId ? { excludeTransactionId: opts.excludeTransactionId } : undefined,
-  )
+  const ids = hits.map((h) => h.id)
+  const exclude = opts?.excludeTransactionId
+    ? { excludeTransactionId: opts.excludeTransactionId }
+    : undefined
+  const [collected, inCompanyBank, sheets] = await Promise.all([
+    collectedByOrderIds(ids, exclude),
+    settledInCompanyBankByOrderIds(ids, exclude),
+    prisma.orderFinance.findMany({
+      where: { orderId: { in: ids } },
+      select: {
+        orderId: true,
+        manuallySettledAt: true,
+        manuallySettledNote: true,
+      },
+    }),
+  ])
+  const sheetByOrder = new Map(sheets.map((s) => [s.orderId, s]))
   return hits.map((h) => {
+    const sheet = sheetByOrder.get(h.id)
     const payment = orderPaymentSummary({
       grandTotal: h.grandTotal,
       sheetSelling: h.selling,
       collected: collected.get(h.id) ?? 0,
+      settledInCompanyBank: inCompanyBank.get(h.id) ?? 0,
+      manuallySettled: Boolean(sheet?.manuallySettledAt),
     })
-    return { ...h, ...payment }
+    return {
+      ...h,
+      ...payment,
+      manuallySettled: Boolean(sheet?.manuallySettledAt),
+      manuallySettledNote: sheet?.manuallySettledNote?.trim() || null,
+    }
   })
 }
 

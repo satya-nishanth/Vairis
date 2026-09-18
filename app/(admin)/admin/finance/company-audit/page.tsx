@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireFinance } from '@/lib/finance-auth'
 import {
   financeReportDateRange,
+  isOrderReceiptDirection,
   parseFinanceReportSearchParams,
   sheetTotals,
 } from '@/lib/finance'
@@ -16,6 +17,7 @@ import {
   collectedByPurchaseBillIds,
   orderPaymentSummary,
   purchaseBillPaymentSummary,
+  settledInCompanyBankByOrderIds,
 } from '@/lib/finance-collections'
 import { CompanyAuditClient } from '@/components/admin/CompanyAuditClient'
 import { inventoryDisplayName } from '@/lib/inventory'
@@ -140,9 +142,10 @@ export default async function CompanyAuditPage({
   const liveByVariantId = await getLiveUnitPricesByVariantId(variantIds)
 
   const sheetOrderIds = sheets.map((s) => s.orderId)
-  const [paidByBill, collectedByOrder] = await Promise.all([
+  const [paidByBill, collectedByOrder, inCompanyBankByOrder] = await Promise.all([
     collectedByPurchaseBillIds(purchaseBills.map((b) => b.id)),
     collectedByOrderIds(sheetOrderIds),
+    settledInCompanyBankByOrderIds(sheetOrderIds),
   ])
 
   const sheetRows = sheets.map((s) => {
@@ -163,6 +166,11 @@ export default async function CompanyAuditPage({
       paidToAccountId: s.paidToAccountId,
       purchaseFromAccountId: s.purchaseFromAccountId,
       grandTotal: Number(s.order.grandTotal),
+      manuallySettled: Boolean(s.manuallySettledAt),
+      manuallySettledNote: s.manuallySettledNote ?? null,
+      manuallySettledBy: s.manuallySettledBy ?? null,
+      settlementExceptionReviewedAt: s.settlementExceptionReviewedAt,
+      settlementExceptionReviewedBy: s.settlementExceptionReviewedBy,
     }
   })
 
@@ -198,25 +206,35 @@ export default async function CompanyAuditPage({
       isVendorWallet: a.isVendorWallet,
       vendorOutflowSource: a.vendorOutflowSource,
     })),
-    orderInflows: transactions
-      .filter(
-        (t) =>
-          t.direction === 'INFLOW' &&
-          (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
+    orderInflows: (() => {
+      const companyBankIds = new Set(
+        accounts.filter((a) => a.type === 'COMPANY_BANK').map((a) => a.id),
       )
-      .map((t) => {
-        const orderAllocs = t.allocations
-          .filter((a) => a.orderId)
-          .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
-        const fromJoin = t.orders.map((o) => o.orderId)
-        const fromAlloc = orderAllocs.map((a) => a.orderId)
-        return {
-          date: t.date,
-          amount: Number(t.amount),
-          orderIds: [...new Set([...fromJoin, ...fromAlloc])],
-          allocations: orderAllocs.length ? orderAllocs : undefined,
-        }
-      }),
+      return transactions
+        .filter(
+          (t) =>
+            isOrderReceiptDirection(t.direction) &&
+            (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
+        )
+        .map((t) => {
+          const orderAllocs = t.allocations
+            .filter((a) => a.orderId)
+            .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
+          const fromJoin = t.orders.map((o) => o.orderId)
+          const fromAlloc = orderAllocs.map((a) => a.orderId)
+          const direction = t.direction as 'INFLOW' | 'TRANSFER'
+          return {
+            date: t.date,
+            amount: Number(t.amount),
+            orderIds: [...new Set([...fromJoin, ...fromAlloc])],
+            allocations: orderAllocs.length ? orderAllocs : undefined,
+            direction,
+            transferToCompanyBank:
+              direction === 'TRANSFER' &&
+              Boolean(t.transferToAccountId && companyBankIds.has(t.transferToAccountId)),
+          }
+        })
+    })(),
     auditOutflows: transactions
       .filter((t) => t.direction === 'OUTFLOW')
       .map((t) => ({
@@ -259,6 +277,8 @@ export default async function CompanyAuditPage({
         grandTotal: s.grandTotal,
         sheetSelling: s.sellingPrice,
         collected: collectedByOrder.get(s.orderId) ?? 0,
+        settledInCompanyBank: inCompanyBankByOrder.get(s.orderId) ?? 0,
+        manuallySettled: s.manuallySettled,
       })
       return {
         orderId: s.orderId,
@@ -269,6 +289,11 @@ export default async function CompanyAuditPage({
         paymentStatus: summary.paymentStatus,
         grandTotal: s.grandTotal,
         sheetSelling: s.sellingPrice > 0 ? s.sellingPrice : null,
+        manuallySettled: s.manuallySettled,
+        manuallySettledNote: s.manuallySettledNote ?? null,
+        manuallySettledBy: s.manuallySettledBy ?? null,
+        settlementExceptionReviewedAt: s.settlementExceptionReviewedAt ?? null,
+        settlementExceptionReviewedBy: s.settlementExceptionReviewedBy ?? null,
       }
     }),
     txAllocations: transactions.map((t) => {

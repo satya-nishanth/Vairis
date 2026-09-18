@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import {
   buildSheetPurchaseOutflows,
   findSheetInflowMismatches,
+  isOrderReceiptDirection,
   summarizeDashboardKpis,
   summarizeTransactionFlows,
   sheetTotals,
@@ -16,6 +17,7 @@ import {
   collectedByPurchaseBillIds,
   orderPaymentSummary,
   purchaseBillPaymentSummary,
+  settledInCompanyBankByOrderIds,
 } from '@/lib/finance-collections'
 import {
   buildCompanyAuditExceptions,
@@ -101,8 +103,9 @@ export default async function FinanceDashboardPage() {
   inventoryPurchasePrice = roundMoney(inventoryPurchasePrice)
 
   const sheetOrderIds = sheets.map((s) => s.orderId)
-  const [collectedByOrder, paidByBill] = await Promise.all([
+  const [collectedByOrder, inCompanyBankByOrder, paidByBill] = await Promise.all([
     collectedByOrderIds(sheetOrderIds),
+    settledInCompanyBankByOrderIds(sheetOrderIds),
     collectedByPurchaseBillIds(purchaseBills.map((b) => b.id)),
   ])
 
@@ -124,6 +127,11 @@ export default async function FinanceDashboardPage() {
       paidToAccountId: s.paidToAccountId,
       purchaseFromAccountId: s.purchaseFromAccountId,
       grandTotal: Number(s.order.grandTotal),
+      manuallySettled: Boolean(s.manuallySettledAt),
+      manuallySettledNote: s.manuallySettledNote ?? null,
+      manuallySettledBy: s.manuallySettledBy ?? null,
+      settlementExceptionReviewedAt: s.settlementExceptionReviewedAt ?? null,
+      settlementExceptionReviewedBy: s.settlementExceptionReviewedBy ?? null,
     }
   })
 
@@ -180,12 +188,14 @@ export default async function FinanceDashboardPage() {
     .filter((p) => vendorWalletIds.has(p.accountId))
     .sort((a, b) => a.accountName.localeCompare(b.accountName))
 
-  const collections = { settled: 0, partial: 0, unpaid: 0, overpaid: 0, due: 0 }
+  const collections = { settled: 0, fully_paid: 0, partial: 0, unpaid: 0, overpaid: 0, due: 0 }
   const orderPayments = sheetRows.map((s) => {
     const summary = orderPaymentSummary({
       grandTotal: s.grandTotal,
       sheetSelling: s.sellingPrice,
       collected: collectedByOrder.get(s.orderId) ?? 0,
+      settledInCompanyBank: inCompanyBankByOrder.get(s.orderId) ?? 0,
+      manuallySettled: s.manuallySettled,
     })
     collections[summary.paymentStatus] += 1
     if (summary.paymentStatus === 'unpaid' || summary.paymentStatus === 'partial') {
@@ -200,6 +210,11 @@ export default async function FinanceDashboardPage() {
       paymentStatus: summary.paymentStatus,
       grandTotal: s.grandTotal,
       sheetSelling: s.sellingPrice > 0 ? s.sellingPrice : null,
+      manuallySettled: s.manuallySettled,
+      manuallySettledNote: s.manuallySettledNote ?? null,
+      manuallySettledBy: s.manuallySettledBy ?? null,
+      settlementExceptionReviewedAt: s.settlementExceptionReviewedAt ?? null,
+      settlementExceptionReviewedBy: s.settlementExceptionReviewedBy ?? null,
     }
   })
 
@@ -228,12 +243,15 @@ export default async function FinanceDashboardPage() {
     }
   })
 
+  const companyBankIds = new Set(
+    accounts.filter((a) => a.type === 'COMPANY_BANK').map((a) => a.id),
+  )
   const mismatches = findSheetInflowMismatches(
     sheetRows,
     transactions
       .filter(
         (t) =>
-          t.direction === 'INFLOW' &&
+          isOrderReceiptDirection(t.direction) &&
           (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
       )
       .map((t) => {
@@ -242,11 +260,16 @@ export default async function FinanceDashboardPage() {
           .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
         const fromJoin = t.orders.map((o) => o.orderId)
         const fromAlloc = orderAllocs.map((a) => a.orderId)
+        const direction = t.direction as 'INFLOW' | 'TRANSFER'
         return {
           date: t.date,
           amount: Number(t.amount),
           orderIds: [...new Set([...fromJoin, ...fromAlloc])],
           allocations: orderAllocs.length ? orderAllocs : undefined,
+          direction,
+          transferToCompanyBank:
+            direction === 'TRANSFER' &&
+            Boolean(t.transferToAccountId && companyBankIds.has(t.transferToAccountId)),
         }
       }),
   )
@@ -557,6 +580,9 @@ export default async function FinanceDashboardPage() {
           <div className="finance-dash__status-row">
             <span className="finance-dash__pill finance-dash__pill--ok">
               Settled <strong>{collections.settled}</strong>
+            </span>
+            <span className="finance-dash__pill">
+              Fully paid <strong>{collections.fully_paid}</strong>
             </span>
             <span className="finance-dash__pill finance-dash__pill--warn">
               Partial <strong>{collections.partial}</strong>

@@ -791,6 +791,13 @@ model OrderFinance {
   purchaseFromAccount   FinanceAccount?    @relation("OrderPurchaseFromAccount", fields: [purchaseFromAccountId], references: [id])
   /// When true, selling total is rounded to the nearest rupee (invoice-style round off).
   roundOffEnabled       Boolean            @default(false)
+  /// Manual override: treat as Settled even if funds are not yet in COMPANY_BANK.
+  manuallySettledAt     DateTime?
+  manuallySettledNote   String             @default("")
+  manuallySettledBy     String?
+  /// Reconciliation: Fully Paid but not Settled — ops marked the settlement exception reviewed.
+  settlementExceptionReviewedAt DateTime?
+  settlementExceptionReviewedBy String?
   lines                 OrderFinanceLine[]
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
