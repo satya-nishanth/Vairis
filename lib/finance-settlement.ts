@@ -2,11 +2,17 @@ import { roundMoney } from '@/lib/finance'
 
 export type SettlementStatus = 'unpaid' | 'partial' | 'fully_paid' | 'settled' | 'overpaid'
 
+/** Purchase bills have no Fully Paid gate — only unpaid / partial / settled / overpaid. */
+export type PurchaseBillSettlementStatus = Exclude<SettlementStatus, 'fully_paid'>
+
 /**
  * Purchase-bill / simple paid-vs-due status (no company-bank gate).
  * Orders use {@link orderPaymentStatus} instead.
  */
-export function settlementStatus(expected: number, collected: number): SettlementStatus {
+export function settlementStatus(
+  expected: number,
+  collected: number,
+): PurchaseBillSettlementStatus {
   const due = roundMoney(expected)
   const paid = roundMoney(collected)
   if (due <= 0 && paid <= 0) return 'unpaid'
