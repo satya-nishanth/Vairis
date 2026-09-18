@@ -4,7 +4,10 @@ import { prisma } from '@/lib/prisma'
 import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
-import { isOrderItemPriceSnapshot } from '@/lib/pricing'
+import {
+  isOrderItemPriceSnapshot,
+  splitGemValues,
+} from '@/lib/pricing'
 import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
 import { MarkPaidOffline } from './MarkPaidOffline'
@@ -478,6 +481,7 @@ export default async function AdminOrderDetailPage({
                 )
               }
               const vaLabel = b.vaLabel || 'Wastage'
+              const gems = splitGemValues(b)
               const rows: { label: string; value: string }[] = [
                 ...(b.weightGrams != null
                   ? [{ label: 'Weight', value: `${Number(b.weightGrams)} g` }]
@@ -493,7 +497,8 @@ export default async function AdminOrderDetailPage({
                 { label: 'Gold', value: inr(Math.round(b.goldValue)) },
                 { label: vaLabel, value: inr(Math.round(b.goldVA)) },
                 { label: 'Making', value: inr(Math.round(b.making)) },
-                { label: 'Stones', value: inr(Math.round(b.stoneValue)) },
+                { label: 'Diamonds', value: inr(Math.round(gems.diamonds)) },
+                { label: 'Stones', value: inr(Math.round(gems.stones)) },
                 ...(b.stoneLines ?? []).map((line) => ({
                   label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
                   value: inr(Math.round(line.value)),

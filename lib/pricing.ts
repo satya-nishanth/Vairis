@@ -49,12 +49,63 @@ export interface StoneLine {
   value: number
 }
 
+/** Labels that count as diamonds (vs other stones) for breakdown / finance split. */
+export function isDiamondTypeLabel(label: string | null | undefined): boolean {
+  const t = (label ?? '').trim().toLowerCase()
+  if (!t) return true
+  // Explicit non-diamond gems — everything else (incl. fancy/coloured diamond) is diamond.
+  if (
+    /\b(ruby|sapphire|emerald|pearl|coral|opal|garnet|amethyst|topaz|turquoise|cubic|cz)\b/.test(t)
+  ) {
+    return false
+  }
+  if (/\b(colour|color)\s*stone\b/.test(t) || /\bgem\s*stone\b/.test(t)) return false
+  return true
+}
+
+/** Split total gem cost into diamonds vs other stones. */
+export function splitGemValues(b: {
+  stoneValue: number
+  diamondValue?: number | null
+  otherStoneValue?: number | null
+  stoneLines?: { typeLabel: string; value: number }[] | null
+}): { diamonds: number; stones: number } {
+  if (b.diamondValue != null || b.otherStoneValue != null) {
+    const diamonds = Number(b.diamondValue ?? 0)
+    const stones =
+      b.otherStoneValue != null
+        ? Number(b.otherStoneValue)
+        : Math.max(0, Number(b.stoneValue) - diamonds)
+    return { diamonds, stones }
+  }
+  const lines = b.stoneLines ?? []
+  if (lines.length > 0) {
+    let diamonds = 0
+    let stones = 0
+    for (const line of lines) {
+      if (isDiamondTypeLabel(line.typeLabel)) diamonds += Number(line.value) || 0
+      else stones += Number(line.value) || 0
+    }
+    const leftover = Math.max(0, Number(b.stoneValue) - (diamonds + stones))
+    // Legacy flat / lead incentive not in lines → other stones
+    return { diamonds, stones: stones + leftover }
+  }
+  // Legacy snapshots: entire gem lump on stoneValue — treat as diamonds
+  // (prior finance mapping) so Stones stays 0 until re-saved with a split.
+  return { diamonds: Number(b.stoneValue) || 0, stones: 0 }
+}
+
 export interface PriceBreakdown {
   goldValue: number
   /** Wastage on gold value (legacy field name goldVA). */
   goldVA: number
   making: number
+  /** Total gem cost (diamonds + other stones + legacy flat). */
   stoneValue: number
+  /** Diamond portion of stoneValue (explicit when known). */
+  diamondValue: number
+  /** Non-diamond / coloured-stone portion of stoneValue. */
+  otherStoneValue: number
   stoneLines: StoneLine[]
   /** Always 0 — stone VA is not part of the estimator formula. */
   stoneVA: number
@@ -118,7 +169,9 @@ export function sellingComponentsToUnitSnapshot(
   const goldValue = selling.gold / q
   const goldVA = selling.wastage / q
   const making = selling.making / q
-  const stoneValue = (selling.diamonds + selling.stones) / q
+  const diamondValue = selling.diamonds / q
+  const otherStoneValue = selling.stones / q
+  const stoneValue = diamondValue + otherStoneValue
   const miscCharges = selling.delivery / q
   const gst = selling.gst / q
   const taxable = goldValue + goldVA + making + stoneValue + miscCharges
@@ -129,6 +182,8 @@ export function sellingComponentsToUnitSnapshot(
       goldVA,
       making,
       stoneValue,
+      diamondValue,
+      otherStoneValue,
       stoneLines: [],
       stoneVA: 0,
       vaTotal: goldVA,
@@ -163,14 +218,19 @@ export function isOrderItemPriceSnapshot(v: unknown): v is OrderItemPriceSnapsho
 
 /**
  * Reverse of sellingComponentsToUnitSnapshot — order-level amounts for the
- * admin edit form. Stone value lands on Diamonds (Stones stays 0), matching
- * quotedAmountsFromBreakdown. Delivery ← miscCharges.
+ * admin edit form. Uses diamondValue / otherStoneValue when present; legacy
+ * snapshots with only stoneValue put the lump on Diamonds. Delivery ← miscCharges.
  */
 export function unitSnapshotToSellingComponents(
   snapshot: Pick<
     OrderItemPriceSnapshot,
     'goldValue' | 'goldVA' | 'making' | 'stoneValue' | 'miscCharges' | 'gst'
-  > & { stoneVA?: number },
+  > & {
+    stoneVA?: number
+    diamondValue?: number
+    otherStoneValue?: number
+    stoneLines?: { typeLabel: string; value: number }[]
+  },
   quantity: number,
 ): {
   gold: number
@@ -183,10 +243,11 @@ export function unitSnapshotToSellingComponents(
 } {
   const q = Math.max(1, quantity)
   const round = (n: number) => Math.round(n)
+  const gems = splitGemValues(snapshot)
   return {
     gold: round(snapshot.goldValue * q),
-    diamonds: round(snapshot.stoneValue * q),
-    stones: 0,
+    diamonds: round(gems.diamonds * q),
+    stones: round(gems.stones * q),
     making: round(snapshot.making * q),
     wastage: round((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
     delivery: round(snapshot.miscCharges * q),
@@ -234,8 +295,14 @@ export function calculatePrice(
     }
   })
   const legacyStones = Number(variant.stoneCharges)
-  const stoneValue =
-    stoneLines.reduce((sum, l) => sum + l.value, 0) + legacyStones + leadIncentive
+  let diamondValue = 0
+  let otherStoneValue = 0
+  for (const line of stoneLines) {
+    if (isDiamondTypeLabel(line.typeLabel)) diamondValue += line.value
+    else otherStoneValue += line.value
+  }
+  otherStoneValue += legacyStones + leadIncentive
+  const stoneValue = diamondValue + otherStoneValue
 
   const misc = Number(variant.miscCharges)
   const stoneVA = 0
@@ -247,6 +314,8 @@ export function calculatePrice(
     goldVA,
     making,
     stoneValue,
+    diamondValue,
+    otherStoneValue,
     stoneLines,
     stoneVA,
     vaTotal: goldVA,

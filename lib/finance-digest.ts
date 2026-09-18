@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import {
   findSheetInflowMismatches,
+  isOrderReceiptDirection,
   sheetTotals,
   shortFinanceId,
   type SheetInflowMismatch,
@@ -37,6 +38,7 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
         allocations: {
           select: { amount: true, orderId: true },
         },
+        transferToAccount: { select: { type: true } },
       },
     }),
     prisma.financeTransaction.count({ where: { reviewComplete: false } }),
@@ -67,13 +69,14 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
     transactions
       .filter(
         (t) =>
-          t.direction === 'INFLOW' &&
+          isOrderReceiptDirection(t.direction) &&
           (t.orders.length > 0 || t.allocations.some((a) => a.orderId)),
       )
       .map((t) => {
         const orderAllocs = t.allocations
           .filter((a) => a.orderId)
           .map((a) => ({ orderId: a.orderId!, amount: Number(a.amount) }))
+        const direction = t.direction as 'INFLOW' | 'TRANSFER'
         return {
           date: t.date,
           amount: Number(t.amount),
@@ -84,6 +87,9 @@ export async function loadFinanceDigestAlerts(): Promise<FinanceDigestAlerts> {
             ]),
           ],
           allocations: orderAllocs.length ? orderAllocs : undefined,
+          direction,
+          transferToCompanyBank:
+            direction === 'TRANSFER' && t.transferToAccount?.type === 'COMPANY_BANK',
         }
       }),
   )

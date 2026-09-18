@@ -62,6 +62,8 @@ export default async function InventoryPage() {
         : null,
       customName: r.customName,
       updatedAt: r.updatedAt.toISOString(),
+      weightGrams: r.weightGrams != null ? Number(r.weightGrams) : null,
+      diamondCarats: r.diamondCarats != null ? Number(r.diamondCarats) : null,
       holder: r.holder,
       product: r.product,
       variant: r.variant,
