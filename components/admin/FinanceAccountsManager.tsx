@@ -18,6 +18,7 @@ export type AccountRow = {
   type: FinanceAccountType
   isVendorWallet: boolean
   vendorOutflowSource: VendorOutflowSource
+  vaultPurityK: number
   active: boolean
   sortOrder: number
 }
@@ -29,7 +30,7 @@ const input: React.CSSProperties = {
   fontSize: '0.8125rem',
 }
 
-const TYPES: FinanceAccountType[] = ['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']
+const TYPES: FinanceAccountType[] = ['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'VAULT', 'OTHER']
 const OUTFLOW_SOURCES: VendorOutflowSource[] = ['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']
 
 function isVendorAccount(row: Pick<AccountRow, 'type' | 'isVendorWallet'>) {
@@ -56,11 +57,13 @@ function OutflowSourceTip() {
 function AccountTable({
   rows,
   showOutflowSource,
+  showVaultPurity,
   onEdit,
   onDeactivate,
 }: {
   rows: AccountRow[]
   showOutflowSource?: boolean
+  showVaultPurity?: boolean
   onEdit: (row: AccountRow) => void
   onDeactivate: (id: string) => void
 }) {
@@ -74,6 +77,7 @@ function AccountTable({
           <th style={{ padding: 8 }}>Account</th>
           <th style={{ padding: 8 }}>Email</th>
           <th style={{ padding: 8 }}>Type</th>
+          {showVaultPurity && <th style={{ padding: 8 }}>Purity</th>}
           {showOutflowSource && <th style={{ padding: 8 }}>Dashboard outflow</th>}
           <th style={{ padding: 8 }}>Status</th>
           <th style={{ padding: 8 }} />
@@ -85,6 +89,9 @@ function AccountTable({
             <td style={{ padding: 8 }}>{r.name}</td>
             <td style={{ padding: 8 }}>{r.email ?? '—'}</td>
             <td style={{ padding: 8 }}>{ACCOUNT_TYPE_LABEL[r.type]}</td>
+            {showVaultPurity && (
+              <td style={{ padding: 8 }}>{r.type === 'VAULT' ? `${r.vaultPurityK}K` : '—'}</td>
+            )}
             {showOutflowSource && (
               <td style={{ padding: 8 }}>{VENDOR_OUTFLOW_SOURCE_LABEL[r.vendorOutflowSource]}</td>
             )}
@@ -115,13 +122,19 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
   const [type, setType] = useState<FinanceAccountType>('PARTNER')
   const [isVendorWallet, setIsVendorWallet] = useState(false)
   const [vendorOutflowSource, setVendorOutflowSource] = useState<VendorOutflowSource>('ORDER_SHEETS')
+  const [vaultPurityK, setVaultPurityK] = useState('24')
   const [active, setActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const companyAccounts = useMemo(() => rows.filter((r) => !isVendorAccount(r)), [rows])
+  const companyAccounts = useMemo(
+    () => rows.filter((r) => !isVendorAccount(r) && r.type !== 'VAULT'),
+    [rows],
+  )
+  const vaultAccounts = useMemo(() => rows.filter((r) => r.type === 'VAULT'), [rows])
   const vendorWallets = useMemo(() => rows.filter((r) => isVendorAccount(r)), [rows])
   const showVendorFields = type === 'VENDOR' || isVendorWallet
+  const showVaultFields = type === 'VAULT'
 
   function load(row: AccountRow) {
     setEditingId(row.id)
@@ -130,6 +143,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setType(row.type)
     setIsVendorWallet(row.type === 'VENDOR' || row.isVendorWallet)
     setVendorOutflowSource(row.vendorOutflowSource)
+    setVaultPurityK(String(row.vaultPurityK ?? 24))
     setActive(row.active)
     setError('')
   }
@@ -141,6 +155,7 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setType('PARTNER')
     setIsVendorWallet(false)
     setVendorOutflowSource('ORDER_SHEETS')
+    setVaultPurityK('24')
     setActive(true)
     setError('')
   }
@@ -151,12 +166,19 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
     setError('')
     const nextType = type
     const nextIsVendor = nextType === 'VENDOR' || isVendorWallet
+    const purity = Number(vaultPurityK)
+    if (nextType === 'VAULT' && (!Number.isFinite(purity) || purity <= 0 || purity > 24)) {
+      setError('Vault purity must be between 0 and 24K')
+      setSaving(false)
+      return
+    }
     const body = {
       name,
       email: email.trim() || null,
       type: nextType,
       isVendorWallet: nextIsVendor,
       ...(nextIsVendor ? { vendorOutflowSource } : {}),
+      ...(nextType === 'VAULT' ? { vaultPurityK: purity } : {}),
       active,
     }
     try {
@@ -224,6 +246,30 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
               ))}
             </select>
           </label>
+          {type === 'VAULT' ? (
+            <p style={{ margin: 0, fontSize: '0.75rem', color: '#6b7280' }}>
+              Vault tracks physical gold. Enter transaction amounts in grams — By Account shows
+              weight; live value uses account purity × live 24K rate on the dashboard.
+            </p>
+          ) : null}
+          {showVaultFields && (
+            <label style={{ fontSize: '0.75rem' }}>
+              Gold purity (karat)
+              <input
+                style={input}
+                type="number"
+                min={0.01}
+                max={24}
+                step={0.01}
+                value={vaultPurityK}
+                onChange={(e) => setVaultPurityK(e.target.value)}
+                required
+              />
+              <span style={{ display: 'block', marginTop: 4, color: '#6b7280', fontWeight: 400 }}>
+                e.g. 24, 22, 18. Value = grams × live 24K × (purity ÷ 24).
+              </span>
+            </label>
+          )}
           {showVendorFields && (
             <label style={{ fontSize: '0.75rem' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -265,6 +311,19 @@ export function FinanceAccountsManager({ initial }: { initial: AccountRow[] }) {
         Accounts
       </h3>
       <AccountTable rows={companyAccounts} onEdit={load} onDeactivate={deactivate} />
+
+      <h3 style={{ margin: '20px 0 8px', fontSize: '0.8125rem', fontWeight: 700, color: '#032b24' }}>
+        Vault (physical gold)
+      </h3>
+      <p style={{ margin: '0 0 8px', fontSize: '0.75rem', color: '#6b7280' }}>
+        Transaction amounts are grams. Purity (karat) scales live 24K rate for dashboard valuation.
+      </p>
+      <AccountTable
+        rows={vaultAccounts}
+        showVaultPurity
+        onEdit={load}
+        onDeactivate={deactivate}
+      />
 
       <h3 style={{ margin: '20px 0 8px', fontSize: '0.8125rem', fontWeight: 700, color: '#032b24' }}>
         Vendor wallets

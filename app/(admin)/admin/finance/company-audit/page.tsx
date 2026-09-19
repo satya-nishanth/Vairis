@@ -176,9 +176,21 @@ export default async function CompanyAuditPage({
 
   const stockRows = inventoryRowsForAudit(inventoryItems)
 
+  const vaultAccountIds = new Set(accounts.filter((a) => a.type === 'VAULT').map((a) => a.id))
+  const touchesVault = (t: {
+    paidThroughAccountId: string | null
+    transferToAccountId: string | null
+  }) =>
+    Boolean(
+      (t.paidThroughAccountId && vaultAccountIds.has(t.paidThroughAccountId)) ||
+        (t.transferToAccountId && vaultAccountIds.has(t.transferToAccountId)),
+    )
+
   const audit = buildCompanyAudit({
     sheets: sheetRows,
-    txExpense: transactions.map((t) => ({
+    txExpense: transactions
+      .filter((t) => !touchesVault(t))
+      .map((t) => ({
       date: t.date,
       direction: t.direction,
       amount: Number(t.amount),

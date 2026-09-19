@@ -22,6 +22,7 @@ export default async function FinanceConfigPage() {
         type: a.type,
         isVendorWallet: a.isVendorWallet,
         vendorOutflowSource: a.vendorOutflowSource,
+        vaultPurityK: a.vaultPurityK,
         active: a.active,
         sortOrder: a.sortOrder,
       }))}
