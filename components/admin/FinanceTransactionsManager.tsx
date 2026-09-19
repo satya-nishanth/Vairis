@@ -1228,23 +1228,38 @@ export function FinanceTransactionsManager({
           </button>
 
           {!showForm ? (
-            <Link
-              href="/admin/finance/transactions?compose=1"
-              className="finance-tx-open-cta finance-tx-open-cta--inline"
-              title="Add a new income or expense transaction"
-              aria-label="Record transaction"
-            >
-              <span className="finance-tx-open-cta__plus" aria-hidden>
-                +
-              </span>
-              <span className="finance-tx-open-cta__text">
-                <span className="finance-tx-open-cta__title">
-                  <span className="finance-tx-open-cta__label-full">Record transaction</span>
-                  <span className="finance-tx-open-cta__label-short">Record</span>
+            <>
+              <Link
+                href="/m/finance/txn"
+                style={{
+                  ...btnGhost,
+                  padding: '8px 12px',
+                  fontSize: '0.75rem',
+                  textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Phone-friendly add (installable)"
+              >
+                Phone add
+              </Link>
+              <Link
+                href="/admin/finance/transactions?compose=1"
+                className="finance-tx-open-cta finance-tx-open-cta--inline"
+                title="Add a new income or expense transaction"
+                aria-label="Record transaction"
+              >
+                <span className="finance-tx-open-cta__plus" aria-hidden>
+                  +
                 </span>
-                <span className="finance-tx-open-cta__sub">Add a new income or expense transaction</span>
-              </span>
-            </Link>
+                <span className="finance-tx-open-cta__text">
+                  <span className="finance-tx-open-cta__title">
+                    <span className="finance-tx-open-cta__label-full">Record transaction</span>
+                    <span className="finance-tx-open-cta__label-short">Record</span>
+                  </span>
+                  <span className="finance-tx-open-cta__sub">Add a new income or expense transaction</span>
+                </span>
+              </Link>
+            </>
           ) : null}
         </div>
 

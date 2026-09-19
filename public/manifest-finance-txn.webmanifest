@@ -1,0 +1,25 @@
+{
+  "name": "Vairis — Add transaction",
+  "short_name": "Add txn",
+  "description": "Quick add for Vairis finance cashbook transactions",
+  "start_url": "/m/finance/txn",
+  "scope": "/m/finance/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f9fafb",
+  "theme_color": "#032b24",
+  "icons": [
+    {
+      "src": "/images/logo_icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/logo_icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
