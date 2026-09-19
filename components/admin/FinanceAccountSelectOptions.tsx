@@ -1,5 +1,3 @@
-'use client'
-
 export type FinanceAccountOpt = {
   id: string
   name: string
