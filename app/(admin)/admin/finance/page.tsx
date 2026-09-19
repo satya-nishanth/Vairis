@@ -524,37 +524,39 @@ export default async function FinanceDashboardPage() {
             </p>
           </div>
 
-          <table className="finance-dash__table">
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th className="finance-dash__num">Net</th>
-                <th className="finance-dash__num">Inflow</th>
-                <th className="finance-dash__num">Outflow</th>
-              </tr>
-            </thead>
-            <tbody>
-              {byAccountMain.map((p) => (
-                <tr key={p.accountId}>
-                  <td>{p.accountName}</td>
-                  <td
-                    className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
-                  >
-                    {inr(p.net)}
-                  </td>
-                  <td className="finance-dash__num">{inr(p.inflow)}</td>
-                  <td className="finance-dash__num">{inr(p.outflow)}</td>
-                </tr>
-              ))}
-              {byAccountMain.length === 0 && (
+          <div className="finance-dash__table-wrap">
+            <table className="finance-dash__table">
+              <thead>
                 <tr>
-                  <td colSpan={4} className="finance-dash__empty">
-                    No accounts yet.
-                  </td>
+                  <th>Account</th>
+                  <th className="finance-dash__num">Net</th>
+                  <th className="finance-dash__num">Inflow</th>
+                  <th className="finance-dash__num">Outflow</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {byAccountMain.map((p) => (
+                  <tr key={p.accountId}>
+                    <td>{p.accountName}</td>
+                    <td
+                      className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                    >
+                      {inr(p.net)}
+                    </td>
+                    <td className="finance-dash__num">{inr(p.inflow)}</td>
+                    <td className="finance-dash__num">{inr(p.outflow)}</td>
+                  </tr>
+                ))}
+                {byAccountMain.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="finance-dash__empty">
+                      No accounts yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {byAccountVault.length > 0 ? (
             <>
@@ -564,35 +566,37 @@ export default async function FinanceDashboardPage() {
                 {rate24k > 0 ? ` (${inr(rate24k)}/g)` : ''} × (purity ÷ 24), rolled into In-stock
                 Inventory Purchase Price.
               </p>
-              <table className="finance-dash__table">
-                <thead>
-                  <tr>
-                    <th>Account</th>
-                    <th className="finance-dash__num">Purity</th>
-                    <th className="finance-dash__num">Net</th>
-                    <th className="finance-dash__num">Inflow</th>
-                    <th className="finance-dash__num">Outflow</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byAccountVault.map((p) => {
-                    const purity = vaultPurityById.get(p.accountId) ?? 24
-                    return (
-                      <tr key={p.accountId}>
-                        <td>{p.accountName}</td>
-                        <td className="finance-dash__num">{purity}K</td>
-                        <td
-                          className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
-                        >
-                          {formatGrams(p.net)}
-                        </td>
-                        <td className="finance-dash__num">{formatGrams(p.inflow)}</td>
-                        <td className="finance-dash__num">{formatGrams(p.outflow)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <div className="finance-dash__table-wrap">
+                <table className="finance-dash__table">
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th className="finance-dash__num">Purity</th>
+                      <th className="finance-dash__num">Net</th>
+                      <th className="finance-dash__num">Inflow</th>
+                      <th className="finance-dash__num">Outflow</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byAccountVault.map((p) => {
+                      const purity = vaultPurityById.get(p.accountId) ?? 24
+                      return (
+                        <tr key={p.accountId}>
+                          <td>{p.accountName}</td>
+                          <td className="finance-dash__num">{purity}K</td>
+                          <td
+                            className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                          >
+                            {formatGrams(p.net)}
+                          </td>
+                          <td className="finance-dash__num">{formatGrams(p.inflow)}</td>
+                          <td className="finance-dash__num">{formatGrams(p.outflow)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           ) : null}
 
@@ -602,65 +606,67 @@ export default async function FinanceDashboardPage() {
               <p className="finance-dash__card-sub finance-dash__subsection-sub">
                 Money sitting with vendors — tagged in Config → Accounts.
               </p>
-              <table className="finance-dash__table">
-                <thead>
-                  <tr>
-                    <th>Account</th>
-                    <th className="finance-dash__num">Net</th>
-                    <th className="finance-dash__num">Inflow</th>
-                    <th className="finance-dash__num">Outflow</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byAccountVendor.map((p) => {
-                    const source = vendorSourceById.get(p.accountId) ?? 'ORDER_SHEETS'
-                    return (
-                      <tr key={p.accountId}>
-                        <td>{p.accountName}</td>
-                        <td
-                          className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
-                        >
-                          {inr(p.net)}
-                        </td>
-                        <td className="finance-dash__num">
-                          <span className="finance-dash__amt-with-tip">
-                            {inr(p.inflow)}
-                            <span className="finance-dash__kpi-tip finance-dash__cell-tip">
-                              <button
-                                type="button"
-                                className="finance-dash__kpi-info"
-                                aria-label={`About inflow for ${p.accountName}`}
-                              >
-                                i
-                              </button>
-                              <span className="finance-dash__kpi-tip-text" role="tooltip">
-                                {vendorWalletInflowTip(source)}
+              <div className="finance-dash__table-wrap">
+                <table className="finance-dash__table">
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th className="finance-dash__num">Net</th>
+                      <th className="finance-dash__num">Inflow</th>
+                      <th className="finance-dash__num">Outflow</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byAccountVendor.map((p) => {
+                      const source = vendorSourceById.get(p.accountId) ?? 'ORDER_SHEETS'
+                      return (
+                        <tr key={p.accountId}>
+                          <td>{p.accountName}</td>
+                          <td
+                            className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                          >
+                            {inr(p.net)}
+                          </td>
+                          <td className="finance-dash__num">
+                            <span className="finance-dash__amt-with-tip">
+                              {inr(p.inflow)}
+                              <span className="finance-dash__kpi-tip finance-dash__cell-tip">
+                                <button
+                                  type="button"
+                                  className="finance-dash__kpi-info"
+                                  aria-label={`About inflow for ${p.accountName}`}
+                                >
+                                  i
+                                </button>
+                                <span className="finance-dash__kpi-tip-text" role="tooltip">
+                                  {vendorWalletInflowTip(source)}
+                                </span>
                               </span>
                             </span>
-                          </span>
-                        </td>
-                        <td className="finance-dash__num">
-                          <span className="finance-dash__amt-with-tip">
-                            {inr(p.outflow)}
-                            <span className="finance-dash__kpi-tip finance-dash__cell-tip">
-                              <button
-                                type="button"
-                                className="finance-dash__kpi-info"
-                                aria-label={`About outflow for ${p.accountName}`}
-                              >
-                                i
-                              </button>
-                              <span className="finance-dash__kpi-tip-text" role="tooltip">
-                                {vendorWalletOutflowTip(source)}
+                          </td>
+                          <td className="finance-dash__num">
+                            <span className="finance-dash__amt-with-tip">
+                              {inr(p.outflow)}
+                              <span className="finance-dash__kpi-tip finance-dash__cell-tip">
+                                <button
+                                  type="button"
+                                  className="finance-dash__kpi-info"
+                                  aria-label={`About outflow for ${p.accountName}`}
+                                >
+                                  i
+                                </button>
+                                <span className="finance-dash__kpi-tip-text" role="tooltip">
+                                  {vendorWalletOutflowTip(source)}
+                                </span>
                               </span>
                             </span>
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           ) : null}
         </section>
