@@ -533,11 +533,19 @@
   color: #032b24;
 }
 
+.finance-dash__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
 .finance-dash__table {
   width: 100%;
+  min-width: 36rem;
   border-collapse: collapse;
   font-size: 0.8125rem;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .finance-dash__table th {
@@ -549,6 +557,7 @@
   text-transform: uppercase;
   color: #9ca3af;
   border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
 }
 
 .finance-dash__table td {
@@ -564,7 +573,7 @@
 .finance-dash__table th.finance-dash__num,
 .finance-dash__table td.finance-dash__num {
   text-align: right;
-  width: 22%;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
