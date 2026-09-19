@@ -539,24 +539,36 @@ export function buildCompanyAudit(input: {
     input.range,
     input.kpiCategoryConfig,
   )
-  const cashByAccount = summarizeTransactionFlows(
+  const vaultIds = new Set(
+    input.accounts.filter((a) => a.type === 'VAULT').map((a) => a.id),
+  )
+  const cashByAccountAll = summarizeTransactionFlows(
     input.txFlow,
     input.accounts,
     input.range,
     buildSheetPurchaseOutflows(input.sheets),
   )
+  const cashByAccount = cashByAccountAll.filter((a) => !vaultIds.has(a.accountId))
   const cashOnHand = roundMoney(cashByAccount.reduce((s, a) => s + a.net, 0))
   const stock = summarizeInventoryStock(input.stockRows, input.liveByVariantId)
 
   const inRange = (d: Date) => !input.range || (d >= input.range.start && d < input.range.end)
+  const touchesVault = (t: {
+    paidThroughAccountId?: string | null
+    transferToAccountId?: string | null
+  }) =>
+    Boolean(
+      (t.paidThroughAccountId && vaultIds.has(t.paidThroughAccountId)) ||
+        (t.transferToAccountId && vaultIds.has(t.transferToAccountId)),
+    )
   const cashInflow = roundMoney(
     input.txFlow
-      .filter((t) => inRange(t.date) && t.direction === 'INFLOW')
+      .filter((t) => inRange(t.date) && t.direction === 'INFLOW' && !touchesVault(t))
       .reduce((s, t) => s + t.amount, 0),
   )
   const cashOutflow = roundMoney(
     input.txFlow
-      .filter((t) => inRange(t.date) && t.direction === 'OUTFLOW')
+      .filter((t) => inRange(t.date) && t.direction === 'OUTFLOW' && !touchesVault(t))
       .reduce((s, t) => s + t.amount, 0),
   )
 

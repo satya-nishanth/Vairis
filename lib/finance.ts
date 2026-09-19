@@ -28,7 +28,53 @@ export const ACCOUNT_TYPE_LABEL: Record<FinanceAccountType, string> = {
   COMPANY_BANK: 'Company bank',
   CASH: 'Cash',
   VENDOR: 'Vendor',
+  VAULT: 'Vault',
   OTHER: 'Other',
+}
+
+export function isVaultAccountType(type: string | null | undefined): boolean {
+  return type === 'VAULT'
+}
+
+/** Format gram weights for Vault By Account rows. */
+export function formatGrams(n: number): string {
+  return `${n.toLocaleString('en-IN', {
+    maximumFractionDigits: 3,
+    minimumFractionDigits: 0,
+  })} g`
+}
+
+/** 24K ₹/g from stored 18K rate (MetalpriceAPI sync stores 18K = 24K × 18/24). */
+export function goldRate24kFrom18k(rate18kPerGram: number): number {
+  return roundMoney(Number(rate18kPerGram) * (24 / 18))
+}
+
+/**
+ * Live ₹ value of vault holdings for the inventory purchase-price KPI.
+ * Each holding: max(0, netGrams) × rate24k × (purityK / 24). Default purity 24K.
+ */
+export function vaultHoldingsLiveValue(
+  holdings: { netGrams: number; purityK?: number | null }[],
+  rate24kPerGram: number,
+): number {
+  if (!(rate24kPerGram > 0)) return 0
+  let total = 0
+  for (const h of holdings) {
+    const grams = h.netGrams > 0 ? h.netGrams : 0
+    if (grams <= 0) continue
+    const purity = Number(h.purityK)
+    const k = Number.isFinite(purity) && purity > 0 ? purity : 24
+    total += grams * rate24kPerGram * (k / 24)
+  }
+  return roundMoney(total)
+}
+
+/** Effective ₹/g for a vault purity given live 24K rate. */
+export function vaultRatePerGram(rate24kPerGram: number, purityK: number | null | undefined): number {
+  if (!(rate24kPerGram > 0)) return 0
+  const k = Number(purityK)
+  const purity = Number.isFinite(k) && k > 0 ? k : 24
+  return roundMoney(rate24kPerGram * (purity / 24))
 }
 
 export type VendorOutflowSource = 'ORDER_SHEETS' | 'TRANSACTIONS' | 'BOTH'

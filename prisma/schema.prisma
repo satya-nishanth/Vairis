@@ -675,6 +675,8 @@ enum FinanceAccountType {
   COMPANY_BANK
   CASH
   VENDOR
+  /// Physical gold held (transaction amounts are grams).
+  VAULT
   OTHER
 }
 
@@ -707,6 +709,8 @@ model FinanceAccount {
   isVendorWallet Boolean            @default(false)
   /// Vendor only: outflow from order-sheet CP vs cashbook OUTFLOW txns (dashboard By account).
   vendorOutflowSource VendorOutflowSource @default(ORDER_SHEETS)
+  /// Vault only: gold purity in karat (e.g. 24, 22, 18). Value = grams × live24K × (purity/24).
+  vaultPurityK     Float                @default(24)
   active         Boolean            @default(true)
   sortOrder      Int                @default(0)
   createdAt      DateTime           @default(now())

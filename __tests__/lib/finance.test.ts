@@ -14,6 +14,10 @@ import {
   sumCollectedByOrderId,
   summarizeTransactionReport,
   toFinanceCategoryDirection,
+  goldRate24kFrom18k,
+  vaultHoldingsLiveValue,
+  formatGrams,
+  roundMoney,
   type FinanceTransactionDirection,
 } from '@/lib/finance'
 
@@ -755,6 +759,28 @@ describe('summarizeTransactionReport', () => {
     expect(r.inflow).toBe(200)
     expect(r.outflow).toBe(50)
     expect(r.byMonth).toHaveLength(2)
+  })
+})
+
+describe('vault gold valuation', () => {
+  it('derives 24K rate from 18K', () => {
+    expect(goldRate24kFrom18k(5400)).toBe(7200)
+  })
+
+  it('values positive vault nets at purity-scaled live rate', () => {
+    expect(
+      vaultHoldingsLiveValue([{ netGrams: 100 }, { netGrams: -10 }, { netGrams: 25.5 }], 7200),
+    ).toBe(roundMoney((100 + 25.5) * 7200))
+    expect(vaultHoldingsLiveValue([{ netGrams: 100, purityK: 22 }], 7200)).toBe(
+      roundMoney(100 * 7200 * (22 / 24)),
+    )
+    expect(vaultHoldingsLiveValue([{ netGrams: -5 }], 7200)).toBe(0)
+    expect(vaultHoldingsLiveValue([{ netGrams: 10 }], 0)).toBe(0)
+  })
+
+  it('formats grams for By Account', () => {
+    expect(formatGrams(12.345)).toBe('12.345 g')
+    expect(formatGrams(100)).toBe('100 g')
   })
 })
 

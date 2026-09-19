@@ -9,9 +9,10 @@ export const dynamic = 'force-dynamic'
 const schema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
-  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']).optional(),
+  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'VAULT', 'OTHER']).optional(),
   isVendorWallet: z.boolean().optional(),
   vendorOutflowSource: z.enum(['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']).optional(),
+  vaultPurityK: z.number().positive('Vault purity must be > 0').max(24, 'Vault purity max is 24K').optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -23,6 +24,7 @@ function serialize(row: {
   type: string
   isVendorWallet: boolean
   vendorOutflowSource: string
+  vaultPurityK: number
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -35,6 +37,7 @@ function serialize(row: {
     type: row.type,
     isVendorWallet: row.isVendorWallet,
     vendorOutflowSource: row.vendorOutflowSource,
+    vaultPurityK: row.vaultPurityK,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -61,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         : d.isVendorWallet !== undefined
           ? d.isVendorWallet
           : existing.isVendorWallet
+    const nextType = d.type ?? existing.type
     const row = await prisma.financeAccount.update({
       where: { id },
       data: {
@@ -75,6 +79,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...(d.vendorOutflowSource !== undefined && nextIsVendor
           ? { vendorOutflowSource: d.vendorOutflowSource }
           : {}),
+        ...(nextType === 'VAULT' && d.vaultPurityK !== undefined
+          ? { vaultPurityK: d.vaultPurityK }
+          : nextType !== 'VAULT' && d.type !== undefined
+            ? { vaultPurityK: 24 }
+            : {}),
         ...(d.active !== undefined ? { active: d.active } : {}),
         ...(d.sortOrder !== undefined ? { sortOrder: d.sortOrder } : {}),
       },

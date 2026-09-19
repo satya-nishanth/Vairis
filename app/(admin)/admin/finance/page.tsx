@@ -3,11 +3,15 @@ import { prisma } from '@/lib/prisma'
 import {
   buildSheetPurchaseOutflows,
   findSheetInflowMismatches,
+  formatGrams,
+  goldRate24kFrom18k,
   isOrderReceiptDirection,
+  isVaultAccountType,
   summarizeDashboardKpis,
   summarizeTransactionFlows,
   sheetTotals,
   roundMoney,
+  vaultHoldingsLiveValue,
   vendorWalletInflowTip,
   vendorWalletOutflowTip,
   type VendorOutflowSource,
@@ -47,7 +51,7 @@ const EXCEPTION_HIGHLIGHT: Record<string, string> = {
 }
 
 export default async function FinanceDashboardPage() {
-  const [sheets, accounts, transactions, purchaseBills, inventoryItems, forReviewCount] =
+  const [sheets, accounts, transactions, purchaseBills, inventoryItems, forReviewCount, goldRate18k] =
     await Promise.all([
     prisma.orderFinance.findMany({
       include: {
@@ -91,6 +95,7 @@ export default async function FinanceDashboardPage() {
     prisma.financeTransaction.count({
       where: { reviewComplete: false },
     }),
+    prisma.goldRate.findUnique({ where: { metalType: 'GOLD_18K' } }),
   ])
 
   let inventoryPurchasePrice = 0
@@ -137,20 +142,34 @@ export default async function FinanceDashboardPage() {
 
   const sheetPurchaseOutflows = buildSheetPurchaseOutflows(sheetRows)
 
-  const txExpense = transactions.map((t) => ({
-    date: t.date,
-    direction: t.direction,
-    amount: Number(t.amount),
-    relatedToOrder:
-      t.orders.length > 0 ||
-      t.unlinkedOrderLabels.length > 0 ||
-      t.allocations.some((a) => a.orderId || a.purchaseBillId),
-    categoryId: t.categoryId,
-    categoryName: t.category?.name ?? null,
-    hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
-    hasInventoryLink:
-      t.inventoryItems.length > 0 || (t.unlinkedInventoryLabels?.length ?? 0) > 0,
-  }))
+  const vaultAccountIds = new Set(
+    accounts.filter((a) => isVaultAccountType(a.type)).map((a) => a.id),
+  )
+  const touchesVault = (t: {
+    paidThroughAccountId: string | null
+    transferToAccountId: string | null
+  }) =>
+    Boolean(
+      (t.paidThroughAccountId && vaultAccountIds.has(t.paidThroughAccountId)) ||
+        (t.transferToAccountId && vaultAccountIds.has(t.transferToAccountId)),
+    )
+
+  const txExpense = transactions
+    .filter((t) => !touchesVault(t))
+    .map((t) => ({
+      date: t.date,
+      direction: t.direction,
+      amount: Number(t.amount),
+      relatedToOrder:
+        t.orders.length > 0 ||
+        t.unlinkedOrderLabels.length > 0 ||
+        t.allocations.some((a) => a.orderId || a.purchaseBillId),
+      categoryId: t.categoryId,
+      categoryName: t.category?.name ?? null,
+      hasPurchaseBillAllocation: t.allocations.some((a) => a.purchaseBillId),
+      hasInventoryLink:
+        t.inventoryItems.length > 0 || (t.unlinkedInventoryLabels?.length ?? 0) > 0,
+    }))
 
   const kpiSettings = await getFinanceKpiSettings()
   const kpis = summarizeDashboardKpis(sheetRows, txExpense, undefined, kpiSettings)
@@ -181,12 +200,34 @@ export default async function FinanceDashboardPage() {
       .filter((a) => a.isVendorWallet || a.type === 'VENDOR')
       .map((a) => [a.id, (a.vendorOutflowSource ?? 'ORDER_SHEETS') as VendorOutflowSource]),
   )
+  const byAccountVault = byAccountFlows
+    .filter((p) => vaultAccountIds.has(p.accountId))
+    .sort((a, b) => a.accountName.localeCompare(b.accountName))
   const byAccountMain = byAccountFlows
-    .filter((p) => !vendorWalletIds.has(p.accountId))
+    .filter((p) => !vendorWalletIds.has(p.accountId) && !vaultAccountIds.has(p.accountId))
     .sort((a, b) => a.accountName.localeCompare(b.accountName))
   const byAccountVendor = byAccountFlows
     .filter((p) => vendorWalletIds.has(p.accountId))
     .sort((a, b) => a.accountName.localeCompare(b.accountName))
+
+  const rate24k =
+    goldRate18k != null ? goldRate24kFrom18k(Number(goldRate18k.ratePerGram)) : 0
+  const vaultPurityById = new Map(
+    accounts
+      .filter((a) => isVaultAccountType(a.type))
+      .map((a) => [a.id, a.vaultPurityK ?? 24]),
+  )
+  const vaultLiveValue = vaultHoldingsLiveValue(
+    byAccountVault.map((p) => ({
+      netGrams: p.net,
+      purityK: vaultPurityById.get(p.accountId) ?? 24,
+    })),
+    rate24k,
+  )
+  const vaultGramsHeld = roundMoney(
+    byAccountVault.reduce((s, p) => s + Math.max(0, p.net), 0),
+  )
+  inventoryPurchasePrice = roundMoney(inventoryPurchasePrice + vaultLiveValue)
 
   const collections = { settled: 0, fully_paid: 0, partial: 0, unpaid: 0, overpaid: 0, due: 0 }
   const orderPayments = sheetRows.map((s) => {
@@ -351,11 +392,25 @@ export default async function FinanceDashboardPage() {
     {
       label: 'In-stock Inventory Purchase Price',
       value: inr(inventoryPurchasePrice),
-      meta:
-        inventoryPurchaseLines > 0
-          ? `${inventoryPurchaseLines} in-stock line${inventoryPurchaseLines === 1 ? '' : 's'}`
-          : 'Stock on hand × purchase / pc',
-      tip: 'Σ (qty on hand × purchase price per piece) for inventory items still in stock with a purchase price set. Same formula as Inventory → Purchase. Source: Inventory items (current snapshot, not cashbook).',
+      meta: (() => {
+        const bits: string[] = []
+        if (inventoryPurchaseLines > 0) {
+          bits.push(
+            `${inventoryPurchaseLines} in-stock line${inventoryPurchaseLines === 1 ? '' : 's'}`,
+          )
+        }
+        if (vaultGramsHeld > 0) {
+          bits.push(`${formatGrams(vaultGramsHeld)} vault`)
+        }
+        if (rate24k > 0) {
+          bits.push(`live 24K ${inr(rate24k)}/g`)
+        }
+        return bits.length > 0 ? bits.join(' · ') : 'Stock on hand × purchase / pc'
+      })(),
+      tip:
+        'Inventory: Σ (qty on hand × purchase price per piece) for in-stock items with a purchase price. ' +
+        'Plus Vault: Σ net grams × live 24K × (account purityK ÷ 24). Live 24K is derived from GoldRate 18K × 24/18. ' +
+        'Vault transaction amounts are grams, not rupees. Source: Inventory + Vault cashbook.',
     },
     {
       label: 'Orders Purchase Price',
@@ -465,7 +520,7 @@ export default async function FinanceDashboardPage() {
           <div className="finance-dash__card-head">
             <h2 className="finance-dash__card-title">By account</h2>
             <p className="finance-dash__card-sub">
-              From transactions — wallet used. Net = inflow − outflow.
+              From transactions — wallet used. Net = inflow − outflow. Vault amounts are grams.
             </p>
           </div>
 
@@ -500,6 +555,46 @@ export default async function FinanceDashboardPage() {
               )}
             </tbody>
           </table>
+
+          {byAccountVault.length > 0 ? (
+            <>
+              <h3 className="finance-dash__subsection-title">Vault (physical gold)</h3>
+              <p className="finance-dash__card-sub finance-dash__subsection-sub">
+                Transaction amounts are grams. Value = net × live 24K
+                {rate24k > 0 ? ` (${inr(rate24k)}/g)` : ''} × (purity ÷ 24), rolled into In-stock
+                Inventory Purchase Price.
+              </p>
+              <table className="finance-dash__table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th className="finance-dash__num">Purity</th>
+                    <th className="finance-dash__num">Net</th>
+                    <th className="finance-dash__num">Inflow</th>
+                    <th className="finance-dash__num">Outflow</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byAccountVault.map((p) => {
+                    const purity = vaultPurityById.get(p.accountId) ?? 24
+                    return (
+                      <tr key={p.accountId}>
+                        <td>{p.accountName}</td>
+                        <td className="finance-dash__num">{purity}K</td>
+                        <td
+                          className={`finance-dash__num${p.net < 0 ? ' is-neg' : p.net > 0 ? ' is-pos' : ''}`}
+                        >
+                          {formatGrams(p.net)}
+                        </td>
+                        <td className="finance-dash__num">{formatGrams(p.inflow)}</td>
+                        <td className="finance-dash__num">{formatGrams(p.outflow)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </>
+          ) : null}
 
           {byAccountVendor.length > 0 ? (
             <>

@@ -9,9 +9,10 @@ export const dynamic = 'force-dynamic'
 const schema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   email: z.string().trim().email('Invalid email').optional().nullable().or(z.literal('')),
-  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'OTHER']),
+  type: z.enum(['PARTNER', 'COMPANY_BANK', 'CASH', 'VENDOR', 'VAULT', 'OTHER']),
   isVendorWallet: z.boolean().optional(),
   vendorOutflowSource: z.enum(['ORDER_SHEETS', 'TRANSACTIONS', 'BOTH']).optional(),
+  vaultPurityK: z.number().positive('Vault purity must be > 0').max(24, 'Vault purity max is 24K').optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 })
@@ -23,6 +24,7 @@ function serialize(row: {
   type: string
   isVendorWallet: boolean
   vendorOutflowSource: string
+  vaultPurityK: number
   active: boolean
   sortOrder: number
   createdAt: Date
@@ -35,6 +37,7 @@ function serialize(row: {
     type: row.type,
     isVendorWallet: row.isVendorWallet,
     vendorOutflowSource: row.vendorOutflowSource,
+    vaultPurityK: row.vaultPurityK,
     active: row.active,
     sortOrder: row.sortOrder,
     createdAt: row.createdAt.toISOString(),
@@ -64,6 +67,7 @@ export async function POST(req: NextRequest) {
   const email = d.email?.trim() ? d.email.trim().toLowerCase() : null
   try {
     const isVendor = d.isVendorWallet ?? d.type === 'VENDOR'
+    const isVault = d.type === 'VAULT'
     const row = await prisma.financeAccount.create({
       data: {
         name: d.name,
@@ -72,6 +76,7 @@ export async function POST(req: NextRequest) {
         // Keep flag in sync with type so dashboard grouping stays consistent
         isVendorWallet: isVendor,
         vendorOutflowSource: isVendor ? (d.vendorOutflowSource ?? 'ORDER_SHEETS') : 'ORDER_SHEETS',
+        vaultPurityK: isVault ? (d.vaultPurityK ?? 24) : 24,
         active: d.active ?? true,
         sortOrder: d.sortOrder ?? 0,
       },
