@@ -3,6 +3,18 @@ import { withSentryConfig } from '@sentry/nextjs'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  experimental: {
+    // Azure Container Apps ingress terminates TLS in front of the container and can present
+    // a different Host to Next.js than the Origin the browser actually sent — Next's default
+    // Server Actions same-origin check then rejects every action POST with no visible error
+    // (form just silently no-ops: no request ever reaches the route, nothing logged server-side
+    // past the framework boundary). Broke signup/signin sitewide in prod behind the custom
+    // domain (2026-09-19) since this was never set. staging uses the container's own default
+    // *.azurecontainerapps.io domain, listed too in case its ingress does the same rewrite.
+    serverActions: {
+      allowedOrigins: ['www.thevairis.com', 'thevairis.com', '*.azurecontainerapps.io'],
+    },
+  },
   // Self-hosted GoTrue (Azure migration) — proxies auth calls same-origin so the browser
   // never talks to GoTrue cross-origin. Bare GoTrue's CORS layer rejects the `apikey` header
   // supabase-js always sends (it expects a Kong gateway in front to have handled that), so a
