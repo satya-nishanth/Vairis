@@ -30,13 +30,15 @@ resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'gotrue'
-          // v2.172.0 -> v2.180.0 (2026-09-20): v2.172.0's session-refresh path panics
-          // scanning oauth.sessions.oauth_client_id when NULL ("missing destination name
-          // oauth_client_id in *models.Session") — GoTrue's own migrations add that column,
-          // but that version's refresh code doesn't handle it being unset. Broke POST /token
-          // grant_type=refresh_token for every session sitewide. Known upstream bug, confirmed
-          // fixed by this version: https://github.com/supabase/supabase/issues/39394
-          image: 'supabase/gotrue:v2.180.0' // "latest" tag doesn't exist on this image — Supabase only publishes pinned versions
+          // v2.172.0 -> v2.180.0 (2026-09-20) fixed missing oauth_client_id in
+          // models.Session, but v2.180.0 was itself missing refresh_token_hmac_key /
+          // refresh_token_counter (added v2.181.0) and scopes (added v2.183.0) — same
+          // "GoTrue's own migration adds a sessions column its own Session struct
+          // doesn't declare yet" bug, recurring release-to-release as the OAuth 2.1
+          // server feature landed in stages. Verified directly against each tagged
+          // commit's internal/models/sessions.go that v2.197.0 (current latest stable)
+          // has all four fields — this is not another guess, checked every field.
+          image: 'supabase/gotrue:v2.197.0' // "latest" tag doesn't exist on this image — Supabase only publishes pinned versions
           env: [
             { name: 'GOTRUE_DB_DRIVER', value: 'postgres' }
             { name: 'DATABASE_URL', secretRef: 'db-url' }
