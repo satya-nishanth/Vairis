@@ -45,25 +45,86 @@ export default function ImageUploader({ images, onChange }: Props) {
     return `Upload failed (${res.status})`
   }
 
+  async function applyUrl(slotIndex: number, url: string) {
+    const next = [...images]
+    while (next.length <= slotIndex) next.push('')
+    next[slotIndex] = url
+    onChange(next)
+  }
+
+  /** Azure: browser PUTs bytes to Blob via SAS (never buffers video through the app). */
+  async function uploadVideoDirect(file: File, slotIndex: number): Promise<boolean> {
+    const metaRes = await fetch('/api/admin/upload/sas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || 'video/mp4',
+        size: file.size,
+        folder: 'products',
+      }),
+    })
+
+    // Local/Supabase — fall back to proxied multipart upload.
+    if (metaRes.status === 501) return false
+
+    if (!metaRes.ok) {
+      alert(await readUploadError(metaRes))
+      return true // handled (failed)
+    }
+
+    const meta = (await metaRes.json()) as { uploadUrl?: string; url?: string }
+    if (!meta.uploadUrl || !meta.url) {
+      alert('Upload failed — no SAS URL returned')
+      return true
+    }
+
+    setBusy('Uploading video to storage…')
+    const put = await fetch(meta.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'x-ms-blob-type': 'BlockBlob',
+        'x-ms-blob-content-type': file.type || 'video/mp4',
+        'Content-Type': file.type || 'video/mp4',
+      },
+      body: file,
+    })
+
+    if (!put.ok) {
+      const text = await put.text().catch(() => '')
+      alert(text || `Direct upload failed (${put.status})`)
+      return true
+    }
+
+    await applyUrl(slotIndex, meta.url)
+    return true
+  }
+
+  async function uploadFileProxy(file: File, slotIndex: number) {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+    if (!res.ok) {
+      alert(await readUploadError(res))
+      return
+    }
+    const json = (await res.json()) as { url?: string }
+    if (!json.url) {
+      alert('Upload failed — no URL returned')
+      return
+    }
+    await applyUrl(slotIndex, json.url)
+  }
+
   async function uploadFile(file: File, slotIndex: number) {
-    setBusy(slotIndex === 4 ? 'Uploading video…' : 'Uploading…')
+    const isVideoSlot = slotIndex === 4 || file.type.startsWith('video/')
+    setBusy(isVideoSlot ? 'Uploading video…' : 'Uploading…')
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
-      if (!res.ok) {
-        alert(await readUploadError(res))
-        return
+      if (isVideoSlot) {
+        const handled = await uploadVideoDirect(file, slotIndex)
+        if (handled) return
       }
-      const json = (await res.json()) as { url?: string }
-      if (!json.url) {
-        alert('Upload failed — no URL returned')
-        return
-      }
-      const next = [...images]
-      while (next.length <= slotIndex) next.push('')
-      next[slotIndex] = json.url
-      onChange(next)
+      await uploadFileProxy(file, slotIndex)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Upload failed')
     } finally {
