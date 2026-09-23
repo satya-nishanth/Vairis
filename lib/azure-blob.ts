@@ -20,9 +20,17 @@ function getBlobServiceClient() {
 }
 
 export async function uploadProductMedia(path: string, data: Buffer | ArrayBuffer, contentType: string) {
+  const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME
+  if (!accountName) {
+    throw new Error('AZURE_STORAGE_ACCOUNT_NAME is not set')
+  }
+  // Always Buffer in Node — ArrayBuffer from undici File can fail inside uploadData.
+  const body = Buffer.isBuffer(data) ? data : Buffer.from(data)
   const container = getBlobServiceClient().getContainerClient(CONTAINER)
   const blockBlob = container.getBlockBlobClient(path)
-  await blockBlob.uploadData(data, { blobHTTPHeaders: { blobContentType: contentType } })
+  await blockBlob.uploadData(body, {
+    blobHTTPHeaders: { blobContentType: contentType },
+  })
   return blockBlob.url
 }
 

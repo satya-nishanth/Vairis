@@ -1,5 +1,5 @@
 'use client'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import Image from 'next/image'
 
 type Props = {
@@ -25,6 +25,7 @@ function isVideo(url: string) {
 export default function ImageUploader({ images, onChange }: Props) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const addMoreRef = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
   // Ensure array is long enough for fixed slots when reading
   const padded = [...images]
@@ -34,19 +35,40 @@ export default function ImageUploader({ images, onChange }: Props) {
     .map((url, i) => (i >= EXTRA_START && url ? i : -1))
     .filter((i) => i >= 0)
 
-  async function uploadFile(file: File, slotIndex: number) {
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
-    const json = await res.json()
-    if (!res.ok) {
-      alert(json.error ?? 'Upload failed')
-      return
+  async function readUploadError(res: Response): Promise<string> {
+    try {
+      const json = (await res.json()) as { error?: string }
+      if (json?.error) return json.error
+    } catch {
+      /* non-JSON 500/413 from proxy */
     }
-    const next = [...images]
-    while (next.length <= slotIndex) next.push('')
-    next[slotIndex] = json.url
-    onChange(next)
+    return `Upload failed (${res.status})`
+  }
+
+  async function uploadFile(file: File, slotIndex: number) {
+    setBusy(slotIndex === 4 ? 'Uploading video…' : 'Uploading…')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+      if (!res.ok) {
+        alert(await readUploadError(res))
+        return
+      }
+      const json = (await res.json()) as { url?: string }
+      if (!json.url) {
+        alert('Upload failed — no URL returned')
+        return
+      }
+      const next = [...images]
+      while (next.length <= slotIndex) next.push('')
+      next[slotIndex] = json.url
+      onChange(next)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setBusy(null)
+    }
   }
 
   async function uploadExtraFiles(files: FileList | File[]) {
@@ -55,21 +77,32 @@ export default function ImageUploader({ images, onChange }: Props) {
       alert('Please choose image files (jpg, png, webp)')
       return
     }
+    setBusy('Uploading…')
     let next = [...images]
     while (next.length < EXTRA_START) next.push('')
 
-    for (const file of list) {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) {
-        alert(json.error ?? 'Upload failed')
-        break
+    try {
+      for (const file of list) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+        if (!res.ok) {
+          alert(await readUploadError(res))
+          break
+        }
+        const json = (await res.json()) as { url?: string }
+        if (!json.url) {
+          alert('Upload failed — no URL returned')
+          break
+        }
+        next = [...next, json.url]
       }
-      next = [...next, json.url]
+      onChange(next)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setBusy(null)
     }
-    onChange(next)
   }
 
   function clearSlot(slotIndex: number) {
@@ -215,6 +248,7 @@ export default function ImageUploader({ images, onChange }: Props) {
         Front → Left → Right → Back required order · Video optional · Extra images unlimited
         (multi-select OK) &nbsp;·&nbsp; Images: jpg · png · webp — 1200px &nbsp;·&nbsp; Video: mp4 ·
         mov — max 50MB · 720p · 15s
+        {busy ? ` · ${busy}` : ''}
       </p>
     </div>
   )
