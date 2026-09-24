@@ -1,0 +1,200 @@
+VAIRIS — Quotation pipeline product spec
+Date: 2026-08-18
+Status: requirements (not implemented)
+
+Pickup-ready for implementer agents. Quote machine and order machine stay
+independent until Convert to order.
+
+
+========================================================================
+PROBLEM STATEMENT
+========================================================================
+
+Quotation-to-sale at Vairis is tribal knowledge in Discord, not a system.
+
+Offline / WhatsApp deals:
+  Someone types a thread by hand in #quote-requests-offline (e.g. "Kurnool
+  bracelet quotation"). No row in the store DB, no owner, no chase, no link
+  to /admin/orders/new.
+
+Website "enquiries":
+  PDP Enquire on WhatsApp only opens wa.me/917075486464. The Customer Bot
+  then creates "Enquiry: price enquiry (...)" threads in #whatsapp-support-bot.
+  Those threads often have Unknown / not available phone (WhatsApp LID) and
+  never become an order unless a human remembers.
+
+Two Discord homes, zero pipeline:
+  Price chase and support tickets share muscle memory. xperson (vendor-quote
+  executive) is not assigned or reminded.
+
+Orders already work:
+  ManualOrderForm at /admin/orders/new creates PAYMENT_PENDING orders.
+  There is no order_pending status and no Quotation model. Folding quotes
+  into OrderStatus would pollute the fulfilment graph.
+
+We need one quotation object, two intake paths (dashboard + website/WhatsApp),
+Discord threads in #quote-requests-offline, nag xperson until the vendor quote
+is in, then a Convert to order button that enters the EXISTING order flow.
+Quote machine and order machine stay independent.
+
+
+========================================================================
+SUMMARY
+========================================================================
+
+One Prisma Quotation in the store DB. Bot Enquiry table is not source of truth.
+
+Statuses (quotation only):
+  REQUESTED  — reminders on
+  QUOTED     — vendor quote is in; reminders off
+  CONVERTED  — only after Convert to order saves an Order
+  CANCELLED  — dropped
+
+Flow 1 — Manual
+  Admin /admin/quotations/new:
+    Required: order type radio (Vairis / Customisation, no default)
+    Required: details textarea
+    Optional: screenshots, customer name, mobile, product picker
+  Submit creates REQUESTED, Discord thread in #quote-requests-offline,
+  first @assignee ping.
+  Thread name example: Q-7K2M · vairis · AJLR-598 · Kurnool bracelet
+
+Flow 2 — Website
+  Keep Enquire on WhatsApp.
+  PDP modal (name + mobile required) -> POST /api/quotations with
+  source=WEBSITE and orderType=VAIRIS hardcoded -> thread exists BEFORE
+  WhatsApp opens -> WA text includes "Ref Q-...".
+  Bot attaches that session; no second price-enquiry thread.
+  Keyword fallback without a ref still creates exactly one VAIRIS quotation.
+  Website quotations are always tagged VAIRIS (not customer-selectable).
+
+Reminders
+  Customer Bot interval (NOT Vercel): every QUOTE_REMINDER_INTERVAL_MIN
+  (default 30) ping DISCORD_QUOTE_ASSIGNEE_ID while REQUESTED; unarchive
+  thread if needed. Stop on QUOTED.
+
+Convert to order (only bridge)
+  Button on QUOTED detail -> existing /admin/orders/new?quotationId=
+  (prefilled, editable).
+  Save  -> CONVERTED + orderId
+  Abandon form -> stays QUOTED
+  Manual orders with no quotation unchanged.
+  lib/orders.ts status graph unchanged.
+
+Flow:
+  Quotation REQUESTED
+       -> Quotation QUOTED
+            -> Convert to order button
+                 -> existing /admin/orders/new
+                      -> Order PAYMENT_PENDING
+                           -> Quotation CONVERTED
+            -> (or stay QUOTED if form abandoned)
+            -> (or CANCELLED)
+
+Ownership
+  Next.js creates threads via Discord REST
+    (DISCORD_BOT_TOKEN, DISCORD_QUOTE_CHANNEL_ID).
+  Bot stays a worker (no HTTP port): /quoted, /reply, /close, reminder
+  poll against /api/internal/quotations + INTERNAL_API_SECRET.
+
+
+========================================================================
+ACCEPTANCE CRITERIA
+========================================================================
+
+Manual intake
+  - Admin can submit a quotation with details + optional screenshots.
+  - Order type is required (Vairis or Customisation); submit without it
+    is rejected.
+  - Row appears on /admin/quotations with type, ref, status REQUESTED.
+  - A thread is created in #quote-requests-offline; name/opener include
+    Q-... and order type; assignee is mentioned once immediately.
+
+Website intake
+  - PDP modal requires name + mobile (prefill if logged in); optional note.
+  - Quotation row + Discord thread exist before WhatsApp opens.
+  - orderType is always VAIRIS; customer cannot choose Customisation;
+    API ignores client attempts to set it.
+  - WhatsApp prefilled text contains Q-...; a later WA message does not
+    spawn a duplicate thread.
+  - Keyword/URL price enquiry with no ref still creates exactly one VAIRIS
+    quotation + one quote-channel thread.
+
+Reminders
+  - Assignee is pinged every N minutes while status is REQUESTED.
+  - Archived Discord threads are unarchived before a reminder post.
+  - /quoted (optional amount/notes) or dashboard Mark quoted sets QUOTED
+    and stops pings within one interval.
+  - No pings in QUOTED, CONVERTED, or CANCELLED.
+
+Independence / Convert to order
+  - Quotation statuses do not appear on Order. Order statuses do not drive
+    quotation except the convert save path.
+  - Convert to order is hidden until QUOTED; on CONVERTED show a link to
+    the order instead.
+  - Clicking the button does not create an order until the existing manual
+    form is saved.
+  - Abandoning the form leaves QUOTED. Saving sets CONVERTED + orderId;
+    order then follows PAYMENT_PENDING -> ... with no further quote side
+    effects.
+  - /admin/orders/new without a quotation works as today.
+
+Isolation
+  - Non-price WhatsApp tickets (order status, raise ticket, general chat)
+    still go only to #whatsapp-support-bot.
+  - #surya-and-sons-quotations and #order-management are untouched.
+
+
+========================================================================
+ADDITIONAL NOTES
+========================================================================
+
+Constraints (do not violate)
+  - Vercel Hobby has no long-running process and we do not add Vercel
+    crons. Reminder loop lives in Vairis_Customer_Bot/index.js setInterval
+    (already used for 24h WA escalation).
+  - Bot has no HTTP server (Azure worker). Do not add inbound HTTP to the
+    bot. Next.js holds Discord REST for thread create; bot calls store
+    internal APIs.
+  - Discord thread names max 100 chars; auto-archive is 60 minutes unless
+    unarchived on reminder.
+  - Mention xperson by Discord snowflake (DISCORD_QUOTE_ASSIGNEE_ID), not
+    username string. Username is display copy until the ID is provided.
+  - username_mobile_productId is not unique and phone is often missing.
+    Use q_{slugName}_{last10phone}_{sku}_{4char} with anon / nophone /
+    nosku fallbacks; display id stays short Q-7K2M.
+  - Do not add order_pending to OrderStatus. "order_pending" in product
+    language = quotation status QUOTED.
+  - All Next.js API routes: export const dynamic = 'force-dynamic'.
+
+Schema (spec-level)
+  - Quotation
+  - QuotationSource: MANUAL | WEBSITE
+  - QuotationStatus: REQUESTED | QUOTED | CONVERTED | CANCELLED
+  - QuotationOrderType: VAIRIS | CUSTOMISATION
+  - orderType required. screenshotUrls String[]. reminderIntervalMin
+    default 30. Optional Order.quotationId (informational only).
+  - Discord commands:
+      /quoted [amount?] [notes?]  -> QUOTED, stop pings
+      /reply                      -> website/WA threads only
+      /close                      -> CANCELLED
+
+Out of scope / not possible in v1
+  - Auto-creating an Order when quoted.
+  - Quote PDF, payment link, customer-facing quote page.
+  - Historical backfill of migrated Enquiry: price enquiry threads.
+  - Changing #whatsapp-support-bot for non-price tickets.
+
+Env to collect before build
+  - DISCORD_QUOTE_CHANNEL_ID      (#quote-requests-offline)
+  - DISCORD_QUOTE_ASSIGNEE_ID     (xperson snowflake) + display username
+  - QUOTE_REMINDER_INTERVAL_MIN   (default 30)
+  - DISCORD_BOT_TOKEN on Vercel   (thread create; also already on the bot)
+  - INTERNAL_API_SECRET           (bot <-> store)
+
+Related current code (do not invent)
+  - PDP WhatsApp CTA: app/product/[id]/ProductPageClient.tsx
+  - Manual orders:    app/(admin)/admin/orders/new/ManualOrderForm.tsx
+  - Order statuses:   lib/orders.ts
+  - Customer Bot:     Vairis_Customer_Bot/index.js
+    (single channel DISCORD_SUPPORT_CHANNEL_ID = #whatsapp-support-bot)

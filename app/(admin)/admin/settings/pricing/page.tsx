@@ -5,7 +5,7 @@ import { PricingSettingsForm } from './PricingSettingsForm'
 export const dynamic = 'force-dynamic'
 
 /**
- * Pricing settings — Value Addition percentages (disclosed line on every
+ * Pricing settings — wastage % on gold (disclosed line on every
  * price breakup) and per-carat diamond rates (with / without exchange).
  */
 export default async function PricingSettingsPage() {
@@ -22,7 +22,7 @@ export default async function PricingSettingsPage() {
       <AdminGuide
         pageKey="pricing"
         title="Pricing"
-        blurb="Gold rate, Value-Addition %, making charges, diamond rates — feeds the live pricing formula."
+        blurb="Wastage % on gold, making charges, diamond rates — feeds the live pricing formula (3% GST on taxable)."
         tips={[
           'Changes apply to new price calculations only — existing orders keep their locked-in price.',
           'Diamond rates are per carat; customers choose with-exchange or without-exchange pricing on the product page.',
@@ -30,9 +30,9 @@ export default async function PricingSettingsPage() {
       />
       <PricingSettingsForm
         initial={{
-          vaGoldPct: Number(settings?.vaGoldPct ?? 5),
-          vaStonePct: Number(settings?.vaStonePct ?? 5),
-          vaLabel: settings?.vaLabel ?? 'Value Addition',
+          vaGoldPct: Number(settings?.vaGoldPct ?? 10),
+          vaStonePct: Number(settings?.vaStonePct ?? 0),
+          vaLabel: settings?.vaLabel ?? 'Wastage',
           showPricesGlobal: settings?.showPricesGlobal ?? true,
           diamondRates: diamondRates.map((r) => ({
             id: r.id,

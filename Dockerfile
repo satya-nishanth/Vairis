@@ -37,7 +37,10 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
     GOTRUE_INTERNAL_URL=$GOTRUE_INTERNAL_URL
 RUN npx prisma generate
-RUN npm run build
+# NODE_OPTIONS= clears a --no-opt flag Rosetta injects into amd64-emulated
+# containers on Apple Silicon hosts — Turbopack's worker_threads reject it
+# (ERR_WORKER_INVALID_EXEC_ARGV). No-op on native amd64 builders (CI).
+RUN NODE_OPTIONS= npm run build
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app

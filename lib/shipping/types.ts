@@ -7,13 +7,14 @@
  *   2. register it in lib/shipping/index.ts
  *   3. set SHIPPING_PROVIDER=<provider> in env
  *
- * ─── DELIVERY PARTNER: NOT YET DECIDED ───────────────────────────────────
- * Vairis has not picked a courier/aggregator yet (Shiprocket is the likely
- * candidate per the roadmap). The "manual" provider is active: admins type
- * courier + AWB + tracking URL when marking an order SHIPPED, and customers
- * see exactly that. When the partner is chosen, its adapter implements
- * bookShipment/trackShipment against the partner API and the admin UI's
- * manual fields become a fallback.
+ * ─── DELIVERY PARTNER: SEQUEL247 (India-domestic) ────────────────────────
+ * Vairis has picked Sequel247 (see lib/shipping/sequel247.ts) for India
+ * shipments. It cannot fulfill international orders — getShippingProvider()
+ * takes an optional order country and always resolves to "manual" for any
+ * non-"IN" value, regardless of SHIPPING_PROVIDER. The "manual" provider
+ * (admin types courier + AWB + tracking URL when marking an order SHIPPED)
+ * is the fallback for international orders and for any account without a
+ * partner adapter configured.
  * ─────────────────────────────────────────────────────────────────────────
  */
 

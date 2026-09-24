@@ -7,7 +7,7 @@ import { getStoreCategories } from '@/lib/store-categories'
 export const dynamic = 'force-dynamic'
 
 type PageProps = {
-  searchParams: Promise<{ category?: string }>
+  searchParams: Promise<{ category?: string; returnTo?: string }>
 }
 
 export default async function NewProductPage({ searchParams }: PageProps) {
@@ -26,12 +26,20 @@ export default async function NewProductPage({ searchParams }: PageProps) {
   return (
     <div className="admin-page">
       <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
-          ← Products
+        <Link
+          href={returnTo ?? '/admin/products'}
+          style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}
+        >
+          {returnTo ? '← Invoice' : '← Products'}
         </Link>
         <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>
           New Product
         </h1>
+        {returnTo && (
+          <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '0.5rem' }}>
+            Saving this product will add it to the invoice and take you back.
+          </p>
+        )}
       </div>
       <ProductForm
         mode="create"
@@ -45,6 +53,7 @@ export default async function NewProductPage({ searchParams }: PageProps) {
         }))}
         goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
         pricingConfig={pricingConfig}
+        returnTo={returnTo}
       />
     </div>
   )

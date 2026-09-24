@@ -277,6 +277,7 @@ export function CategoryPageView({
         <main className="container page-main plp-main">
           <div className="plp-layout">
             <div className="plp-products" ref={productsTopRef}>
+            <div className="plp-products" ref={productsTopRef}>
               {filteredProducts.length === 0 ? (
                 <div className="plp-empty">
                   <h2>New {meta.title.toLowerCase()} are on their way</h2>

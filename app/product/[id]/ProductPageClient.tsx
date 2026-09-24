@@ -444,10 +444,10 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       <td>Making charges</td>
                       <td>₹{Math.round(breakdown.making).toLocaleString("en-IN")}</td>
                     </tr>
-                    {breakdown.vaTotal > 0 && (
+                    {breakdown.goldVA > 0 && (
                       <tr>
                         <td>{breakdown.vaLabel}</td>
-                        <td>₹{Math.round(breakdown.vaTotal).toLocaleString("en-IN")}</td>
+                        <td>₹{Math.round(breakdown.goldVA).toLocaleString("en-IN")}</td>
                       </tr>
                     )}
                     {breakdown.miscCharges > 0 && (
