@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const { identifier, password } = await req.json()
+  const limited = rateLimit(req, 'catalogue-login', 5, 60_000)
+  if (limited) return limited
+
+  const { identifier, password } = await req.json().catch(() => ({}))
   // identifier = email OR username OR phone
 
   if (!identifier || !password) {
@@ -32,6 +36,7 @@ export async function POST(req: NextRequest) {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 365,
   })
   return res

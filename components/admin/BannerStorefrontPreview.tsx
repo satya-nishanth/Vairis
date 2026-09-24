@@ -288,7 +288,7 @@ function PreviewBody({
               'Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.'}
           </p>
           <div className="hero__ctas">
-            <Button href={linkUrl || '/all-products/necklaces'} variant="primary">
+            <Button href={linkUrl || '/all-products/rings'} variant="primary">
               {ctaLabel || 'Shop Now'}
             </Button>
           </div>

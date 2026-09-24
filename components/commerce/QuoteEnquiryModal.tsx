@@ -102,32 +102,70 @@ export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, prod
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        style={{ background: '#fff', padding: '1.5rem', maxWidth: 360, width: '90%', borderRadius: 4 }}
+        style={{
+          background: 'var(--bg-card, #fff)',
+          border: '1px solid var(--color-border-light, #e5e7eb)',
+          padding: '1.5rem',
+          maxWidth: 360,
+          width: '90%',
+          borderRadius: 8,
+          boxShadow: 'var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.15))',
+        }}
       >
-        <h2 style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: 12 }}>Enquire on WhatsApp</h2>
-        <label htmlFor="quote-name" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Name</label>
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 500, marginBottom: 12, color: 'var(--color-text, #111)' }}>Enquire on WhatsApp</h2>
+        <label htmlFor="quote-name" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4, color: 'var(--color-text, #374151)' }}>Name</label>
         <input
           id="quote-name"
+          type="text"
+          autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
+          style={{
+            width: '100%',
+            border: '1px solid var(--color-border, #d1d5db)',
+            background: 'var(--bg-page, #fff)',
+            color: 'var(--color-text, #111)',
+            padding: '8px 10px',
+            marginBottom: 10,
+            borderRadius: 4,
+          }}
         />
-        <label htmlFor="quote-mobile" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Mobile</label>
+        <label htmlFor="quote-mobile" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4, color: 'var(--color-text, #374151)' }}>Mobile (India)</label>
         <input
           id="quote-mobile"
+          type="tel"
+          inputMode="numeric"
+          autoComplete="tel"
+          maxLength={10}
           value={mobile}
-          onChange={(e) => setMobile(e.target.value)}
+          onChange={(e) => setMobile(e.target.value.replace(/\D/g, ''))}
           required
           placeholder="9876543210"
-          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 10 }}
+          style={{
+            width: '100%',
+            border: '1px solid var(--color-border, #d1d5db)',
+            background: 'var(--bg-page, #fff)',
+            color: 'var(--color-text, #111)',
+            padding: '8px 10px',
+            marginBottom: 10,
+            borderRadius: 4,
+          }}
         />
-        <label htmlFor="quote-note" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Note (optional)</label>
+        <label htmlFor="quote-note" style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4, color: 'var(--color-text, #374151)' }}>Note (optional)</label>
         <input
           id="quote-note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          style={{ width: '100%', border: '1px solid #d1d5db', padding: '8px 10px', marginBottom: 12 }}
+          style={{
+            width: '100%',
+            border: '1px solid var(--color-border, #d1d5db)',
+            background: 'var(--bg-page, #fff)',
+            color: 'var(--color-text, #111)',
+            padding: '8px 10px',
+            marginBottom: 12,
+            borderRadius: 4,
+          }}
         />
         {error && <p style={{ color: '#b91c1c', fontSize: '0.75rem', marginBottom: 10 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 8 }}>

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { calculatePrice } from "@/lib/pricing";
 import { getPricingConfig, getShowPricesGlobal, toStoneInputs, toStoneViews, resolvePriceVisibility } from "@/lib/pricing-data";
+import { prismaToProduct } from "@/lib/prisma-to-product";
+import { sortProductsByPriority } from "@/lib/product-priorities";
 import ProductPageClient from "./ProductPageClient";
 
 export const revalidate = 120;
@@ -51,6 +53,23 @@ export default async function ProductPage({ params }: Props) {
 
   const showPrice = resolvePriceVisibility(product.priceVisibility, showPricesGlobal);
 
+  const relatedDbProducts = await prisma.product.findMany({
+    where: {
+      category: product.category,
+      id: { not: product.id },
+      isActive: true,
+      status: 'LIVE',
+    },
+    orderBy: { name: 'asc' },
+    include: {
+      variants: true,
+      stones: { include: { diamondRate: true } },
+    },
+  });
+  const relatedProducts = sortProductsByPriority(relatedDbProducts)
+    .slice(0, 4)
+    .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
+
   // JSON-LD Product schema — price from the cheapest variant at current
   // rates (without-exchange), real review aggregates only.
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]));
@@ -81,17 +100,15 @@ export default async function ProductPage({ params }: Props) {
     sku: product.itemCode ?? product.id,
     image: product.images.filter((s) => s && !/\.(mp4|webm|mov)(\?|$)/i.test(s)),
     brand: { "@type": "Brand", name: "VAIRIS" },
-    ...(showPrice && prices.length > 0 && {
-      offers: {
-        "@type": "Offer",
-        priceCurrency: "INR",
-        price: Math.min(...prices),
-        availability: inStock
-          ? "https://schema.org/InStock"
-          : "https://schema.org/PreOrder",
-        url: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/product/${product.id}`,
-      },
-    }),
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "INR",
+      price: showPrice && prices.length > 0 ? Math.min(...prices) : 0,
+      availability: inStock
+        ? "https://schema.org/InStock"
+        : "https://schema.org/PreOrder",
+      url: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com"}/product/${product.id}`,
+    },
     ...(reviewAgg._count.id > 0 && reviewAgg._avg.rating
       ? {
           aggregateRating: {
@@ -137,6 +154,7 @@ export default async function ProductPage({ params }: Props) {
         ratePerGram: r.ratePerGram.toString(),
       }))}
       pricingConfig={pricingConfig}
+      relatedProducts={relatedProducts}
       />
     </>
   );

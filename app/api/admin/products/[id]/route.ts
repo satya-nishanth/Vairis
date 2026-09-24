@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
+import { getStoreCategoryBySlug, updateStoreCategory } from '@/lib/store-categories'
+import { setProductPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +33,7 @@ const patchVariantSchema = z.object({
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  category: z.enum(CATEGORIES).optional(),
+  category: z.string().min(1).optional(),
   itemCode: z.string().nullable().optional(),
   designStyle: z.string().nullable().optional(),
   totalLengthMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
@@ -46,6 +48,7 @@ const patchSchema = z.object({
   isActive: z.boolean().optional(),
   comingSoon: z.boolean().optional(),
   status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).optional(),
+  priority: z.coerce.number().int().optional(),
   priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).optional(),
   stones: z
     .array(
@@ -190,12 +193,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
         }
       }
 
+      let dbCategory: (typeof CATEGORIES)[number] | undefined
+      if (data.category !== undefined) {
+        const catUpper = data.category.toUpperCase().replace(/-/g, '_')
+        const isPrismaEnum = (CATEGORIES as readonly string[]).includes(catUpper)
+        dbCategory = isPrismaEnum ? (catUpper as (typeof CATEGORIES)[number]) : 'PENDANTS'
+      }
+
       return tx.product.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name }),
           ...(data.description !== undefined && { description: data.description }),
-          ...(data.category !== undefined && { category: data.category }),
+          ...(dbCategory !== undefined && { category: dbCategory }),
           ...(data.itemCode !== undefined && { itemCode: data.itemCode || null }),
           ...(data.designStyle !== undefined && { designStyle: data.designStyle || null }),
           ...(data.totalLengthMm !== undefined && { totalLengthMm: data.totalLengthMm }),
@@ -210,11 +220,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
           ...(data.isActive !== undefined && { isActive: data.isActive }),
           ...(data.comingSoon !== undefined && { comingSoon: data.comingSoon }),
           ...(data.status !== undefined && { status: data.status }),
+          ...(data.priority !== undefined && { priority: data.priority }),
           ...(data.priceVisibility !== undefined && { priceVisibility: data.priceVisibility }),
         },
         include: { variants: true, stones: { include: { diamondRate: true } } },
       })
     })
+
+    if (data.category !== undefined) {
+      try {
+        const catSlug = data.category.toLowerCase().replace(/_/g, '-')
+        const storeCat = await getStoreCategoryBySlug(catSlug)
+        if (storeCat && !storeCat.productIds.includes(id)) {
+          await updateStoreCategory(storeCat.id, {
+            productIds: [...storeCat.productIds, id],
+          })
+        }
+      } catch (err) {
+        console.warn('[api/admin/products/[id]] failed linking to store category:', err)
+      }
+    }
+
+    if (data.priority !== undefined) {
+      setProductPriority(id, data.priority)
+    }
 
     return NextResponse.json(product)
   } catch (err) {

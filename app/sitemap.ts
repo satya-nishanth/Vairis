@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { prisma } from '@/lib/prisma'
+import { STOCKED_CATEGORIES } from '@/lib/catalogue-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE, changeFrequency: 'daily', priority: 1 },
-    ...['rings', 'earrings', 'pendants', 'bracelets', 'necklaces'].map((c) => ({
+    ...STOCKED_CATEGORIES.map((c) => ({
       url: `${BASE}/all-products/${c}`,
       changeFrequency: 'daily' as const,
       priority: 0.9,

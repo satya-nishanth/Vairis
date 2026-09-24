@@ -4,17 +4,10 @@ import { prisma } from '@/lib/prisma'
 import type { Category } from '@prisma/client'
 import { AdminGuide } from '@/components/admin/AdminGuide'
 import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
+import { getStoreCategories } from '@/lib/store-categories'
+import { sortProductsByPriority, getProductPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
-
-const CATEGORIES: { key: Category | 'ALL'; label: string }[] = [
-  { key: 'ALL', label: 'All' },
-  { key: 'RINGS', label: 'Rings' },
-  { key: 'EARRINGS', label: 'Earrings' },
-  { key: 'PENDANTS', label: 'Pendants' },
-  { key: 'BRACELETS', label: 'Bracelets' },
-  { key: 'NECKLACES', label: 'Necklaces' },
-]
 
 const ROW_OPTIONS = [10, 25, 50] as const
 
@@ -32,11 +25,48 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
   const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 10
   const pageRaw = Math.max(1, Number(params.page ?? 1) || 1)
 
+  const [storeCategories, counts] = await Promise.all([
+    getStoreCategories(),
+    prisma.product.groupBy({
+      by: ['category'],
+      _count: { id: true },
+    }).catch(() => []),
+  ])
+
+  const categoryTabs = [
+    { key: 'ALL', label: 'All' },
+    ...storeCategories.map((c) => ({
+      key: c.slug.toUpperCase(),
+      label: c.name,
+    })),
+  ]
+
   const activeCategory =
-    CATEGORIES.some((c) => c.key === categoryParam) ? (categoryParam as Category | 'ALL') : 'ALL'
+    categoryTabs.some((c) => c.key === categoryParam) ? categoryParam : 'ALL'
+
+  const currentStoreCategory = storeCategories.find((c) => c.slug.toUpperCase() === activeCategory)
+  const isPrismaCategory = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES'].includes(activeCategory)
+
+  let categoryCondition: any = undefined
+  if (activeCategory !== 'ALL') {
+    const conditions: any[] = []
+    if (isPrismaCategory) {
+      conditions.push({ category: activeCategory as Category })
+    }
+    if (currentStoreCategory?.productIds && currentStoreCategory.productIds.length > 0) {
+      conditions.push({ id: { in: currentStoreCategory.productIds } })
+    }
+    if (conditions.length === 1) {
+      categoryCondition = conditions[0]
+    } else if (conditions.length > 1) {
+      categoryCondition = { OR: conditions }
+    } else {
+      categoryCondition = { id: 'no-match' }
+    }
+  }
 
   const where = {
-    ...(activeCategory !== 'ALL' ? { category: activeCategory } : {}),
+    ...(categoryCondition ?? {}),
     ...(statusParam === 'live' ? { status: 'LIVE' as const } : {}),
     ...(statusParam === 'draft' ? { status: 'DRAFT' as const } : {}),
     ...(statusParam === 'ai-draft' ? { status: 'AI_DRAFT' as const } : {}),
@@ -50,24 +80,20 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
       : {}),
   }
 
-  const [filteredTotal, counts] = await Promise.all([
-    prisma.product.count({ where }),
-    prisma.product.groupBy({
-      by: ['category'],
-      _count: { id: true },
-    }),
-  ])
+  const allFilteredProducts = await prisma.product.findMany({
+    where,
+    orderBy: { name: 'asc' },
+    include: {
+      variants: true,
+      stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+    },
+  }).catch(() => [])
 
+  const sortedProducts = sortProductsByPriority(allFilteredProducts)
+  const filteredTotal = sortedProducts.length
   const totalPages = Math.max(1, Math.ceil(filteredTotal / rows))
   const page = Math.min(pageRaw, totalPages)
-
-  const products = await prisma.product.findMany({
-    where,
-    orderBy: [{ category: 'asc' }, { createdAt: 'desc' }],
-    include: { variants: true },
-    skip: (page - 1) * rows,
-    take: rows,
-  })
+  const products = sortedProducts.slice((page - 1) * rows, page * rows)
 
   const countByCategory: Record<string, number> = Object.fromEntries(
     counts.map((c) => [c.category, c._count.id]),
@@ -114,8 +140,32 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     images: p.images ?? [],
     isActive: p.isActive,
     status: p.status,
+    priority: getProductPriority(p.id, (p as any).priority),
     variantCount: p.variants.length,
     mediaCount: (p.images ?? []).filter(Boolean).length,
+    description: p.description ?? '',
+    designStyle: p.designStyle ?? null,
+    stoneType: p.stoneType ?? null,
+    stoneShape: p.stoneShape ?? null,
+    caratWeight: p.caratWeight ? Number(p.caratWeight) : null,
+    gemCount: p.gemCount ?? null,
+    stoneDimMm: p.stoneDimMm ?? null,
+    totalLengthMm: p.totalLengthMm ? Number(p.totalLengthMm) : null,
+    motifSizeMm: p.motifSizeMm ? Number(p.motifSizeMm) : null,
+    thicknessMm: p.thicknessMm ? Number(p.thicknessMm) : null,
+    metals: Array.from(new Set(p.variants.map((v) => v.metalType))),
+    variantsList: p.variants.map((v) => ({
+      metalType: v.metalType,
+      sku: v.sku,
+      size: v.size,
+      weightGrams: Number(v.weightGrams),
+      stock: v.stock,
+    })),
+    stonesList: (p.stones ?? []).map((s) => ({
+      label: s.label || s.diamondRate?.label || 'Diamond',
+      caratWeight: Number(s.caratWeight),
+      count: s.count,
+    })),
   }))
 
   return (
@@ -150,8 +200,13 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
 
       <div className="admin-products__filters">
         <div className="admin-products__tabs">
-          {CATEGORIES.map((cat) => {
-            const count = cat.key === 'ALL' ? totalCount : (countByCategory[cat.key] ?? 0)
+          {categoryTabs.map((cat) => {
+            const count =
+              cat.key === 'ALL'
+                ? totalCount
+                : (countByCategory[cat.key] ??
+                  storeCategories.find((sc) => sc.slug.toUpperCase() === cat.key)?.productIds?.length ??
+                  0)
             const active = activeCategory === cat.key
             return (
               <Link

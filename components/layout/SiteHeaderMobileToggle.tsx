@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { HeaderPincode } from "./HeaderPincode";
+import { categoryHref } from "@/lib/catalogue-ui";
 
 type NavLink = { href: string; label: string };
+type DynamicNavCategory = { slug: string; name: string };
 
 function MenuIcon({ open }: { open: boolean }) {
   if (open) {
@@ -32,6 +34,18 @@ type SiteHeaderMobileToggleProps = {
 
 export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHeaderMobileToggleProps) {
   const [open, setOpen] = useState(false);
+  const [dynamicCats, setDynamicCats] = useState<DynamicNavCategory[]>([]);
+
+  useEffect(() => {
+    fetch("/api/nav-categories")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: DynamicNavCategory[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDynamicCats(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -77,11 +91,38 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
             )}
 
             <div className="site-header__drawer-links">
-              {links.map((link) => (
-                <Link key={`${link.href}-${link.label}`} href={link.href} onClick={() => setOpen(false)}>
-                  {link.label}
-                </Link>
-              ))}
+              {dynamicCats.length > 0 ? (
+                <>
+                  {dynamicCats.map((c) => (
+                    <Link key={c.slug} href={categoryHref(c.slug)} onClick={() => setOpen(false)}>
+                      {c.name}
+                    </Link>
+                  ))}
+                  <Link href="/about" onClick={() => setOpen(false)}>
+                    About Us
+                  </Link>
+                </>
+              ) : (
+                links.map((link) => (
+                  <Link key={`${link.href}-${link.label}`} href={link.href} onClick={() => setOpen(false)}>
+                    {link.label}
+                  </Link>
+                ))
+              )}
+            </div>
+
+            <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
+              <span className="site-header__drawer-section-title" style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
+                Account &amp; Support
+              </span>
+              <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>
+                <Link href="/account" onClick={() => setOpen(false)}>My Account</Link>
+                <Link href="/account/orders" onClick={() => setOpen(false)}>My Orders</Link>
+                <Link href="/wishlist" onClick={() => setOpen(false)}>Wishlist</Link>
+                <Link href="/track-order" onClick={() => setOpen(false)}>Track Order</Link>
+                <Link href="/contact" onClick={() => setOpen(false)}>Contact &amp; Concierge</Link>
+                <Link href="/returns" onClick={() => setOpen(false)}>Returns &amp; Exchanges</Link>
+              </div>
             </div>
 
             {showTheme && (

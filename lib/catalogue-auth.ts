@@ -11,8 +11,10 @@ export async function getGuestUser() {
 }
 
 export function setGuestCookie(res: Response, guestId: string) {
+  const isProd = process.env.NODE_ENV === 'production'
+  const secureFlag = isProd ? '; Secure' : ''
   res.headers.append(
     'Set-Cookie',
-    `${COOKIE}=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+    `${COOKIE}=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}${secureFlag}`
   )
 }

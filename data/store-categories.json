@@ -1,0 +1,69 @@
+[
+  {
+    "id": "cat_rings",
+    "slug": "rings",
+    "name": "Rings",
+    "description": "Stackable bands and solitaires designed for everyday wear.",
+    "image": "/images/categories/rings.jpg",
+    "showInHeader": true,
+    "sortOrder": 1,
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "productIds": []
+  },
+  {
+    "id": "cat_earrings",
+    "slug": "earrings",
+    "name": "Earrings",
+    "description": "Delicate studs and drops made for coffee runs and evenings.",
+    "image": "/images/categories/earrings.jpg",
+    "showInHeader": true,
+    "sortOrder": 2,
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "productIds": []
+  },
+  {
+    "id": "cat_pendants",
+    "slug": "pendants",
+    "name": "Pendants",
+    "description": "Timeless solitaires on fine chains — your everyday signature.",
+    "image": "/images/categories/pendants.jpg",
+    "showInHeader": true,
+    "sortOrder": 3,
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "productIds": []
+  },
+  {
+    "id": "cat_bracelets",
+    "slug": "bracelets",
+    "name": "Bracelets",
+    "description": "Light tennis and chain bracelets that layer beautifully.",
+    "image": "/images/categories/bracelets.jpg",
+    "showInHeader": true,
+    "sortOrder": 4,
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-09-24T06:52:16.787Z",
+    "productIds": [
+      "p1"
+    ]
+  },
+  {
+    "id": "cat_necklaces",
+    "slug": "necklaces",
+    "name": "Necklaces",
+    "description": "Minimal diamonds designed for workdays, dinners and confidence.",
+    "image": "/images/categories/necklaces.jpg",
+    "showInHeader": false,
+    "sortOrder": 6,
+    "isActive": true,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-09-23T17:00:31.736Z",
+    "productIds": []
+  }
+]

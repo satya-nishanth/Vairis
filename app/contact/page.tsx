@@ -9,8 +9,14 @@ import { Accordion } from "@/components/ui/Accordion";
 import { StaffAvatars, HelpBlock } from "@/components/content/TestimonialCard";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { pageLayouts } from "@/lib/layout-config";
-import { WHATSAPP_URL, FEATURED_PRODUCT_SLUG } from "@/lib/ui-data";
 import { marketingImages } from "@/lib/images";
+import {
+  WHATSAPP_URL,
+  WHATSAPP_CONSULTATION_URL,
+  WHATSAPP_SIZING_URL,
+  WHATSAPP_STYLING_URL,
+} from "@/lib/ui-data";
+import { ContactForm } from "@/components/contact/ContactForm";
 
 const faqPanels = {
   buying: [
@@ -57,7 +63,7 @@ export default function ContactPage() {
               <Button href={WHATSAPP_URL} variant="primary">
                 Chat on WhatsApp
               </Button>
-              <Button href="/contact" variant="secondary">
+              <Button href={WHATSAPP_CONSULTATION_URL} variant="secondary">
                 Book a Call
               </Button>
             </div>
@@ -71,10 +77,14 @@ export default function ContactPage() {
 
         <div className="help-cards-grid">
           <HelpBlock title="WhatsApp Concierge" description="Instant answers from our jewellery experts." href={WHATSAPP_URL} cta="Chat Now →" />
-          <HelpBlock title="Book a Consultation" description="Video call styling & sizing session." href="#" cta="Schedule Now →" />
-          <HelpBlock title="Ring Sizing Help" description="Find your perfect fit at home." href="#" cta="Find Your Size →" />
+          <HelpBlock title="Book a Consultation" description="Video call styling & sizing session." href={WHATSAPP_CONSULTATION_URL} cta="Schedule Now →" />
+          <HelpBlock title="Ring Sizing Help" description="Find your perfect fit at home." href={WHATSAPP_SIZING_URL} cta="Find Your Size →" />
           <HelpBlock title="Email Support" description="hello@vairis.com - we reply within 24h." href="mailto:hello@vairis.com" cta="Email Us →" />
         </div>
+
+        <section className="contact-form-section" style={{ margin: "48px 0" }}>
+          <ContactForm />
+        </section>
 
         <div className="contact-split">
           <div>
@@ -93,7 +103,7 @@ export default function ContactPage() {
                 </li>
               ))}
             </ul>
-            <Button href="#faq" variant="ghost">
+            <Button href="/faq" variant="ghost">
               Explore all answers in our FAQ →
             </Button>
           </div>
@@ -126,7 +136,7 @@ export default function ContactPage() {
           </div>
           <div>
             <h3>Styling Consultation, Made Personal</h3>
-            <Button href="#" variant="primary">
+            <Button href={WHATSAPP_STYLING_URL} variant="primary">
               Start Consultation →
             </Button>
           </div>
@@ -155,8 +165,8 @@ export default function ContactPage() {
             <p style={{ fontSize: "2rem" }}>💎</p>
             <h3>100% Certified Jewellery</h3>
             <p style={{ fontSize: "0.875rem", margin: "12px 0" }}>IGI diamonds and BIS hallmarked gold on every piece.</p>
-            <Button href={`/product/${FEATURED_PRODUCT_SLUG}`} variant="ghost">
-              Learn more →
+            <Button href="/all-products/rings" variant="ghost">
+              Explore Collections →
             </Button>
           </div>
         </section>
@@ -167,7 +177,7 @@ export default function ContactPage() {
           <Button href={WHATSAPP_URL} variant="primary">
             Chat on WhatsApp
           </Button>
-          <Button href="#" variant="secondary">
+          <Button href={WHATSAPP_CONSULTATION_URL} variant="secondary">
             Book a Call
           </Button>
         </section>

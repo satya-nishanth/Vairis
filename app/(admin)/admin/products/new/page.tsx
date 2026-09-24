@@ -2,11 +2,9 @@ import Link from 'next/link'
 import ProductForm from '@/components/admin/ProductForm'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
-import type { Category } from '@prisma/client'
+import { getStoreCategories } from '@/lib/store-categories'
 
 export const dynamic = 'force-dynamic'
-
-const VALID: Category[] = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
 
 type PageProps = {
   searchParams: Promise<{ category?: string }>
@@ -15,13 +13,15 @@ type PageProps = {
 export default async function NewProductPage({ searchParams }: PageProps) {
   const params = await searchParams
   const raw = (params.category ?? '').toUpperCase()
-  const category = VALID.includes(raw as Category) ? (raw as Category) : 'RINGS'
 
-  const [diamondRates, goldRates, pricingConfig] = await Promise.all([
+  const [diamondRates, goldRates, pricingConfig, storeCategories] = await Promise.all([
     prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getStoreCategories(),
   ])
+
+  const category = raw || storeCategories[0]?.slug.toUpperCase() || 'RINGS'
 
   return (
     <div className="admin-page">
@@ -36,6 +36,7 @@ export default async function NewProductPage({ searchParams }: PageProps) {
       <ProductForm
         mode="create"
         initialData={{ category }}
+        categories={storeCategories.map((c) => ({ slug: c.slug, name: c.name }))}
         diamondRates={diamondRates.map((r) => ({
           id: r.id,
           label: r.label,

@@ -48,7 +48,14 @@ export default async function HomePage() {
                 "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence."}
             </p>
             <div className="hero__ctas">
-              <Button href={hero?.linkUrl ?? categoryHref("necklaces")} variant="primary">
+              <Button
+                href={
+                  hero?.linkUrl && hero.linkUrl !== "/all-products/necklaces"
+                    ? hero.linkUrl
+                    : categoryHref("rings")
+                }
+                variant="primary"
+              >
                 {hero?.ctaLabel ?? "Shop Now"}
               </Button>
             </div>
@@ -115,7 +122,7 @@ export default async function HomePage() {
 
         <Section className="section--founder-videos">
           <Container>
-            <HomeSectionHead title="Founder Videos" actionLabel="Watch More →" actionHref="#" />
+            <HomeSectionHead title="Founder Videos" actionLabel="Our Story →" actionHref="/about" />
             <div className="video-grid">
               {founderVideos.map(({ src, title, description, placeholder }) => (
                 <article key={title} className="video-card">

@@ -25,8 +25,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Enter your order ID and email' }, { status: 400 })
   }
 
-  const order = await prisma.order.findUnique({
-    where: { id: parsed.data.orderId },
+  const inputCode = parsed.data.orderId.trim()
+  const cleanedSuffix = inputCode.replace(/^VR[-_]?/i, '')
+
+  const order = await prisma.order.findFirst({
+    where: {
+      OR: [
+        { id: inputCode },
+        { id: { endsWith: cleanedSuffix } },
+        { quotationId: inputCode },
+      ],
+      user: { email: { equals: parsed.data.email.trim(), mode: 'insensitive' } },
+    },
     include: {
       events: { orderBy: { createdAt: 'asc' } },
       shipments: { orderBy: { dispatchedAt: 'desc' } },
@@ -44,7 +54,7 @@ export async function POST(req: NextRequest) {
   })
 
   // Same response for wrong id and wrong email — no account enumeration.
-  if (!order || order.user.email.toLowerCase() !== parsed.data.email.toLowerCase()) {
+  if (!order) {
     return NextResponse.json(
       { error: 'No order found for that ID and email combination' },
       { status: 404 },

@@ -325,10 +325,14 @@
   gap: clamp(14px, 1.5vw, 24px);
 }
 
-.header-actions a {
+.header-actions a,
+.header-actions button {
   color: var(--header-action-color);
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .header-actions svg {
@@ -1315,8 +1319,19 @@
   .product-card__wish {
     top: 8px;
     right: 8px;
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
+    position: absolute;
+  }
+
+  .product-card__wish::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
   }
 }
 

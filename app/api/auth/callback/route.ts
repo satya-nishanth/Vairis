@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
+import { sanitizeRedirect } from '@/lib/auth/safe-redirect'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   // to an unreachable URL after login.
   const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
+  const next = sanitizeRedirect(searchParams.get('next'), '/')
   const error = searchParams.get('error')
   const errorDescription = searchParams.get('error_description')
 

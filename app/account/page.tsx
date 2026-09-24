@@ -6,6 +6,7 @@ import { PageShell } from '@/components/layout/PageShell'
 import { Container } from '@/components/ui/Container'
 import { pageLayouts } from '@/lib/layout-config'
 import SignOutButton from '@/components/auth/SignOutButton'
+import { AccountDashboardClient } from '@/components/account/AccountDashboardClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,21 +19,45 @@ export default async function AccountPage() {
     update: {},
     create: {
       email: session.user.email!,
-      name: session.user.user_metadata?.full_name ?? session.user.email!,
+      name: session.user.user_metadata?.full_name ?? '',
     },
-    select: { name: true, email: true, createdAt: true },
+    select: { id: true, name: true, email: true, mobile: true, createdAt: true },
   })
 
-  const wishlistCount = await prisma.wishlist.count({
-    where: { user: { email: session.user.email! } },
-  })
-
-  const orderCount = await prisma.order.count({
-    where: { user: { email: session.user.email! } },
-  })
+  const [wishlistCount, orderCount, addresses] = await Promise.all([
+    prisma.wishlist.count({
+      where: { user: { email: session.user.email! } },
+    }),
+    prisma.order.count({
+      where: { user: { email: session.user.email! } },
+    }),
+    prisma.address.findMany({
+      where: { userId: user.id },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        label: true,
+        contactName: true,
+        contactPhone: true,
+        line1: true,
+        line2: true,
+        city: true,
+        state: true,
+        pincode: true,
+        country: true,
+        isDefault: true,
+      },
+    }),
+  ])
 
   return (
-    <PageShell {...pageLayouts.contact}>
+    <PageShell
+      {...pageLayouts.contact}
+      breadcrumbs={[
+        { label: 'Home', href: '/' },
+        { label: 'My Account' },
+      ]}
+    >
       <Container>
         <div style={{ maxWidth: '640px', margin: '0 auto', paddingBlock: 'var(--section-gap)' }}>
           <h1
@@ -52,58 +77,27 @@ export default async function AccountPage() {
               fontSize: '0.875rem',
               color: 'var(--color-text-muted)',
               letterSpacing: '0.05em',
-              marginBottom: '3rem',
+              marginBottom: '2.5rem',
             }}
           >
-            Welcome back
+            Manage your profile, orders, addresses, and settings
           </p>
 
-          {/* Profile card */}
-          <div
-            style={{
-              background: 'var(--color-surface-subtle, #f8f5f0)',
-              padding: '1.5rem',
-              marginBottom: '1.5rem',
-            }}
-          >
-            <p
-              style={{
-                fontSize: '0.625rem',
-                color: 'var(--color-text-muted)',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                marginBottom: '0.75rem',
-              }}
-            >
-              Profile
-            </p>
-            <p
-              style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize: '1.25rem',
-                fontWeight: 400,
-                color: 'var(--color-text)',
-                marginBottom: '0.25rem',
-              }}
-            >
-              {user?.name}
-            </p>
-            <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{user?.email}</p>
-          </div>
-
-          {/* Quick links */}
+          {/* Quick links to Orders, Wishlist & Collections */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
               gap: '1rem',
-              marginBottom: '2.5rem',
+              marginBottom: '2rem',
             }}
           >
             <Link
               href="/account/orders"
               style={{
                 background: 'var(--color-surface-subtle, #f8f5f0)',
+                border: '1px solid var(--color-border-light)',
+                borderRadius: '8px',
                 padding: '1.25rem',
                 display: 'flex',
                 alignItems: 'center',
@@ -153,10 +147,13 @@ export default async function AccountPage() {
                 />
               </svg>
             </Link>
+
             <Link
               href="/wishlist"
               style={{
                 background: 'var(--color-surface-subtle, #f8f5f0)',
+                border: '1px solid var(--color-border-light)',
+                borderRadius: '8px',
                 padding: '1.25rem',
                 display: 'flex',
                 alignItems: 'center',
@@ -211,6 +208,8 @@ export default async function AccountPage() {
               href="/all-products/rings"
               style={{
                 background: 'var(--color-surface-subtle, #f8f5f0)',
+                border: '1px solid var(--color-border-light)',
+                borderRadius: '8px',
                 padding: '1.25rem',
                 display: 'flex',
                 alignItems: 'center',
@@ -246,6 +245,47 @@ export default async function AccountPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
               </svg>
             </Link>
+          </div>
+
+          {/* Interactive Profile & Address Book Manager */}
+          <AccountDashboardClient
+            initialUser={{
+              id: user.id,
+              name: user.name ?? '',
+              email: user.email,
+              mobile: user.mobile,
+            }}
+            initialAddresses={addresses}
+          />
+
+          {/* WhatsApp Order Linkage / Concierge Info (ACC-03) */}
+          <div
+            style={{
+              background: 'var(--color-surface-subtle, #f8f5f0)',
+              border: '1px solid var(--color-border-light)',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              marginTop: '1.75rem',
+              marginBottom: '2rem',
+            }}
+          >
+            <p
+              style={{
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                color: 'var(--color-text)',
+                marginBottom: '0.25rem',
+              }}
+            >
+              Ordered via WhatsApp Concierge?
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.5, margin: 0 }}>
+              Orders finalized directly through WhatsApp or custom quotations are tracked by our concierge team. You can check your delivery status anytime with your order code on{' '}
+              <Link href="/track-order" style={{ textDecoration: 'underline', color: 'var(--color-primary)' }}>
+                Track Order
+              </Link>{' '}
+              or by chatting with our concierge.
+            </p>
           </div>
 
           <SignOutButton />

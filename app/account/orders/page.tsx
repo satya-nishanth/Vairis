@@ -22,17 +22,32 @@ export default async function OrdersPage() {
   });
 
   return (
-    <PageShell {...pageLayouts.contact}>
+    <PageShell
+      {...pageLayouts.contact}
+      breadcrumbs={[
+        { label: "Home", href: "/" },
+        { label: "My Account", href: "/account" },
+        { label: "My Orders" },
+      ]}
+    >
       <Container>
         <div className="orders-page">
           <h1 className="orders-page__title">My Orders</h1>
 
           {orders.length === 0 ? (
             <div className="cart-state">
-              <p>No orders yet — your purchases will appear here.</p>
-              <Link href="/all-products/rings" className="btn btn-primary">
-                Start Shopping
-              </Link>
+              <p>No orders yet — your online purchases will appear here.</p>
+              <p style={{ fontSize: "0.8125rem", color: "var(--color-text-muted)", marginTop: "8px", marginBottom: "20px", maxWidth: "440px", marginInline: "auto" }}>
+                Ordered through WhatsApp or a bespoke quotation? Our concierge links purchases to your phone number and email. Track your order with your order ID or reach out on WhatsApp.
+              </p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                <Link href="/all-products/rings" className="btn btn-primary">
+                  Start Shopping
+                </Link>
+                <Link href="/track-order" className="btn btn-secondary">
+                  Track Order
+                </Link>
+              </div>
             </div>
           ) : (
             <ul className="orders-list">

@@ -136,6 +136,7 @@ model Product {
 
   comingSoon  Boolean          @default(false)
   status      ProductStatus    @default(DRAFT)
+  priority    Int              @default(0)
   /// Per-product override of PricingSettings.showPricesGlobal. INHERIT (default)
   /// follows the global toggle; SHOW/HIDE always win regardless of it.
   priceVisibility PriceVisibility @default(INHERIT)
@@ -145,6 +146,7 @@ model Product {
   wishlists   Wishlist[]
   reviews     Review[]
   collections CollectionProduct[]
+  storeCategories StoreCategoryProduct[]
   inventoryItems InventoryItem[]
 }
 
@@ -506,6 +508,34 @@ model CollectionProduct {
 
   @@unique([collectionId, productId])
   @@index([collectionId, sortOrder])
+}
+
+// ── Store Categories: customizable categories with header toggle ────────────
+
+model StoreCategory {
+  id           String                 @id @default(cuid())
+  slug         String                 @unique
+  name         String
+  description  String?
+  image        String?
+  showInHeader Boolean                @default(true)
+  sortOrder    Int                    @default(0)
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  products     StoreCategoryProduct[]
+}
+
+model StoreCategoryProduct {
+  id         String        @id @default(cuid())
+  categoryId String
+  category   StoreCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sortOrder  Int           @default(0)
+
+  @@unique([categoryId, productId])
+  @@index([categoryId, sortOrder])
 }
 
 /// Ordered, schedulable home page sections. `config` is a per-kind payload:

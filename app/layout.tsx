@@ -24,12 +24,22 @@ const inter = Inter({
   variable: "--font-sans-loaded",
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com";
+const IS_VERCEL = process.env.VERCEL === "1" || process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "1";
+
 export const metadata: Metadata = {
-  title: "VAIRIS - Everyday Diamond Wear",
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: "VAIRIS — Everyday Diamond Wear",
+    template: "%s | VAIRIS",
+  },
   description:
     "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
+  alternates: {
+    canonical: "./",
+  },
   openGraph: {
-    title: "VAIRIS - Everyday Diamond Wear",
+    title: "VAIRIS — Everyday Diamond Wear",
     description:
       "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
     siteName: "Vairis",
@@ -69,7 +79,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <CartProvider>
               {children}
               <PageViewTracker />
-              <Analytics />
+              {IS_VERCEL && <Analytics />}
             </CartProvider>
           </WishlistProvider>
         </ThemeProvider>

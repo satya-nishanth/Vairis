@@ -11,10 +11,13 @@ import { useCart } from "@/components/commerce/CartProvider";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { useCartModal } from "./CartModal";
 
+import { formatDisplayName } from "@/lib/prisma-to-product";
+
 type ProductCardProps = {
   product: Product;
   showActions?: boolean;
   linkPrefix?: string;
+  collectionSlug?: string;
 };
 
 function QuickAddButton({ product }: { product: Product }) {
@@ -54,20 +57,28 @@ function QuickAddButton({ product }: { product: Product }) {
   );
 }
 
-export function ProductCard({ product, showActions = true, linkPrefix = "/product" }: ProductCardProps) {
-  const href = `${linkPrefix}/${product.slug}`;
+export function ProductCard({
+  product,
+  showActions = true,
+  linkPrefix = "/product",
+  collectionSlug,
+}: ProductCardProps) {
+  const href = collectionSlug
+    ? `${linkPrefix}/${product.slug}?collection=${encodeURIComponent(collectionSlug)}`
+    : `${linkPrefix}/${product.slug}`;
   const productId = product.catalogueId ?? product.slug;
+  const displayName = formatDisplayName(product.name, product.category);
 
   return (
     <article className="product-card">
       <Link href={href} className="product-card__img-wrap">
         {product.badge && <span className="product-card__badge">{product.badge}</span>}
-        <ProductImage src={product.image} alt={product.name} fill className="product-card__img" />
-        <WishlistButton productId={productId} productName={product.name} />
+        <ProductImage src={product.image} alt={displayName} fill className="product-card__img" />
+        <WishlistButton productId={productId} productName={displayName} />
       </Link>
       <div className="product-card__body">
         <h3 className="product-card__title">
-          <Link href={href}>{product.name}</Link>
+          <Link href={href}>{displayName}</Link>
         </h3>
         {product.description && <p className="product-card__desc">{product.description}</p>}
         {product.price != null ? (
