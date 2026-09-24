@@ -9,7 +9,7 @@ import { sortProductsByPriority, getProductPriority } from '@/lib/product-priori
 
 export const dynamic = 'force-dynamic'
 
-const ROW_OPTIONS = [10, 25, 50] as const
+const ROW_OPTIONS = [10, 25, 50, 100, 500] as const
 
 type PageProps = {
   searchParams: Promise<{ category?: string; status?: string; page?: string; rows?: string; q?: string }>
@@ -21,8 +21,8 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
   const statusParam = (params.status ?? 'all').toLowerCase()
   const searchTerm = (params.q ?? '').trim()
 
-  const rowsRaw = Number(params.rows ?? 10)
-  const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 10
+  const rowsRaw = params.rows === 'all' ? 500 : Number(params.rows ?? 25)
+  const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 25
   const pageRaw = Math.max(1, Number(params.page ?? 1) || 1)
 
   const [storeCategories, counts] = await Promise.all([
@@ -87,7 +87,10 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
       variants: true,
       stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
     },
-  }).catch(() => [])
+  }).catch((err) => {
+    console.error('[admin/products] findMany error:', err)
+    return []
+  })
 
   const sortedProducts = sortProductsByPriority(allFilteredProducts)
   const filteredTotal = sortedProducts.length

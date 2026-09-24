@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 
 export type CategoryOption = { slug: string; name: string }
 
@@ -104,6 +105,7 @@ type Props = {
   goldRates?: Record<string, number>
   pricingConfig?: PricingConfig
   categories?: CategoryOption[]
+  returnTo?: string
 }
 
 function emptyVariant(): Variant {
@@ -155,7 +157,7 @@ function initialForm(data?: Partial<FormData>): FormData {
   }
 }
 
-export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig, categories: initialCategories }: Props) {
+export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig, categories: initialCategories, returnTo }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
   const [categoryList, setCategoryList] = useState<CategoryOption[]>(

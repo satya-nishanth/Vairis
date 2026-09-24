@@ -13,6 +13,7 @@ type PageProps = {
 export default async function NewProductPage({ searchParams }: PageProps) {
   const params = await searchParams
   const raw = (params.category ?? '').toUpperCase()
+  const returnTo = params.returnTo
 
   const [diamondRates, goldRates, pricingConfig, storeCategories] = await Promise.all([
     prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),

@@ -47,7 +47,7 @@ const STATUS_META: Record<AdminProductRow['status'], { label: string; className:
   AI_DRAFT: { label: 'AI Draft', className: 'admin-products__badge is-ai', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
 }
 
-const ROW_OPTIONS = [10, 25, 50] as const
+const ROW_OPTIONS = [10, 25, 50, 100, 500] as const
 
 type Props = {
   products: AdminProductRow[]
@@ -589,7 +589,7 @@ export function AdminProductsTable({ products: initialProducts, total, page, row
             >
               {ROW_OPTIONS.map((n) => (
                 <option key={n} value={n}>
-                  {n}
+                  {n === 500 ? 'All (500)' : n}
                 </option>
               ))}
             </select>
