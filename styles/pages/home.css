@@ -334,6 +334,15 @@
   margin-inline: auto;
 }
 
+.video-grid--reels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 210px));
+  justify-content: center;
+  gap: 20px;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
 .video-card__media {
   position: relative;
   border-radius: var(--radius-md);
@@ -345,12 +354,35 @@
   flex-direction: column;
 }
 
+.video-card--reel {
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.25s ease;
+  cursor: pointer;
+  max-width: 210px;
+}
+
+.video-card--reel:hover {
+  transform: translateY(-4px);
+}
+
 .video-card__media img,
 .video-card__media .img-placeholder {
   aspect-ratio: 16 / 9;
   width: 100%;
   object-fit: cover;
   display: block;
+}
+
+.video-card--reel .video-card__media img,
+.video-card--reel .video-card__media .img-placeholder {
+  aspect-ratio: 9 / 16;
+  max-height: 380px;
+  transition: transform 0.35s ease;
+}
+
+.video-card--reel:hover .video-card__media img {
+  transform: scale(1.025);
 }
 
 .video-card__play {
@@ -361,6 +393,35 @@
   justify-content: center;
   background: rgba(0, 0, 0, 0.18);
   pointer-events: none;
+  transition: background 0.25s ease;
+}
+
+.video-card--reel:hover .video-card__play {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.video-card__badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.video-card__badge img {
+  filter: brightness(0) invert(1);
 }
 
 .video-card__title {
@@ -369,12 +430,38 @@
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.video-card--reel .video-card__title {
+  margin-top: 10px;
+  font-size: 0.875rem;
+}
+
+.video-card__arrow {
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  opacity: 0.7;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.video-card--reel:hover .video-card__arrow {
+  opacity: 1;
+  transform: translate(2px, -2px);
 }
 
 .video-card__desc {
   margin-top: 4px;
   font-size: 0.8125rem;
   color: var(--color-text-muted);
+}
+
+.video-card--reel .video-card__desc {
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .how-steps {
@@ -746,13 +833,16 @@
     display: flex;
     flex-wrap: nowrap;
     overflow-x: auto;
-    gap: 16px;
+    justify-content: flex-start;
+    gap: 14px;
+    padding-bottom: 8px;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
   }
 
   .section--founder-videos .video-card {
-    flex: 0 0 min(300px, 88vw);
+    flex: 0 0 170px;
+    max-width: 170px;
     scroll-snap-align: start;
   }
 }

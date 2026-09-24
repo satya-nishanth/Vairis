@@ -49,6 +49,30 @@ export const founderVideos = [
   },
 ] as const;
 
+export const instagramVideos = [
+  {
+    src: "/images/instagram/reel-launch-day.jpg",
+    title: "Launch day",
+    description: "Started with just an idea... now it's real ✨",
+    url: "https://www.instagram.com/reel/DWOoJgwDo-l/?stkn=MzRlODBiNWFlZA==",
+    placeholder: "Instagram Reel - Launch day",
+  },
+  {
+    src: "/images/instagram/reel-our-mission.jpg",
+    title: "Our mission",
+    description: "A celebration of her evolution. A celebration of her 💎",
+    url: "https://www.instagram.com/reel/DZpchQMBcje/",
+    placeholder: "Instagram Reel - Our mission",
+  },
+  {
+    src: "/images/instagram/reel-exchange-value.jpg",
+    title: "Exchange Value",
+    description: "Natural or lab grown… buy the diamond you truly love ✨",
+    url: "https://www.instagram.com/reel/DZIRqQEhHWm/",
+    placeholder: "Instagram Reel - Exchange Value",
+  },
+] as const;
+
 export const howItWorksSteps = [
   {
     icon: { name: "shopping_bag", category: "navigation" as const },
