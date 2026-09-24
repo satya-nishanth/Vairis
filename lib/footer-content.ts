@@ -53,7 +53,6 @@ export const footerAboutLinks = [
 export const footerSocialLinks = [
   { label: "Instagram", href: "https://www.instagram.com/vairis.jewellery/", icon: "instagram" },
   { label: "Facebook", href: "https://www.facebook.com/profile.php?id=61590488934726", icon: "facebook" },
-  { label: "Pinterest", href: "https://www.pinterest.com/vairis/", icon: "pinterest" },
-  { label: "YouTube", href: "https://www.youtube.com/@vairis", icon: "youtube" },
-  { label: "TikTok", href: "https://www.tiktok.com/@vairis", icon: "tiktok" },
+  { label: "Pinterest", href: "https://www.pinterest.com/vairisfinejewellery/", icon: "pinterest" },
+  { label: "YouTube", href: "https://www.youtube.com/@VairisFineJewellery", icon: "youtube" },
 ] as const;

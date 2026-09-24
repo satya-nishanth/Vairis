@@ -80,18 +80,20 @@ export function ProductCard({
         <h3 className="product-card__title">
           <Link href={href}>{displayName}</Link>
         </h3>
-        {product.description && <p className="product-card__desc">{product.description}</p>}
-        {product.price != null ? (
-          <p className="product-card__price">{formatPrice(product.price)}</p>
-        ) : (
-          product.priceHidden && <p className="product-card__price product-card__price--on-request">Price on Request</p>
-        )}
-        {product.meta && <p className="product-card__meta">{product.meta}</p>}
-        {CHECKOUT_ENABLED && showActions && product.variantId && (
-          <div className="product-card__actions">
-            <QuickAddButton product={product} />
-          </div>
-        )}
+        <p className="product-card__desc">{product.description || '\u00A0'}</p>
+        <div className="product-card__footer">
+          {product.price != null ? (
+            <p className="product-card__price">{formatPrice(product.price)}</p>
+          ) : (
+            product.priceHidden && <p className="product-card__price product-card__price--on-request">Price on Request</p>
+          )}
+          {product.meta && <p className="product-card__meta">{product.meta}</p>}
+          {CHECKOUT_ENABLED && showActions && product.variantId && (
+            <div className="product-card__actions">
+              <QuickAddButton product={product} />
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );
