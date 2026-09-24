@@ -11,10 +11,10 @@ import { ProductImage } from "@/components/ui/ProductImage";
 import { MarketingImage } from "@/components/ui/MarketingImage";
 import { WhyVairisLandingImage } from "@/components/home/WhyVairisLandingImage";
 import { HomeSectionHead } from "@/components/home/HomeSectionHead";
-import { IconChevronRight, ThemeIcon } from "@/components/icons/ThemeIcon";
+import { IconChevronRight, SharedIcon, ThemeIcon } from "@/components/icons/ThemeIcon";
 import { pageLayouts } from "@/lib/layout-config";
 import { categories, getHeroSlides, testimonials } from "@/lib/ui-data";
-import { founderVideos, howItWorksSteps, whyVairisFeatures } from "@/lib/home-content";
+import { founderVideos, instagramVideos, howItWorksSteps, whyVairisFeatures } from "@/lib/home-content";
 import { categoryHref } from "@/lib/catalogue-ui";
 import { marketingImages } from "@/lib/images";
 import { getBanner } from "@/lib/site-content";
@@ -48,7 +48,14 @@ export default async function HomePage() {
                 "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence."}
             </p>
             <div className="hero__ctas">
-              <Button href={hero?.linkUrl ?? categoryHref("necklaces")} variant="primary">
+              <Button
+                href={
+                  hero?.linkUrl && hero.linkUrl !== "/all-products/necklaces"
+                    ? hero.linkUrl
+                    : categoryHref("rings")
+                }
+                variant="primary"
+              >
                 {hero?.ctaLabel ?? "Shop Now"}
               </Button>
             </div>
@@ -115,19 +122,43 @@ export default async function HomePage() {
 
         <Section className="section--founder-videos">
           <Container>
-            <HomeSectionHead title="Founder Videos" actionLabel="Watch More →" actionHref="#" />
-            <div className="video-grid">
-              {founderVideos.map(({ src, title, description, placeholder }) => (
-                <article key={title} className="video-card">
+            <HomeSectionHead
+              title="Our Stories"
+              actionLabel="Follow @vairis.jewellery →"
+              actionHref="https://www.instagram.com/vairis.jewellery/"
+            />
+            <div className="video-grid video-grid--reels">
+              {instagramVideos.map(({ src, title, description, url, placeholder }) => (
+                <a
+                  key={title}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="video-card video-card--reel"
+                  aria-label={`Watch ${title} on Instagram`}
+                >
                   <div className="video-card__media">
-                    <MarketingImage src={src} alt={title} width={640} height={360} placeholderLabel={placeholder} />
+                    <MarketingImage
+                      src={src}
+                      alt={title}
+                      width={240}
+                      height={426}
+                      placeholderLabel={placeholder}
+                    />
                     <div className="video-card__play" aria-hidden>
-                      <ThemeIcon name="play_button" category="content" size={52} />
+                      <ThemeIcon name="play_button" category="content" size={40} />
+                    </div>
+                    <div className="video-card__badge" aria-hidden>
+                      <SharedIcon name="instagram" category="social" size={14} />
+                      <span>Watch Reel</span>
                     </div>
                   </div>
-                  <h3 className="video-card__title">{title}</h3>
+                  <h3 className="video-card__title">
+                    <span>{title}</span>
+                    <span className="video-card__arrow" aria-hidden>↗</span>
+                  </h3>
                   <p className="video-card__desc">{description}</p>
-                </article>
+                </a>
               ))}
             </div>
           </Container>

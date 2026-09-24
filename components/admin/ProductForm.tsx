@@ -1,11 +1,21 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 
-const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']
+export type CategoryOption = { slug: string; name: string }
+
+const DEFAULT_CATEGORIES: CategoryOption[] = [
+  { slug: 'rings', name: 'Rings' },
+  { slug: 'earrings', name: 'Earrings' },
+  { slug: 'pendants', name: 'Pendants' },
+  { slug: 'bracelets', name: 'Bracelets' },
+  { slug: 'mangalsutra', name: 'Mangalsutra' },
+  { slug: 'necklaces', name: 'Necklaces' },
+]
 const METAL_TYPES = [
   { value: 'GOLD_18K', label: '18kt Gold', skuSuffix: 'G18K' },
   { value: 'GOLD_14K', label: '14kt Gold', skuSuffix: 'G14K' },
@@ -84,6 +94,7 @@ type FormData = {
   isActive: boolean
   comingSoon: boolean
   status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
+  priority: string | number
   priceVisibility: 'INHERIT' | 'SHOW' | 'HIDE'
 }
 
@@ -93,6 +104,8 @@ type Props = {
   diamondRates: DiamondRateOption[]
   goldRates?: Record<string, number>
   pricingConfig?: PricingConfig
+  categories?: CategoryOption[]
+  returnTo?: string
 }
 
 function emptyVariant(): Variant {
@@ -139,15 +152,43 @@ function initialForm(data?: Partial<FormData>): FormData {
     isActive: data?.isActive ?? true,
     comingSoon: data?.comingSoon ?? false,
     status: data?.status ?? 'DRAFT',
+    priority: data?.priority !== undefined ? String(data.priority) : '0',
     priceVisibility: data?.priceVisibility ?? 'INHERIT',
   }
 }
 
-export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig }: Props) {
+export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig, categories: initialCategories, returnTo }: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
+  const [categoryList, setCategoryList] = useState<CategoryOption[]>(
+    initialCategories && initialCategories.length > 0 ? initialCategories : DEFAULT_CATEGORIES
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/admin/categories')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: any[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCategoryList(data.map((c) => ({ slug: c.slug, name: c.name })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of categoryList) {
+      map.set(c.slug.toUpperCase(), c.name)
+    }
+    if (form.category && !map.has(form.category.toUpperCase())) {
+      const raw = form.category
+      const label = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase().replace(/_/g, ' ')
+      map.set(raw.toUpperCase(), label)
+    }
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
+  }, [categoryList, form.category])
 
   const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
   const isDraft = form.status !== 'LIVE'
@@ -262,6 +303,7 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
     // Drop empty Front/Left/Right/Back placeholders so storefront never gets "" src
     const payload = {
       ...form,
+      priority: parseInt(String(form.priority), 10) || 0,
       variants,
       stones,
       images: form.images.filter(Boolean),
@@ -281,7 +323,16 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
       return
     }
 
-    router.push('/admin/products')
+    const created = await res.json().catch(() => ({}))
+    const safeReturn = parseInvoiceReturnTo(returnTo)
+    const variantId = created?.variants?.[0]?.id as string | undefined
+    if (mode === 'create' && safeReturn && variantId) {
+      router.push(invoiceReturnWithVariant(safeReturn, variantId))
+    } else if (mode === 'create' && safeReturn) {
+      router.push(safeReturn)
+    } else {
+      router.push('/admin/products')
+    }
     router.refresh()
   }
 
@@ -321,13 +372,14 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
             <select
               id="pf-category"
               required
-              value={form.category}
+              value={form.category.toUpperCase()}
               onChange={(e) => set('category', e.target.value)}
               className="pform__input"
+              data-testid="product-category"
             >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c.charAt(0) + c.slice(1).toLowerCase()}
+              {categoryOptions.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
                 </option>
               ))}
             </select>
@@ -371,6 +423,23 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
             </select>
             <p className="pform__hint">
               {PRICE_VISIBILITY_OPTIONS.find((o) => o.value === form.priceVisibility)?.hint}
+            </p>
+          </div>
+          <div className="pform__field">
+            <label htmlFor="pf-priority">Display Priority</label>
+            <input
+              id="pf-priority"
+              type="number"
+              min="0"
+              step="1"
+              value={form.priority}
+              onChange={(e) => set('priority', e.target.value)}
+              className="pform__input"
+              placeholder="0"
+              data-testid="product-priority"
+            />
+            <p className="pform__hint">
+              Controls storefront order. Priority 0 appears first, followed by 1, 2, etc., then sorted alphabetically by name.
             </p>
           </div>
         </div>
@@ -851,7 +920,15 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
         <button type="submit" disabled={saving} className="pform__submit">
           {saving ? 'Saving…' : mode === 'create' ? 'Create Product' : 'Save Changes'}
         </button>
-        <button type="button" onClick={() => router.back()} className="pform__cancel">
+        <button
+          type="button"
+          onClick={() => {
+            const back = parseInvoiceReturnTo(returnTo)
+            if (back) router.push(back)
+            else router.back()
+          }}
+          className="pform__cancel"
+        >
           Cancel
         </button>
       </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { Category } from '@prisma/client'
+import { sortProductsByPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
               }
             : {}),
         },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { name: 'asc' },
     include: {
       variants: {
         select: {
@@ -46,5 +47,5 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  return NextResponse.json(products)
+  return NextResponse.json(sortProductsByPriority(products))
 }

@@ -33,7 +33,7 @@
 }
 
 .header-search-btn {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 40px;
@@ -42,6 +42,13 @@
   background: transparent;
   border: none;
   padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-full, 9999px);
+  transition: background-color var(--transition-fast, 0.15s ease);
+}
+
+.header-search-btn:hover {
+  background-color: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
 }
 
 /* Mobile search overlay */
@@ -312,8 +319,8 @@
   }
 
   .site-header__menu-btn {
-    width: 36px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     justify-content: flex-start;
     padding-left: 0;
   }
@@ -330,10 +337,6 @@
   .site-header__utilities {
     margin-left: auto;
     flex-shrink: 0;
-  }
-
-  .header-search-btn--desktop {
-    display: none !important;
   }
 
   .utility-bar__inner,

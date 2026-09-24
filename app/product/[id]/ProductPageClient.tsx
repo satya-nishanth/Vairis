@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { CartModalProvider, useCartModal } from "@/components/commerce/CartModal";
 import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpPanel";
 import { ProductReviews } from "@/components/commerce/ProductReviews";
+import { ProductCard } from "@/components/commerce/ProductCard";
 import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
@@ -19,6 +20,7 @@ import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { calculatePrice, type PricingConfig, type StoneInput } from "@/lib/pricing";
 import type { StoneView } from "@/lib/pricing-data";
+import type { Product } from "@/lib/ui-data";
 import { track } from "@/lib/analytics-client";
 
 const METAL_LABELS: Record<string, string> = {
@@ -56,12 +58,14 @@ type Props = {
   product: ProductData;
   goldRates: { metalType: string; ratePerGram: string }[];
   pricingConfig: PricingConfig;
+  relatedProducts?: Product[];
 };
 
-function PdpContent({ product, goldRates, pricingConfig }: Props) {
+function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
   const { openCartModal } = useCartModal();
   const { addItem, isLoggedIn, hydrated } = useCart();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [activeThumb, setActiveThumb] = useState(0);
@@ -202,15 +206,27 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
     }
   };
 
+  const collectionSlug = searchParams?.get("collection");
+  const collectionTitle = collectionSlug
+    ? collectionSlug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : null;
+
+  const breadcrumbs =
+    collectionTitle && collectionSlug
+      ? [
+          { label: "Home", href: "/" },
+          { label: "Collections", href: "/all-products/rings" },
+          { label: collectionTitle, href: `/collections/${collectionSlug}` },
+          { label: product.name },
+        ]
+      : [
+          { label: "Home", href: "/" },
+          { label: categoryLabel, href: `/all-products/${categorySlug}` },
+          { label: product.name },
+        ];
+
   return (
-    <PageShell
-      {...pageLayouts.pdp}
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: categoryLabel, href: `/all-products/${categorySlug}` },
-        { label: product.name },
-      ]}
-    >
+    <PageShell {...pageLayouts.pdp} breadcrumbs={breadcrumbs}>
       <main className="container page-main pdp-page">
         <div className="pdp-layout">
           <div className="pdp-gallery__thumbs">
@@ -428,10 +444,10 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
                       <td>Making charges</td>
                       <td>₹{Math.round(breakdown.making).toLocaleString("en-IN")}</td>
                     </tr>
-                    {breakdown.vaTotal > 0 && (
+                    {breakdown.goldVA > 0 && (
                       <tr>
                         <td>{breakdown.vaLabel}</td>
-                        <td>₹{Math.round(breakdown.vaTotal).toLocaleString("en-IN")}</td>
+                        <td>₹{Math.round(breakdown.goldVA).toLocaleString("en-IN")}</td>
                       </tr>
                     )}
                     {breakdown.miscCharges > 0 && (
@@ -514,6 +530,28 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
           </div>
         </div>
 
+        {relatedProducts && relatedProducts.length > 0 && (
+          <section className="pdp-related" style={{ marginTop: "3.5rem", marginBottom: "3rem" }}>
+            <h2
+              style={{
+                fontFamily: "var(--font-serif, serif)",
+                fontSize: "1.75rem",
+                fontWeight: 400,
+                textAlign: "center",
+                marginBottom: "2rem",
+                color: "var(--color-text)",
+              }}
+            >
+              You May Also Like
+            </h2>
+            <div className="plp-grid">
+              {relatedProducts.map((p, i) => (
+                <ProductCard key={p.slug} product={p} showActions={i < 2} />
+              ))}
+            </div>
+          </section>
+        )}
+
         <ProductReviews productId={product.id} productName={product.name} />
       </main>
 
@@ -539,11 +577,13 @@ function PdpContent({ product, goldRates, pricingConfig }: Props) {
   );
 }
 
-export default function ProductPageClient({ product, goldRates, pricingConfig }: Props) {
+export default function ProductPageClient(props: Props) {
   const { count } = useCart();
   return (
     <CartModalProvider bagCount={count}>
-      <PdpContent product={product} goldRates={goldRates} pricingConfig={pricingConfig} />
+      <Suspense fallback={null}>
+        <PdpContent {...props} />
+      </Suspense>
     </CartModalProvider>
   );
 }

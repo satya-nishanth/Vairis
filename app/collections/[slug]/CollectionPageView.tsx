@@ -10,6 +10,8 @@ import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import type { Product } from "@/lib/ui-data";
 
+import { PlpPostGridSection } from "@/components/commerce/PlpPostGridSection";
+
 type Props = {
   collection: {
     slug: string;
@@ -30,7 +32,13 @@ export function CollectionPageView({ collection, products, emptyState }: Props) 
       <PageShell {...pageLayouts.plp}>
         <section className="plp-hero plp-hero--landing">
           <div className="plp-hero__content">
-            <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: collection.title }]} />
+            <Breadcrumbs
+              items={[
+                { label: "Home", href: "/" },
+                { label: "Collections", href: "/all-products/rings" },
+                { label: collection.title },
+              ]}
+            />
             <div className="plp-hero__hero-main">
               <h1 className="plp-hero__story">{collection.title}</h1>
               {collection.subtitle && <p className="plp-hero__story-sub">{collection.subtitle}</p>}
@@ -48,11 +56,19 @@ export function CollectionPageView({ collection, products, emptyState }: Props) 
           {products.length === 0 ? (
             emptyState
           ) : (
-            <div className="plp-grid" data-testid="collection-grid">
-              {products.map((product, i) => (
-                <ProductCard key={product.catalogueId} product={product} showActions={i < 4} />
-              ))}
-            </div>
+            <>
+              <div className="plp-grid" data-testid="collection-grid">
+                {products.map((product, i) => (
+                  <ProductCard
+                    key={product.catalogueId}
+                    product={product}
+                    showActions={i < 4}
+                    collectionSlug={collection.slug}
+                  />
+                ))}
+              </div>
+              <PlpPostGridSection category="rings" />
+            </>
           )}
         </main>
       </PageShell>

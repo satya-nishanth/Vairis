@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
+import { getStoreCategories } from '@/lib/store-categories'
 import ProductForm from '@/components/admin/ProductForm'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +13,7 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [product, diamondRates, goldRates, pricingConfig] = await Promise.all([
+  const [product, diamondRates, goldRates, pricingConfig, storeCategories] = await Promise.all([
     prisma.product.findUnique({
       where: { id },
       include: {
@@ -23,6 +24,7 @@ export default async function EditProductPage({
     prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
+    getStoreCategories(),
   ])
 
   if (!product) notFound()
@@ -38,6 +40,7 @@ export default async function EditProductPage({
       </div>
       <ProductForm
         mode="edit"
+        categories={storeCategories.map((c) => ({ slug: c.slug, name: c.name }))}
         diamondRates={diamondRates.map((r) => ({
           id: r.id,
           label: r.label,
@@ -65,6 +68,7 @@ export default async function EditProductPage({
           isActive: product.isActive,
           comingSoon: product.comingSoon,
           status: product.status,
+          priority: product.priority ?? 0,
           priceVisibility: product.priceVisibility,
           stones: product.stones.map((s) => ({
             diamondRateId: s.diamondRateId,

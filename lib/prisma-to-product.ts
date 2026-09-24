@@ -10,6 +10,32 @@ type PrismaProductWithVariants = PrismaProduct & {
   stones?: StoneWithRate[];
 };
 
+export function formatDisplayName(
+  rawName: string | null | undefined,
+  category: string,
+  designStyle?: string | null
+): string {
+  const name = (rawName ?? "").trim();
+  const cleanCat = category.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  if (!name) {
+    return designStyle ? `${designStyle.trim()} ${cleanCat}` : `Signature ${cleanCat}`;
+  }
+
+  const isRawSku =
+    !/[a-z]/.test(name) &&
+    /\d/.test(name) &&
+    (/^[A-Z0-9_\-\s]{6,}$/.test(name) || name.includes("_") || /^[A-Z]{2,}\d+/.test(name));
+
+  if (isRawSku) {
+    if (designStyle && designStyle.trim()) {
+      return `${designStyle.trim()} ${cleanCat}`;
+    }
+    return `Signature ${cleanCat}`;
+  }
+
+  return name;
+}
+
 export function prismaToProduct(
   p: PrismaProductWithVariants,
   goldRates: GoldRate[],
@@ -71,7 +97,7 @@ export function prismaToProduct(
   return {
     slug: p.id,
     sku: p.itemCode ?? p.id,
-    name: p.name,
+    name: formatDisplayName(p.name, category, p.designStyle),
     description: p.description ?? "",
     price,
     image: primaryImage,

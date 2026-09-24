@@ -20,7 +20,7 @@ export const footerTrustItems = [
 ] as const;
 
 export const footerShopLinks = [
-  { label: "All Jewellery", href: categoryHref("necklaces") },
+  { label: "All Jewellery", href: categoryHref("rings") },
   ...HEADER_NAV_CATEGORIES.map((slug: ShopCategory) => ({
     label: CATEGORY_LABELS[slug].title,
     href: categoryHref(slug),
@@ -28,10 +28,10 @@ export const footerShopLinks = [
 ] as const;
 
 export const footerHelpLinks = [
-  { label: "FAQ", href: "/contact" },
+  { label: "FAQ", href: "/faq" },
   { label: "Shipping & Delivery", href: "/policies/shipping" },
-  { label: "Returns", href: "/returns" },
-  { label: "Care Guide", href: "/contact" },
+  { label: "Returns & Exchanges", href: "/returns" },
+  { label: "Care Guide", href: "/faq" },
   { label: "Track Order", href: "/track-order" },
   { label: "Contact Us", href: "/contact" },
 ] as const;
@@ -44,17 +44,15 @@ export const footerLegalLinks = [
 ] as const;
 
 export const footerAboutLinks = [
-  { label: "Our Story", href: "/contact" },
-  { label: "Why Vairis", href: "/#why" },
+  { label: "Our Story", href: "/about" },
+  { label: "Why Vairis", href: "/about" },
   { label: "Reviews", href: "/#reviews" },
-  { label: "Blog", href: "#" },
-  { label: "Careers", href: "#" },
+  { label: "Careers", href: "mailto:careers@vairis.com" },
 ] as const;
 
 export const footerSocialLinks = [
   { label: "Instagram", href: "https://www.instagram.com/vairis.jewellery/", icon: "instagram" },
   { label: "Facebook", href: "https://www.facebook.com/profile.php?id=61590488934726", icon: "facebook" },
-  { label: "Pinterest", href: "https://www.pinterest.com/vairis/", icon: "pinterest" },
-  { label: "YouTube", href: "https://www.youtube.com/@vairis", icon: "youtube" },
-  { label: "TikTok", href: "https://www.tiktok.com/@vairis", icon: "tiktok" },
+  { label: "Pinterest", href: "https://www.pinterest.com/vairisfinejewellery/", icon: "pinterest" },
+  { label: "YouTube", href: "https://www.youtube.com/@VairisFineJewellery", icon: "youtube" },
 ] as const;

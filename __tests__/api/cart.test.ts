@@ -73,7 +73,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   mockGetAppUser.mockResolvedValue(fakeUser as any)
   mockGoldRate.findMany.mockResolvedValue([{ metalType: 'GOLD_18K', ratePerGram: '6000', fetchedAt: new Date() }] as any)
-  mockGetPricingConfig.mockResolvedValue({ vaGoldPct: '5', vaStonePct: '5' } as any)
+  mockGetPricingConfig.mockResolvedValue({ vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Wastage' } as any)
   mockGetShowPricesGlobal.mockResolvedValue(true)
   mockResolvePriceVisibility.mockReturnValue(true)
   mockVariant.findUnique.mockResolvedValue({ product: { priceVisibility: 'INHERIT' } } as any)
@@ -124,10 +124,9 @@ describe('GET /api/cart', () => {
     mockCart.findMany.mockResolvedValue([fakeCartItem()] as any)
     const res = await GET()
     const data = await res.json()
-    // goldValue 5g*6000=30000, goldVA 5%=1500, making 5*100=500,
-    // taxable = 30000+1500+500 = 32000, gst = taxable*3% = 960
-    // total = 32000+960 = 32960
-    expect(data[0].unitPrice).toBe(32960)
+    // goldValue 5g*6000=30000, wastage 10%=3000, making 5*100=500,
+    // taxable 33500, gst 3%=1005, total 34505
+    expect(data[0].unitPrice).toBe(34505)
   })
 
   it('returns empty array when cart is empty', async () => {

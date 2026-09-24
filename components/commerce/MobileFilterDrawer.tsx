@@ -19,6 +19,7 @@ type MobileFilterDrawerProps = {
   groups: CategoryFilterPanelProps["groups"];
   productCount: number;
   focusSort?: boolean;
+  hasPricedProducts?: boolean;
 };
 
 export function MobileFilterDrawer({
@@ -30,6 +31,7 @@ export function MobileFilterDrawer({
   groups,
   productCount,
   focusSort,
+  hasPricedProducts,
 }: MobileFilterDrawerProps) {
   useEffect(() => {
     if (!open) return;
@@ -77,6 +79,7 @@ export function MobileFilterDrawer({
             sortSectionId="plp-mobile-filter-sort"
             showCount
             productCount={productCount}
+            hasPricedProducts={hasPricedProducts}
           />
         </div>
 

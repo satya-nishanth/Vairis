@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
+import { getStoreCategoryBySlug, updateStoreCategory } from '@/lib/store-categories'
+import { sortProductsByPriority, setProductPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,7 +44,7 @@ const stoneSchema = z.object({
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   description: z.string().default(''),
-  category: z.enum(CATEGORIES),
+  category: z.string().min(1, 'Category is required'),
   itemCode: z.string().optional().nullable(),
   designStyle: z.string().optional().nullable(),
   totalLengthMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
@@ -57,6 +59,7 @@ const productSchema = z.object({
   isActive: z.boolean().default(true),
   comingSoon: z.boolean().default(false),
   status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
+  priority: z.coerce.number().int().default(0),
   priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).default('INHERIT'),
   stones: z.array(stoneSchema).default([]),
   // Drafts only need a title — LIVE products need at least one variant
@@ -100,10 +103,10 @@ function validationError(error: z.ZodError) {
 export async function GET() {
   await requireAdmin()
   const products = await prisma.product.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: { name: 'asc' },
     include: { variants: true },
   })
-  return NextResponse.json(products)
+  return NextResponse.json(sortProductsByPriority(products))
 }
 
 export async function POST(req: NextRequest) {
@@ -114,11 +117,15 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return validationError(parsed.error)
 
   const data = parsed.data
+  const catUpper = data.category.toUpperCase().replace(/-/g, '_')
+  const isPrismaEnum = (CATEGORIES as readonly string[]).includes(catUpper)
+  const dbCategory = isPrismaEnum ? (catUpper as (typeof CATEGORIES)[number]) : 'PENDANTS'
+
   const product = await prisma.product.create({
     data: {
       name: data.name,
       description: data.description,
-      category: data.category,
+      category: dbCategory,
       itemCode: data.itemCode || null,
       designStyle: data.designStyle || null,
       totalLengthMm: data.totalLengthMm,
@@ -133,6 +140,7 @@ export async function POST(req: NextRequest) {
       isActive: data.isActive,
       comingSoon: data.comingSoon,
       status: data.status,
+      priority: data.priority,
       priceVisibility: data.priceVisibility,
       stones: {
         create: data.stones.map((s, i) => ({
@@ -159,6 +167,21 @@ export async function POST(req: NextRequest) {
     },
     include: { variants: true, stones: { include: { diamondRate: true } } },
   })
+
+  setProductPriority(product.id, data.priority)
+
+  // Link to store category
+  try {
+    const catSlug = data.category.toLowerCase().replace(/_/g, '-')
+    const storeCat = await getStoreCategoryBySlug(catSlug)
+    if (storeCat && !storeCat.productIds.includes(product.id)) {
+      await updateStoreCategory(storeCat.id, {
+        productIds: [...storeCat.productIds, product.id],
+      })
+    }
+  } catch (err) {
+    console.warn('[api/admin/products] failed linking to store category:', err)
+  }
 
   return NextResponse.json(product, { status: 201 })
 }

@@ -26,10 +26,17 @@ const SESSION_KEY = "vairis_sid";
 export function getSessionId(): string {
   if (typeof window === "undefined") return "";
   try {
-    let sid = window.localStorage.getItem(SESSION_KEY);
+    // Prefer sessionStorage so session identifier terminates when browser tab/session closes (SEC-08)
+    let sid = window.sessionStorage.getItem(SESSION_KEY);
     if (!sid) {
       sid = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      window.localStorage.setItem(SESSION_KEY, sid);
+      window.sessionStorage.setItem(SESSION_KEY, sid);
+    }
+    // Clean up any legacy permanent identifier from localStorage
+    try {
+      window.localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // Ignore storage restrictions
     }
     return sid;
   } catch {

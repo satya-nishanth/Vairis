@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { OrderStatus } from "@prisma/client";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
@@ -70,7 +71,13 @@ export default function TrackOrderPage() {
   }
 
   return (
-    <PageShell {...pageLayouts.contact}>
+    <PageShell
+      {...pageLayouts.contact}
+      breadcrumbs={[
+        { label: "Home", href: "/" },
+        { label: "Track Order" },
+      ]}
+    >
       <Container>
         <div className="orders-page orders-page--narrow">
           <h1 className="orders-page__title">Track Your Order</h1>
@@ -88,7 +95,7 @@ export default function TrackOrderPage() {
                 required
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
-                placeholder="e.g. cmox…"
+                placeholder="e.g. VR-10234 or your order ID"
               />
             </div>
             <div className="form-group">
@@ -112,6 +119,13 @@ export default function TrackOrderPage() {
               </p>
             )}
           </form>
+
+          <p className="checkout-note" style={{ marginTop: "1.25rem", textAlign: "center" }}>
+            Signed in? You can also view all your orders directly in{" "}
+            <Link href="/account/orders" style={{ textDecoration: "underline", color: "var(--color-primary, #b79040)" }}>
+              My Orders →
+            </Link>
+          </p>
 
           {result && (
             <section className="confirm-card track-result">

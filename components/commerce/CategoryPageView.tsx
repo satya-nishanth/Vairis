@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { ProductCard } from "@/components/commerce/ProductCard";
@@ -25,11 +26,13 @@ import {
   PLP_FILTER_GROUPS,
   PLP_MOBILE_PAGE_SIZE,
   PLP_PAGE_SIZE,
+  isShopCategory,
   type ShopCategory,
 } from "@/lib/catalogue-ui";
 
 type CategoryPageViewProps = {
-  category: ShopCategory;
+  category: string;
+  titleOverride?: string;
   story: CategoryStory;
   prismaProducts?: Product[];
   heroImagesOverride?: string[];
@@ -90,8 +93,26 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   return result;
 }
 
+function parseFiltersFromSearchParams(params: { get: (k: string) => string | null; getAll: (k: string) => string[] } | null): FilterState {
+  const defaults = defaultFilterState();
+  if (!params) return defaults;
+  const sort = params.get("sort");
+  const styles = params.getAll("style").flatMap((s) => s.split(",")).filter(Boolean);
+  const metals = params.getAll("metal").flatMap((m) => m.split(",")).filter(Boolean);
+  const readyToShip = params.get("readyToShip") === "true";
+
+  const validSorts: FilterState["sort"][] = ["popular", "newest", "price-asc", "price-desc"];
+  return {
+    sort: sort && validSorts.includes(sort as FilterState["sort"]) ? (sort as FilterState["sort"]) : defaults.sort,
+    styles,
+    metals,
+    readyToShip,
+  };
+}
+
 export function CategoryPageView({
   category,
+  titleOverride,
   story,
   prismaProducts,
   heroImagesOverride,
@@ -99,42 +120,102 @@ export function CategoryPageView({
   introOverride,
 }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
-  const meta = CATEGORY_LABELS[category];
+  const isBuiltIn = isShopCategory(category);
+  const meta = isBuiltIn
+    ? CATEGORY_LABELS[category]
+    : {
+        title: titleOverride || category.charAt(0).toUpperCase() + category.slice(1).replace(/-/g, " "),
+        description: "",
+        intro: `Explore our curated ${category.replace(/-/g, " ")} collection.`,
+        emotional: "",
+      };
   const { count: bagCount } = useCart();
   // Only real DB products — never fall back to mock catalogue (broken PDP links)
   const allProducts = useMemo(() => prismaProducts ?? [], [prismaProducts]);
-  const filterGroups = PLP_FILTER_GROUPS[category];
+  const filterGroups = isBuiltIn && PLP_FILTER_GROUPS[category]
+    ? PLP_FILTER_GROUPS[category]
+    : [
+        {
+          id: "metals" as const,
+          title: "Metal",
+          options: ["Yellow Gold", "White Gold", "Rose Gold", "18K Gold"],
+        },
+      ];
   // Admin SiteBanner images[] win over built-in category hero set
   const heroImages =
     heroImagesOverride && heroImagesOverride.length > 0
       ? heroImagesOverride
-      : getCategoryHeroImages(category);
+      : (isBuiltIn ? getCategoryHeroImages(category) : []);
   const imageFits =
     heroImagesOverride && heroImagesOverride.length > 0 ? heroImageFits : undefined;
   const intro = introOverride?.trim() || meta.intro;
 
-  const [filters, setFilters] = useState<FilterState>(defaultFilterState());
-  const [draftFilters, setDraftFilters] = useState<FilterState>(defaultFilterState());
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const hasPricedProducts = useMemo(
+    () => allProducts.some((p) => p.price != null && !p.priceHidden),
+    [allProducts]
+  );
+
+  const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromSearchParams(searchParams));
+  const [draftFilters, setDraftFilters] = useState<FilterState>(() => parseFiltersFromSearchParams(searchParams));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerFocusSort, setDrawerFocusSort] = useState(false);
-  const [page, setPage] = useState(1);
   const pageSize = usePlpPageSize();
   const productsTopRef = useRef<HTMLDivElement>(null);
 
+  // Sync state if user clicks browser back/forward
+  useEffect(() => {
+    const parsed = parseFiltersFromSearchParams(searchParams);
+    setFilters(parsed);
+  }, [searchParams]);
+
+  const pageParam = parseInt(searchParams.get("page") || "1", 10);
+  const pageFromUrl = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+
   const filteredProducts = useMemo(() => filterProducts(allProducts, filters), [allProducts, filters]);
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
-  // Clamp instead of syncing state in an effect — filters/pageSize changes
-  // can shrink totalPages below the stored page
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = Math.min(pageFromUrl, totalPages);
   const pageProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const buildHrefWithFilters = (targetPage: number, nextFilters: FilterState) => {
+    const params = new URLSearchParams();
+    if (nextFilters.sort && nextFilters.sort !== "popular") {
+      params.set("sort", nextFilters.sort);
+    }
+    if (nextFilters.styles.length > 0) {
+      params.set("style", nextFilters.styles.join(","));
+    }
+    if (nextFilters.metals.length > 0) {
+      params.set("metal", nextFilters.metals.join(","));
+    }
+    if (nextFilters.readyToShip) {
+      params.set("readyToShip", "true");
+    }
+    if (targetPage > 1) {
+      params.set("page", String(targetPage));
+    }
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  };
+
+  const buildHref = (targetPage: number) => {
+    return buildHrefWithFilters(targetPage, filters);
+  };
+
   const applyFilters = (next: FilterState) => {
-    setFilters(next);
-    setPage(1);
+    const effectiveSort = (!hasPricedProducts && (next.sort === "price-asc" || next.sort === "price-desc"))
+      ? "popular"
+      : next.sort;
+    const sanitizedNext = { ...next, sort: effectiveSort };
+    setFilters(sanitizedNext);
+    router.push(buildHrefWithFilters(1, sanitizedNext), { scroll: false });
   };
 
   const handlePageChange = (nextPage: number) => {
-    setPage(nextPage);
+    router.push(buildHref(nextPage), { scroll: false });
     // Scroll to the top of the products list, not the page — the hero above it is tall, and
     // re-showing it on every page change just makes the user scroll past it again. Offset by the
     // sticky header's actual height (measured, not hardcoded — it already differs mobile vs
@@ -219,7 +300,12 @@ export function CategoryPageView({
                     ))}
                   </div>
 
-                  <CategoryPagination page={currentPage} totalPages={totalPages} onPageChange={handlePageChange} />
+                  <CategoryPagination
+                    page={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                    buildHref={buildHref}
+                  />
                 </>
               )}
             </div>
@@ -229,10 +315,11 @@ export function CategoryPageView({
               onChange={applyFilters}
               productCount={filteredProducts.length}
               groups={filterGroups}
+              hasPricedProducts={hasPricedProducts}
             />
           </div>
 
-          <PlpPostGridSection />
+          <PlpPostGridSection category={category} />
         </main>
 
         <MobileFilterBar filters={filters} onOpenFilters={openFilters} onOpenSort={openSort} />
@@ -245,6 +332,7 @@ export function CategoryPageView({
           groups={filterGroups}
           productCount={filteredProducts.length}
           focusSort={drawerFocusSort}
+          hasPricedProducts={hasPricedProducts}
         />
       </PageShell>
     </CartModalProvider>

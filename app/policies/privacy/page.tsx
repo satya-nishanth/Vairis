@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { PolicyPage } from "../PolicyPage";
 
-export const metadata: Metadata = { title: "Privacy Policy | VAIRIS" };
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "Learn how VAIRIS collects, uses, and safeguards your personal data in accordance with the IT Act and Indian DPDP regulations.",
+};
 
 export default function PrivacyPolicyPage() {
   return (
@@ -25,14 +29,26 @@ export default function PrivacyPolicyPage() {
       </ul>
       <h2>Cookies & analytics</h2>
       <p>
-        We use first-party analytics and, where configured, Google Analytics to
-        measure store performance. You can block cookies in your browser; the
-        store keeps working.
+        We use first-party analytics and privacy-respecting performance telemetry to
+        measure site performance and improve user experience. We do not engage in
+        cross-site behavioral tracking or sell user data. You can manage or block cookies
+        through your browser settings at any time without impacting essential store features.
       </p>
       <h2>Your rights</h2>
       <p>
-        Write to us via the Contact page to access, correct, or delete the
-        personal data we hold about you.
+        Under applicable Indian data protection laws, including the Digital Personal
+        Data Protection Act (DPDPA), you have the right to request access to, correction of,
+        or deletion of your personal data. Contact us at hello@vairis.com to exercise these rights.
+      </p>
+      <h2>Grievance Officer & Indian Compliance</h2>
+      <p>
+        In accordance with the Information Technology Act, 2000 and the rules made thereunder:
+      </p>
+      <p>
+        <strong>Name / Designation:</strong> Grievance Officer, VAIRIS Fine Jewellery<br />
+        <strong>Email:</strong> grievance@vairis.com (cc: hello@vairis.com)<br />
+        <strong>Registered Location:</strong> Mumbai, Maharashtra, India<br />
+        <strong>Response Time:</strong> We acknowledge complaints within 48 hours and resolve them within 30 days.
       </p>
     </PolicyPage>
   );

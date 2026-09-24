@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { PolicyPage } from "../PolicyPage";
 
-export const metadata: Metadata = { title: "Shipping Policy | VAIRIS" };
+export const metadata: Metadata = {
+  title: "Shipping Policy",
+  description:
+    "Learn about free insured shipping across India with tamper-proof packaging and OTP-verified delivery from VAIRIS.",
+};
 
 export default function ShippingPolicyPage() {
   return (
