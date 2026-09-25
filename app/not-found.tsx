@@ -1,9 +1,23 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { PageShell } from "@/components/layout/PageShell";
 import { Button } from "@/components/ui/Button";
 import { pageLayouts } from "@/lib/layout-config";
-import { STOCKED_CATEGORIES, CATEGORY_LABELS } from "@/lib/catalogue-ui";
+import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { WHATSAPP_URL } from "@/lib/ui-data";
+
+export const metadata: Metadata = {
+  title: "Page Not Found",
+  robots: {
+    index: false,
+    follow: false,
+  },
+  alternates: {
+    canonical: null,
+  },
+};
+
+const STOCKED_POPULAR_CATEGORIES = ["rings", "earrings", "pendants"] as const;
 
 export default function NotFound() {
   const layout = pageLayouts.contact;
@@ -107,7 +121,7 @@ export default function NotFound() {
               justifyContent: "center",
             }}
           >
-            {STOCKED_CATEGORIES.map((slug) => (
+            {STOCKED_POPULAR_CATEGORIES.map((slug) => (
               <Link
                 key={slug}
                 href={`/all-products/${slug}`}

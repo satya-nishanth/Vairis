@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -8,6 +9,11 @@ import SubmitButton from '@/components/auth/SubmitButton'
 import { PageShell } from '@/components/layout/PageShell'
 import { pageLayouts } from '@/lib/layout-config'
 import { BrandLogo } from '@/components/layout/BrandLogo'
+
+export const metadata: Metadata = {
+  title: 'Sign In',
+  description: 'Sign in to your VAIRIS account to view orders, manage wishlist, and save delivery addresses.',
+}
 
 // ── Server Actions ────────────────────────────────────────────────────────
 

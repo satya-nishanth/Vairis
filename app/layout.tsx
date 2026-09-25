@@ -27,6 +27,12 @@ const inter = Inter({
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com";
 const IS_VERCEL = process.env.VERCEL === "1" || process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "1";
 
+const isStaging =
+  process.env.AZURE_ENV_NAME === "staging" ||
+  BASE_URL.includes("staging") ||
+  BASE_URL.includes("azurecontainerapps.io") ||
+  process.env.VERCEL_ENV === "preview";
+
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
@@ -38,6 +44,14 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "./",
   },
+  ...(isStaging
+    ? {
+        robots: {
+          index: false,
+          follow: false,
+        },
+      }
+    : {}),
   openGraph: {
     title: "VAIRIS — Everyday Diamond Wear",
     description:

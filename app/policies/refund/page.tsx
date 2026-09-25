@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function RefundPolicyPage() {
   return (
-    <PolicyPage title="Refund & Return Policy" updated="25 July 2026">
+    <PolicyPage title="Refund & Return Policy" updated="25 September 2026">
       <h2>Returns</h2>
       <p>
         You may request a return within 7 days of delivery by reaching out to our

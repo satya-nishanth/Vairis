@@ -145,9 +145,6 @@ export default async function HomePage() {
                       height={426}
                       placeholderLabel={placeholder}
                     />
-                    <div className="video-card__play" aria-hidden>
-                      <ThemeIcon name="play_button" category="content" size={40} />
-                    </div>
                     <div className="video-card__badge" aria-hidden>
                       <SharedIcon name="instagram" category="social" size={14} />
                       <span>Watch Reel</span>

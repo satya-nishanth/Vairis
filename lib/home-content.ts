@@ -4,7 +4,7 @@ export const whyVairisFeatures = [
   {
     icon: { name: "no_showroom_markups", category: "brand" as const },
     title: "No Showroom Costs",
-    description: "You pay for jewelry, not overheads.",
+    description: "You pay for jewellery, not overheads.",
   },
   {
     icon: { name: "transparent_pricing", category: "brand" as const },
@@ -54,7 +54,7 @@ export const instagramVideos = [
     src: "/images/instagram/reel-launch-day.jpg",
     title: "Launch day",
     description: "Started with just an idea... now it's real ✨",
-    url: "https://www.instagram.com/reel/DWOoJgwDo-l/?stkn=MzRlODBiNWFlZA==",
+    url: "https://www.instagram.com/reel/DWOoJgwDo-l/",
     placeholder: "Instagram Reel - Launch day",
   },
   {

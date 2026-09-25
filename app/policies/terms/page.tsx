@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <PolicyPage title="Terms of Service" updated="25 July 2026">
+    <PolicyPage title="Terms of Service" updated="25 September 2026">
       <h2>Products & pricing</h2>
       <p>
         Every VAIRIS piece is described with its true gold weight, diamond type,

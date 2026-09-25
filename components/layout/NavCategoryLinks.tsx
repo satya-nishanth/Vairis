@@ -11,7 +11,6 @@ const INITIAL_NAV: NavCat[] = [
   { slug: "earrings", name: "Earrings" },
   { slug: "pendants", name: "Pendants" },
   { slug: "bracelets", name: "Bracelets" },
-  { slug: "mangalsutra", name: "Mangalsutra" },
 ];
 
 let cachedNav: NavCat[] | null = null;

@@ -8,10 +8,19 @@ export function isMockPayAllowed(): boolean {
   if (process.env.PAYMENT_GATEWAY !== 'mock') {
     return false;
   }
-  const isProduction =
-    process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
-  if (isProduction && process.env.ALLOW_MOCK_PAYMENTS !== 'true') {
+  const isStrictProduction =
+    process.env.AZURE_ENV_NAME === 'prod' ||
+    process.env.ENVIRONMENT_IS_PROD === 'true' ||
+    process.env.VERCEL_ENV === 'production';
+
+  if (isStrictProduction) {
     return false;
   }
-  return true;
+
+  const isProdNode = process.env.NODE_ENV === 'production';
+  if (isProdNode && process.env.ALLOW_MOCK_PAYMENTS !== 'true') {
+    return false;
+  }
+
+  return process.env.ALLOW_MOCK_PAYMENTS === 'true';
 }

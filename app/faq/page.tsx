@@ -8,7 +8,7 @@ import { pageLayouts } from "@/lib/layout-config";
 import { WHATSAPP_URL } from "@/lib/ui-data";
 
 export const metadata: Metadata = {
-  title: "Frequently Asked Questions | VAIRIS",
+  title: "Frequently Asked Questions",
   description:
     "Find answers to frequently asked questions about IGI diamond certification, ring sizing, insured delivery, payments, and 7-day returns at VAIRIS.",
 };

@@ -23,14 +23,14 @@ export async function generateMetadata({
   const meta = CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS];
   if (meta) {
     return {
-      title: `${meta.title ?? category} | VAIRIS`,
+      title: meta.title ?? category,
       description: meta.intro ?? "",
     };
   }
   const storeCat = await getStoreCategoryBySlug(category);
   if (storeCat) {
     return {
-      title: `${storeCat.name} | VAIRIS`,
+      title: storeCat.name,
       description: storeCat.description ?? "",
     };
   }

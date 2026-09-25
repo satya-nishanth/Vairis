@@ -35,6 +35,8 @@ export type Product = {
   /** Price intentionally not shown (admin pricing-visibility setting) — distinct
    * from `price` simply being unavailable (e.g. no gold rate configured yet). */
   priceHidden?: boolean;
+  /** Whether the product has multiple variants with differing prices (PLP shows "From ₹...") */
+  hasMultiplePrices?: boolean;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

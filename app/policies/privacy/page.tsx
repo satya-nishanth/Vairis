@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <PolicyPage title="Privacy Policy" updated="25 July 2026">
+    <PolicyPage title="Privacy Policy" updated="25 September 2026">
       <h2>What we collect</h2>
       <ul>
         <li>Account details: name, email, mobile number.</li>
