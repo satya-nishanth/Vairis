@@ -12,25 +12,29 @@ import { categoryHref } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 
-type ApiProduct = {
-  id: string;
-  name: string;
-  category: string;
-  images: string[];
+type ApiProduct = Product & {
+  id?: string;
 };
 
-function toProduct(p: ApiProduct, i: number): Product {
+function toProduct(p: any, i: number): Product {
+  if (p && p.slug && p.image !== undefined && p.catalogueId) {
+    return p;
+  }
   return {
-    slug: p.id,
-    sku: p.id,
+    slug: p.id ?? p.slug,
+    sku: p.sku ?? p.id,
     name: p.name,
-    image: p.images[0] ?? "",
-    images: p.images,
-    category: prismaCategoryToSlug(p.category),
-    catalogueId: p.id,
+    image: p.image ?? p.images?.[0] ?? "",
+    images: p.images ?? [],
+    category: typeof p.category === "string" ? prismaCategoryToSlug(p.category) : p.category,
+    catalogueId: p.catalogueId ?? p.id,
     video: null,
     badge: i === 0 ? "Best Seller" : undefined,
     meta: "Insured Delivery",
+    price: p.price,
+    variantId: p.variantId,
+    priceHidden: p.priceHidden,
+    hasMultiplePrices: p.hasMultiplePrices,
   };
 }
 
@@ -42,17 +46,21 @@ export function WishlistPageView() {
 
   // Logged-in path: fetch server wishlist items
   useEffect(() => {
-    if (!isLoggedIn) {
-      setApiProducts(null);
-      return;
-    }
+    if (!isLoggedIn) return;
+    let active = true;
     fetch("/api/wishlist")
       .then(async (res) => {
-        if (!res.ok) return;
-        const items = (await res.json()) as { product: ApiProduct }[];
-        setApiProducts(items.map((item, i) => toProduct(item.product, i)));
+        if (!res.ok || !active) return;
+        const items = (await res.json()) as { product: any }[];
+        const valid = items
+          .filter((item) => Boolean(item.product))
+          .map((item, i) => toProduct(item.product, i));
+        setApiProducts(valid);
       })
       .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [isLoggedIn]);
 
   // Guest / local fallback path: resolve product metadata for any missing IDs
@@ -62,10 +70,10 @@ export function WishlistPageView() {
     fetch(`/api/products?ids=${missing.join(",")}`)
       .then(async (res) => {
         if (!res.ok) return;
-        const items = (await res.json()) as ApiProduct[];
+        const items = (await res.json()) as any[];
         setGuestCache((prev) => {
           const next = new Map(prev);
-          items.forEach((p, i) => next.set(p.id, toProduct(p, i)));
+          items.forEach((p, i) => next.set(p.catalogueId || p.slug || p.id, toProduct(p, i)));
           return next;
         });
       })

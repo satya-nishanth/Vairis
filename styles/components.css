@@ -1366,6 +1366,12 @@
     position: absolute;
   }
 
+  .product-card__wish--inline {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+  }
+
   .product-card__wish::before {
     content: '';
     position: absolute;

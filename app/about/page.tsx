@@ -7,7 +7,7 @@ import { pageLayouts } from "@/lib/layout-config";
 import { WHATSAPP_URL } from "@/lib/ui-data";
 
 export const metadata: Metadata = {
-  title: "About Us | Our Story & Craftsmanship | VAIRIS",
+  title: "About Us — Our Story & Craftsmanship",
   description:
     "Learn about VAIRIS — minimal fine diamond jewellery designed for modern life. IGI certified diamonds, BIS hallmarked gold, and direct-to-consumer transparent pricing.",
 };
@@ -46,7 +46,7 @@ export default function AboutPage() {
                 marginBottom: "1rem",
               }}
             >
-              Diamonds You&apos;ll Actually Wear.
+              Crafted for the Everyday
             </h1>
             <p
               style={{

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAppUser } from '@/lib/auth'
+import { prismaToProduct } from '@/lib/prisma-to-product'
+import { getPricingConfig, getShowPricesGlobal } from '@/lib/pricing-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,16 +10,35 @@ export async function GET() {
   const user = await getAppUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const items = await prisma.wishlist.findMany({
-    where: { userId: user.id },
-    include: {
-      product: {
-        select: { id: true, name: true, category: true, images: true, comingSoon: true },
+  const [items, goldRates, pricingConfig, showPricesGlobal] = await Promise.all([
+    prisma.wishlist.findMany({
+      where: { userId: user.id },
+      include: {
+        product: {
+          include: {
+            variants: true,
+            stones: { include: { diamondRate: true } },
+          },
+        },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  return NextResponse.json(items)
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.goldRate.findMany(),
+    getPricingConfig(),
+    getShowPricesGlobal(),
+  ])
+
+  const responseItems = items.map((item, i) => ({
+    id: item.id,
+    userId: item.userId,
+    productId: item.productId,
+    createdAt: item.createdAt,
+    product: item.product
+      ? prismaToProduct(item.product, goldRates, i, pricingConfig, showPricesGlobal)
+      : null,
+  }))
+
+  return NextResponse.json(responseItems)
 }
 
 export async function POST(req: NextRequest) {

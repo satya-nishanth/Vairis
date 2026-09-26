@@ -23,13 +23,11 @@ const categoryNavLinks = HEADER_NAV_CATEGORIES.map((slug) => ({
 
 const navLinks = [
   ...categoryNavLinks,
-  { href: "/collections/mangalsutra", label: "Mangalsutra" },
   { href: "/about", label: "About Us" },
 ];
 
 const minimalNavLinks = [
   { href: categoryHref("rings"), label: "Shop" },
-  { href: "/collections/mangalsutra", label: "Mangalsutra" },
   { href: "/about", label: "About Us" },
 ];
 
@@ -69,7 +67,6 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
         <div className="site-header__utilities">
           <HeaderSearchButton />
           <ThemeSwitcher className="theme-switcher--desktop" />
-          <ThemeSwitcher className="theme-switcher--mobile" />
           <div className="header-actions">
             {showAccount && <HeaderAccountButton />}
             <HeaderWishlistLink />

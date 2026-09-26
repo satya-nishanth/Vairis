@@ -143,18 +143,9 @@
     display: none;
   }
 
-  .theme-switcher--desktop {
-    display: none;
-  }
-
+  .theme-switcher--desktop,
   .theme-switcher--mobile {
-    display: inline-flex;
-    flex-shrink: 0;
-  }
-
-  .theme-switcher--mobile button {
-    padding: 6px 9px;
-    font-size: 0.5625rem;
+    display: none !important;
   }
 
   .site-header__utilities {
@@ -337,6 +328,19 @@
   .site-header__utilities {
     margin-left: auto;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .site-header__utilities .header-actions {
+    gap: 2px;
+  }
+
+  .site-header__utilities .header-actions a,
+  .site-header__utilities .header-actions button {
+    min-width: 38px;
+    min-height: 38px;
   }
 
   .utility-bar__inner,

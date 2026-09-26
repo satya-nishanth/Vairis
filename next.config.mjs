@@ -1,53 +1,70 @@
 import { withSentryConfig } from '@sentry/nextjs'
 
+const isStaging =
+  process.env.AZURE_ENV_NAME === 'staging' ||
+  process.env.NEXT_PUBLIC_APP_URL?.includes('staging') ||
+  process.env.NEXT_PUBLIC_APP_URL?.includes('azurecontainerapps.io') ||
+  process.env.VERCEL_ENV === 'preview';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
   output: 'standalone',
   async headers() {
+    const globalHeaders = [
+      {
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains; preload',
+      },
+      {
+        key: 'X-Frame-Options',
+        value: 'DENY',
+      },
+      {
+        key: 'X-Content-Type-Options',
+        value: 'nosniff',
+      },
+      {
+        key: 'Referrer-Policy',
+        value: 'strict-origin-when-cross-origin',
+      },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=()',
+      },
+      {
+        key: 'Cross-Origin-Opener-Policy',
+        value: 'same-origin',
+      },
+      {
+        key: 'Content-Security-Policy',
+        value: [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://checkout.razorpay.com https://api.razorpay.com",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co https://lh3.googleusercontent.com https://www.googletagmanager.com https://*.razorpay.com",
+          "font-src 'self' data:",
+          "media-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.google-analytics.com https://www.google-analytics.com https://*.ingest.sentry.io https://*.sentry.io https://api.razorpay.com https://lumberjack.razorpay.com",
+          "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com https://www.instagram.com",
+          "frame-ancestors 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+        ].join('; '),
+      },
+    ];
+
+    if (isStaging) {
+      globalHeaders.push({
+        key: 'X-Robots-Tag',
+        value: 'noindex, nofollow',
+      });
+    }
+
     return [
       {
         source: '/:path*',
-        headers: [
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload',
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
-          },
-          {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin',
-          },
-          {
-            key: 'Content-Security-Policy-Report-Only',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://va.vercel-scripts.com",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co https://lh3.googleusercontent.com https://www.googletagmanager.com",
-              "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.google-analytics.com https://www.google-analytics.com https://vitals.vercel-insights.com https://*.ingest.sentry.io https://*.sentry.io",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join('; '),
-          },
-        ],
+        headers: globalHeaders,
       },
       {
         source: '/admin/:path*',
@@ -99,6 +116,8 @@ const nextConfig = {
       { source: '/shop', destination: '/all-products/rings', permanent: true },
       { source: '/shop/:category', destination: '/all-products/:category', permanent: true },
       { source: '/shop/product/:id', destination: '/product/:id', permanent: true },
+      { source: '/all-products/mangalsutra', destination: '/all-products/pendants', permanent: true },
+      { source: '/collections/mangalsutra', destination: '/all-products/pendants', permanent: true },
     ];
   },
   images: {

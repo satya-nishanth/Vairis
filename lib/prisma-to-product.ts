@@ -46,6 +46,7 @@ export function prismaToProduct(
   const priceHidden = !resolvePriceVisibility(p.priceVisibility, showPricesGlobal);
   let price: number | undefined;
   let variantId: string | undefined;
+  let hasMultiplePrices = false;
   if (!priceHidden && !p.comingSoon && p.variants.length > 0 && goldRates.length > 0) {
     const rateMap = Object.fromEntries(
       goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]),
@@ -74,8 +75,10 @@ export function prismaToProduct(
       .filter((x): x is { id: string; total: number } => x !== null);
     if (priced.length > 0) {
       const cheapest = priced.reduce((a, b) => (b.total < a.total ? b : a));
+      const mostExpensive = priced.reduce((a, b) => (b.total > a.total ? b : a));
       price = Math.round(cheapest.total);
       variantId = cheapest.id;
+      hasMultiplePrices = priced.length > 1 && Math.round(cheapest.total) !== Math.round(mostExpensive.total);
     }
   }
 
@@ -112,5 +115,6 @@ export function prismaToProduct(
     styleText,
     inStock,
     priceHidden,
+    hasMultiplePrices,
   };
 }

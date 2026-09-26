@@ -30,11 +30,14 @@ export function CategoryHeroStory({ story }: CategoryHeroStoryProps) {
 
   return (
     <div className="plp-hero__story" aria-live="polite">
-      {lines.map((text) => (
-        <p key={text} className="plp-hero__story-row">
-          <StoryLine text={text} />
-        </p>
-      ))}
+      {lines.map((text, idx) => {
+        const Comp = idx === 0 ? "h1" : "p";
+        return (
+          <Comp key={text} className="plp-hero__story-row" style={idx === 0 ? { fontWeight: 400 } : undefined}>
+            <StoryLine text={text} />
+          </Comp>
+        );
+      })}
     </div>
   );
 }

@@ -30,7 +30,7 @@ function QuickAddButton({ product }: { product: Product }) {
   const handleQuickAdd = async () => {
     if (!product.variantId) return;
     if (hydrated && !isLoggedIn) {
-      router.push(`/auth/login?next=/product/${product.slug}`);
+      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.slug}`)}&msg=${encodeURIComponent("Please sign in to add this item to your bag")}`);
       return;
     }
     setAdding(true);
@@ -71,11 +71,13 @@ export function ProductCard({
 
   return (
     <article className="product-card">
-      <Link href={href} className="product-card__img-wrap">
-        {product.badge && <span className="product-card__badge">{product.badge}</span>}
-        <ProductImage src={product.image} alt={displayName} fill className="product-card__img" />
+      <div className="product-card__img-wrap">
+        <Link href={href} className="product-card__img-link" tabIndex={-1} aria-hidden="true" style={{ display: "block", width: "100%", height: "100%" }}>
+          {product.badge && <span className="product-card__badge">{product.badge}</span>}
+          <ProductImage src={product.image} alt="" fill className="product-card__img" />
+        </Link>
         <WishlistButton productId={productId} productName={displayName} />
-      </Link>
+      </div>
       <div className="product-card__body">
         <h3 className="product-card__title">
           <Link href={href}>{displayName}</Link>
@@ -83,7 +85,9 @@ export function ProductCard({
         <p className="product-card__desc">{product.description || '\u00A0'}</p>
         <div className="product-card__footer">
           {product.price != null ? (
-            <p className="product-card__price">{formatPrice(product.price)}</p>
+            <p className="product-card__price">
+              {product.hasMultiplePrices ? `From ${formatPrice(product.price)}` : formatPrice(product.price)}
+            </p>
           ) : (
             product.priceHidden && <p className="product-card__price product-card__price--on-request">Price on Request</p>
           )}

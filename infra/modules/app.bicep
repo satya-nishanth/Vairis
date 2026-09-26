@@ -85,7 +85,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', secretRef: 'supabase-anon-key' }
             { name: 'SUPABASE_SERVICE_ROLE_KEY', secretRef: 'supabase-service-role-key' }
             { name: 'PAYMENT_GATEWAY', value: 'mock' }
-            { name: 'ALLOW_MOCK_PAYMENTS', value: 'true' }
+            { name: 'ALLOW_MOCK_PAYMENTS', value: 'false' }
             { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: 'false' }
             { name: 'SHIPPING_PROVIDER', value: 'manual' }
             { name: 'SHIPPING_MOCK', value: 'true' }

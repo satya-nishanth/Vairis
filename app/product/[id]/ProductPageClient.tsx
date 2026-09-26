@@ -187,7 +187,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   const handleAddToCart = async () => {
     if (!selectedVariant) return;
     if (hydrated && !isLoggedIn) {
-      router.push(`/auth/login?next=/product/${product.id}`);
+      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.id}`)}&msg=${encodeURIComponent("Please sign in to add this item to your bag")}`);
       return;
     }
     setAddingToCart(true);
