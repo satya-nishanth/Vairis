@@ -14,6 +14,9 @@ export async function getSession() {
   return session
 }
 
+import { NextResponse } from 'next/server'
+import { isCachedAdminEmail, getEffectiveRole, type UserRole } from './roles'
+
 /** Resolve the Prisma User for the current Supabase session (creates row if missing). */
 export async function getAppUser(): Promise<User | null> {
   const session = await getSession()
@@ -51,18 +54,63 @@ export async function requireUser() {
   return user
 }
 
-/** Case-insensitive check against ADMIN_EMAILS — shared so admin-gated
+/** Case-insensitive check against ADMIN_EMAILS & DB roles — shared so admin-gated
  * pages and APIs (e.g. requireFinanceApi) can't drift on what counts
  * as an admin email. */
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false
+  const lower = email.trim().toLowerCase()
   const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
-  return adminEmails.includes(email.toLowerCase())
+  const financeEmails = (process.env.FINANCE_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
+  if (adminEmails.includes(lower) || financeEmails.includes(lower)) return true
+  return isCachedAdminEmail(lower)
 }
 
+/** For Server Components / pages — redirects to login when unauthenticated. */
 export async function requireAdmin() {
   const session = await getSession()
   if (!session) redirect('/auth/admin')
-  if (!isAdminEmail(session.user.email)) redirect('/')
+  const email = session.user.email?.toLowerCase()
+  if (!email) redirect('/')
+  const role = await getEffectiveRole(email)
+  if (role !== 'ADMIN' && role !== 'FINANCE') redirect('/')
   return session
+}
+
+/**
+ * API-safe admin authentication — returns { session, role, email } or { error: NextResponse }.
+ * NEVER redirects, guaranteeing API callers always receive standard JSON 401/403 responses.
+ */
+export async function requireAdminApi(): Promise<
+  | { session: NonNullable<Awaited<ReturnType<typeof getSession>>>; role: UserRole; email: string; error?: never }
+  | { session?: never; role?: never; email?: never; error: NextResponse }
+> {
+  const session = await getSession()
+  if (!session) {
+    return {
+      error: NextResponse.json(
+        { error: 'Unauthorized: Session missing or expired. Please sign in.' },
+        { status: 401 },
+      ),
+    }
+  }
+  const email = session.user?.email?.toLowerCase()
+  if (!email) {
+    return {
+      error: NextResponse.json(
+        { error: 'Unauthorized: Session missing email address.' },
+        { status: 401 },
+      ),
+    }
+  }
+  const role = await getEffectiveRole(email)
+  if (role !== 'ADMIN' && role !== 'FINANCE') {
+    return {
+      error: NextResponse.json(
+        { error: 'Forbidden: Admin or Finance privilege required.' },
+        { status: 403 },
+      ),
+    }
+  }
+  return { session, role, email }
 }
