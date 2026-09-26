@@ -11,7 +11,6 @@ export function financeEmails(): string[] {
 export function isFinanceEmail(email: string | null | undefined): boolean {
   if (!email) return false
   const lower = email.trim().toLowerCase()
-  if (financeEmails().includes(lower)) return true
   return isCachedFinanceEmail(lower)
 }
 

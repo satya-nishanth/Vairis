@@ -1,13 +1,14 @@
 import fs from 'fs'
 import path from 'path'
 import { getSupabaseAdmin } from './supabase-admin'
+import { prisma } from './prisma'
 
 export type UserRole = 'USER' | 'ADMIN' | 'FINANCE'
 
 export interface RoleAssignmentRecord {
   id: string
   email: string
-  role: 'ADMIN' | 'FINANCE'
+  role: UserRole
   createdBy?: string | null
   createdAt: string
   updatedAt: string
@@ -43,7 +44,7 @@ export function getEnvFinanceEmails(): string[] {
 }
 
 /**
- * Read dynamic roles persisted in data/roles.json (fallback persistent store).
+ * Read dynamic roles persisted in data/roles.json.
  */
 function readRolesFile(): RoleAssignmentRecord[] {
   try {
@@ -86,17 +87,25 @@ function writeRolesFile(assignments: RoleAssignmentRecord[]): void {
 
 /**
  * Refresh in-memory cache of dynamic & env roles (30s TTL).
+ * Precedence:
+ * 1. Explicit dashboard dynamic assignment (roles.json) wins.
+ * 2. Baseline fallback: server environment variables (ADMIN_EMAILS / FINANCE_EMAILS).
+ * 3. Supabase Auth app_metadata.
  */
 export async function refreshRoleCache(): Promise<CachedRoles> {
-  const adminEmails = new Set<string>(getEnvAdminEmails())
-  const financeEmails = new Set<string>(getEnvFinanceEmails())
+  const adminEmails = new Set<string>()
+  const financeEmails = new Set<string>()
 
-  // Any finance email in env is automatically also an admin
-  for (const f of financeEmails) {
+  // 1. Load env variables as baseline defaults
+  for (const f of getEnvFinanceEmails()) {
+    financeEmails.add(f)
     adminEmails.add(f)
   }
+  for (const a of getEnvAdminEmails()) {
+    adminEmails.add(a)
+  }
 
-  // 1. Read persistent dynamic assignments
+  // 2. Read persistent dynamic assignments (takes precedence over env defaults)
   const fileAssignments = readRolesFile()
   const assignmentMap = new Map<string, RoleAssignmentRecord>()
 
@@ -108,10 +117,14 @@ export async function refreshRoleCache(): Promise<CachedRoles> {
       adminEmails.add(e)
     } else if (a.role === 'ADMIN') {
       adminEmails.add(e)
+      financeEmails.delete(e) // explicitly demoted or set as ADMIN
+    } else if (a.role === 'USER') {
+      adminEmails.delete(e)
+      financeEmails.delete(e) // explicitly revoked
     }
   }
 
-  // 2. Query Supabase Auth app_metadata if accessible
+  // 3. Query Supabase Auth app_metadata if accessible
   try {
     const admin = getSupabaseAdmin()
     const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 })
@@ -135,6 +148,7 @@ export async function refreshRoleCache(): Promise<CachedRoles> {
           }
         } else if (metaRole === 'ADMIN') {
           adminEmails.add(e)
+          financeEmails.delete(e)
           if (!assignmentMap.has(e)) {
             assignmentMap.set(e, {
               id: u.id,
@@ -162,37 +176,64 @@ export async function refreshRoleCache(): Promise<CachedRoles> {
   return roleCache
 }
 
+/**
+ * Synchronous check for Admin access (used by UI helpers / sync callers).
+ * Fallback guarantees cold workers / servers recognize newly assigned dynamic roles.
+ */
 export function isCachedAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false
   const lower = email.trim().toLowerCase()
-  if (getEnvAdminEmails().includes(lower) || getEnvFinanceEmails().includes(lower)) return true
+
+  // 1. Check active cache
   if (roleCache && Date.now() < roleCache.expiresAt) {
     return roleCache.adminEmails.has(lower)
   }
-  return false
+
+  // 2. Synchronous file fallback
+  const fileAssignments = readRolesFile()
+  const assignment = fileAssignments.find((a) => a.email.toLowerCase() === lower)
+  if (assignment) {
+    return assignment.role === 'ADMIN' || assignment.role === 'FINANCE'
+  }
+
+  // 3. Fallback to environment variables
+  return getEnvAdminEmails().includes(lower) || getEnvFinanceEmails().includes(lower)
 }
 
+/**
+ * Synchronous check for Finance access (used by layout and navigation).
+ */
 export function isCachedFinanceEmail(email: string | null | undefined): boolean {
   if (!email) return false
   const lower = email.trim().toLowerCase()
-  if (getEnvFinanceEmails().includes(lower)) return true
+
+  // 1. Check active cache
   if (roleCache && Date.now() < roleCache.expiresAt) {
     return roleCache.financeEmails.has(lower)
   }
-  return false
+
+  // 2. Synchronous file fallback
+  const fileAssignments = readRolesFile()
+  const assignment = fileAssignments.find((a) => a.email.toLowerCase() === lower)
+  if (assignment) {
+    return assignment.role === 'FINANCE'
+  }
+
+  // 3. Fallback to environment variables
+  return getEnvFinanceEmails().includes(lower)
 }
 
 /**
  * Asynchronously resolve the effective role of an email address.
+ * Precedence:
+ * 1. Dynamic assignments (from dashboard / roles.json / Supabase)
+ * 2. Environment variables baseline (FINANCE_EMAILS -> FINANCE, ADMIN_EMAILS -> ADMIN)
+ * 3. Default: USER
  */
 export async function getEffectiveRole(email: string | null | undefined): Promise<UserRole> {
   if (!email) return 'USER'
   const lower = email.trim().toLowerCase()
 
-  // 1. Infallible root: env FINANCE_EMAILS
-  if (getEnvFinanceEmails().includes(lower)) return 'FINANCE'
-
-  // 2. Refresh / query cache
   const cache = await refreshRoleCache()
   if (cache.financeEmails.has(lower)) return 'FINANCE'
   if (cache.adminEmails.has(lower)) return 'ADMIN'
@@ -223,7 +264,7 @@ export function canManageTargetRole(
  */
 export async function assignDynamicRole(
   email: string,
-  role: 'ADMIN' | 'FINANCE',
+  role: UserRole,
   createdBy?: string,
 ): Promise<RoleAssignmentRecord> {
   const lower = email.trim().toLowerCase()
@@ -246,6 +287,20 @@ export async function assignDynamicRole(
   }
 
   writeRolesFile(assignments)
+
+  // Ensure Prisma user exists so foreign keys and directory listings work seamlessly
+  try {
+    await prisma.user.upsert({
+      where: { email: lower },
+      update: {},
+      create: {
+        email: lower,
+        name: lower.split('@')[0],
+      },
+    })
+  } catch (dbErr) {
+    console.warn('[roles.assignDynamicRole] prisma user upsert warning:', dbErr)
+  }
 
   // Also sync to Supabase Auth metadata if user exists
   try {
@@ -271,9 +326,32 @@ export async function assignDynamicRole(
 export async function revokeDynamicRole(email: string): Promise<boolean> {
   const lower = email.trim().toLowerCase()
   const assignments = readRolesFile()
-  const filtered = assignments.filter((a) => a.email.toLowerCase() !== lower)
+  const existingIdx = assignments.findIndex((a) => a.email.toLowerCase() === lower)
 
-  writeRolesFile(filtered)
+  // If email is also in env variables, we must record role: 'USER' to override the env baseline!
+  const isEnv = getEnvAdminEmails().includes(lower) || getEnvFinanceEmails().includes(lower)
+
+  let updated: RoleAssignmentRecord[]
+  if (isEnv) {
+    const record: RoleAssignmentRecord = {
+      id: existingIdx >= 0 ? assignments[existingIdx].id : `role_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      email: lower,
+      role: 'USER',
+      createdBy: 'Dashboard Revocation',
+      createdAt: existingIdx >= 0 ? assignments[existingIdx].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    if (existingIdx >= 0) {
+      assignments[existingIdx] = record
+      updated = assignments
+    } else {
+      updated = [...assignments, record]
+    }
+  } else {
+    updated = assignments.filter((a) => a.email.toLowerCase() !== lower)
+  }
+
+  writeRolesFile(updated)
 
   // Remove from Supabase Auth app_metadata
   try {

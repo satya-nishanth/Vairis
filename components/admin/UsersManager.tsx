@@ -724,7 +724,7 @@ export function UsersManager({
                           </span>
                           {(u.isEnvAdmin || u.isEnvFinance) && (
                             <div style={{ fontSize: '0.6875rem', color: '#9ca3af', marginTop: '2px' }}>
-                              Env Protected
+                              Env Baseline
                             </div>
                           )}
                         </td>
@@ -1035,38 +1035,26 @@ export function UsersManager({
                 <select
                   value={userFormData.role}
                   onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value as UserRole })}
-                  disabled={editingUser?.isEnvFinance}
                   style={{
                     width: '100%',
                     padding: '8px 10px',
                     borderRadius: '4px',
                     border: '1px solid #d1d5db',
                     fontSize: '0.875rem',
-                    backgroundColor: editingUser?.isEnvFinance ? '#f9fafb' : '#ffffff',
-                    cursor: editingUser?.isEnvFinance ? 'not-allowed' : 'default',
+                    backgroundColor: '#ffffff',
                   }}
                 >
-                  <option value="USER" disabled={editingUser?.isEnvFinance || editingUser?.isEnvAdmin}>
+                  <option value="USER">
                     User / Customer (Standard Access)
                   </option>
-                  <option value="ADMIN" disabled={editingUser?.isEnvFinance}>
+                  <option value="ADMIN">
                     Admin (Catalog, Orders, Operations)
                   </option>
                   <option value="FINANCE" disabled={!isFinanceUser}>
                     Finance (Ledger, Settlements, Audits) {!isFinanceUser ? '— (Finance Admins Only)' : ''}
                   </option>
                 </select>
-                {editingUser?.isEnvFinance && (
-                  <p style={{ fontSize: '0.75rem', color: '#6b21a8', margin: '4px 0 0', fontWeight: 500 }}>
-                    * This user is configured in FINANCE_EMAILS server environment variables. To change or remove this role, update the server environment configuration.
-                  </p>
-                )}
-                {editingUser?.isEnvAdmin && !editingUser?.isEnvFinance && (
-                  <p style={{ fontSize: '0.75rem', color: '#1e40af', margin: '4px 0 0', fontWeight: 500 }}>
-                    * This user is configured in ADMIN_EMAILS server environment variables. Cannot demote to standard user via dashboard.
-                  </p>
-                )}
-                {!isFinanceUser && !editingUser?.isEnvFinance && (
+                {!isFinanceUser && (
                   <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '4px 0 0' }}>
                     * Finance role assignment requires root Finance privileges.
                   </p>
