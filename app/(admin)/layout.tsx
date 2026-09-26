@@ -7,7 +7,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="admin-shell">
-      <AdminSidebar showFinance={isFinanceEmail(session.user.email)} />
+      <AdminSidebar
+        showFinance={isFinanceEmail(session.user.email)}
+        userEmail={session.user.email ?? ''}
+      />
       <main className="admin-shell__main">{children}</main>
     </div>
   )

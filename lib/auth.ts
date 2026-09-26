@@ -54,16 +54,12 @@ export async function requireUser() {
   return user
 }
 
-/** Case-insensitive check against ADMIN_EMAILS & DB roles — shared so admin-gated
- * pages and APIs (e.g. requireFinanceApi) can't drift on what counts
- * as an admin email. */
-export function isAdminEmail(email: string | null | undefined): boolean {
+/** Case-insensitive check against dynamic roles & ADMIN_EMAILS / FINANCE_EMAILS. */
+export async function isAdminEmail(email: string | null | undefined): Promise<boolean> {
   if (!email) return false
   const lower = email.trim().toLowerCase()
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
-  const financeEmails = (process.env.FINANCE_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase())
-  if (adminEmails.includes(lower) || financeEmails.includes(lower)) return true
-  return isCachedAdminEmail(lower)
+  const role = await getEffectiveRole(lower)
+  return role === 'ADMIN' || role === 'FINANCE'
 }
 
 /** For Server Components / pages — redirects to login when unauthenticated. */
