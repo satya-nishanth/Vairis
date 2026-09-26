@@ -79,32 +79,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           { status: 403 },
         )
       }
-
-      const envFinances = getEnvFinanceEmails()
-      const envAdmins = getEnvAdminEmails()
-      const lowerTargetEmail = existing.email.toLowerCase()
-
-      // Cannot change an env finance user to ADMIN or USER
-      if (envFinances.includes(lowerTargetEmail) && parsed.data.role !== 'FINANCE') {
-        return NextResponse.json(
-          {
-            error:
-              `Cannot change role of ${existing.email}. This account is configured as FINANCE in server environment variables (FINANCE_EMAILS). Update server environment settings to change this user's role.`,
-          },
-          { status: 400 },
-        )
-      }
-
-      // Cannot demote an env admin user to USER
-      if (envAdmins.includes(lowerTargetEmail) && parsed.data.role === 'USER') {
-        return NextResponse.json(
-          {
-            error:
-              `Cannot demote ${existing.email}. This account is configured as ADMIN in server environment variables (ADMIN_EMAILS). Update server environment settings to remove admin privileges.`,
-          },
-          { status: 400 },
-        )
-      }
     }
 
     const email = parsed.data.email ? parsed.data.email.toLowerCase() : existing.email
@@ -216,17 +190,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       )
     }
 
-    const envAdmins = getEnvAdminEmails()
-    const envFinances = getEnvFinanceEmails()
-    if (
-      envAdmins.includes(target.email.toLowerCase()) ||
-      envFinances.includes(target.email.toLowerCase())
-    ) {
-      return NextResponse.json(
-        { error: 'Cannot delete accounts configured in server environment variables.' },
-        { status: 400 },
-      )
-    }
 
     if (target._count.orders > 0) {
       return NextResponse.json(

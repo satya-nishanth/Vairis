@@ -1,8 +1,19 @@
-import { getSession, requireUser, requireAdmin } from '@/lib/auth'
+import { getSession, requireUser, requireAdmin, isAdminEmail } from '@/lib/auth'
+import { assignDynamicRole, revokeDynamicRole, invalidateRoleCache } from '@/lib/roles'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
 
 jest.mock('@/lib/supabase-server')
+jest.mock('@/lib/supabase-admin', () => ({
+  getSupabaseAdmin: () => ({
+    auth: {
+      admin: {
+        listUsers: jest.fn().mockResolvedValue({ data: { users: [] } }),
+        updateUserById: jest.fn().mockResolvedValue({}),
+      },
+    },
+  }),
+}))
 jest.mock('@/lib/prisma', () => ({
   prisma: { user: { upsert: jest.fn() } },
 }))
@@ -115,5 +126,45 @@ describe('requireAdmin', () => {
     process.env.ADMIN_EMAILS = ''
     mockCreateClient.mockResolvedValue(mockSupabase(fakeUser('admin@vairis.com')))
     await expect(requireAdmin()).rejects.toThrow('REDIRECT:/')
+  })
+})
+
+// ─── isAdminEmail ──────────────────────────────────────────────────────────
+
+describe('isAdminEmail', () => {
+  beforeEach(async () => {
+    invalidateRoleCache()
+    process.env.ADMIN_EMAILS = 'envadmin@thevairis.com'
+    process.env.FINANCE_EMAILS = 'envfinance@thevairis.com'
+    await revokeDynamicRole('newadmin@thevairis.com')
+    await revokeDynamicRole('newfinance@thevairis.com')
+  })
+
+  it('allows emails configured in ADMIN_EMAILS', async () => {
+    expect(await isAdminEmail('envadmin@thevairis.com')).toBe(true)
+  })
+
+  it('allows emails configured in FINANCE_EMAILS', async () => {
+    expect(await isAdminEmail('envfinance@thevairis.com')).toBe(true)
+  })
+
+  it('allows new dynamic ADMIN email not in env variables', async () => {
+    await assignDynamicRole('newadmin@thevairis.com', 'ADMIN', 'dashboard')
+    expect(await isAdminEmail('newadmin@thevairis.com')).toBe(true)
+  })
+
+  it('allows new dynamic FINANCE email not in env variables', async () => {
+    await assignDynamicRole('newfinance@thevairis.com', 'FINANCE', 'dashboard')
+    expect(await isAdminEmail('newfinance@thevairis.com')).toBe(true)
+  })
+
+  it('rejects customer email not in env or dynamic assignments', async () => {
+    expect(await isAdminEmail('regularuser@example.com')).toBe(false)
+  })
+
+  it('rejects empty or null email', async () => {
+    expect(await isAdminEmail('')).toBe(false)
+    expect(await isAdminEmail(null)).toBe(false)
+    expect(await isAdminEmail(undefined)).toBe(false)
   })
 })

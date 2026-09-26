@@ -3,9 +3,17 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
+
+interface AdminSidebarProps {
+  showFinance?: boolean
+  userEmail?: string
+}
 
 const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Dashboard', href: '/admin/dashboard' },
+  { label: 'Users & Roles', href: '/admin/users' },
+  { label: 'Customers', href: '/admin/customers' },
   { label: 'Analytics', href: '/admin/analytics' },
   { label: 'Products', href: '/admin/products' },
   { label: 'Categories', href: '/admin/categories' },
@@ -21,8 +29,6 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Promos', href: '/admin/promos' },
   { label: 'Reviews', href: '/admin/reviews' },
   { label: 'Contacts', href: '/admin/contacts' },
-  { label: 'Customers', href: '/admin/customers' },
-  { label: 'Users & Roles', href: '/admin/users' },
 ]
 
 function isActive(pathname: string, href: string) {
@@ -32,9 +38,27 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function AdminSidebar({ showFinance = false }: { showFinance?: boolean }) {
+export function AdminSidebar({
+  showFinance = false,
+  userEmail = '',
+}: AdminSidebarProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  async function handleLogout() {
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {})
+    } catch (err) {
+      console.error('Error during logout:', err)
+    } finally {
+      window.location.href = '/auth/admin'
+    }
+  }
 
   // Close drawer on route change
   useEffect(() => {
@@ -86,9 +110,35 @@ export function AdminSidebar({ showFinance = false }: { showFinance?: boolean })
         <Link href="/admin/dashboard" className="admin-shell__topbar-brand">
           <img src="/images/vairius_logo.png" alt="VAIRIS" />
         </Link>
-        <Link href="/" className="admin-shell__topbar-store">
-          Store
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Link href="/" className="admin-shell__topbar-store">
+            Store
+          </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="admin-shell__topbar-logout"
+            aria-label="Log out"
+            title="Log out"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* Backdrop */}
@@ -113,9 +163,50 @@ export function AdminSidebar({ showFinance = false }: { showFinance?: boolean })
         </div>
         {nav}
         <div className="admin-shell__footer">
-          <Link href="/" className="admin-shell__storefront">
-            ← Storefront
-          </Link>
+          {userEmail && (
+            <div className="admin-shell__user-info">
+              <div className="admin-shell__user-avatar">
+                {userEmail.charAt(0).toUpperCase()}
+              </div>
+              <div className="admin-shell__user-details">
+                <span className="admin-shell__user-email" title={userEmail}>
+                  {userEmail}
+                </span>
+                <span className="admin-shell__user-role">
+                  {showFinance ? 'Finance Admin' : 'Store Admin'}
+                </span>
+              </div>
+            </div>
+          )}
+          <div className="admin-shell__footer-actions">
+            <Link href="/" className="admin-shell__storefront">
+              ← Storefront
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="admin-shell__logout-btn"
+              title="Sign out of Admin Dashboard"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              {isLoggingOut ? 'Logging out...' : 'Log out'}
+            </button>
+          </div>
         </div>
       </aside>
     </>
