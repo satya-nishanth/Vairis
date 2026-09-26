@@ -155,12 +155,14 @@ export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 
 /** Categories shown in the main site header nav - edit this list to change header links. */
 export const HEADER_NAV_CATEGORIES = [
-  "necklaces",
-  "earrings",
   "rings",
-  "bracelets",
+  "earrings",
   "pendants",
+  "bracelets",
 ] as const satisfies readonly ShopCategory[];
+
+/** Active stocked categories for storefront category carousels and rails */
+export const STOCKED_CATEGORIES: readonly ShopCategory[] = HEADER_NAV_CATEGORIES;
 
 /** Top products for PLP hero carousel */
 export function getTopCategoryProducts(category: ProductCategory, limit = 8): CatalogueProduct[] {
@@ -235,11 +237,11 @@ export function isShopCategory(slug: string): slug is ShopCategory {
 
 const ALL_PRODUCTS_BASE = "/all-products";
 
-export function categoryHref(category: ProductCategory): string {
+export function categoryHref(category: ProductCategory | string): string {
   return `${ALL_PRODUCTS_BASE}/${category}`;
 }
 
 /** Legacy `/category-{slug}` path (pre–all-products route). */
-export function legacyCategoryHref(category: ProductCategory): string {
+export function legacyCategoryHref(category: ProductCategory | string): string {
   return `/category-${category}`;
 }

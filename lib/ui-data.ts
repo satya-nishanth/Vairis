@@ -7,6 +7,7 @@ import {
   getProductBySlug,
   getProductsByCategory,
   SHOP_CATEGORIES,
+  STOCKED_CATEGORIES,
 } from "./catalogue-ui";
 import { marketingImages } from "./images";
 
@@ -34,6 +35,8 @@ export type Product = {
   /** Price intentionally not shown (admin pricing-visibility setting) — distinct
    * from `price` simply being unavailable (e.g. no gold rate configured yet). */
   priceHidden?: boolean;
+  /** Whether the product has multiple variants with differing prices (PLP shows "From ₹...") */
+  hasMultiplePrices?: boolean;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {
@@ -77,7 +80,7 @@ export function getProduct(slug: string): Product | undefined {
   return item ? catalogueToProduct(item) : undefined;
 }
 
-export const categories = SHOP_CATEGORIES.map((slug) => {
+export const categories = STOCKED_CATEGORIES.map((slug) => {
   const previewImages = getCategoryPreviewImages(slug);
   const heroImage = getCategoryHeroImage(slug) ?? marketingImages.categories[slug];
 
@@ -146,3 +149,6 @@ export function getHeroSlides(): readonly string[] {
 export const formatPrice = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
 export const WHATSAPP_URL = "https://wa.me/917070607070";
+export const WHATSAPP_CONSULTATION_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%27d%20like%20to%20book%20a%20consultation%20call.`;
+export const WHATSAPP_SIZING_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%20need%20help%20finding%20my%20ring%20size.`;
+export const WHATSAPP_STYLING_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%27d%20like%20to%20start%20a%20personal%20styling%20session.`;

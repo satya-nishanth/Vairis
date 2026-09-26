@@ -22,6 +22,7 @@ export type CategoryFilterPanelProps = {
   sortSectionId?: string;
   showCount?: boolean;
   productCount?: number;
+  hasPricedProducts?: boolean;
 };
 
 export function CategoryFilterPanel({
@@ -31,6 +32,7 @@ export function CategoryFilterPanel({
   sortSectionId = "plp-filter-sort",
   showCount = false,
   productCount,
+  hasPricedProducts = true,
 }: CategoryFilterPanelProps) {
   const toggle = (group: FilterGroup, value: string) => {
     const current = filters[group.id];
@@ -49,8 +51,12 @@ export function CategoryFilterPanel({
         >
           <option value="popular">Popular</option>
           <option value="newest">Newest</option>
-          <option value="price-asc">Price: Low to High</option>
-          <option value="price-desc">Price: High to Low</option>
+          {hasPricedProducts && (
+            <>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+            </>
+          )}
         </select>
       </div>
 

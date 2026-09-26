@@ -1,18 +1,18 @@
 import { notFound } from 'next/navigation'
-import { getSession, requireAdmin, isAdminEmail } from './auth'
+import { getSession, requireAdmin } from './auth'
 import { NextResponse } from 'next/server'
 import { prisma } from './prisma'
+import { getEffectiveRole, isCachedFinanceEmail, getEnvFinanceEmails } from './roles'
 
 export function financeEmails(): string[] {
-  return (process.env.FINANCE_EMAILS ?? '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
+  return getEnvFinanceEmails()
 }
 
 export function isFinanceEmail(email: string | null | undefined): boolean {
   if (!email) return false
-  return financeEmails().includes(email.toLowerCase())
+  const lower = email.trim().toLowerCase()
+  if (financeEmails().includes(lower)) return true
+  return isCachedFinanceEmail(lower)
 }
 
 /** Resolve Config Account for this login email (partner default). */
@@ -27,7 +27,8 @@ export async function defaultFinanceAccountId(email: string | null | undefined):
 
 export async function requireFinance() {
   const session = await requireAdmin()
-  if (!isFinanceEmail(session.user.email)) notFound()
+  const role = await getEffectiveRole(session.user.email)
+  if (role !== 'FINANCE') notFound()
   return session
 }
 
@@ -36,8 +37,11 @@ export async function requireFinanceApi() {
   if (!session) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  if (!isAdminEmail(session.user.email) || !isFinanceEmail(session.user.email)) {
+  const email = session.user.email?.toLowerCase() ?? ''
+  const role = await getEffectiveRole(email)
+  if (role !== 'FINANCE') {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return { session }
 }
+

@@ -24,21 +24,45 @@ const inter = Inter({
   variable: "--font-sans-loaded",
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com";
+const IS_VERCEL = process.env.VERCEL === "1" || process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "1";
+
+const isStaging =
+  process.env.AZURE_ENV_NAME === "staging" ||
+  BASE_URL.includes("staging") ||
+  BASE_URL.includes("azurecontainerapps.io") ||
+  process.env.VERCEL_ENV === "preview";
+
 export const metadata: Metadata = {
-  title: "VAIRIS - Everyday Diamond Wear",
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: "VAIRIS — Everyday Diamond Wear",
+    template: "%s | VAIRIS",
+  },
   description:
     "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
+  alternates: {
+    canonical: "./",
+  },
+  ...(isStaging
+    ? {
+        robots: {
+          index: false,
+          follow: false,
+        },
+      }
+    : {}),
   openGraph: {
-    title: "VAIRIS - Everyday Diamond Wear",
+    title: "VAIRIS — Everyday Diamond Wear",
     description:
       "Minimal diamond jewellery designed for work, coffee runs, date nights and everyday confidence.",
     siteName: "Vairis",
     type: "website",
   },
   icons: {
-    icon: "/images/logo_icon.png",
-    shortcut: "/images/logo_icon.png",
-    apple: "/images/logo_icon.png",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
 };
 
@@ -69,7 +93,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <CartProvider>
               {children}
               <PageViewTracker />
-              <Analytics />
+              {IS_VERCEL && <Analytics />}
             </CartProvider>
           </WishlistProvider>
         </ThemeProvider>

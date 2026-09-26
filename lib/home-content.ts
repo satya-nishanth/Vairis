@@ -4,7 +4,7 @@ export const whyVairisFeatures = [
   {
     icon: { name: "no_showroom_markups", category: "brand" as const },
     title: "No Showroom Costs",
-    description: "You pay for jewelry, not overheads.",
+    description: "You pay for jewellery, not overheads.",
   },
   {
     icon: { name: "transparent_pricing", category: "brand" as const },
@@ -46,6 +46,30 @@ export const founderVideos = [
     title: "Behind Vairis",
     description: "Design, quality and transparency",
     placeholder: "Founder video - Behind Vairis",
+  },
+] as const;
+
+export const instagramVideos = [
+  {
+    src: "/images/instagram/reel-launch-day.jpg",
+    title: "Launch day",
+    description: "Started with just an idea... now it's real ✨",
+    url: "https://www.instagram.com/reel/DWOoJgwDo-l/",
+    placeholder: "Instagram Reel - Launch day",
+  },
+  {
+    src: "/images/instagram/reel-our-mission.jpg",
+    title: "Our mission",
+    description: "A celebration of her evolution. A celebration of her 💎",
+    url: "https://www.instagram.com/reel/DZpchQMBcje/",
+    placeholder: "Instagram Reel - Our mission",
+  },
+  {
+    src: "/images/instagram/reel-exchange-value.jpg",
+    title: "Exchange Value",
+    description: "Natural or lab grown… buy the diamond you truly love ✨",
+    url: "https://www.instagram.com/reel/DZIRqQEhHWm/",
+    placeholder: "Instagram Reel - Exchange Value",
   },
 ] as const;
 

@@ -16,6 +16,7 @@ const LOCAL_KEY = "vairis-wishlist-ids";
 type WishlistContextValue = {
   ids: ReadonlySet<string>;
   count: number;
+  isLoggedIn: boolean;
   has: (id: string) => boolean;
   toggle: (id: string) => boolean;
 };
@@ -36,7 +37,35 @@ function loadLocal(): Set<string> {
 
 function saveLocal(ids: Set<string>) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(LOCAL_KEY, JSON.stringify([...ids]));
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+async function syncWithServer(localIds: Set<string>): Promise<Set<string>> {
+  try {
+    const res = await fetch("/api/wishlist");
+    if (!res.ok) return localIds;
+    const json = (await res.json()) as { productId: string }[];
+    const serverIds = new Set(json.map((w) => w.productId));
+
+    // Any items saved locally that aren't on the server get synced to the server:
+    for (const localId of localIds) {
+      if (!serverIds.has(localId)) {
+        serverIds.add(localId);
+        fetch("/api/wishlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId: localId }),
+        }).catch(console.error);
+      }
+    }
+    return serverIds;
+  } catch {
+    return localIds;
+  }
 }
 
 export function WishlistProvider({ children }: { children: ReactNode }) {
@@ -55,29 +84,42 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       const loggedIn = !!data.session;
       setIsLoggedIn(loggedIn);
 
+      const local = loadLocal();
       if (loggedIn) {
-        const res = await fetch("/api/wishlist");
-        if (res.ok) {
-          const json = (await res.json()) as { productId: string }[];
-          setIds(new Set(json.map((w) => w.productId)));
-        }
+        const merged = await syncWithServer(local);
+        setIds(merged);
+        saveLocal(merged);
       } else {
-        setIds(loadLocal());
+        setIds(local);
       }
       setHydrated(true);
     }
 
     init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setIsLoggedIn(!!session);
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const loggedIn = !!session;
+      setIsLoggedIn(loggedIn);
+
+      if (event === "SIGNED_IN" && session) {
+        const local = loadLocal();
+        const merged = await syncWithServer(local);
+        setIds(merged);
+        saveLocal(merged);
+      } else if (event === "SIGNED_OUT") {
+        // Keep the items wishlisted on this device so the user still sees their wishlist
+        const local = loadLocal();
+        setIds(local);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (hydrated && !isLoggedIn) saveLocal(ids);
-  }, [ids, hydrated, isLoggedIn]);
+    if (hydrated) {
+      saveLocal(ids);
+    }
+  }, [ids, hydrated]);
 
   const toggle = useCallback(
     (id: string) => {
@@ -91,12 +133,10 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
           next.add(id);
           added = true;
         }
+        saveLocal(next);
         return next;
       });
       if (isLoggedIn) {
-        // Always POSTed regardless of direction before — removing an item
-        // never actually deleted it server-side, so it silently reappeared
-        // (or never left the wishlist page's list) on refresh.
         if (added) {
           fetch("/api/wishlist", {
             method: "POST",
@@ -114,8 +154,8 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
 
   const has = useCallback((id: string) => ids.has(id), [ids]);
   const value = useMemo(
-    () => ({ ids, count: ids.size, has, toggle }),
-    [ids, has, toggle],
+    () => ({ ids, count: ids.size, isLoggedIn, has, toggle }),
+    [ids, isLoggedIn, has, toggle],
   );
 
   return (

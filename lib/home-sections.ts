@@ -100,6 +100,7 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
         products: collection.products
           .map((cp) => cp.product)
           .filter((p) => p.isActive && p.status === 'LIVE')
+          .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name))
           .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)),
       })
     } else if (row.kind === 'editorial') {

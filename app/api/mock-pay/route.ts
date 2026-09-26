@@ -4,12 +4,13 @@ import { z } from 'zod'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { mockSign, postMockWebhook } from '@/lib/payments/mock'
+import { isMockPayAllowed } from '@/lib/payments/mock-guard'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/mock-pay — the mock gateway's "payment processor".
- * Only active when PAYMENT_GATEWAY=mock. Simulates the customer's action
+ * Only active when PAYMENT_GATEWAY=mock and allowed by environment. Simulates the customer's action
  * on the /mock-pay modal:
  *
  *   success → self-posts a payment.captured webhook (HMAC-signed) and
@@ -25,7 +26,7 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  if ((process.env.PAYMENT_GATEWAY ?? 'razorpay') !== 'mock') {
+  if (!isMockPayAllowed()) {
     return NextResponse.json({ error: 'Mock payments not enabled' }, { status: 404 })
   }
 

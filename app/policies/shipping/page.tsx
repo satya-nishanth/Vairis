@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { PolicyPage } from "../PolicyPage";
 
-export const metadata: Metadata = { title: "Shipping Policy | VAIRIS" };
+export const metadata: Metadata = {
+  title: "Shipping Policy",
+  description:
+    "Learn about free insured shipping across India with tamper-proof packaging and OTP-verified delivery from VAIRIS.",
+};
 
 export default function ShippingPolicyPage() {
   return (
-    <PolicyPage title="Shipping Policy" updated="25 July 2026">
+    <PolicyPage title="Shipping Policy" updated="25 September 2026">
       <h2>Coverage & cost</h2>
       <p>
         We ship across India. Shipping is free on every order — no minimums.

@@ -13,6 +13,8 @@ param customDomainFqdn string = ''
 @description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued (DNS TXT/CNAME verified) before this deploys.')
 param customCertificateName string = ''
 
+
+
 var isProd = environmentName == 'prod'
 var certificateResourceId = !empty(customCertificateName) ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', 'cae-vairis-${environmentName}', customCertificateName) : ''
 var customDomains = !empty(customDomainFqdn) ? [{ name: customDomainFqdn, certificateId: certificateResourceId, bindingType: 'SniEnabled' }] : []
@@ -83,13 +85,14 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', secretRef: 'supabase-anon-key' }
             { name: 'SUPABASE_SERVICE_ROLE_KEY', secretRef: 'supabase-service-role-key' }
             { name: 'PAYMENT_GATEWAY', value: 'mock' }
-            { name: 'ALLOW_MOCK_PAYMENTS', value: 'true' }
+            { name: 'ALLOW_MOCK_PAYMENTS', value: 'false' }
             { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: 'false' }
             { name: 'SHIPPING_PROVIDER', value: 'manual' }
             { name: 'SHIPPING_MOCK', value: 'true' }
             { name: 'ADMIN_EMAILS', secretRef: 'admin-emails' }
             { name: 'FINANCE_EMAILS', secretRef: 'finance-emails' }
             { name: 'FINANCE_DIGEST_SECRET', secretRef: 'finance-digest-secret' }
+            { name: 'DISCORD_FINANCE_WEBHOOK_URL', secretRef: 'discord-finance-webhook-url' }
             { name: 'GOLD_SYNC_SECRET', secretRef: 'gold-sync-secret' }
             { name: 'ORDER_SWEEP_SECRET', secretRef: 'order-sweep-secret' }
             { name: 'METAL_PRICE_API_KEY', secretRef: 'metal-price-api-key' }

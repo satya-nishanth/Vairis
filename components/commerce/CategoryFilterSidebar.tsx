@@ -14,11 +14,18 @@ type CategoryFilterSidebarProps = {
   onChange: (next: FilterState) => void;
   productCount: number;
   groups: FilterGroup[];
+  hasPricedProducts?: boolean;
 };
 
 export type { FilterState, SortOption } from "./CategoryFilterPanel";
 
-export function CategoryFilterSidebar({ filters, onChange, productCount, groups }: CategoryFilterSidebarProps) {
+export function CategoryFilterSidebar({
+  filters,
+  onChange,
+  productCount,
+  groups,
+  hasPricedProducts,
+}: CategoryFilterSidebarProps) {
   const activeCount = countActiveFilters(filters);
 
   const clearAll = () => {
@@ -47,6 +54,7 @@ export function CategoryFilterSidebar({ filters, onChange, productCount, groups 
         groups={groups}
         showCount
         productCount={productCount}
+        hasPricedProducts={hasPricedProducts}
       />
     </aside>
   );

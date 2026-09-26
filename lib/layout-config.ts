@@ -31,7 +31,7 @@ export const pageLayouts = {
     header: "full",
     trustBar: "none",
     footer: "full",
-    whatsapp: "Contact us",
+    whatsapp: false,
   },
   cart: {
     promoBar: "utility",

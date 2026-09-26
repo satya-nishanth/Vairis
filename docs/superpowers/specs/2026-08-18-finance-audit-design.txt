@@ -1,0 +1,171 @@
+Finance Audit Dashboard — Spec
+================================
+
+Overview
+--------
+A restricted finance-audit section for Anil, Surya, and Vasu: general expenses
+with personal-fund contributions, order-linked CP/SP (gold, diamond, stones vs
+selling price), monthwise P&L, and an overall earnings dashboard.
+
+This document is spec only — problem statement, summary, and acceptance
+criteria. No product code in this turn.
+
+Today the admin app is email-whitelisted (ADMIN_EMAILS in lib/auth.ts) with no
+roles. Dashboard/analytics sum Order.grandTotal (sell-side only). There is no
+CP, expense ledger, paid_through, customer_paid_to, or partner contribution
+model. Tax invoices are GST documents, not a P&L. This feature is greenfield
+and must not change the customer pricing formula in lib/pricing.ts.
+
+
+Locked decisions
+----------------
+- Access: Anil, Surya, Vasu only (stricter than other admin pages; Nishi and
+  other ADMIN_EMAILS cannot see or call this).
+- General expenses are all one-time. No recurring / one_time type field.
+- Order CP/SP must attach to an existing store Order.
+- Two separate forms: general expense vs order finance.
+
+
+Problem statement
+-----------------
+Vairis founders need a private ledger of real money in and out, not the
+storefront selling formula.
+
+Ops admins can already see orders, invoices, and revenue totals. They cannot
+see:
+- what gold / diamond / stones actually cost
+- whether an order made or lost money
+- operating expenses (rent, ads, tools, etc.)
+- whether those expenses were paid from the company bank or from a partner's
+  pocket
+- where the customer actually paid (company bank vs Anil / Surya / Vasu)
+- month-by-month expense vs income, and a running contribution balance per
+  partner
+
+Without a restricted section, either this data stays in spreadsheets, or every
+admin (including people who should not see partner capital) can open it. The
+store also has no place to record CP against an order, so "revenue" on the
+existing dashboard is not profit.
+
+
+Summary
+-------
+Add a finance audit area under admin, gated by a new allow-list
+(FINANCE_EMAILS: Anil, Surya, Vasu). Other admins keep current dashboard
+access; this nav and its APIs are invisible and forbidden to them.
+
+1. General expense form (operating spend, not tied to an order)
+   - Fields: date, description, amount, paid_through (vairis_bank | personal_funds).
+   - If personal_funds: required contributor (Anil / Surya / Vasu). That amount
+     is added to that user's contribution to Vairis.
+   - Default contributor = the logged-in finance user.
+
+2. Order finance form (one sheet per existing store order)
+   - Fields: gold cost, diamond (our price), stones price, selling price,
+     customer_paid_to (vairis_bank | Anil | Surya | Vasu).
+   - Cost price = gold + diamond + stones.
+   - Order profit = selling price − cost price. This is the order-level
+     earning; it rolls into monthly and overall profit.
+   - customer_paid_to does not change profit. It records who physically
+     received the customer's money. If a person received it, show that as
+     customer receipts held by that person (company cash sitting with them),
+     separate from contribution.
+
+3. Monthwise view — calendar month (IST): income (sum of selling prices),
+   expenses (general expenses + order CP), profit (sum of order profits −
+   general expenses), plus contribution and "cash held" per person.
+
+4. Overall dashboard — same totals across all time, with month filter.
+   Contributions and cash-held balances are running totals.
+
+Amounts are as entered (actual rupees). Do not auto-fill from lib/pricing.ts.
+Optional later: prefill selling price from Order.grandTotal.
+
+
+Money flow
+----------
+Access:
+  Anil / Surya / Vasu -> Finance section
+  Other admins        -> Hidden and 403
+
+Two forms:
+  Finance section -> General expense
+  Finance section -> Order finance
+
+General expense:
+  paid_through = personal_funds -> User contribution
+  paid_through = vairis_bank    -> Vairis bank outflow
+
+Order finance:
+  gold + diamond + stones = CP
+  selling price           = SP
+  SP - CP                 = Order profit
+  customer_paid_to = person -> Receipts held by that user
+  customer_paid_to = bank   -> Vairis bank inflow
+
+Roll-up:
+  General expenses, order profit, contributions, and receipts held
+  all feed monthwise and overall dashboards.
+
+
+Acceptance criteria
+-------------------
+
+Access
+- Only emails in FINANCE_EMAILS (Anil, Surya, Vasu) can open /admin/finance
+  (and nested routes) and call /api/admin/finance/*.
+- A logged-in admin who is not on that list: no sidebar item, direct URL
+  redirects or 404, APIs return 403.
+- Unauthenticated users follow the existing admin login path, then the same
+  finance check.
+- Customer storefront and existing admin pages (orders, invoices, analytics)
+  are unchanged.
+
+General expense form
+- Separate page/form from order finance.
+- Required: date, description, amount (> 0), paid_through.
+- No expense type / recurring field.
+- paid_through = personal_funds requires contributor in {Anil, Surya, Vasu};
+  saving increments that user's contribution by amount.
+- paid_through = vairis_bank does not change any contribution.
+- List of expenses is editable/deletable by finance users; edits that change
+  paid_through or contributor recalculate contribution (no double-count).
+- Each expense belongs to exactly one calendar month via its date (IST).
+
+Order finance form
+- Separate page/form from general expenses.
+- User must pick an existing store Order. One finance sheet per order
+  (create or update, not duplicates).
+- Required: gold cost, diamond (our price), stones price, selling price
+  (each >= 0), customer_paid_to.
+- Displayed CP = gold + diamond + stones. Displayed profit = selling price −
+  CP (can be negative).
+- Saving the sheet adds that profit to order-level earnings; updating
+  overwrites (does not stack).
+- Orders with no finance sheet do not contribute CP, SP, or profit to the
+  finance dashboard (store grandTotal is not a substitute).
+- customer_paid_to is stored and shown on the order sheet and on person-level
+  "receipts held". It does not alter profit.
+
+Monthwise
+- Selector for month + year. Totals for that month:
+  - Income = sum of selling prices of order sheets dated in that month
+    (order sheet date = order createdAt unless a finance date is added;
+    spec default: order createdAt IST).
+  - Order expenses (CP) = sum of CP on those sheets.
+  - General expenses = sum of general expense amounts in that month.
+  - Profit = sum of order profits − general expenses.
+- Breakdown lists: expenses, order sheets, contributions posted that month,
+  receipts held posted that month.
+
+Overall dashboard
+- Same four totals with no month filter (all time), plus optional month
+  filter that reuses the monthwise numbers.
+- Running contribution to Vairis per person (Anil / Surya / Vasu).
+- Running customer receipts held per person.
+- Does not mix contribution with receipts held.
+
+Non-goals (this version)
+- Recurring expenses, payroll, GST on expenses, Razorpay settlement import,
+  auto-sync from invoices, changing lib/pricing.ts, exposing this data to
+  other admins.

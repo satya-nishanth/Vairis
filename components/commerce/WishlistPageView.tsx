@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -12,79 +12,95 @@ import { categoryHref } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 
-type ApiProduct = {
-  id: string;
-  name: string;
-  category: string;
-  images: string[];
+type ApiProduct = Product & {
+  id?: string;
 };
 
-function toProduct(p: ApiProduct, i: number): Product {
+function toProduct(p: any, i: number): Product {
+  if (p && p.slug && p.image !== undefined && p.catalogueId) {
+    return p;
+  }
   return {
-    slug: p.id,
-    sku: p.id,
+    slug: p.id ?? p.slug,
+    sku: p.sku ?? p.id,
     name: p.name,
-    image: p.images[0] ?? "",
-    images: p.images,
-    category: prismaCategoryToSlug(p.category),
-    catalogueId: p.id,
+    image: p.image ?? p.images?.[0] ?? "",
+    images: p.images ?? [],
+    category: typeof p.category === "string" ? prismaCategoryToSlug(p.category) : p.category,
+    catalogueId: p.catalogueId ?? p.id,
     video: null,
     badge: i === 0 ? "Best Seller" : undefined,
     meta: "Insured Delivery",
+    price: p.price,
+    variantId: p.variantId,
+    priceHidden: p.priceHidden,
+    hasMultiplePrices: p.hasMultiplePrices,
   };
 }
 
 export function WishlistPageView() {
   const layout = pageLayouts.wishlist;
-  const { ids, count } = useWishlist();
+  const { ids, count, isLoggedIn } = useWishlist();
   const [apiProducts, setApiProducts] = useState<Product[] | null>(null);
-  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-  // Guest path: caches every id we've resolved so far, keyed by id — the
-  // visible list is *derived* from this cache filtered by the current live
-  // `ids` set, so removing an item drops it immediately without needing a
-  // separate "clear" write when `ids` shrinks.
   const [guestCache, setGuestCache] = useState<Map<string, Product>>(new Map());
 
+  // Logged-in path: fetch server wishlist items
   useEffect(() => {
+    if (!isLoggedIn) return;
+    let active = true;
     fetch("/api/wishlist")
       .then(async (res) => {
-        setLoggedIn(res.ok);
-        if (!res.ok) return;
-        const items = (await res.json()) as { product: ApiProduct }[];
-        setApiProducts(items.map((item, i) => toProduct(item.product, i)));
+        if (!res.ok || !active) return;
+        const items = (await res.json()) as { product: any }[];
+        const valid = items
+          .filter((item) => Boolean(item.product))
+          .map((item, i) => toProduct(item.product, i));
+        setApiProducts(valid);
       })
-      .catch(() => setLoggedIn(false));
-  }, []);
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn]);
 
-  // Guest path: localStorage only holds product ids — resolve any not
-  // already cached against the real catalogue once WishlistProvider has
-  // hydrated `ids` and we know there's no server session to defer to.
+  // Guest / local fallback path: resolve product metadata for any missing IDs
   useEffect(() => {
-    if (loggedIn !== false) return;
     const missing = [...ids].filter((id) => !guestCache.has(id));
     if (missing.length === 0) return;
     fetch(`/api/products?ids=${missing.join(",")}`)
       .then(async (res) => {
         if (!res.ok) return;
-        const items = (await res.json()) as ApiProduct[];
+        const items = (await res.json()) as any[];
         setGuestCache((prev) => {
           const next = new Map(prev);
-          items.forEach((p, i) => next.set(p.id, toProduct(p, i)));
+          items.forEach((p, i) => next.set(p.catalogueId || p.slug || p.id, toProduct(p, i)));
           return next;
         });
       })
       .catch(() => {});
-  }, [loggedIn, ids, guestCache]);
+  }, [ids, guestCache]);
 
   const guestResolved = [...ids].every((id) => guestCache.has(id));
-  const guestProducts = [...ids].map((id) => guestCache.get(id)).filter((p): p is Product => !!p);
-  // Filter the fetched list by the live `ids` set (not just render it as-is)
-  // so removing a heart on this page drops the card immediately — apiProducts
-  // itself is fetched once and never refetched, it's just a name→id lookup.
-  const products: Product[] = apiProducts
-    ? apiProducts.filter((p) => ids.has(p.catalogueId))
-    : guestProducts;
-  const loading = loggedIn === null || (loggedIn === false && !guestResolved);
+
+  // Merge server products and local cache to guarantee every wishlisted item is displayed
+  const products: Product[] = useMemo(() => {
+    const map = new Map<string, Product>();
+    if (isLoggedIn && apiProducts) {
+      for (const p of apiProducts) {
+        if (ids.has(p.catalogueId)) {
+          map.set(p.catalogueId, p);
+        }
+      }
+    }
+    for (const id of ids) {
+      if (!map.has(id) && guestCache.has(id)) {
+        map.set(id, guestCache.get(id)!);
+      }
+    }
+    return Array.from(map.values());
+  }, [isLoggedIn, apiProducts, ids, guestCache]);
+
+  const loading = ids.size > 0 && products.length === 0 && (isLoggedIn ? apiProducts === null : !guestResolved);
 
   return (
     <PageShell
@@ -108,8 +124,8 @@ export function WishlistPageView() {
                 Your wishlist is empty. Explore our collections and tap the
                 heart on pieces you love.
               </p>
-              <Button href={categoryHref("necklaces")} variant="primary">
-                Shop necklaces
+              <Button href={categoryHref("rings")} variant="primary">
+                Shop Rings
               </Button>
             </div>
           ) : (
@@ -124,7 +140,7 @@ export function WishlistPageView() {
             <p style={{ marginTop: 32, fontSize: "0.875rem" }}>
               <Link href="/cart">View cart</Link>
               {" · "}
-              <Link href={categoryHref("earrings")}>Continue shopping</Link>
+              <Link href={categoryHref("rings")}>Continue shopping</Link>
             </p>
           )}
         </div>

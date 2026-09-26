@@ -1,12 +1,19 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
+import { sanitizeRedirect } from '@/lib/auth/safe-redirect'
 import GoogleButton from '@/components/auth/GoogleButton'
 import SubmitButton from '@/components/auth/SubmitButton'
 import { PageShell } from '@/components/layout/PageShell'
 import { pageLayouts } from '@/lib/layout-config'
 import { BrandLogo } from '@/components/layout/BrandLogo'
+
+export const metadata: Metadata = {
+  title: 'Sign In',
+  description: 'Sign in to your VAIRIS account to view orders, manage wishlist, and save delivery addresses.',
+}
 
 // ── Server Actions ────────────────────────────────────────────────────────
 
@@ -14,7 +21,8 @@ async function signIn(formData: FormData) {
   'use server'
   const email = formData.get('email') as string
   const password = formData.get('password') as string
-  const next = (formData.get('next') as string) || null
+  const rawNext = (formData.get('next') as string) || null
+  const next = rawNext ? sanitizeRedirect(rawNext, '/') : null
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
@@ -39,7 +47,14 @@ async function signUp(formData: FormData) {
   'use server'
   const email = formData.get('email') as string
   const password = formData.get('password') as string
-  const next = (formData.get('next') as string) || null
+  const rawNext = (formData.get('next') as string) || null
+  const next = rawNext ? sanitizeRedirect(rawNext, '/') : null
+
+  if (!password || password.length < 8) {
+    const q = next ? `&next=${encodeURIComponent(next)}` : ''
+    redirect(`/auth/login?mode=signup&error=${encodeURIComponent('Password must be at least 8 characters')}${q}`)
+  }
+
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase.auth.signUp({ email, password })
   if (error) {
@@ -68,7 +83,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string; msg?: string; next?: string; mode?: string; email?: string }>
 }) {
-  const { error, msg, next, mode = 'signin', email } = await searchParams
+  const { error, msg, next: rawNext, mode = 'signin', email } = await searchParams
+  const next = rawNext ? sanitizeRedirect(rawNext, '') : ''
   const nextQ = next ? `?next=${encodeURIComponent(next)}` : ''
   const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
 
@@ -169,9 +185,15 @@ export default async function LoginPage({
               </div>
               <div className="auth-field">
                 <label htmlFor="signup-password">Password</label>
-                <input id="signup-password" name="password" type="password" required minLength={6} className="auth-input" placeholder="Min 6 characters" autoComplete="new-password" />
+                <input id="signup-password" name="password" type="password" required minLength={8} className="auth-input" placeholder="Min 8 characters" autoComplete="new-password" />
               </div>
               <SubmitButton label="Create Account" loadingLabel="Creating account…" variant="outline" />
+              <p className="auth-consent" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '12px', textAlign: 'center', lineHeight: 1.5 }}>
+                By creating an account, you agree to our{' '}
+                <Link href="/policies/terms" className="auth-link" style={{ textDecoration: 'underline' }}>Terms of Service</Link>{' '}
+                and{' '}
+                <Link href="/policies/privacy" className="auth-link" style={{ textDecoration: 'underline' }}>Privacy Policy</Link>.
+              </p>
             </form>
           )}
 
@@ -198,13 +220,6 @@ export default async function LoginPage({
               <GoogleButton next={next} />
             </>
           )}
-
-          <p className="auth-footnote">
-            Admin?{' '}
-            <a href="/auth/admin" className="auth-link auth-link--gold">
-              Sign in here
-            </a>
-          </p>
         </div>
       </div>
     </main>

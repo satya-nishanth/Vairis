@@ -5,10 +5,19 @@ import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpP
 import { lifestyleScenes } from "@/lib/ui-data";
 import { marketingImages } from "@/lib/images";
 
-export function PlpPostGridSection() {
+type PlpPostGridSectionProps = {
+  category?: string;
+};
+
+export function PlpPostGridSection({ category }: PlpPostGridSectionProps) {
+  const isMenCategory = category === "cufflinks";
+  const title = isMenCategory
+    ? "Refined Details. Real Everyday Style."
+    : "Real People. Real Everyday Style.";
+
   return (
     <div className="plp-post-grid">
-      <SectionHeader title="Real Women. Real Everyday Style." actionLabel="View All →" actionHref="#" />
+      <SectionHeader title={title} actionLabel="Explore Pieces →" actionHref="/all-products/rings" />
 
       <div className="ugc-row">
         {lifestyleScenes.map((scene) => (

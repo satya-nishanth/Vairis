@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const collection = await prisma.collection.findUnique({ where: { slug } });
   if (!collection || !collection.active) return {};
   return {
-    title: collection.seoTitle ?? `${collection.title} | VAIRIS`,
+    title: collection.seoTitle ?? collection.title,
     description: collection.seoDescription ?? collection.description ?? undefined,
     openGraph: {
       title: collection.seoTitle ?? collection.title,
@@ -54,6 +54,7 @@ export default async function CollectionPage({ params }: Props) {
   const products = collection.products
     .map((cp) => cp.product)
     .filter((p) => p.isActive && p.status === "LIVE")
+    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name))
     .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
 
   return (

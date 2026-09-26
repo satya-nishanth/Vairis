@@ -1,23 +1,27 @@
 import type { Metadata } from "next";
 import { PolicyPage } from "../PolicyPage";
 
-export const metadata: Metadata = { title: "Refund & Return Policy | VAIRIS" };
+export const metadata: Metadata = {
+  title: "Refund & Return Policy",
+  description:
+    "Our 7-day hassle-free return and exchange policy for fine jewellery. Insured pickups, quality verification, and transparent refunds.",
+};
 
 export default function RefundPolicyPage() {
   return (
-    <PolicyPage title="Refund & Return Policy" updated="25 July 2026">
+    <PolicyPage title="Refund & Return Policy" updated="25 September 2026">
       <h2>Returns</h2>
       <p>
-        You may request a return within 7 days of delivery from your order page
-        (My Orders → Not Quite Right? → Request Return). Once we approve the
-        request, we arrange an insured pickup. After the piece passes our
-        quality check (unworn, undamaged, with the original certificate and
-        packaging), your refund is initiated.
+        You may request a return within 7 days of delivery by reaching out to our
+        concierge support via WhatsApp or email (hello@vairis.com) with your order ID.
+        Once approved, we arrange an insured pickup at your address. After the
+        piece passes our quality check (unworn, undamaged, with the original IGI
+        certificate and packaging), your refund is initiated.
       </p>
       <h2>Cancellations</h2>
       <p>
-        Orders can be cancelled free of charge any time before dispatch from
-        your order page. Paid orders are refunded in full automatically to the
+        Orders can be cancelled free of charge any time before dispatch by contacting
+        support or via WhatsApp. For paid orders, refunds are issued in full to the
         original payment method.
       </p>
       <h2>Refund timelines</h2>

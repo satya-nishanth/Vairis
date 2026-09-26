@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { FooterVariant } from "@/lib/layout-config";
 import { WHATSAPP_URL } from "@/lib/ui-data";
 import { BrandLogo } from "./BrandLogo";
-import { IconChevronRight, SharedIcon, ThemeIcon } from "@/components/icons/ThemeIcon";
+import { SharedIcon, ThemeIcon } from "@/components/icons/ThemeIcon";
+import { NewsletterForm } from "./NewsletterForm";
 import {
   footerAboutLinks,
   footerHelpLinks,
@@ -49,12 +50,7 @@ export function SiteFooter({ variant }: SiteFooterProps) {
             <div className="site-footer__newsletter">
               <h3 className="site-footer__newsletter-title">Be the first to know</h3>
               <p className="site-footer__newsletter-desc">New arrivals, exclusive offers and styling tips.</p>
-              <form className="newsletter-form" action="#" method="post">
-                <input type="email" placeholder="Enter your email" aria-label="Email address" />
-                <button type="submit" aria-label="Subscribe to newsletter">
-                  <IconChevronRight />
-                </button>
-              </form>
+              <NewsletterForm />
             </div>
             <ul className="site-footer__trust-grid" aria-label="Shopping guarantees">
               {footerTrustItems.map(({ label, icon }) => (
@@ -167,11 +163,11 @@ export function SiteFooter({ variant }: SiteFooterProps) {
             </div>
             <div className="site-footer__col">
               <h4>Shop</h4>
-              <Link href={footerShopLinks[0].href}>Necklaces</Link>
+              <Link href={footerShopLinks[0].href}>All Jewellery</Link>
             </div>
             <div className="site-footer__col">
               <h4>Help</h4>
-              <Link href="/returns">Returns</Link>
+              <Link href="/returns">Returns &amp; Exchanges</Link>
               <Link href="/contact">Contact</Link>
             </div>
             <div className="site-footer__col">

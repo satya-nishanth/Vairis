@@ -35,7 +35,7 @@ export function ProductReviews({ productId, productName }: { productId: string; 
   const { isLoggedIn, hydrated } = useCart();
   const [data, setData] = useState<ReviewData | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +53,10 @@ export function ProductReviews({ productId, productName }: { productId: string; 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (rating === 0) {
+      setError("Please select a star rating (1 to 5 stars).");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -183,6 +187,9 @@ export function ProductReviews({ productId, productName }: { productId: string; 
               Cancel
             </button>
           </div>
+          <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "12px", lineHeight: 1.4 }}>
+            Reviews are moderated to prevent spam and ensure genuine customer experiences. Verified Buyer badges are automatically granted for orders confirmed through verified delivery.
+          </p>
         </form>
       )}
 

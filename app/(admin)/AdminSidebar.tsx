@@ -8,6 +8,7 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Dashboard', href: '/admin/dashboard' },
   { label: 'Analytics', href: '/admin/analytics' },
   { label: 'Products', href: '/admin/products' },
+  { label: 'Categories', href: '/admin/categories' },
   { label: 'Inventory', href: '/admin/inventory' },
   { label: 'Orders', href: '/admin/orders' },
   { label: 'Finance', href: '/admin/finance', financeOnly: true },
@@ -21,6 +22,7 @@ const NAV: { label: string; href: string; financeOnly?: boolean }[] = [
   { label: 'Reviews', href: '/admin/reviews' },
   { label: 'Contacts', href: '/admin/contacts' },
   { label: 'Customers', href: '/admin/customers' },
+  { label: 'Users & Roles', href: '/admin/users' },
 ]
 
 function isActive(pathname: string, href: string) {

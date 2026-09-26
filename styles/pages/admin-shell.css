@@ -4623,12 +4623,13 @@
 
   .admin-products__thumb {
     position: relative;
-    width: 48px;
-    height: 48px;
-    background: #050505;
+    width: 84px;
+    height: 84px;
+    background: #f8f9fa;
+    border: 1px solid #e5e7eb;
     flex-shrink: 0;
     overflow: hidden;
-    border-radius: 4px;
+    border-radius: 8px;
   }
 
   .admin-products__code {
@@ -4805,5 +4806,12 @@
 
   .admin-grid-3 {
     grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-product-inspect-card {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
   }
 }

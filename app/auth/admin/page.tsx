@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { isAdminEmail } from '@/lib/auth'
 
 async function adminSignIn(formData: FormData) {
   'use server'
@@ -11,8 +12,8 @@ async function adminSignIn(formData: FormData) {
   if (error) redirect(`/auth/admin?error=${encodeURIComponent(error.message)}`)
 
   // Check admin before redirecting
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim())
-  if (!adminEmails.includes(email)) {
+  const allowed = await isAdminEmail(email)
+  if (!allowed) {
     await supabase.auth.signOut()
     redirect(`/auth/admin?error=${encodeURIComponent('Access denied. This portal is for authorised administrators only.')}`)
   }

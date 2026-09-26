@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageShell } from "@/components/layout/PageShell";
 import { TrustBar } from "@/components/layout/TrustBar";
 import { Container } from "@/components/ui/Container";
@@ -7,6 +8,12 @@ import { ProductImage } from "@/components/ui/ProductImage";
 import { pageLayouts } from "@/lib/layout-config";
 import { WHATSAPP_URL } from "@/lib/ui-data";
 import { marketingImages } from "@/lib/images";
+
+export const metadata: Metadata = {
+  title: "Returns & Exchanges",
+  description:
+    "Learn about VAIRIS 7-day hassle-free returns, insured reverse pickup, tamper-proof verification, and exchanges.",
+};
 
 export default function ReturnsPage() {
   const layout = pageLayouts.returns;
@@ -37,7 +44,7 @@ export default function ReturnsPage() {
               <Button href={WHATSAPP_URL} variant="primary">
                 Start a Return
               </Button>
-              <Button href="#" variant="secondary">
+              <Button href="/track-order" variant="secondary">
                 Track Existing Return
               </Button>
             </div>

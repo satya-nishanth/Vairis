@@ -9,7 +9,7 @@ type Testimonial = {
   avatar: string;
 };
 
-export function TestimonialCard({ quote, name, city, avatar }: Testimonial) {
+export function TestimonialCard({ quote, name, city }: Testimonial) {
   return (
     <article className="testimonial-card">
       <div className="testimonial-card__stars" aria-label="5 out of 5 stars">
@@ -19,14 +19,26 @@ export function TestimonialCard({ quote, name, city, avatar }: Testimonial) {
       </div>
       <p className="testimonial-card__quote">&ldquo;{quote}&rdquo;</p>
       <div className="testimonial-card__author">
-        <MarketingImage
-          src={avatar}
-          alt={name}
-          width={40}
-          height={40}
+        <div
           className="testimonial-card__avatar"
-          placeholderLabel={name.charAt(0)}
-        />
+          aria-hidden="true"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: "var(--color-surface-subtle, rgba(201, 169, 110, 0.12))",
+            color: "var(--color-primary, #c9a96e)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 600,
+            fontSize: "0.9375rem",
+            border: "1px solid var(--color-border-light, rgba(201, 169, 110, 0.3))",
+            flexShrink: 0,
+          }}
+        >
+          {name.charAt(0)}
+        </div>
         <div>
           <strong className="testimonial-card__name">{name}</strong>
           <span className="testimonial-card__city">{city}</span>
@@ -36,18 +48,31 @@ export function TestimonialCard({ quote, name, city, avatar }: Testimonial) {
   );
 }
 
-export function StaffAvatars({ images, size = 40 }: { images: readonly string[]; size?: number }) {
+export function StaffAvatars({ size = 36 }: { images?: readonly string[]; size?: number }) {
+  const consultants = ["PS", "AK", "NM", "RD"];
   return (
     <div style={{ display: "flex", alignItems: "center" }}>
-      {images.map((src, i) => (
-        <ProductImage
-          key={src}
-          src={src}
-          alt=""
-          width={size}
-          height={size}
-          style={{ borderRadius: "50%", marginLeft: i > 0 ? -8 : 0, border: "2px solid var(--bg-card)" }}
-        />
+      {consultants.map((initials, i) => (
+        <div
+          key={initials}
+          style={{
+            width: size,
+            height: size,
+            borderRadius: "50%",
+            marginLeft: i > 0 ? -8 : 0,
+            border: "2px solid var(--bg-card)",
+            background: "var(--color-surface-subtle, #f8f5f0)",
+            color: "var(--color-primary, #c9a96e)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.6875rem",
+            fontWeight: 600,
+          }}
+          aria-hidden="true"
+        >
+          {initials}
+        </div>
       ))}
     </div>
   );

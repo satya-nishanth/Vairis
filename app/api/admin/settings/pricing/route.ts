@@ -44,9 +44,9 @@ export async function GET() {
     prisma.diamondRate.findMany({ orderBy: { sortOrder: 'asc' } }),
   ])
   return NextResponse.json({
-    vaGoldPct: Number(settings?.vaGoldPct ?? 5),
-    vaStonePct: Number(settings?.vaStonePct ?? 5),
-    vaLabel: settings?.vaLabel ?? 'Value Addition',
+    vaGoldPct: Number(settings?.vaGoldPct ?? 10),
+    vaStonePct: Number(settings?.vaStonePct ?? 0),
+    vaLabel: settings?.vaLabel ?? 'Wastage',
     showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,

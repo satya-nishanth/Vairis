@@ -10,6 +10,7 @@ import { HeaderSearchButton } from "./HeaderSearchButton";
 import { SiteHeaderMobileToggle } from "./SiteHeaderMobileToggle";
 import { HeaderCartLink } from "./HeaderCartLink";
 import { NavCollections } from "./NavCollections";
+import { NavCategoryLinks } from "./NavCategoryLinks";
 
 type SiteHeaderProps = {
   variant: Exclude<HeaderVariant, "checkout">;
@@ -22,13 +23,12 @@ const categoryNavLinks = HEADER_NAV_CATEGORIES.map((slug) => ({
 
 const navLinks = [
   ...categoryNavLinks,
-  { href: "/contact", label: "About Us" },
-  { href: "/contact", label: "Learn" },
+  { href: "/about", label: "About Us" },
 ];
 
 const minimalNavLinks = [
-  { href: categoryHref("necklaces"), label: "Shop" },
-  { href: "/contact", label: "About Us" },
+  { href: categoryHref("rings"), label: "Shop" },
+  { href: "/about", label: "About Us" },
 ];
 
 export function SiteHeader({ variant }: SiteHeaderProps) {
@@ -49,18 +49,24 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
         {showPincode && <HeaderPincode className="header-pincode--desktop" />}
 
         <nav className="site-header__nav nav-main" aria-label="Main">
-          {links.map((link) => (
-            <Link key={`${link.href}-${link.label}`} href={link.href}>
-              {link.label}
-            </Link>
-          ))}
-          {variant !== "minimal" && <NavCollections />}
+          {variant === "minimal" ? (
+            minimalNavLinks.map((link) => (
+              <Link key={`${link.href}-${link.label}`} href={link.href}>
+                {link.label}
+              </Link>
+            ))
+          ) : (
+            <>
+              <NavCategoryLinks />
+              <Link href="/about">About Us</Link>
+              <NavCollections />
+            </>
+          )}
         </nav>
 
         <div className="site-header__utilities">
-          <HeaderSearchButton className="header-search-btn--desktop" />
+          <HeaderSearchButton />
           <ThemeSwitcher className="theme-switcher--desktop" />
-          <ThemeSwitcher className="theme-switcher--mobile" />
           <div className="header-actions">
             {showAccount && <HeaderAccountButton />}
             <HeaderWishlistLink />

@@ -525,7 +525,7 @@ export function ContentEditor({
                       <label style={fieldLabel}>{isHomeHero ? 'CTA label' : 'Link label / text'}</label>
                       <input style={field} value={form.ctaLabel} onChange={set('ctaLabel')} placeholder="Shop Now" />
                       <label style={fieldLabel}>Link URL</label>
-                      <input style={field} value={form.linkUrl} onChange={set('linkUrl')} placeholder="/all-products/necklaces" />
+                      <input style={field} value={form.linkUrl} onChange={set('linkUrl')} placeholder="/all-products/rings" />
                     </>
                   )}
                 </>

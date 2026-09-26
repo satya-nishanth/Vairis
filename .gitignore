@@ -28,7 +28,7 @@ e2e/test-results/
 
 # ── Local raw assets ─────────────────────────────────────────────────────────
 # Production images are in public/ and hosted on Supabase Storage
-images/
+/images/
 
 # ── Dev tooling artifacts ─────────────────────────────────────────────────────
 .superpowers/

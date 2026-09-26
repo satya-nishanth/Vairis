@@ -92,15 +92,15 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
       </section>
 
       <section className="pform__section">
-        <h2>Value Addition (VA)</h2>
+        <h2>Wastage</h2>
         <p className="pform__section-note">
-          Percentage applied on gold value and on diamond value. Always shown as a
-          separate &ldquo;{form.vaLabel || 'Value Addition'}&rdquo; line to the customer —
-          displayed weights and carats are never changed.
+          Percentage applied on gold value only (not diamonds). Shown as a separate
+          &ldquo;{form.vaLabel || 'Wastage'}&rdquo; line. GST is 3% on gold + wastage +
+          making + stones. Displayed weights and carats are never changed.
         </p>
-        <div className="pform__grid pform__grid--3">
+        <div className="pform__grid pform__grid--2">
           <div className="pform__field">
-            <label htmlFor="ps-vagold">VA on gold value (%)</label>
+            <label htmlFor="ps-vagold">Wastage on gold value (%)</label>
             <input
               id="ps-vagold"
               type="number"
@@ -114,29 +114,15 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
             />
           </div>
           <div className="pform__field">
-            <label htmlFor="ps-vastone">VA on diamond value (%)</label>
-            <input
-              id="ps-vastone"
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={form.vaStonePct}
-              onChange={(e) => setForm((f) => ({ ...f, vaStonePct: e.target.value }))}
-              className="pform__input"
-              data-testid="va-stone-pct"
-            />
-          </div>
-          <div className="pform__field">
             <label htmlFor="ps-valabel">Customer-facing label</label>
             <input
               id="ps-valabel"
               value={form.vaLabel}
               onChange={(e) => setForm((f) => ({ ...f, vaLabel: e.target.value }))}
               className="pform__input"
-              placeholder="Value Addition"
+              placeholder="Wastage"
             />
-            <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Value Addition&rdquo;.</p>
+            <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Wastage&rdquo;.</p>
           </div>
         </div>
       </section>

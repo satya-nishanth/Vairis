@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { CustomersManager } from '@/components/admin/CustomersManager'
 
+import Link from 'next/link'
+
 export const dynamic = 'force-dynamic'
 
 export default async function AdminCustomersPage() {
@@ -22,12 +24,31 @@ export default async function AdminCustomersPage() {
 
   return (
     <div className="admin-page" style={{ maxWidth: 960 }}>
-      <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginBottom: '0.5rem' }}>
-        Customers
-      </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', margin: 0 }}>
+          Customers
+        </h1>
+        <Link
+          href="/admin/users"
+          style={{
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            padding: '6px 12px',
+            backgroundColor: '#111827',
+            color: '#ffffff',
+            borderRadius: '4px',
+            textDecoration: 'none',
+          }}
+        >
+          Manage Roles & Passwords →
+        </Link>
+      </div>
       <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: 0, marginBottom: '1.5rem' }}>
-        Site accounts used for manual orders, My Orders, and track-order. Separate from the Contacts
-        inbox (storefront form) and Finance contacts.
+        Site accounts used for manual orders, My Orders, and track-order. For role administration, password creation, and admin/finance whitelist management, use{' '}
+        <Link href="/admin/users" style={{ color: '#2563eb', textDecoration: 'underline' }}>
+          Users & Roles
+        </Link>
+        .
       </p>
       <CustomersManager
         initial={users.map((u) => ({

@@ -10,7 +10,7 @@ export const plpTrustItems = [
   {
     icon: { name: "transparent_pricing", category: "brand" as const },
     label: "Transparent Pricing",
-    description: "What you see is what you pay.",
+    description: "Honest pricing with zero hidden fees.",
   },
   {
     icon: { name: "igi_certified", category: "brand" as const },
