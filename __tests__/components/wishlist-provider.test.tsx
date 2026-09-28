@@ -77,7 +77,7 @@ describe('WishlistProvider persistence and logout retention', () => {
     expect(JSON.parse(localStorage.getItem('vairis-wishlist-ids') || '[]')).toContain('prod-123')
   })
 
-  it('retains wishlisted items in localStorage when user logs out', async () => {
+  it('clears wishlisted items from device when user logs out (TC-091)', async () => {
     let authCallback: (event: string, session: any) => void = () => {}
     mockOnAuthStateChange.mockImplementation((cb) => {
       authCallback = cb
@@ -109,9 +109,9 @@ describe('WishlistProvider persistence and logout retention', () => {
       authCallback('SIGNED_OUT', null)
     })
 
-    // Items must STILL be retained on device so guest can view wishlist
-    expect(screen.getByTestId('count')).toHaveTextContent('1')
-    expect(screen.getByTestId('has-item')).toHaveTextContent('yes')
-    expect(JSON.parse(localStorage.getItem('vairis-wishlist-ids') || '[]')).toContain('prod-123')
+    // Items must be cleared from device on sign-out (TC-091)
+    expect(screen.getByTestId('count')).toHaveTextContent('0')
+    expect(screen.getByTestId('has-item')).toHaveTextContent('no')
+    expect(localStorage.getItem('vairis-wishlist-ids')).toBeNull()
   })
 })

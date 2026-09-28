@@ -82,7 +82,7 @@ describe('PATCH & DELETE /api/admin/users/[id]', () => {
       expect(data.error).toContain('Forbidden: Admins cannot modify Finance users')
     })
 
-    it('returns 400 JSON when attempting to change role of server env FINANCE_EMAILS user', async () => {
+    it('allows FINANCE caller to change role of server env FINANCE_EMAILS user', async () => {
       mockRequireAdminApi.mockResolvedValueOnce({
         session: { user: { id: 'fin-boss-id', email: 'finance@env.com' } } as any,
         role: 'FINANCE',
@@ -100,6 +100,23 @@ describe('PATCH & DELETE /api/admin/users/[id]', () => {
 
       jest.spyOn(rolesModule, 'getEffectiveRole').mockResolvedValueOnce('FINANCE')
       jest.spyOn(rolesModule, 'canManageTargetRole').mockReturnValue(true)
+      const assignDynamicRoleSpy = jest.spyOn(rolesModule, 'assignDynamicRole').mockResolvedValueOnce({
+        id: 'role-env',
+        email: 'finance@env.com',
+        role: 'ADMIN',
+        createdBy: 'finance@env.com',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      ;(prisma.user.update as jest.Mock).mockResolvedValueOnce({
+        id: 'fin-env-user-id',
+        email: 'finance@env.com',
+        name: 'Root Finance',
+        mobile: null,
+        createdAt: new Date(),
+        _count: { orders: 0 },
+      })
 
       const req = new NextRequest('http://localhost:3000/api/admin/users/fin-env-user-id', {
         method: 'PATCH',
@@ -107,9 +124,10 @@ describe('PATCH & DELETE /api/admin/users/[id]', () => {
       })
 
       const res = await PATCH(req, { params: Promise.resolve({ id: 'fin-env-user-id' }) })
-      expect(res.status).toBe(400)
+      expect(res.status).toBe(200)
       const data = await res.json()
-      expect(data.error).toContain('FINANCE_EMAILS')
+      expect(data.role).toBe('ADMIN')
+      expect(assignDynamicRoleSpy).toHaveBeenCalledWith('finance@env.com', 'ADMIN', 'finance@env.com')
     })
 
     it('allows FINANCE caller to change a dynamic finance user to ADMIN', async () => {

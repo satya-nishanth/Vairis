@@ -47,6 +47,45 @@ type AddressForm = {
   country: string;
 };
 
+const INDIAN_STATES = [
+  "Andaman and Nicobar Islands",
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chandigarh",
+  "Chhattisgarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jammu and Kashmir",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Ladakh",
+  "Lakshadweep",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Puducherry",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+];
+
 const EMPTY_ADDRESS: AddressForm = {
   contactName: "",
   contactPhone: "",
@@ -346,15 +385,19 @@ export default function CheckoutPage() {
       {/* Razorpay Checkout JS — the active gateway's browser SDK.
           launchGatewayCheckout guards on window.Razorpay before use. */}
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
-      <Container>
-        <Stepper
-          steps={[
-            { label: "Cart", state: "done" },
-            { label: "Delivery", state: "active", number: "2" },
-            { label: "Payment", state: "upcoming", number: "3" },
-            { label: "Confirmation", state: "upcoming", number: "4" },
-          ]}
-        />
+      <main>
+        <Container>
+          <h1 className="checkout-title" style={{ fontSize: "1.75rem", fontWeight: 600, margin: "24px 0 16px" }}>
+            Checkout
+          </h1>
+          <Stepper
+            steps={[
+              { label: "Cart", state: "done" },
+              { label: "Delivery", state: "active", number: "2" },
+              { label: "Payment", state: "upcoming", number: "3" },
+              { label: "Confirmation", state: "upcoming", number: "4" },
+            ]}
+          />
 
         <form className="checkout-layout" onSubmit={handlePay}>
           <div>
@@ -461,6 +504,7 @@ export default function CheckoutPage() {
                     className="form-input"
                     id="co-pin"
                     type="text"
+                    inputMode="numeric"
                     required
                     pattern={address.country === "IN" ? "\\d{6}" : undefined}
                     title={address.country === "IN" ? "6-digit pincode" : undefined}
@@ -511,15 +555,33 @@ export default function CheckoutPage() {
                 </div>
                 <div className="form-group">
                   <label htmlFor="co-state">State</label>
-                  <input
-                    className="form-input"
-                    id="co-state"
-                    type="text"
-                    required
-                    value={address.state}
-                    onChange={set("state")}
-                    autoComplete="address-level1"
-                  />
+                  {address.country === "IN" ? (
+                    <select
+                      className="form-input"
+                      id="co-state"
+                      required
+                      value={address.state}
+                      onChange={(e) => setAddress((a) => ({ ...a, state: e.target.value }))}
+                      autoComplete="address-level1"
+                    >
+                      <option value="">Select State</option>
+                      {INDIAN_STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="form-input"
+                      id="co-state"
+                      type="text"
+                      required
+                      value={address.state}
+                      onChange={set("state")}
+                      autoComplete="address-level1"
+                    />
+                  )}
                 </div>
               </div>
               {selectedAddressId === "new" && isLoggedIn && (
@@ -654,9 +716,97 @@ export default function CheckoutPage() {
                 <p className="summary-badges">IGI · BIS Hallmarked · Insured Delivery</p>
               </>
             }
-          />
+          >
+            {items.length > 0 && (
+              <div
+                className="checkout-items-preview"
+                style={{
+                  borderBottom: "1px solid var(--color-border-light)",
+                  paddingBottom: "12px",
+                  marginBottom: "16px",
+                  maxHeight: "240px",
+                  overflowY: "auto",
+                }}
+              >
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      gap: "12px",
+                      alignItems: "center",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    {item.variant?.product?.images?.[0] ? (
+                      <img
+                        src={item.variant.product.images[0]}
+                        alt={item.variant.product.name}
+                        style={{
+                          width: "48px",
+                          height: "48px",
+                          objectFit: "cover",
+                          borderRadius: "4px",
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "48px",
+                          height: "48px",
+                          background: "var(--color-bg-alt)",
+                          borderRadius: "4px",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: "0.875rem",
+                          fontWeight: 500,
+                          margin: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.variant?.product?.name || "Jewellery piece"}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "var(--color-text-muted)",
+                          margin: "2px 0 0",
+                        }}
+                      >
+                        {[
+                          item.variant?.metalType,
+                          item.variant?.size ? `Size ${item.variant.size}` : null,
+                          `Qty: ${item.quantity}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "0.875rem",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {formatPrice(item.unitPrice * item.quantity)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </OrderSummary>
         </form>
       </Container>
-    </PageShell>
+    </main>
+  </PageShell>
   );
 }

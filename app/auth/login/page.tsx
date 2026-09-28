@@ -65,6 +65,33 @@ async function signUp(formData: FormData) {
   redirect(`/auth/login?mode=confirm&email=${encodeURIComponent(email)}${q}`)
 }
 
+const KNOWN_MESSAGES: Record<string, string> = {
+  reset_sent: 'If that email exists, a reset link has been sent. Check your inbox.',
+  cart: 'Please sign in to add this item to your bag.',
+  checkout: 'Please sign in to proceed to checkout.',
+  wishlist: 'Please sign in to save pieces to your wishlist.',
+  password_updated: 'Your password has been updated. Please sign in with your new password.',
+  session_expired: 'Your session has expired. Please sign in again.',
+};
+
+function getSafeDisplayMessage(msg?: string, reason?: string): string | null {
+  if (reason && KNOWN_MESSAGES[reason]) {
+    return KNOWN_MESSAGES[reason];
+  }
+  if (msg) {
+    if (KNOWN_MESSAGES[msg]) return KNOWN_MESSAGES[msg];
+    if (msg === 'If that email exists, a reset link has been sent. Check your inbox.') return msg;
+    if (msg === 'Please sign in to add this item to your bag') return msg;
+  }
+  return null;
+}
+
+function getSafeErrorMessage(error?: string): string | null {
+  if (!error) return null;
+  const cleaned = error.replace(/<[^>]*>/g, '').trim().slice(0, 150);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 async function forgotPassword(formData: FormData) {
   'use server'
   const email = formData.get('email') as string
@@ -73,7 +100,7 @@ async function forgotPassword(formData: FormData) {
   await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/update-password`,
   })
-  redirect(`/auth/login?msg=${encodeURIComponent('If that email exists, a reset link has been sent. Check your inbox.')}`)
+  redirect('/auth/login?reason=reset_sent')
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────
@@ -81,9 +108,11 @@ async function forgotPassword(formData: FormData) {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; msg?: string; next?: string; mode?: string; email?: string }>
+  searchParams: Promise<{ error?: string; msg?: string; reason?: string; next?: string; mode?: string; email?: string }>
 }) {
-  const { error, msg, next: rawNext, mode = 'signin', email } = await searchParams
+  const { error, msg, reason, next: rawNext, mode = 'signin', email } = await searchParams
+  const safeMsg = getSafeDisplayMessage(msg, reason)
+  const safeError = getSafeErrorMessage(error)
   const next = rawNext ? sanitizeRedirect(rawNext, '') : ''
   const nextQ = next ? `?next=${encodeURIComponent(next)}` : ''
   const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
@@ -151,8 +180,8 @@ export default async function LoginPage({
           )}
 
           {/* Messages */}
-          {mode !== 'confirm' && msg && <p className="auth-msg auth-msg--success">{msg}</p>}
-          {mode !== 'confirm' && error && <p className="auth-msg auth-msg--error">{error}</p>}
+          {mode !== 'confirm' && safeMsg && <p className="auth-msg auth-msg--success">{safeMsg}</p>}
+          {mode !== 'confirm' && safeError && <p className="auth-msg auth-msg--error">{safeError}</p>}
 
           {/* ── Sign In ── */}
           {mode === 'signin' && (

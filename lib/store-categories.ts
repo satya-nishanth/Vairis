@@ -139,7 +139,15 @@ export async function getStoreCategories(options?: {
     const rows = await (prisma as any).storeCategory.findMany({
       where,
       orderBy: { sortOrder: "asc" },
-      include: { products: { select: { productId: true } } },
+      include: {
+        products: {
+          select: {
+            productId: true,
+            product: { select: { id: true, isActive: true, status: true } },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
     });
 
     if (rows && rows.length > 0) {
@@ -154,7 +162,9 @@ export async function getStoreCategories(options?: {
         isActive: r.isActive,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
-        productIds: (r.products ?? []).map((p: any) => p.productId),
+        productIds: (r.products ?? [])
+          .filter((p: any) => !options?.activeOnly || (p.product?.isActive && p.product?.status === "LIVE"))
+          .map((p: any) => p.productId),
       }));
     }
   } catch {
@@ -184,7 +194,15 @@ export async function getStoreCategoryBySlug(slug: string): Promise<StoreCategor
   try {
     const row = await (prisma as any).storeCategory.findUnique({
       where: { slug: norm },
-      include: { products: { select: { productId: true } } },
+      include: {
+        products: {
+          select: {
+            productId: true,
+            product: { select: { id: true, isActive: true, status: true } },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
     });
     if (row) {
       return {
@@ -198,7 +216,9 @@ export async function getStoreCategoryBySlug(slug: string): Promise<StoreCategor
         isActive: row.isActive,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
-        productIds: (row.products ?? []).map((p: any) => p.productId),
+        productIds: (row.products ?? [])
+          .filter((p: any) => p.product?.isActive && p.product?.status === "LIVE")
+          .map((p: any) => p.productId),
       };
     }
   } catch {

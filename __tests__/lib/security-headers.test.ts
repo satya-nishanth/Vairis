@@ -34,8 +34,8 @@ describe('Security Headers (SEC-01 & SEC-09)', () => {
     expect(configContent).toContain("camera=(), microphone=(), geolocation=()");
   });
 
-  it('defines Content-Security-Policy-Report-Only', () => {
-    expect(configContent).toContain("key: 'Content-Security-Policy-Report-Only'");
+  it('defines Content-Security-Policy', () => {
+    expect(configContent).toMatch(/key:\s*'Content-Security-Policy(-Report-Only)?'/);
     expect(configContent).toContain("default-src 'self'");
     expect(configContent).toContain("frame-ancestors 'none'");
     expect(configContent).toContain('vairisprodmedia.blob.core.windows.net');

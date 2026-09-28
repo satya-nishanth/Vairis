@@ -9,6 +9,7 @@ import {
   getDynamicRoleAssignments,
   assignDynamicRole,
   revokeDynamicRole,
+  canManageTargetRole,
 } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,6 @@ export async function GET() {
 
     const assignments = await getDynamicRoleAssignments()
 
-    // Also query prisma.user to enrich with user names where available
     const allEmails = Array.from(
       new Set([...envAdmins, ...envFinances, ...assignments.map((a) => a.email.toLowerCase())]),
     )
@@ -36,6 +36,7 @@ export async function GET() {
       select: { id: true, email: true, name: true, createdAt: true },
     })
     const userMap = new Map(users.map((u) => [u.email.toLowerCase(), u]))
+    const assignmentMap = new Map(assignments.map((a) => [a.email.toLowerCase(), a]))
 
     const adminList: Array<{
       email: string
@@ -59,63 +60,64 @@ export async function GET() {
       isRemovable: boolean
     }> = []
 
-    // Add env finance emails
-    for (const email of envFinances) {
-      const user = userMap.get(email)
-      financeList.push({
-        email,
-        source: 'env',
-        name: user?.name,
-        userId: user?.id,
-        createdAt: user?.createdAt.toISOString(),
-        isRemovable: false,
-      })
-    }
-
-    // Add env admin emails
-    for (const email of envAdmins) {
-      const user = userMap.get(email)
-      adminList.push({
-        email,
-        source: 'env',
-        name: user?.name,
-        userId: user?.id,
-        createdAt: user?.createdAt.toISOString(),
-        isRemovable: false,
-      })
-    }
-
-    // Add dynamic role assignments
+    // 1. Process dynamic assignments (dashboard-assigned roles take precedence)
     for (const a of assignments) {
       const lower = a.email.toLowerCase()
       const user = userMap.get(lower)
 
       if (a.role === 'FINANCE') {
-        if (!envFinances.includes(lower)) {
-          financeList.push({
-            id: a.id,
-            email: lower,
-            source: 'database',
-            name: user?.name,
-            userId: user?.id,
-            createdBy: a.createdBy,
-            createdAt: a.createdAt,
-            isRemovable: callerRole === 'FINANCE',
-          })
-        }
+        financeList.push({
+          id: a.id,
+          email: lower,
+          source: envFinances.includes(lower) ? 'env' : 'database',
+          name: user?.name,
+          userId: user?.id,
+          createdBy: a.createdBy,
+          createdAt: a.createdAt,
+          isRemovable: callerRole === 'FINANCE',
+        })
       } else if (a.role === 'ADMIN') {
-        if (!envAdmins.includes(lower)) {
-          adminList.push({
-            id: a.id,
-            email: lower,
-            source: 'database',
-            name: user?.name,
-            userId: user?.id,
-            createdBy: a.createdBy,
-            createdAt: a.createdAt,
-            isRemovable: true, // both ADMIN and FINANCE callers can remove dynamic admins
-          })
-        }
+        adminList.push({
+          id: a.id,
+          email: lower,
+          source: envAdmins.includes(lower) ? 'env' : 'database',
+          name: user?.name,
+          userId: user?.id,
+          createdBy: a.createdBy,
+          createdAt: a.createdAt,
+          isRemovable: true,
+        })
+      }
+      // Note: role === 'USER' means explicitly revoked, so not shown in either list
+    }
+
+    // 2. Add env finance emails that have not been dynamically modified
+    for (const email of envFinances) {
+      if (!assignmentMap.has(email)) {
+        const user = userMap.get(email)
+        financeList.push({
+          email,
+          source: 'env',
+          name: user?.name,
+          userId: user?.id,
+          createdAt: user?.createdAt.toISOString(),
+          isRemovable: callerRole === 'FINANCE',
+        })
+      }
+    }
+
+    // 3. Add env admin emails that have not been dynamically modified
+    for (const email of envAdmins) {
+      if (!assignmentMap.has(email)) {
+        const user = userMap.get(email)
+        adminList.push({
+          email,
+          source: 'env',
+          name: user?.name,
+          userId: user?.id,
+          createdAt: user?.createdAt.toISOString(),
+          isRemovable: true,
+        })
       }
     }
 
@@ -170,15 +172,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const envAdmins = getEnvAdminEmails()
-    const envFinances = getEnvFinanceEmails()
-    if (envFinances.includes(email) || envAdmins.includes(email)) {
-      return NextResponse.json(
-        { error: 'Email is already configured in server environment variables.' },
-        { status: 400 },
-      )
-    }
-
     const assignment = await assignDynamicRole(email, role, session.user.email)
 
     return NextResponse.json(
@@ -217,23 +210,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })
     }
 
-    const envAdmins = getEnvAdminEmails()
-    const envFinances = getEnvFinanceEmails()
-    if (envFinances.includes(email) || envAdmins.includes(email)) {
-      return NextResponse.json(
-        { error: 'Cannot remove email configured in server environment variables.' },
-        { status: 400 },
-      )
-    }
-
-    const assignments = await getDynamicRoleAssignments()
-    const assignment = assignments.find((a) => a.email.toLowerCase() === email)
-    if (!assignment) {
-      return NextResponse.json({ error: 'Role assignment not found' }, { status: 404 })
+    const currentTargetRole = await getEffectiveRole(email)
+    if (currentTargetRole === 'USER') {
+      return NextResponse.json({ error: 'Role assignment not found or already standard user' }, { status: 404 })
     }
 
     // Delegation rule
-    if (assignment.role === 'FINANCE' && callerRole !== 'FINANCE') {
+    if (currentTargetRole === 'FINANCE' && callerRole !== 'FINANCE') {
       return NextResponse.json(
         {
           error:
@@ -247,7 +230,7 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Role ${assignment.role} revoked from ${email}.`,
+      message: `Role ${currentTargetRole} revoked from ${email}.`,
     })
   } catch (err: unknown) {
     console.error('[DELETE /api/admin/roles] Error:', err)

@@ -40,9 +40,9 @@ const nextConfig = {
         key: 'Content-Security-Policy',
         value: [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://checkout.razorpay.com https://api.razorpay.com",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://checkout.razorpay.com https://api.razorpay.com https://cdn.razorpay.com https://*.razorpay.com",
           "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co https://lh3.googleusercontent.com https://www.googletagmanager.com https://*.razorpay.com",
+          "img-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co https://lh3.googleusercontent.com https://*.googleusercontent.com https://*.usercontent.google.com https://www.googletagmanager.com https://*.razorpay.com",
           "font-src 'self' data:",
           "media-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.google-analytics.com https://www.google-analytics.com https://*.ingest.sentry.io https://*.sentry.io https://api.razorpay.com https://lumberjack.razorpay.com",
@@ -116,8 +116,6 @@ const nextConfig = {
       { source: '/shop', destination: '/all-products/rings', permanent: true },
       { source: '/shop/:category', destination: '/all-products/:category', permanent: true },
       { source: '/shop/product/:id', destination: '/product/:id', permanent: true },
-      { source: '/all-products/mangalsutra', destination: '/all-products/pendants', permanent: true },
-      { source: '/collections/mangalsutra', destination: '/all-products/pendants', permanent: true },
     ];
   },
   images: {
@@ -130,6 +128,8 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.supabase.co', pathname: '/storage/v1/object/public/**' },
       { protocol: 'https', hostname: '*.blob.core.windows.net', pathname: '/product-media/**' },
       { protocol: 'https', hostname: 'lh3.googleusercontent.com', pathname: '/**' },
+      { protocol: 'https', hostname: '*.googleusercontent.com', pathname: '/**' },
+      { protocol: 'https', hostname: '*.usercontent.google.com', pathname: '/**' },
     ],
   },
 }
