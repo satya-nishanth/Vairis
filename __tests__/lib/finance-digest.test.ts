@@ -1,4 +1,18 @@
-import { formatFinanceDigestMessage } from '@/lib/finance-digest'
+import { formatFinanceDigestMessage, runFinanceDigest } from '@/lib/finance-digest'
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    orderFinance: { findMany: jest.fn().mockResolvedValue([]) },
+    financeTransaction: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+  },
+}))
+
+jest.mock('@/lib/finance-order-search', () => ({
+  countPendingOrderSheets: jest.fn().mockResolvedValue(0),
+}))
 
 describe('formatFinanceDigestMessage', () => {
   const now = new Date('2026-08-25T03:30:00.000Z')
@@ -37,3 +51,25 @@ describe('formatFinanceDigestMessage', () => {
     expect(msg).toContain('https://stage.example/admin/finance/transactions')
   })
 })
+
+describe('runFinanceDigest', () => {
+  const originalEnv = process.env.DISCORD_FINANCE_WEBHOOK_URL
+
+  afterEach(() => {
+    process.env.DISCORD_FINANCE_WEBHOOK_URL = originalEnv
+  })
+
+  it('skips posting without error when DISCORD_FINANCE_WEBHOOK_URL is "disabled"', async () => {
+    process.env.DISCORD_FINANCE_WEBHOOK_URL = 'disabled'
+    const result = await runFinanceDigest()
+    expect(result.posted).toBe(false)
+    expect(result.content).toContain('Finance daily digest')
+  })
+
+  it('skips posting without error when DISCORD_FINANCE_WEBHOOK_URL is empty', async () => {
+    delete process.env.DISCORD_FINANCE_WEBHOOK_URL
+    const result = await runFinanceDigest()
+    expect(result.posted).toBe(false)
+  })
+})
+
