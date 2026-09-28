@@ -442,8 +442,7 @@ export function ProductFilterLabelsEditor({
       )}
 
       {/* Add Custom Label Row */}
-      <form
-        onSubmit={handleAddCustom}
+      <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -456,6 +455,13 @@ export function ProductFilterLabelsEditor({
           type="text"
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.stopPropagation()
+              handleAddCustom()
+            }
+          }}
           placeholder="Add custom label (e.g. Cocktail, Floral, Vintage)..."
           style={{
             flex: 1,
@@ -471,7 +477,8 @@ export function ProductFilterLabelsEditor({
           }}
         />
         <button
-          type="submit"
+          type="button"
+          onClick={() => handleAddCustom()}
           disabled={!customInput.trim()}
           style={{
             padding: '7px 14px',
@@ -488,7 +495,7 @@ export function ProductFilterLabelsEditor({
         >
           + Add Label
         </button>
-      </form>
+      </div>
     </div>
   )
 }
