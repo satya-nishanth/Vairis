@@ -267,7 +267,11 @@ describe('order invoice from priceBreakdown', () => {
     expect(exchanged.wastage).toBeCloseTo(1075.82, 2)
     expect(exchanged.stones[0].ratePerCarat).toBe(30000)
     expect(exchanged.stones[0].exchange).toBe(true)
-    expect(exchanged.diamondValue).toBe(15000)
+    // Diamonds ₹ total stays — already the settled amount
+    expect(exchanged.diamondValue).toBe(line.diamondValue)
+    expect(exchanged.stoneValue).toBe(line.stoneValue)
+    expect(exchanged.stones[0].value).toBe(line.stones[0].value)
+    expect(exchanged.taxable).toBe(line.taxable)
   })
 
   it('payloadFromOrder uses paymentReceivedAt for Received On when offline', () => {
