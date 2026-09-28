@@ -84,8 +84,10 @@ export default async function EditProductPage({
         }))}
         goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
         pricingConfig={pricingConfig}
+        allCategoryFilters={allFilters}
         initialData={{
           id: product.id,
+          labels: linkedLabels,
           name: product.name,
           description: product.description,
           category: product.category,

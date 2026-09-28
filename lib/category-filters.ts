@@ -20,6 +20,7 @@ export type CategoryFilterConfig = {
   labels: string[]; // Options under "styles" group (e.g. "Solitaire", "Stackable", etc.)
   metals?: string[]; // Options under "metals" group
   labelProductMap?: Record<string, string[]>; // label -> array of productIds explicitly tagged
+  labelExcludedMap?: Record<string, string[]>; // label -> array of productIds explicitly untagged/excluded
   updatedAt: string;
 };
 
@@ -53,6 +54,7 @@ export function getDefaultFilterConfig(slug: string, name?: string): CategoryFil
     labels: [...defaultLabels],
     metals: [...defaultMetals],
     labelProductMap: {},
+    labelExcludedMap: {},
     updatedAt: new Date().toISOString(),
   };
 }
@@ -121,9 +123,12 @@ export async function getAllCategoryFilters(): Promise<Record<string, CategoryFi
  * Used directly by the storefront PLP (`/all-products/[category]`).
  */
 export async function getCategoryFilters(slug: string): Promise<{
+  categorySlug: string;
+  categoryName: string;
   groups: CategoryFilterGroup[];
   labels: string[];
   labelProductMap: Record<string, string[]>;
+  labelExcludedMap: Record<string, string[]>;
 }> {
   const normSlug = slug.toLowerCase().trim();
   const allFilters = await getAllCategoryFilters();
@@ -149,9 +154,12 @@ export async function getCategoryFilters(slug: string): Promise<{
   });
 
   return {
+    categorySlug: normSlug,
+    categoryName: config.categoryName,
     groups,
     labels: config.labels,
     labelProductMap: config.labelProductMap ?? {},
+    labelExcludedMap: config.labelExcludedMap ?? {},
   };
 }
 
@@ -164,6 +172,7 @@ export async function saveCategoryFilters(
     labels: string[];
     metals?: string[];
     labelProductMap?: Record<string, string[]>;
+    labelExcludedMap?: Record<string, string[]>;
     categoryName?: string;
   }
 ): Promise<CategoryFilterConfig> {
@@ -191,12 +200,23 @@ export async function saveCategoryFilters(
     }
   }
 
+  // Clean labelExcludedMap to only retain entries for valid labels
+  const cleanedExcludedMap: Record<string, string[]> = {};
+  if (updates.labelExcludedMap) {
+    for (const [label, prodIds] of Object.entries(updates.labelExcludedMap)) {
+      if (cleanedLabels.includes(label) && Array.isArray(prodIds)) {
+        cleanedExcludedMap[label] = Array.from(new Set(prodIds.filter(Boolean)));
+      }
+    }
+  }
+
   const updatedConfig: CategoryFilterConfig = {
     categorySlug: normSlug,
     categoryName: updates.categoryName || existing.categoryName || normSlug,
     labels: cleanedLabels,
     metals: cleanedMetals,
     labelProductMap: cleanedMap,
+    labelExcludedMap: cleanedExcludedMap,
     updatedAt: new Date().toISOString(),
   };
 
@@ -219,7 +239,8 @@ export async function resetCategoryFilters(slug: string): Promise<CategoryFilter
 
 /**
  * Returns the list of filter labels a specific product is linked with
- * (both via explicit assignment in labelProductMap and via text keyword matching).
+ * (both via explicit assignment in labelProductMap and via text keyword matching,
+ * respecting explicit exclusions in labelExcludedMap).
  */
 export function getProductLinkedLabels(
   product: {
@@ -236,7 +257,7 @@ export function getProductLinkedLabels(
   if (!filterConfigs) return [];
 
   let config: CategoryFilterConfig | undefined;
-  if ("labels" in filterConfigs && "categorySlug" in filterConfigs) {
+  if ("labels" in filterConfigs && Array.isArray((filterConfigs as any).labels)) {
     config = filterConfigs as CategoryFilterConfig;
   } else {
     const slug = (product.category ?? "").toLowerCase().trim();
@@ -248,6 +269,7 @@ export function getProductLinkedLabels(
 
   const matchedLabels: string[] = [];
   const map = config.labelProductMap || {};
+  const excludedMap = config.labelExcludedMap || {};
   const text = [
     product.name ?? "",
     product.itemCode ?? "",
@@ -260,10 +282,17 @@ export function getProductLinkedLabels(
   for (const label of config.labels) {
     const lower = label.toLowerCase();
     const explicitIds = map[label] || [];
+    const excludedIds = excludedMap[label] || [];
+
+    const isExcluded =
+      excludedIds.includes(product.id) ||
+      (product.itemCode ? excludedIds.includes(product.itemCode) : false);
+
+    if (isExcluded) continue;
 
     const isExplicit =
       explicitIds.includes(product.id) ||
-      (product.itemCode && explicitIds.includes(product.itemCode));
+      (product.itemCode ? explicitIds.includes(product.itemCode) : false);
 
     if (isExplicit || text.includes(lower)) {
       matchedLabels.push(label);
@@ -274,34 +303,76 @@ export function getProductLinkedLabels(
 }
 
 /**
- * Updates the explicitly assigned labels for a specific product in a category.
+ * Updates the explicitly assigned labels for a specific product in a category,
+ * adding new labels if needed and updating exclusions.
  */
 export async function setProductLabels(
   productId: string,
   categorySlug: string,
-  targetLabels: string[]
+  targetLabels: string[],
+  productInfo?: {
+    itemCode?: string | null;
+    name?: string;
+    designStyle?: string | null;
+    description?: string | null;
+  }
 ): Promise<CategoryFilterConfig> {
   const normSlug = categorySlug.toLowerCase().trim();
   const allFilters = await getAllCategoryFilters();
   const config = allFilters[normSlug] || getDefaultFilterConfig(normSlug);
 
-  const map = { ...(config.labelProductMap || {}) };
+  // If any targetLabels are not yet in config.labels, add them to available labels
+  const allLabels = [...config.labels];
+  for (const t of targetLabels) {
+    const trimmed = t.trim();
+    if (trimmed && !allLabels.includes(trimmed)) {
+      allLabels.push(trimmed);
+    }
+  }
 
-  for (const label of config.labels) {
+  const map = { ...(config.labelProductMap || {}) };
+  const excludedMap = { ...(config.labelExcludedMap || {}) };
+
+  const text = [
+    productInfo?.name ?? "",
+    productInfo?.itemCode ?? "",
+    productInfo?.designStyle ?? "",
+    productInfo?.description ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  for (const label of allLabels) {
+    const lower = label.toLowerCase();
     const list = map[label] || [];
+    const excludedList = excludedMap[label] || [];
     const shouldHave = targetLabels.includes(label);
 
-    if (shouldHave && !list.includes(productId)) {
-      map[label] = [...list, productId];
-    } else if (!shouldHave && list.includes(productId)) {
-      map[label] = list.filter((id) => id !== productId);
+    if (shouldHave) {
+      if (!list.includes(productId)) {
+        map[label] = [...list, productId];
+      }
+      if (excludedList.includes(productId)) {
+        excludedMap[label] = excludedList.filter((id) => id !== productId);
+      }
+    } else {
+      if (list.includes(productId)) {
+        map[label] = list.filter((id) => id !== productId);
+      }
+      // If product text would otherwise match this label, add to excludedMap so it stays removed
+      if (text.includes(lower) || !excludedList.includes(productId)) {
+        if (!excludedList.includes(productId)) {
+          excludedMap[label] = [...excludedList, productId];
+        }
+      }
     }
   }
 
   return saveCategoryFilters(normSlug, {
-    labels: config.labels,
+    labels: allLabels,
     metals: config.metals,
     labelProductMap: map,
+    labelExcludedMap: excludedMap,
     categoryName: config.categoryName,
   });
 }

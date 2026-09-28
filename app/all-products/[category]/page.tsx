@@ -157,6 +157,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         introOverride={heroBanner?.ctaLabel ?? undefined}
         filterGroups={categoryFilters?.groups}
         labelProductMap={categoryFilters?.labelProductMap}
+        labelExcludedMap={categoryFilters?.labelExcludedMap}
       />
     </Suspense>
   );

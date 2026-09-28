@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
+import { ProductFilterLabelsEditor } from './ProductFilterLabelsEditor'
 import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
 import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 
@@ -96,15 +97,17 @@ type FormData = {
   status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
   priority: string | number
   priceVisibility: 'INHERIT' | 'SHOW' | 'HIDE'
+  labels?: string[]
 }
 
 type Props = {
-  initialData?: Partial<FormData> & { id?: string }
+  initialData?: Partial<FormData> & { id?: string; labels?: string[] }
   mode: 'create' | 'edit'
   diamondRates: DiamondRateOption[]
   goldRates?: Record<string, number>
   pricingConfig?: PricingConfig
   categories?: CategoryOption[]
+  allCategoryFilters?: Record<string, any>
   returnTo?: string
 }
 
@@ -131,7 +134,7 @@ function emptyStone(diamondRates: DiamondRateOption[]): FormStone {
   }
 }
 
-function initialForm(data?: Partial<FormData>): FormData {
+function initialForm(data?: Partial<FormData> & { labels?: string[] }): FormData {
   return {
     name: data?.name ?? '',
     description: data?.description ?? '',
@@ -154,17 +157,39 @@ function initialForm(data?: Partial<FormData>): FormData {
     status: data?.status ?? 'DRAFT',
     priority: data?.priority !== undefined ? String(data.priority) : '0',
     priceVisibility: data?.priceVisibility ?? 'INHERIT',
+    labels: data?.labels ?? [],
   }
 }
 
-export default function ProductForm({ initialData, mode, diamondRates, goldRates, pricingConfig, categories: initialCategories, returnTo }: Props) {
+export default function ProductForm({
+  initialData,
+  mode,
+  diamondRates,
+  goldRates,
+  pricingConfig,
+  categories: initialCategories,
+  allCategoryFilters,
+  returnTo,
+}: Props) {
   const router = useRouter()
   const [form, setForm] = useState<FormData>(initialForm(initialData))
+  const [filtersMap, setFiltersMap] = useState<Record<string, any>>(allCategoryFilters ?? {})
   const [categoryList, setCategoryList] = useState<CategoryOption[]>(
     initialCategories && initialCategories.length > 0 ? initialCategories : DEFAULT_CATEGORIES
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!allCategoryFilters || Object.keys(allCategoryFilters).length === 0) {
+      fetch('/api/admin/filters')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((res) => {
+          if (res?.data) setFiltersMap(res.data)
+        })
+        .catch(() => {})
+    }
+  }, [allCategoryFilters])
 
   useEffect(() => {
     fetch('/api/admin/categories')
@@ -189,6 +214,13 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
     }
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
   }, [categoryList, form.category])
+
+  const currentCategorySlug = (form.category || '').toLowerCase().trim()
+  const currentCategoryConfig =
+    filtersMap[currentCategorySlug] ||
+    filtersMap[currentCategorySlug.replace(/s$/, '')] ||
+    filtersMap[`${currentCategorySlug}s`]
+  const availableLabels: string[] = currentCategoryConfig?.labels || []
 
   const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
   const isDraft = form.status !== 'LIVE'
@@ -307,6 +339,7 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
       variants,
       stones,
       images: form.images.filter(Boolean),
+      labels: form.labels,
     }
 
     const url = mode === 'create' ? '/api/admin/products' : `/api/admin/products/${initialData?.id}`
@@ -491,6 +524,19 @@ export default function ProductForm({ initialData, mode, diamondRates, goldRates
             rows={2}
             className="pform__input"
             placeholder="e.g. Alternating open heart motifs and bezel-set round stones"
+          />
+        </div>
+
+        {/* Category Filter Labels */}
+        <div style={{ marginTop: '1.25rem' }}>
+          <ProductFilterLabelsEditor
+            key={`${initialData?.id ?? 'new'}-${form.category}`}
+            productId={initialData?.id ?? ''}
+            category={currentCategoryConfig?.categoryName || form.category}
+            initialLabels={form.labels ?? []}
+            availableLabels={availableLabels}
+            onLabelsChange={(newLabels) => set('labels', newLabels)}
+            showSaveButton={mode === 'edit' && Boolean(initialData?.id)}
           />
         </div>
       </section>

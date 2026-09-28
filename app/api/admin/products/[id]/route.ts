@@ -5,6 +5,11 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { getStoreCategoryBySlug, updateStoreCategory } from '@/lib/store-categories'
 import { setProductPriority } from '@/lib/product-priorities'
+import {
+  getAllCategoryFilters,
+  getProductLinkedLabels,
+  setProductLabels,
+} from '@/lib/category-filters'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,17 +73,22 @@ const patchSchema = z.object({
     .optional(),
   // Drafts may have zero variants; LIVE needs ≥1 (checked against DB state below).
   variants: z.array(patchVariantSchema).optional(),
+  labels: z.array(z.string()).optional(),
 })
 
 export async function GET(_: NextRequest, { params }: { params: Params }) {
   await requireAdmin()
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: { variants: true, stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } } },
-  })
+  const [product, allFilters] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id },
+      include: { variants: true, stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } } },
+    }),
+    getAllCategoryFilters(),
+  ])
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(product)
+  const labels = getProductLinkedLabels(product, allFilters)
+  return NextResponse.json({ ...product, labels })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Params }) {
@@ -245,7 +255,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
       setProductPriority(id, data.priority)
     }
 
-    return NextResponse.json(product)
+    let finalLabels: string[] | undefined
+    if (data.labels !== undefined) {
+      try {
+        const catSlug = (data.category ?? product.category).toLowerCase().replace(/_/g, '-')
+        const savedConfig = await setProductLabels(id, catSlug, data.labels, product)
+        finalLabels = getProductLinkedLabels(product, savedConfig)
+      } catch (err) {
+        console.warn('[api/admin/products/[id]] failed setting product labels:', err)
+      }
+    }
+
+    return NextResponse.json({ ...product, ...(finalLabels !== undefined ? { labels: finalLabels } : {}) })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Cannot remove a variant')) {
       return NextResponse.json({ error: err.message }, { status: 409 })

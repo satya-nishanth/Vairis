@@ -113,6 +113,34 @@ describe("Category Filters Management", () => {
     expect(filters2.labelProductMap["Hoops"]).toContain("prod_earring_1");
   });
 
+  it("respects label exclusions when product text naturally matches a keyword", async () => {
+    await saveCategoryFilters("pendants", {
+      labels: ["Solitaire", "Minimal"],
+      metals: ["Yellow Gold"],
+      labelProductMap: {},
+      labelExcludedMap: {},
+    });
+
+    const product = {
+      id: "prod_pendant_1",
+      itemCode: "PD-01",
+      name: "Classic Solitaire Diamond Pendant",
+      category: "pendants",
+    };
+
+    // Initially matches "Solitaire" via name
+    const initialConfig = await getCategoryFilters("pendants");
+    expect(getProductLinkedLabels(product, initialConfig)).toContain("Solitaire");
+
+    // Admin unchecks "Solitaire" and only sets "Minimal"
+    await setProductLabels(product.id, "pendants", ["Minimal"], product);
+    const updatedFilters = await getCategoryFilters("pendants");
+    const updatedLinked = getProductLinkedLabels(product, updatedFilters);
+
+    expect(updatedLinked).not.toContain("Solitaire");
+    expect(updatedLinked).toContain("Minimal");
+  });
+
   it("resets category filters back to default presets", async () => {
     await resetCategoryFilters("rings");
     const filters = await getCategoryFilters("rings");
