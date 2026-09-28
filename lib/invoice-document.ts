@@ -1,6 +1,7 @@
 import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
+  isDiamondTypeLabel,
   isOrderItemPriceSnapshot,
   splitGemValues,
   type OrderItemPriceSnapshot,
@@ -20,7 +21,12 @@ export type InvoiceParty = {
 export type InvoiceStoneRow = {
   label: string
   caratWeight: number
+  /** Active ₹/ct shown on the invoice (std or exch depending on line.withExchange). */
   ratePerCarat: number
+  /** Standard (without-exchange) ₹/ct — kept so toggling Exchange on a locked line can swap display. */
+  ratePerCaratStd?: number
+  /** With-exchange ₹/ct. */
+  ratePerCaratExchange?: number
   value: number
   exchange: boolean
 }
@@ -331,16 +337,70 @@ const EMPTY_PARTY: InvoiceParty = { name: '', lines: '', phone: '' }
 
 function stoneRowsFromInputs(stones: StoneInput[], withExchange: boolean): InvoiceStoneRow[] {
   return stones.map((s) => {
-    const rate = Number(withExchange ? s.ratePerCaratExchange : s.ratePerCarat)
+    const std = Number(s.ratePerCarat)
+    const exch = Number(s.ratePerCaratExchange)
+    const rate = Number(withExchange ? exch : std)
     const carat = Number(s.caratWeight)
     return {
       label: s.typeLabel ?? 'Diamond',
       caratWeight: carat,
       ratePerCarat: rate,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
       value: carat * rate,
       exchange: withExchange,
     }
   })
+}
+
+/**
+ * Flip Exchange opted on an invoice line without unlocking live gold/making calc.
+ * Updates the flag, per-ct rate (std ↔ exch when both rates are known), stone line
+ * values, and diamond/stone totals. PDP/checkout are untouched.
+ */
+export function applyInvoiceExchangeFlag(line: InvoiceLine, withExchange: boolean): InvoiceLine {
+  const stones = line.stones.map((s) => {
+    const std = Number(s.ratePerCaratStd ?? s.ratePerCarat)
+    const exch = Number(s.ratePerCaratExchange ?? s.ratePerCarat)
+    const ratePerCarat = withExchange ? exch : std
+    const carat = Number(s.caratWeight)
+    return {
+      ...s,
+      exchange: withExchange,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
+      ratePerCarat,
+      value: carat * ratePerCarat,
+    }
+  })
+
+  let diamondValue = 0
+  let otherFromRows = 0
+  for (const s of stones) {
+    if (isDiamondTypeLabel(s.label)) diamondValue += Number(s.value) || 0
+    else otherFromRows += Number(s.value) || 0
+  }
+  const otherStoneValue =
+    otherFromRows > 0 ? otherFromRows : Number(line.otherStoneValue) || 0
+  const stoneValue = diamondValue + otherStoneValue
+  const qty = Math.max(1, Number(line.quantity) || 1)
+  const unitTaxable =
+    Number(line.goldValue) +
+    Number(line.wastage) +
+    Number(line.making) +
+    stoneValue +
+    Number(line.miscCharges)
+
+  return {
+    ...line,
+    withExchange,
+    stones,
+    diamondValue,
+    otherStoneValue,
+    stoneValue,
+    itemValue: Number(line.goldValue) + stoneValue,
+    taxable: unitTaxable * qty,
+  }
 }
 
 export function lineFromProduct(
@@ -570,14 +630,29 @@ function resolvedReceivedOn(order: PrefillOrder): string {
   return payment ? payment.createdAt.toISOString().slice(0, 10) : ''
 }
 
-function stonesFromSnapshot(snap: OrderItemPriceSnapshot): InvoiceStoneRow[] {
-  return (snap.stoneLines ?? []).map((s) => ({
-    label: s.typeLabel || 'Diamond',
-    caratWeight: Number(s.caratWeight),
-    ratePerCarat: Number(s.ratePerCarat),
-    value: Number(s.value),
-    exchange: Boolean(snap.withExchange),
-  }))
+function stonesFromSnapshot(
+  snap: OrderItemPriceSnapshot,
+  catalogueStones?: StoneInput[],
+): InvoiceStoneRow[] {
+  return (snap.stoneLines ?? []).map((s) => {
+    const label = s.typeLabel || 'Diamond'
+    const match = catalogueStones?.find(
+      (p) => (p.typeLabel ?? 'Diamond').toLowerCase() === label.toLowerCase(),
+    )
+    const snapRate = Number(s.ratePerCarat)
+    const std = match ? Number(match.ratePerCarat) : snapRate
+    const exch = match ? Number(match.ratePerCaratExchange) : snapRate
+    const exchange = Boolean(snap.withExchange)
+    return {
+      label,
+      caratWeight: Number(s.caratWeight),
+      ratePerCarat: snapRate,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
+      value: Number(s.value),
+      exchange,
+    }
+  })
 }
 
 /**
@@ -597,11 +672,12 @@ export function lineFromOrderItem(
   if (snap) {
     const wastagePct =
       snap.goldValue > 0 ? (snap.goldVA / snap.goldValue) * 100 : Number(config.vaGoldPct)
-    const snapStones = stonesFromSnapshot(snap)
+    const catalogueStones = toStoneInputs(v.product.stones)
+    const snapStones = stonesFromSnapshot(snap, catalogueStones)
     const stones =
       snapStones.length > 0
         ? snapStones
-        : stoneRowsFromInputs(toStoneInputs(v.product.stones), withExchange)
+        : stoneRowsFromInputs(catalogueStones, withExchange)
     const gems = splitGemValues(snap)
 
     return recomputeLine(

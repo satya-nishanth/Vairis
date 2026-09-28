@@ -10,6 +10,7 @@ import {
   applyInvoiceSeller,
   lineFromCatalogueVariant,
   recomputeLine,
+  applyInvoiceExchangeFlag,
   sellerDefaults,
   totalsFromPayload,
   type InvoiceCatalogueVariant,
@@ -458,7 +459,7 @@ function LineEditor({
       'legacyStoneCharges',
       'leadIncentive',
       'stones',
-      'withExchange',
+      // withExchange is handled separately — flag + ₹/ct only; keep locked order amounts
     ]
     const unlock = Object.keys(partial).some((k) => unlockKeys.includes(k))
     onChange({
@@ -466,6 +467,10 @@ function LineEditor({
       ...partial,
       ...(unlock ? { lockedPricing: false } : null),
     })
+  }
+
+  function setExchangeOpted(checked: boolean) {
+    onChange(applyInvoiceExchangeFlag(line, checked))
   }
 
   function patchStone(idx: number, partial: Partial<InvoiceStoneRow>) {
@@ -499,7 +504,7 @@ function LineEditor({
           <input
             type="checkbox"
             checked={line.withExchange}
-            onChange={(e) => patch({ withExchange: e.target.checked })}
+            onChange={(e) => setExchangeOpted(e.target.checked)}
           />
           Exchange opted
         </label>

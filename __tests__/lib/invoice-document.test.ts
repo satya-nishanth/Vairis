@@ -1,6 +1,7 @@
 import { DEFAULT_PRICING_CONFIG } from '@/lib/pricing'
 import {
   applyInvoiceSeller,
+  applyInvoiceExchangeFlag,
   invoiceFromProducts,
   lineFromOrderItem,
   payloadFromOrder,
@@ -211,6 +212,62 @@ describe('order invoice from priceBreakdown', () => {
     expect(payload.lines[0].diamondValue).toBe(93600)
     expect(payload.lines[0].otherStoneValue).toBe(0)
     expect(payload.lines[0].stoneValue).toBe(93600)
+  })
+
+  it('applyInvoiceExchangeFlag swaps ₹/ct and flag without unlocking gold/making', () => {
+    const line = lineFromOrderItem(
+      {
+        ...orderItem,
+        withExchange: false,
+        priceBreakdown: {
+          ...snap,
+          withExchange: false,
+          stoneValue: 21000 * 0.5,
+          diamondValue: 21000 * 0.5,
+          otherStoneValue: 0,
+          stoneLines: [
+            {
+              typeLabel: 'Colourless Diamond',
+              caratWeight: 0.5,
+              ratePerCarat: 21000,
+              value: 10500,
+            },
+          ],
+          taxable: 21516.35 + 1075.82 + 1100 + 10500 + 45,
+        },
+        variant: {
+          ...orderItem.variant,
+          product: {
+            itemCode: 'AJLR-598',
+            stones: [
+              {
+                caratWeight: 0.5,
+                diamondRate: {
+                  label: 'Colourless Diamond',
+                  ratePerCarat: 21000,
+                  ratePerCaratExchange: 30000,
+                },
+              },
+            ],
+          },
+        },
+      },
+      { GOLD_18K: 99999 },
+      DEFAULT_PRICING_CONFIG,
+    )
+    expect(line.lockedPricing).toBe(true)
+    expect(line.withExchange).toBe(false)
+    expect(line.goldValue).toBeCloseTo(21516.35, 2)
+
+    const exchanged = applyInvoiceExchangeFlag(line, true)
+    expect(exchanged.lockedPricing).toBe(true)
+    expect(exchanged.withExchange).toBe(true)
+    expect(exchanged.goldValue).toBeCloseTo(21516.35, 2)
+    expect(exchanged.making).toBe(1100)
+    expect(exchanged.wastage).toBeCloseTo(1075.82, 2)
+    expect(exchanged.stones[0].ratePerCarat).toBe(30000)
+    expect(exchanged.stones[0].exchange).toBe(true)
+    expect(exchanged.diamondValue).toBe(15000)
   })
 
   it('payloadFromOrder uses paymentReceivedAt for Received On when offline', () => {
