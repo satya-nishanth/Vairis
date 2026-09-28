@@ -5,6 +5,7 @@ import { calculatePrice } from "@/lib/pricing";
 import { getPricingConfig, getShowPricesGlobal, toStoneInputs, toStoneViews, resolvePriceVisibility } from "@/lib/pricing-data";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 import { sortProductsByPriority } from "@/lib/product-priorities";
+import { getAllCategoryFilters, getProductLinkedLabels } from "@/lib/category-filters";
 import ProductPageClient from "./ProductPageClient";
 
 export const revalidate = 120;
@@ -31,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg] = await Promise.all([
+  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg, allFilters] = await Promise.all([
     prisma.product.findUnique({
       where: { id, isActive: true, status: 'LIVE' },
       include: {
@@ -47,9 +48,12 @@ export default async function ProductPage({ params }: Props) {
       _avg: { rating: true },
       _count: { id: true },
     }),
+    getAllCategoryFilters(),
   ]);
 
   if (!product) notFound();
+
+  const productLabels = getProductLinkedLabels(product, allFilters);
 
   const showPrice = resolvePriceVisibility(product.priceVisibility, showPricesGlobal);
 
@@ -157,6 +161,7 @@ export default async function ProductPage({ params }: Props) {
         itemCode: product.itemCode,
         comingSoon: product.comingSoon,
         showPrice,
+        labels: productLabels,
         stones: toStoneViews(product.stones),
         stoneType: product.stoneType ?? null,
         caratWeight: product.caratWeight ? product.caratWeight.toString() : null,

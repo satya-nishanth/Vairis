@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
@@ -54,6 +55,7 @@ type ProductData = {
   variants: Variant[];
   stoneType?: string | null;
   caratWeight?: string | null;
+  labels?: string[];
 };
 
 type Props = {
@@ -375,6 +377,57 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             )}
             <h1 className="pdp-info__title">{product.name}</h1>
             <p className="pdp-info__tagline">{categoryLabel}</p>
+
+            {product.labels && product.labels.length > 0 && (
+              <div
+                className="pdp-info__labels"
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "6px",
+                  marginTop: "8px",
+                  marginBottom: "12px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "var(--color-muted, #6b7280)",
+                    fontWeight: 600,
+                    marginRight: "4px",
+                  }}
+                >
+                  Styles &amp; Labels:
+                </span>
+                {product.labels.map((lbl) => (
+                  <Link
+                    key={lbl}
+                    href={`/all-products/${categorySlug}?style=${encodeURIComponent(lbl)}`}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "2px 8px",
+                      borderRadius: "9999px",
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                      backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+                      color: "var(--color-text, #111827)",
+                      border: "1px solid var(--color-border, #e5e7eb)",
+                      textDecoration: "none",
+                      transition: "all 0.15s ease",
+                    }}
+                    title={`Browse all ${categoryLabel} in ${lbl}`}
+                  >
+                    <span style={{ fontSize: "0.6875rem" }}>🏷️</span>
+                    <span>{lbl}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
 
             {product.showPrice && price != null ? (
               <p className="pdp-info__price">

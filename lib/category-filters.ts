@@ -216,3 +216,93 @@ export async function resetCategoryFilters(slug: string): Promise<CategoryFilter
   writeFiltersFile(stored);
   return defaultConfig;
 }
+
+/**
+ * Returns the list of filter labels a specific product is linked with
+ * (both via explicit assignment in labelProductMap and via text keyword matching).
+ */
+export function getProductLinkedLabels(
+  product: {
+    id: string;
+    itemCode?: string | null;
+    name?: string;
+    designStyle?: string | null;
+    description?: string | null;
+    category?: string;
+    metals?: string[];
+  },
+  filterConfigs?: Record<string, CategoryFilterConfig> | CategoryFilterConfig
+): string[] {
+  if (!filterConfigs) return [];
+
+  let config: CategoryFilterConfig | undefined;
+  if ("labels" in filterConfigs && "categorySlug" in filterConfigs) {
+    config = filterConfigs as CategoryFilterConfig;
+  } else {
+    const slug = (product.category ?? "").toLowerCase().trim();
+    const map = filterConfigs as Record<string, CategoryFilterConfig>;
+    config = map[slug] || map[slug.replace(/s$/, "")] || map[`${slug}s`];
+  }
+
+  if (!config || !config.labels || config.labels.length === 0) return [];
+
+  const matchedLabels: string[] = [];
+  const map = config.labelProductMap || {};
+  const text = [
+    product.name ?? "",
+    product.itemCode ?? "",
+    product.designStyle ?? "",
+    product.description ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  for (const label of config.labels) {
+    const lower = label.toLowerCase();
+    const explicitIds = map[label] || [];
+
+    const isExplicit =
+      explicitIds.includes(product.id) ||
+      (product.itemCode && explicitIds.includes(product.itemCode));
+
+    if (isExplicit || text.includes(lower)) {
+      matchedLabels.push(label);
+    }
+  }
+
+  return matchedLabels;
+}
+
+/**
+ * Updates the explicitly assigned labels for a specific product in a category.
+ */
+export async function setProductLabels(
+  productId: string,
+  categorySlug: string,
+  targetLabels: string[]
+): Promise<CategoryFilterConfig> {
+  const normSlug = categorySlug.toLowerCase().trim();
+  const allFilters = await getAllCategoryFilters();
+  const config = allFilters[normSlug] || getDefaultFilterConfig(normSlug);
+
+  const map = { ...(config.labelProductMap || {}) };
+
+  for (const label of config.labels) {
+    const list = map[label] || [];
+    const shouldHave = targetLabels.includes(label);
+
+    if (shouldHave && !list.includes(productId)) {
+      map[label] = [...list, productId];
+    } else if (!shouldHave && list.includes(productId)) {
+      map[label] = list.filter((id) => id !== productId);
+    }
+  }
+
+  return saveCategoryFilters(normSlug, {
+    labels: config.labels,
+    metals: config.metals,
+    labelProductMap: map,
+    categoryName: config.categoryName,
+  });
+}
+
