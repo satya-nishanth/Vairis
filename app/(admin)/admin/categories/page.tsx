@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getStoreCategories } from "@/lib/store-categories";
 import { AdminGuide } from "@/components/admin/AdminGuide";
@@ -68,6 +69,21 @@ export default async function AdminCategoriesPage() {
         <h1 style={{ fontSize: "1.875rem", fontWeight: 400, color: "#111827", margin: 0 }}>
           Categories
         </h1>
+        <Link
+          href="/admin/filters"
+          style={{
+            fontSize: "0.8125rem",
+            color: "#111827",
+            textDecoration: "none",
+            border: "1px solid #d1d5db",
+            padding: "6px 12px",
+            borderRadius: 6,
+            background: "#ffffff",
+            fontWeight: 500,
+          }}
+        >
+          Manage Filter Labels →
+        </Link>
       </div>
       <AdminGuide
         pageKey="categories"
