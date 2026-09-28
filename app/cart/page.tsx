@@ -122,8 +122,9 @@ export default function CartPage() {
                 }}
                 onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
                 onDecrement={() => {
-                  if (item.quantity <= 1) removeItem(item.id);
-                  else updateQuantity(item.id, item.quantity - 1);
+                  if (item.quantity > 1) {
+                    updateQuantity(item.id, item.quantity - 1);
+                  }
                 }}
                 onRemove={() => removeItem(item.id)}
               />

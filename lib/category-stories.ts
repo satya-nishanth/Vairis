@@ -76,6 +76,12 @@ export const CATEGORY_STORIES: Record<ShopCategory, CategoryStory[]> = {
     { line1: "Hang it once, wear it forever.", line2: "Everyday diamonds, no fuss." },
     { line1: "A single point of light.", line2: "Centered, calm, completely you." },
   ],
+  mangalsutra: [
+    { line1: "Sacred bond, modern grace.", line2: "Designed to be lived in, not locked away." },
+    { line1: "Black beads and fine diamonds.", line2: "Heritage re-imagined for daily confidence." },
+    { line1: "Light enough for office meetings.", line2: "Precious enough for lifelong memories." },
+    { line1: "A symbol of love that moves with your life.", line2: "Every day, every outfit." },
+  ],
   cufflinks: [
     { line1: "Details men notice.", line2: "Details that notice you back." },
     { line1: "Not flashy - precisely polished.", line2: "Cufflinks for the man who reads the room." },

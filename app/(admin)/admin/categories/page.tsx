@@ -12,12 +12,12 @@ export default async function AdminCategoriesPage() {
     prisma.product
       .findMany({
         orderBy: [{ category: "asc" }, { name: "asc" }],
-        select: { id: true, name: true, itemCode: true, category: true },
+        select: { id: true, name: true, itemCode: true, category: true, status: true, isActive: true },
       })
       .catch(() => []),
   ]);
 
-  const productsMap = new Map<string, { id: string; name: string; itemCode: string | null; category: string }>();
+  const productsMap = new Map<string, { id: string; name: string; itemCode: string | null; category: string; status: string; isActive: boolean }>();
 
   if (dbProducts && dbProducts.length > 0) {
     for (const p of dbProducts) {
@@ -26,6 +26,8 @@ export default async function AdminCategoriesPage() {
         name: p.name,
         itemCode: p.itemCode,
         category: p.category,
+        status: p.status,
+        isActive: p.isActive,
       });
     }
   }
@@ -39,6 +41,8 @@ export default async function AdminCategoriesPage() {
           name: cp.slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
           itemCode: cp.sku,
           category: cp.category.toUpperCase(),
+          status: "LIVE",
+          isActive: true,
         });
       }
     }
@@ -46,10 +50,10 @@ export default async function AdminCategoriesPage() {
 
   const allProductsList = Array.from(productsMap.values());
 
-  // Ensure default/existing categories have their matching products pre-assigned
+  // Ensure default/existing categories have their matching products pre-assigned (ONLY active LIVE products)
   const enhancedCategories = categories.map((cat) => {
     const matchingIds = allProductsList
-      .filter((p) => p.category && (p.category.toLowerCase() === cat.slug.toLowerCase() || p.category.toUpperCase() === cat.slug.toUpperCase()))
+      .filter((p) => p.isActive && p.status === "LIVE" && p.category && (p.category.toLowerCase() === cat.slug.toLowerCase() || p.category.toUpperCase() === cat.slug.toUpperCase()))
       .map((p) => p.id);
     const mergedProductIds = Array.from(new Set([...(cat.productIds ?? []), ...matchingIds]));
     return {
@@ -79,7 +83,7 @@ export default async function AdminCategoriesPage() {
         categories={enhancedCategories}
         allProducts={allProductsList.map((p) => ({
           id: p.id,
-          label: `${p.name}${p.itemCode ? ` (${p.itemCode})` : ""} — ${p.category.toLowerCase()}`,
+          label: `${p.name}${p.itemCode ? ` (${p.itemCode})` : ""}${p.status && p.status !== "LIVE" ? ` [${p.status}]` : ""}${p.isActive === false ? " [INACTIVE]" : ""} — ${p.category.toLowerCase()}`,
           category: p.category,
         }))}
       />

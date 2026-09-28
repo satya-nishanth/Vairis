@@ -4913,4 +4913,13 @@
     grid-template-columns: 1fr !important;
     overflow-y: auto !important;
   }
+
+  .admin-page input,
+  .admin-page select,
+  .admin-page textarea,
+  .admin-shell input,
+  .admin-shell select,
+  .admin-shell textarea {
+    font-size: 16px !important;
+  }
 }

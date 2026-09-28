@@ -69,68 +69,76 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
 
   const views: HomeSectionView[] = []
   for (const row of rows) {
-    const config = (row.config ?? {}) as Record<string, unknown>
-    if (row.kind === 'collection-rail') {
-      const slug = String(config.collectionSlug ?? '')
-      if (!slug) continue
-      const collection = await prisma.collection.findUnique({
-        where: { slug },
-        include: {
-          products: {
-            orderBy: { sortOrder: 'asc' },
-            take: Number(config.limit ?? 8),
-            include: {
-              product: {
-                include: {
-                  variants: true,
-                  stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+    try {
+      const config = (row.config ?? {}) as Record<string, unknown>
+      if (row.kind === 'collection-rail') {
+        const slug = String(config.collectionSlug ?? '')
+        if (!slug) continue
+        const collection = await prisma.collection.findUnique({
+          where: { slug },
+          include: {
+            products: {
+              orderBy: { sortOrder: 'asc' },
+              take: Number(config.limit ?? 8),
+              include: {
+                product: {
+                  include: {
+                    variants: true,
+                    stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+                  },
                 },
               },
             },
           },
-        },
-      })
-      if (!collection || !collection.active) continue
-      views.push({
-        kind: 'collection-rail',
-        id: row.id,
-        title: row.title ?? collection.title,
-        subtitle: row.subtitle ?? collection.subtitle,
-        collectionSlug: slug,
-        products: collection.products
-          .map((cp) => cp.product)
-          .filter((p) => p.isActive && p.status === 'LIVE')
-          .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name))
-          .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)),
-      })
-    } else if (row.kind === 'editorial') {
-      views.push({
-        kind: 'editorial',
-        id: row.id,
-        title: row.title,
-        subtitle: row.subtitle,
-        image: typeof config.image === 'string' ? config.image : null,
-        ctaLabel: typeof config.ctaLabel === 'string' ? config.ctaLabel : null,
-        ctaHref: typeof config.ctaHref === 'string' ? config.ctaHref : null,
-      })
-    } else if (row.kind === 'video') {
-      if (typeof config.url !== 'string' || !config.url) continue
-      views.push({
-        kind: 'video',
-        id: row.id,
-        title: row.title,
-        subtitle: row.subtitle,
-        url: config.url,
-        poster: typeof config.poster === 'string' ? config.poster : null,
-      })
-    } else if (row.kind === 'usp') {
-      const items = Array.isArray(config.items)
-        ? (config.items as { icon?: string; title: string; description?: string }[]).filter(
-            (i) => i && typeof i.title === 'string',
-          )
-        : []
-      if (items.length === 0) continue
-      views.push({ kind: 'usp', id: row.id, title: row.title, subtitle: row.subtitle, items })
+        })
+        if (!collection || !collection.active) continue
+        const validProducts = (collection.products ?? [])
+          .map((cp) => cp?.product)
+          .filter((p): p is NonNullable<typeof p> => Boolean(p && p.isActive && p.status === 'LIVE'))
+          .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.name ?? '').localeCompare(b.name ?? ''))
+          .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal))
+
+        if (validProducts.length === 0) continue
+
+        views.push({
+          kind: 'collection-rail',
+          id: row.id,
+          title: row.title ?? collection.title,
+          subtitle: row.subtitle ?? collection.subtitle,
+          collectionSlug: slug,
+          products: validProducts,
+        })
+      } else if (row.kind === 'editorial') {
+        views.push({
+          kind: 'editorial',
+          id: row.id,
+          title: row.title,
+          subtitle: row.subtitle,
+          image: typeof config.image === 'string' ? config.image : null,
+          ctaLabel: typeof config.ctaLabel === 'string' ? config.ctaLabel : null,
+          ctaHref: typeof config.ctaHref === 'string' ? config.ctaHref : null,
+        })
+      } else if (row.kind === 'video') {
+        if (typeof config.url !== 'string' || !config.url) continue
+        views.push({
+          kind: 'video',
+          id: row.id,
+          title: row.title,
+          subtitle: row.subtitle,
+          url: config.url,
+          poster: typeof config.poster === 'string' ? config.poster : null,
+        })
+      } else if (row.kind === 'usp') {
+        const items = Array.isArray(config.items)
+          ? (config.items as { icon?: string; title: string; description?: string }[]).filter(
+              (i) => i && typeof i.title === 'string',
+            )
+          : []
+        if (items.length === 0) continue
+        views.push({ kind: 'usp', id: row.id, title: row.title, subtitle: row.subtitle, items })
+      }
+    } catch (err) {
+      console.error(`[getActiveHomeSections] Failed to load home section ${row.id}:`, err)
     }
   }
   return views

@@ -50,7 +50,11 @@ export function OrderSummary({
         <span>{totalLabel}</span>
         <span>{formatPrice(total)}</span>
       </div>
-      {showEmi && <div className="summary-emi">EMI from ₹1,868/month · No-cost EMI on select cards</div>}
+      {showEmi && total > 0 && (
+        <div className="summary-emi">
+          EMI from ₹{Math.max(1, Math.round(total / 12)).toLocaleString("en-IN")}/month (12 mos) · No-cost EMI on select cards
+        </div>
+      )}
       {showPromo && (
         <div className="promo-field">
           <input type="text" placeholder="Apply code" />

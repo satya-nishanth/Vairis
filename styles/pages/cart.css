@@ -222,7 +222,7 @@
     padding-bottom: calc(80px + var(--mobile-sticky-offset));
   }
 
-  .order-summary .btn-primary {
+  .cart-layout .order-summary .btn-primary {
     display: none;
   }
 }

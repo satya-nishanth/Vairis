@@ -49,23 +49,62 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
   // never the wireframe mock catalogue (its slugs 404 on the PDP).
   let prismaProducts: ReturnType<typeof prismaToProduct>[] = [];
 
-  const whereConditions: any[] = [];
-  if (prismaCategory) {
-    whereConditions.push({ category: prismaCategory as Category });
-  }
-  if (storeCat?.productIds && storeCat.productIds.length > 0) {
-    whereConditions.push({ id: { in: storeCat.productIds } });
+  const whereClause: any = {
+    isActive: true,
+    status: 'LIVE',
+  };
+
+  const orConditions: any[] = [];
+  const notConditions: any[] = [];
+
+  if (category === "mangalsutra") {
+    orConditions.push({ name: { contains: "mangalsutra", mode: "insensitive" } });
+  } else if (category === "necklaces") {
+    if (prismaCategory) orConditions.push({ category: prismaCategory as Category });
+    orConditions.push({ name: { contains: "necklace", mode: "insensitive" } });
+  } else if (category === "pendants") {
+    if (prismaCategory) orConditions.push({ category: prismaCategory as Category });
+    notConditions.push(
+      { name: { contains: "mangalsutra", mode: "insensitive" } },
+      { name: { contains: "necklace", mode: "insensitive" } },
+    );
+  } else if (category === "bracelets") {
+    if (prismaCategory) orConditions.push({ category: prismaCategory as Category });
+    notConditions.push(
+      { name: { contains: "earring", mode: "insensitive" } },
+      { name: { contains: "stud", mode: "insensitive" } },
+      { name: { contains: "cufflink", mode: "insensitive" } },
+      { name: { contains: "mangalsutra", mode: "insensitive" } },
+    );
+  } else if (category === "earrings") {
+    if (prismaCategory) orConditions.push({ category: prismaCategory as Category });
+    orConditions.push(
+      { name: { contains: "earring", mode: "insensitive" } },
+      { name: { contains: "stud", mode: "insensitive" } },
+    );
+    notConditions.push({ name: { contains: "cufflink", mode: "insensitive" } });
+  } else if (category === "cufflinks") {
+    orConditions.push({ name: { contains: "cufflink", mode: "insensitive" } });
+  } else {
+    if (prismaCategory) orConditions.push({ category: prismaCategory as Category });
   }
 
-  if (whereConditions.length > 0) {
+  if (storeCat?.productIds && storeCat.productIds.length > 0) {
+    orConditions.push({ id: { in: storeCat.productIds } });
+  }
+
+  if (orConditions.length > 0) {
+    whereClause.OR = orConditions;
+  }
+  if (notConditions.length > 0) {
+    whereClause.NOT = notConditions;
+  }
+
+  if (orConditions.length > 0) {
     try {
       const [dbProducts, goldRates, pricingConfig, showPricesGlobal] = await Promise.all([
         prisma.product.findMany({
-          where: {
-            OR: whereConditions,
-            isActive: true,
-            status: 'LIVE',
-          },
+          where: whereClause,
           include: {
             variants: true,
             stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" } },

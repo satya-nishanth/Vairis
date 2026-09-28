@@ -6,6 +6,7 @@ export type ProductCategory =
   | "rings"
   | "bracelets"
   | "pendants"
+  | "mangalsutra"
   | "cufflinks"
   | "sets"
   | "nose-pins"
@@ -115,6 +116,12 @@ export const CATEGORY_LABELS: Record<ProductCategory, { title: string; descripti
     intro: "Timeless solitaires on fine chains - your everyday signature piece.",
     emotional: "One diamond close to your heart - your signature for every version of the day.",
   },
+  mangalsutra: {
+    title: "Mangalsutra",
+    description: "Modern & Sacred",
+    intro: "Modern diamond mangalsutras designed for everyday grace and sacred tradition.",
+    emotional: "A bond of love and quiet elegance — crafted for real everyday life.",
+  },
   cufflinks: {
     title: "Cufflinks",
     description: "Refined Details",
@@ -147,6 +154,7 @@ export const SHOP_CATEGORIES = [
   "rings",
   "bracelets",
   "pendants",
+  "mangalsutra",
   "cufflinks",
   "sets",
   "nose-pins",
@@ -159,6 +167,7 @@ export const HEADER_NAV_CATEGORIES = [
   "earrings",
   "pendants",
   "bracelets",
+  "mangalsutra",
 ] as const satisfies readonly ShopCategory[];
 
 /** Active stocked categories for storefront category carousels and rails */
@@ -207,6 +216,10 @@ export const PLP_FILTER_GROUPS: Record<
   ],
   pendants: [
     { id: "styles", title: "Style", options: ["Solitaire", "Minimal", "Everyday Wear", "Gifting"] },
+    { id: "metals", title: "Metal", options: ["Yellow Gold", "White Gold", "Rose Gold"] },
+  ],
+  mangalsutra: [
+    { id: "styles", title: "Style", options: ["Modern", "Traditional", "Solitaire", "Minimal", "Everyday Wear"] },
     { id: "metals", title: "Metal", options: ["Yellow Gold", "White Gold", "Rose Gold"] },
   ],
   cufflinks: [

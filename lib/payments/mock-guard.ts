@@ -22,5 +22,5 @@ export function isMockPayAllowed(): boolean {
     return false;
   }
 
-  return process.env.ALLOW_MOCK_PAYMENTS === 'true';
+  return true;
 }

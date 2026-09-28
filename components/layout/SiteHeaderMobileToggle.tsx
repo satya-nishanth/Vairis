@@ -9,6 +9,7 @@ import { categoryHref } from "@/lib/catalogue-ui";
 
 type NavLink = { href: string; label: string };
 type DynamicNavCategory = { slug: string; name: string };
+type DynamicNavCollection = { slug: string; title: string };
 
 function MenuIcon({ open }: { open: boolean }) {
   if (open) {
@@ -35,6 +36,7 @@ type SiteHeaderMobileToggleProps = {
 export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHeaderMobileToggleProps) {
   const [open, setOpen] = useState(false);
   const [dynamicCats, setDynamicCats] = useState<DynamicNavCategory[]>([]);
+  const [dynamicCols, setDynamicCols] = useState<DynamicNavCollection[]>([]);
 
   useEffect(() => {
     fetch("/api/nav-categories")
@@ -42,6 +44,15 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
       .then((data: DynamicNavCategory[]) => {
         if (Array.isArray(data) && data.length > 0) {
           setDynamicCats(data);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/nav-collections")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: DynamicNavCollection[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setDynamicCols(data);
         }
       })
       .catch(() => {});
@@ -110,6 +121,24 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
                 ))
               )}
             </div>
+
+            {dynamicCols.length > 0 && (
+              <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
+                <span className="site-header__drawer-section-title" style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
+                  Collections
+                </span>
+                <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>
+                  {dynamicCols.map((c) => (
+                    <Link key={c.slug} href={`/collections/${c.slug}`} onClick={() => setOpen(false)}>
+                      {c.title}
+                    </Link>
+                  ))}
+                  <Link href="/collections" onClick={() => setOpen(false)} style={{ color: 'var(--color-primary, #b45309)', fontWeight: 600 }}>
+                    All Collections →
+                  </Link>
+                </div>
+              </div>
+            )}
 
             <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
               <span className="site-header__drawer-section-title" style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
