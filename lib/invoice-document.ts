@@ -1,7 +1,6 @@
 import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
-  isDiamondTypeLabel,
   isOrderItemPriceSnapshot,
   splitGemValues,
   type OrderItemPriceSnapshot,
@@ -354,52 +353,30 @@ function stoneRowsFromInputs(stones: StoneInput[], withExchange: boolean): Invoi
 }
 
 /**
- * Flip Exchange opted on an invoice line without unlocking live gold/making calc.
- * Updates the flag, per-ct rate (std ↔ exch when both rates are known), stone line
- * values, and diamond/stone totals. PDP/checkout are untouched.
+ * Flip Exchange opted on an invoice line without unlocking live gold/making calc
+ * and without changing Diamonds/Stones ₹ totals (those are already settled amounts).
+ * Only updates the flag and the displayed ₹/ct (std ↔ exch) on the invoice.
+ * PDP/checkout are untouched.
  */
 export function applyInvoiceExchangeFlag(line: InvoiceLine, withExchange: boolean): InvoiceLine {
   const stones = line.stones.map((s) => {
     const std = Number(s.ratePerCaratStd ?? s.ratePerCarat)
     const exch = Number(s.ratePerCaratExchange ?? s.ratePerCarat)
     const ratePerCarat = withExchange ? exch : std
-    const carat = Number(s.caratWeight)
     return {
       ...s,
       exchange: withExchange,
       ratePerCaratStd: std,
       ratePerCaratExchange: exch,
       ratePerCarat,
-      value: carat * ratePerCarat,
+      // Keep existing line value — diamonds ₹ total is already final.
     }
   })
-
-  let diamondValue = 0
-  let otherFromRows = 0
-  for (const s of stones) {
-    if (isDiamondTypeLabel(s.label)) diamondValue += Number(s.value) || 0
-    else otherFromRows += Number(s.value) || 0
-  }
-  const otherStoneValue =
-    otherFromRows > 0 ? otherFromRows : Number(line.otherStoneValue) || 0
-  const stoneValue = diamondValue + otherStoneValue
-  const qty = Math.max(1, Number(line.quantity) || 1)
-  const unitTaxable =
-    Number(line.goldValue) +
-    Number(line.wastage) +
-    Number(line.making) +
-    stoneValue +
-    Number(line.miscCharges)
 
   return {
     ...line,
     withExchange,
     stones,
-    diamondValue,
-    otherStoneValue,
-    stoneValue,
-    itemValue: Number(line.goldValue) + stoneValue,
-    taxable: unitTaxable * qty,
   }
 }
 
