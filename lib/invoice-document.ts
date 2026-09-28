@@ -2,6 +2,7 @@ import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
   isOrderItemPriceSnapshot,
+  splitGemValues,
   type OrderItemPriceSnapshot,
   type PricingConfig,
   type StoneInput,
@@ -42,7 +43,12 @@ export type InvoiceLine = {
   flatMaking: number
   making: number
   stones: InvoiceStoneRow[]
+  /** Total gem cost (diamonds + other stones). Used for taxable. */
   stoneValue: number
+  /** Diamond portion of stoneValue (matches order selling / finance split). */
+  diamondValue: number
+  /** Non-diamond / coloured-stone portion of stoneValue. */
+  otherStoneValue: number
   leadIncentive: number
   miscCharges: number
   /** Legacy flat stone cost when the product has no stone rows. */
@@ -249,6 +255,8 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
     wastage: unit.goldVA,
     making: unit.making,
     stoneValue: unit.stoneValue,
+    diamondValue: unit.diamondValue,
+    otherStoneValue: unit.otherStoneValue,
     stones,
     itemValue: unit.goldValue + unit.stoneValue,
     makingPlusWastage: unit.making + unit.goldVA,
@@ -308,6 +316,8 @@ export function blankLine(): InvoiceLine {
     making: 0,
     stones: [],
     stoneValue: 0,
+    diamondValue: 0,
+    otherStoneValue: 0,
     leadIncentive: 0,
     miscCharges: 0,
     legacyStoneCharges: 0,
@@ -492,6 +502,8 @@ export type PrefillOrder = {
   city: string
   state: string
   pincode: string
+  /** Order-level discount (₹) — copied onto the invoice payable. */
+  discountAmount?: { toString(): string } | number | null
   /** Offline/manual settlement date (invoice Received On). */
   paymentReceivedAt?: Date | string | null
   user: { name: string; email: string }
@@ -590,6 +602,7 @@ export function lineFromOrderItem(
       snapStones.length > 0
         ? snapStones
         : stoneRowsFromInputs(toStoneInputs(v.product.stones), withExchange)
+    const gems = splitGemValues(snap)
 
     return recomputeLine(
       {
@@ -612,9 +625,10 @@ export function lineFromOrderItem(
         making: Number(snap.making),
         stones,
         stoneValue: Number(snap.stoneValue),
+        diamondValue: gems.diamonds,
+        otherStoneValue: gems.stones,
         miscCharges: Number(snap.miscCharges),
-        legacyStoneCharges:
-          Number(snap.stoneValue) > 0 && snapStones.length === 0 ? Number(snap.stoneValue) : 0,
+        legacyStoneCharges: gems.stones,
         leadIncentive: 0,
         itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
         makingPlusWastage: Number(snap.making) + Number(snap.goldVA),
@@ -660,6 +674,7 @@ export function payloadFromOrder(
     phone: order.contactPhone ? `+91 ${order.contactPhone}` : '',
   }
   const lines = flattenItems(order).map((item) => lineFromOrderItem(item, rates, config))
+  const discountRaw = order.discountAmount != null ? Number(order.discountAmount) : 0
   const payload: InvoicePayload = {
     seller: sellerDefaults(),
     billedTo: party,
@@ -670,11 +685,13 @@ export function payloadFromOrder(
       received: resolvedReceivedOn(order),
       status: paid ? 'Paid in full' : 'Unpaid',
     },
-    invoiceDate: new Date().toISOString().slice(0, 10),
+    // Start from the order placed date (admin can still edit on the form).
+    invoiceDate: order.createdAt.toISOString().slice(0, 10),
     placeOfSupply: /maharashtra/i.test(order.state)
       ? 'Maharashtra (27)'
       : order.state || 'Maharashtra (27)',
     gstScheme: 'JEWELLERY',
+    discount: discountRaw > 0 ? discountRaw : undefined,
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: lines.length > 0 ? lines : [blankLine()],
   }
