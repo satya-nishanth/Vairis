@@ -10,6 +10,8 @@ type PdpStickyBarProps = {
   price: number | null | undefined;
   onAddToCart: () => void;
   addingToCart?: boolean;
+  onBuyNow?: () => void;
+  buyingNow?: boolean;
   expertLabel?: string;
   whatsappHref?: string;
   onExpertClick?: () => void;
@@ -20,6 +22,8 @@ export function PdpStickyBar({
   price,
   onAddToCart,
   addingToCart,
+  onBuyNow,
+  buyingNow,
   expertLabel = "Talk to Expert",
   whatsappHref = WHATSAPP_URL,
   onExpertClick,
@@ -53,12 +57,18 @@ export function PdpStickyBar({
           stays as the purchase path in both cases */}
       {CHECKOUT_ENABLED && canPurchase && (
         <div className="pdp-sticky-bar__actions">
-          <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart}>
+          <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart || buyingNow}>
             {addingToCart ? "Adding…" : "Add to Cart"}
           </button>
-          <Link href="/checkout" className="btn btn-secondary">
-            Buy Now
-          </Link>
+          {onBuyNow ? (
+            <button type="button" className="btn btn-secondary" onClick={onBuyNow} disabled={buyingNow || addingToCart}>
+              {buyingNow ? "Processing…" : "Buy Now"}
+            </button>
+          ) : (
+            <Link href="/checkout" className="btn btn-secondary">
+              Buy Now
+            </Link>
+          )}
         </div>
       )}
     </div>

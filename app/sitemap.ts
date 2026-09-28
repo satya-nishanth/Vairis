@@ -12,11 +12,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where: { isActive: true, status: 'LIVE' },
       select: { id: true, createdAt: true },
     }),
-    prisma.collection.findMany({ where: { active: true }, select: { slug: true, updatedAt: true } }),
+    prisma.collection.findMany({
+      where: {
+        active: true,
+        products: {
+          some: {
+            product: {
+              isActive: true,
+              status: 'LIVE',
+            },
+          },
+        },
+      },
+      select: { slug: true, updatedAt: true },
+    }),
   ]).catch(() => [[], []] as const)
 
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE, changeFrequency: 'daily', priority: 1 },
+    { url: `${BASE}/collections`, changeFrequency: 'daily', priority: 0.8 },
     ...STOCKED_CATEGORIES.map((c) => ({
       url: `${BASE}/all-products/${c}`,
       changeFrequency: 'daily' as const,

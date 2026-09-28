@@ -162,9 +162,15 @@
   }
 }
 
+.hero__slide:first-child {
+  opacity: 1;
+  visibility: visible;
+}
+
 .hero__slide.is-active {
   opacity: 1;
   visibility: visible;
+  z-index: 1;
 }
 
 .hero__carousel {
@@ -621,7 +627,7 @@
     grid-column: auto;
   }
 
-  .video-grid {
+  .video-grid:not(.video-grid--reels) {
     grid-template-columns: 1fr;
   }
 

@@ -5,7 +5,7 @@ describe('Navigation & Shop Links (FUNC-01)', () => {
   it('does not include unstocked necklaces in HEADER_NAV_CATEGORIES', () => {
     expect(HEADER_NAV_CATEGORIES).not.toContain('necklaces');
     expect(HEADER_NAV_CATEGORIES[0]).toBe('rings');
-    expect(HEADER_NAV_CATEGORIES).toEqual(['rings', 'earrings', 'pendants', 'bracelets']);
+    expect(HEADER_NAV_CATEGORIES).toEqual(['rings', 'earrings', 'pendants', 'bracelets', 'mangalsutra']);
   });
 
   it('points All Jewellery in footerShopLinks to a stocked category (rings)', () => {

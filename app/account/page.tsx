@@ -10,6 +10,11 @@ import { AccountDashboardClient } from '@/components/account/AccountDashboardCli
 
 export const dynamic = 'force-dynamic'
 
+export const metadata = {
+  title: 'My Account | VAIRIS',
+  description: 'Manage your profile, orders, addresses, and settings at VAIRIS.',
+}
+
 export default async function AccountPage() {
   const session = await getSession()
   if (!session) redirect('/auth/login?next=/account')
@@ -58,7 +63,8 @@ export default async function AccountPage() {
         { label: 'My Account' },
       ]}
     >
-      <Container>
+      <main>
+        <Container>
         <div style={{ maxWidth: '640px', margin: '0 auto', paddingBlock: 'var(--section-gap)' }}>
           <h1
             style={{
@@ -291,6 +297,7 @@ export default async function AccountPage() {
           <SignOutButton />
         </div>
       </Container>
-    </PageShell>
+    </main>
+  </PageShell>
   )
 }

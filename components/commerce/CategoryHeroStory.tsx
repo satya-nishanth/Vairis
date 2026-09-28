@@ -19,6 +19,7 @@ function StoryLine({ text }: { text: string }) {
           style={{ animationDelay: `${index * 0.18}s` }}
         >
           {word}
+          {index < words.length - 1 ? " " : ""}
         </span>
       ))}
     </span>
@@ -33,7 +34,12 @@ export function CategoryHeroStory({ story }: CategoryHeroStoryProps) {
       {lines.map((text, idx) => {
         const Comp = idx === 0 ? "h1" : "p";
         return (
-          <Comp key={text} className="plp-hero__story-row" style={idx === 0 ? { fontWeight: 400 } : undefined}>
+          <Comp
+            key={text}
+            className="plp-hero__story-row"
+            aria-label={text}
+            style={idx === 0 ? { fontWeight: 400 } : undefined}
+          >
             <StoryLine text={text} />
           </Comp>
         );

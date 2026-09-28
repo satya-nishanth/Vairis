@@ -79,6 +79,11 @@ export function prismaToProduct(
       price = Math.round(cheapest.total);
       variantId = cheapest.id;
       hasMultiplePrices = priced.length > 1 && Math.round(cheapest.total) !== Math.round(mostExpensive.total);
+    } else if (!priceHidden && !p.comingSoon && Number(p.basePrice) > 0) {
+      price = Math.round(Number(p.basePrice));
+      if (p.variants.length > 0) {
+        variantId = p.variants[0].id;
+      }
     }
   }
 
@@ -93,9 +98,10 @@ export function prismaToProduct(
     GOLD_14K: ["Yellow Gold", "14K Gold"],
     ROSE_GOLD: ["Rose Gold"],
   };
-  const metals = [...new Set(p.variants.flatMap((v) => METAL_FILTER_LABELS[v.metalType] ?? []))];
+  const variants = p.variants ?? [];
+  const metals = [...new Set(variants.flatMap((v) => METAL_FILTER_LABELS[v.metalType] ?? []))];
   const styleText = [p.designStyle ?? "", p.description ?? "", p.name].join(" ").toLowerCase();
-  const inStock = p.variants.some((v) => v.stock > 0);
+  const inStock = variants.some((v) => v.stock > 0);
 
   return {
     slug: p.id,

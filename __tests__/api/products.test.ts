@@ -9,6 +9,12 @@ jest.mock('@/lib/prisma', () => ({
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
+    goldRate: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    pricingSettings: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   },
 }))
 

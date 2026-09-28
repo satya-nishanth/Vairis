@@ -6,7 +6,7 @@ import { ProductImage } from "@/components/ui/ProductImage";
 import { categoryHref, type ShopCategory } from "@/lib/catalogue-ui";
 
 type CategoryCardProps = {
-  slug: ShopCategory;
+  slug: ShopCategory | string;
   title: string;
   description: string;
   images: string[];

@@ -19,7 +19,8 @@ export type TrackName =
   | "pdp_view"
   | "add_to_cart"
   | "begin_checkout"
-  | "purchase";
+  | "purchase"
+  | "buy_now";
 
 const SESSION_KEY = "vairis_sid";
 
@@ -50,6 +51,7 @@ const GA_EVENT_MAP: Record<TrackName, string> = {
   add_to_cart: "add_to_cart",
   begin_checkout: "begin_checkout",
   purchase: "purchase",
+  buy_now: "begin_checkout",
 };
 
 export function track(

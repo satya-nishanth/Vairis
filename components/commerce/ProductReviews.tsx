@@ -144,10 +144,11 @@ export function ProductReviews({ productId, productName }: { productId: string; 
                   type="button"
                   role="radio"
                   aria-checked={rating === n}
+                  aria-label={`${n} ${n === 1 ? "star" : "stars"}`}
                   onClick={() => setRating(n)}
                   className={n <= rating ? "is-active" : ""}
                 >
-                  ★
+                  <span aria-hidden="true">★</span>
                 </button>
               ))}
             </div>

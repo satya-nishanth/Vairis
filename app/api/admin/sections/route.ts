@@ -13,8 +13,8 @@ const sectionSchema = z.object({
   subtitle: z.string().trim().max(240).optional().nullable(),
   config: z.record(z.string(), z.unknown()).default({}),
   active: z.boolean().default(true),
-  startsAt: z.string().datetime().optional().nullable(),
-  endsAt: z.string().datetime().optional().nullable(),
+  startsAt: z.string().optional().nullable(),
+  endsAt: z.string().optional().nullable(),
 })
 
 export async function GET() {

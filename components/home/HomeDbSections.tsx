@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/commerce/ProductCard";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { HomeSectionHead } from "@/components/home/HomeSectionHead";
+import { CartModalProvider } from "@/components/commerce/CartModal";
 import type { HomeSectionView } from "@/lib/home-sections";
 
 /**
@@ -11,15 +12,16 @@ import type { HomeSectionView } from "@/lib/home-sections";
  * Server component — receives pre-fetched section views.
  */
 export function HomeDbSections({ sections }: { sections: HomeSectionView[] }) {
-  if (sections.length === 0) return null;
+  if (!sections || sections.length === 0) return null;
 
   return (
-    <>
+    <CartModalProvider>
       {sections.map((s) => {
-        switch (s.kind) {
-          case "collection-rail":
-            if (s.products.length === 0) return null;
-            return (
+        try {
+          switch (s.kind) {
+            case "collection-rail":
+              if (!s.products || s.products.length === 0) return null;
+              return (
               <Section key={s.id} className="section--collection-rail">
                 <Container>
                   <HomeSectionHead
@@ -94,7 +96,11 @@ export function HomeDbSections({ sections }: { sections: HomeSectionView[] }) {
           default:
             return null;
         }
+      } catch (err) {
+        console.error(`[HomeDbSections] Error rendering section ${s.id}:`, err);
+        return null;
+      }
       })}
-    </>
+    </CartModalProvider>
   );
 }
