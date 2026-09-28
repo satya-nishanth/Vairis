@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 
 type Props = {
   productId: string
@@ -21,21 +21,20 @@ export function ProductFilterLabelsEditor({
   showSaveButton = true,
   className = '',
 }: Props) {
-  const [assignedLabels, setAssignedLabels] = useState<string[]>(initialLabels)
+  const [assignedLabels, setAssignedLabels] = useState<string[]>(() => initialLabels ?? [])
   const [allAvailable, setAllAvailable] = useState<string[]>(() => {
-    const set = new Set([...initialAvailable, ...initialLabels])
+    const set = new Set([...(initialAvailable ?? []), ...(initialLabels ?? [])])
     return Array.from(set)
   })
   const [customInput, setCustomInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [statusMessage, setStatusMessage] = useState('')
-  const [, startTransition] = useTransition()
 
   // Track if current state differs from initialLabels
   const hasChanges =
-    assignedLabels.length !== initialLabels.length ||
-    assignedLabels.some((l) => !initialLabels.includes(l))
+    assignedLabels.length !== (initialLabels?.length ?? 0) ||
+    assignedLabels.some((l) => !initialLabels?.includes(l))
 
   const handleToggle = (label: string) => {
     setSaveStatus('idle')
@@ -105,8 +104,8 @@ export function ProductFilterLabelsEditor({
   }
 
   const handleReset = () => {
-    setAssignedLabels(initialLabels)
-    onLabelsChange?.(initialLabels)
+    setAssignedLabels(initialLabels ?? [])
+    onLabelsChange?.(initialLabels ?? [])
     setSaveStatus('idle')
   }
 
@@ -114,31 +113,131 @@ export function ProductFilterLabelsEditor({
 
   return (
     <div
-      className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}
+      className={className}
+      style={{
+        background: '#f9fafb',
+        border: '1px solid #e5e7eb',
+        borderRadius: '8px',
+        padding: '16px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
+      }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+      <style>{`
+        @keyframes pfl-spin {
+          to { transform: rotate(360deg); }
+        }
+        .pfl-tag-assigned {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 11px;
+          border-radius: 16px;
+          font-size: 12px;
+          font-family: inherit;
+          font-weight: 500;
+          background: #eff6ff;
+          color: #1e40af;
+          border: 1px solid #bfdbfe;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .pfl-tag-assigned:hover {
+          background: #fef2f2 !important;
+          border-color: #fca5a5 !important;
+          color: #b91c1c !important;
+        }
+        .pfl-tag-assigned:hover .pfl-icon-check {
+          display: none;
+        }
+        .pfl-tag-assigned .pfl-icon-cross {
+          display: none;
+        }
+        .pfl-tag-assigned:hover .pfl-icon-cross {
+          display: inline !important;
+        }
+        .pfl-tag-available {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 11px;
+          border-radius: 16px;
+          font-size: 12px;
+          font-family: inherit;
+          font-weight: 500;
+          background: #ffffff;
+          color: #374151;
+          border: 1px dashed #d1d5db;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .pfl-tag-available:hover {
+          background: #eff6ff !important;
+          border-color: #93c5fd !important;
+          color: #1d4ed8 !important;
+        }
+        .pfl-btn-save:hover:not(:disabled) {
+          opacity: 0.92;
+        }
+      `}</style>
+
+      {/* Header Row */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          borderBottom: '1px solid #e5e7eb',
+          paddingBottom: '12px',
+        }}
+      >
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              🏷️ Filter Labels / Tags
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#111827' }}>
+              🏷️ Filter Labels &amp; Tags
             </span>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+            <span
+              style={{
+                display: 'inline-block',
+                fontSize: '0.6875rem',
+                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: '9999px',
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                border: '1px solid #bfdbfe',
+                textTransform: 'capitalize',
+              }}
+            >
               {category}
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Click to assign or remove labels. These power storefront PLP filters and product badges.
+          <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6b7280', lineHeight: 1.4 }}>
+            Assign or remove style labels for this product. These power storefront PLP filters (e.g. Studs, Hoops, Everyday Wear) and search badges.
           </p>
         </div>
 
         {showSaveButton && (
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {hasChanges && (
               <button
                 type="button"
                 onClick={handleReset}
                 disabled={saving}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 underline"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#6b7280',
+                  fontSize: '0.75rem',
+                  fontFamily: 'inherit',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
               >
                 Reset
               </button>
@@ -147,23 +246,53 @@ export function ProductFilterLabelsEditor({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all ${
-                saving
-                  ? 'bg-blue-400 cursor-not-allowed'
-                  : hasChanges
-                  ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-500/20'
-                  : 'bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600'
-              }`}
+              className="pfl-btn-save"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontFamily: 'inherit',
+                fontWeight: 600,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                border: '1px solid transparent',
+                background: saving ? '#9ca3af' : hasChanges ? '#2563eb' : '#111827',
+                color: '#ffffff',
+                boxShadow: hasChanges ? '0 0 0 2px rgba(37, 99, 235, 0.2)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
             >
               {saving ? (
                 <>
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      border: '2px solid #ffffff',
+                      borderTopColor: 'transparent',
+                      animation: 'pfl-spin 0.6s linear infinite',
+                    }}
+                  />
                   Saving...
                 </>
               ) : (
                 <>
                   <span>Save Labels</span>
-                  {hasChanges && <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />}
+                  {hasChanges && (
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: '#fbbf24',
+                        display: 'inline-block',
+                      }}
+                    />
+                  )}
                 </>
               )}
             </button>
@@ -171,68 +300,140 @@ export function ProductFilterLabelsEditor({
         )}
       </div>
 
-      {/* Status Alert */}
+      {/* Status Alerts */}
       {saveStatus === 'success' && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+        <div
+          style={{
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            background: '#ecfdf5',
+            color: '#065f46',
+            border: '1px solid #a7f3d0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
           <span>✓</span>
           <span>{statusMessage}</span>
         </div>
       )}
       {saveStatus === 'error' && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800">
+        <div
+          style={{
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            background: '#fef2f2',
+            color: '#991b1b',
+            border: '1px solid #fecaca',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
           <span>⚠️</span>
           <span>{statusMessage}</span>
         </div>
       )}
 
-      {/* Currently Assigned Labels */}
-      <div className="mt-3.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
-          Assigned to this product ({assignedLabels.length})
+      {/* Assigned Labels */}
+      <div>
+        <div
+          style={{
+            fontSize: '0.6875rem',
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: '#4b5563',
+            marginBottom: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <span>Assigned to this product</span>
+          <span
+            style={{
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              background: '#e0e7ff',
+              color: '#3730a3',
+              padding: '1px 6px',
+              borderRadius: '9999px',
+            }}
+          >
+            {assignedLabels.length}
+          </span>
         </div>
+
         {assignedLabels.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {assignedLabels.map((lbl) => (
-              <span
+              <button
                 key={lbl}
-                className="group inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 py-1 text-xs font-medium text-blue-900 transition-all hover:border-rose-300 hover:bg-rose-50 hover:text-rose-900 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:border-rose-800 dark:hover:bg-rose-950/60 dark:hover:text-rose-200"
+                type="button"
+                className="pfl-tag-assigned"
+                onClick={() => handleToggle(lbl)}
+                title={`Click to remove "${lbl}"`}
               >
-                <span className="text-blue-600 dark:text-blue-400 group-hover:hidden">✓</span>
-                <span className="hidden text-rose-600 dark:text-rose-400 group-hover:inline">✕</span>
+                <span className="pfl-icon-check" style={{ fontSize: '11px', color: '#2563eb' }}>
+                  ✓
+                </span>
+                <span className="pfl-icon-cross" style={{ fontSize: '11px', color: '#dc2626' }}>
+                  ✕
+                </span>
                 <span>{lbl}</span>
-                <button
-                  type="button"
-                  onClick={() => handleToggle(lbl)}
-                  title={`Remove ${lbl}`}
-                  className="ml-0.5 text-blue-400 hover:text-rose-600 dark:text-blue-400 dark:hover:text-rose-400"
+                <span
+                  style={{
+                    marginLeft: '2px',
+                    fontSize: '13px',
+                    lineHeight: 1,
+                    opacity: 0.7,
+                  }}
                 >
-                  <span className="sr-only">Remove {lbl}</span>
                   ×
-                </button>
-              </span>
+                </span>
+              </button>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400 italic">No labels assigned yet.</p>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>
+            No labels assigned yet. Click from the available category labels below or add a custom one.
+          </p>
         )}
       </div>
 
       {/* Available Labels to quickly add */}
       {unassignedAvailable.length > 0 && (
-        <div className="mt-3.5">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+        <div>
+          <div
+            style={{
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: '#6b7280',
+              marginBottom: '8px',
+            }}
+          >
             Available in category (click to assign)
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {unassignedAvailable.map((lbl) => (
               <button
                 key={lbl}
                 type="button"
                 onClick={() => handleToggle(lbl)}
-                className="inline-flex items-center gap-1 rounded-lg border border-dashed border-gray-300 bg-gray-50/60 px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300 dark:hover:border-blue-700 dark:hover:bg-blue-950/50 dark:hover:text-blue-300"
-                title={`Assign ${lbl}`}
+                className="pfl-tag-available"
+                title={`Assign "${lbl}" to this product`}
               >
-                <span className="text-gray-400">+</span>
+                <span style={{ color: '#9ca3af', fontWeight: 600, fontSize: '13px', lineHeight: 1 }}>
+                  +
+                </span>
                 <span>{lbl}</span>
               </button>
             ))}
@@ -240,21 +441,52 @@ export function ProductFilterLabelsEditor({
         </div>
       )}
 
-      {/* Add Custom Label */}
-      <form onSubmit={handleAddCustom} className="mt-3.5 flex items-center gap-2">
+      {/* Add Custom Label Row */}
+      <form
+        onSubmit={handleAddCustom}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          paddingTop: '8px',
+          borderTop: '1px solid #e5e7eb',
+        }}
+      >
         <input
           type="text"
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}
-          placeholder="Add custom label (e.g. Vintage, Floral)..."
-          className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
+          placeholder="Add custom label (e.g. Cocktail, Floral, Vintage)..."
+          style={{
+            flex: 1,
+            maxWidth: '320px',
+            padding: '7px 11px',
+            fontSize: '0.75rem',
+            fontFamily: 'inherit',
+            color: '#111827',
+            background: '#ffffff',
+            border: '1px solid #d1d5db',
+            borderRadius: '6px',
+            outline: 'none',
+          }}
         />
         <button
           type="submit"
           disabled={!customInput.trim()}
-          className="rounded-lg border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          style={{
+            padding: '7px 14px',
+            fontSize: '0.75rem',
+            fontFamily: 'inherit',
+            fontWeight: 500,
+            borderRadius: '6px',
+            border: '1px solid #d1d5db',
+            background: customInput.trim() ? '#111827' : '#f3f4f6',
+            color: customInput.trim() ? '#ffffff' : '#9ca3af',
+            cursor: customInput.trim() ? 'pointer' : 'default',
+            transition: 'all 0.15s ease',
+          }}
         >
-          + Add
+          + Add Label
         </button>
       </form>
     </div>
