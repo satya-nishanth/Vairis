@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 
 type CartModalContextValue = {
@@ -10,11 +10,41 @@ type CartModalContextValue = {
 
 const CartModalContext = createContext<CartModalContextValue | null>(null);
 
+const noopContext: CartModalContextValue = {
+  openCartModal: () => {},
+  closeCartModal: () => {},
+};
+
 export function CartModalProvider({ children, bagCount = 1 }: { children: React.ReactNode; bagCount?: number }) {
   const [isOpen, setIsOpen] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const openCartModal = useCallback(() => setIsOpen(true), []);
   const closeCartModal = useCallback(() => setIsOpen(false), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeCartModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Auto-focus the first focusable button inside the modal
+    const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus();
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, closeCartModal]);
 
   return (
     <CartModalContext.Provider value={{ openCartModal, closeCartModal }}>
@@ -26,7 +56,13 @@ export function CartModalProvider({ children, bagCount = 1 }: { children: React.
           if (e.target === e.currentTarget) closeCartModal();
         }}
       >
-        <div className="modal" role="dialog" aria-labelledby="modal-title">
+        <div
+          ref={modalRef}
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+        >
           <div className="modal__icon">✓</div>
           <h2 id="modal-title" style={{ marginBottom: 8 }}>
             Added to your bag!
@@ -48,6 +84,5 @@ export function CartModalProvider({ children, bagCount = 1 }: { children: React.
 
 export function useCartModal() {
   const ctx = useContext(CartModalContext);
-  if (!ctx) throw new Error("useCartModal must be used within CartModalProvider");
-  return ctx;
+  return ctx ?? noopContext;
 }

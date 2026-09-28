@@ -10,6 +10,11 @@ import { formatPrice } from "@/lib/ui-data";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "My Orders | VAIRIS",
+  description: "View and track your VAIRIS orders.",
+};
+
 /** My Orders — the customer's order history. */
 export default async function OrdersPage() {
   const session = await getSession();
@@ -30,8 +35,9 @@ export default async function OrdersPage() {
         { label: "My Orders" },
       ]}
     >
-      <Container>
-        <div className="orders-page">
+      <main>
+        <Container>
+          <div className="orders-page">
           <h1 className="orders-page__title">My Orders</h1>
 
           {orders.length === 0 ? (
@@ -95,6 +101,7 @@ export default async function OrdersPage() {
           )}
         </div>
       </Container>
-    </PageShell>
+    </main>
+  </PageShell>
   );
 }

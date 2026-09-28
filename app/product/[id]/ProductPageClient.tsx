@@ -52,6 +52,8 @@ type ProductData = {
   showPrice: boolean;
   stones: StoneView[];
   variants: Variant[];
+  stoneType?: string | null;
+  caratWeight?: string | null;
 };
 
 type Props = {
@@ -67,13 +69,46 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   const router = useRouter();
   const searchParams = useSearchParams();
   const [addingToCart, setAddingToCart] = useState(false);
+  const [buyingNow, setBuyingNow] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [activeThumb, setActiveThumb] = useState(0);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
-    product.variants[0]?.id ?? null,
-  );
+  const paramMetal = searchParams?.get("metal");
+  const paramSize = searchParams?.get("size");
+
+  const initialVariant = useMemo(() => {
+    if (paramMetal || paramSize) {
+      const match = product.variants.find((v) => {
+        const metalMatch = !paramMetal || v.metalType.toLowerCase() === paramMetal.toLowerCase();
+        const sizeMatch = !paramSize || v.size === paramSize;
+        return metalMatch && sizeMatch;
+      });
+      if (match) return match.id;
+    }
+    return product.variants[0]?.id ?? null;
+  }, [product.variants, paramMetal, paramSize]);
+
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(initialVariant);
   const swipeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedVariantId) return;
+    const variant = product.variants.find((v) => v.id === selectedVariantId);
+    if (!variant) return;
+    const url = new URL(window.location.href);
+    let changed = false;
+    if (variant.metalType && url.searchParams.get("metal") !== variant.metalType) {
+      url.searchParams.set("metal", variant.metalType);
+      changed = true;
+    }
+    if (variant.size && url.searchParams.get("size") !== variant.size) {
+      url.searchParams.set("size", variant.size);
+      changed = true;
+    }
+    if (changed) {
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [selectedVariantId, product.variants]);
 
   const gallery = useMemo(
     () =>
@@ -187,7 +222,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   const handleAddToCart = async () => {
     if (!selectedVariant) return;
     if (hydrated && !isLoggedIn) {
-      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.id}`)}&msg=${encodeURIComponent("Please sign in to add this item to your bag")}`);
+      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.id}`)}&reason=cart`);
       return;
     }
     setAddingToCart(true);
@@ -206,6 +241,28 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     }
   };
 
+  const handleBuyNow = async () => {
+    if (!selectedVariant) return;
+    if (hydrated && !isLoggedIn) {
+      router.push(`/auth/login?next=${encodeURIComponent("/checkout")}&reason=checkout`);
+      return;
+    }
+    setBuyingNow(true);
+    setCartError(null);
+    try {
+      await addItem(selectedVariant.id, 1, withExchange);
+      track("buy_now", {
+        productId: product.id,
+        meta: { variantId: selectedVariant.id, withExchange, price },
+      });
+      router.push("/checkout");
+    } catch {
+      setCartError("Couldn't proceed to checkout. Please try again.");
+    } finally {
+      setBuyingNow(false);
+    }
+  };
+
   const collectionSlug = searchParams?.get("collection");
   const collectionTitle = collectionSlug
     ? collectionSlug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
@@ -215,7 +272,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     collectionTitle && collectionSlug
       ? [
           { label: "Home", href: "/" },
-          { label: "Collections", href: "/all-products/rings" },
+          { label: "Collections", href: "/collections" },
           { label: collectionTitle, href: `/collections/${collectionSlug}` },
           { label: product.name },
         ]
@@ -332,7 +389,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               <p className="pdp-info__description">{product.description}</p>
             )}
 
-            {hasStones && (
+            {hasStones ? (
               <div className="pdp-options" data-testid="pdp-stones">
                 <label>Diamonds</label>
                 <ul className="pdp-info__stones">
@@ -354,7 +411,25 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   ))}
                 </ul>
               </div>
-            )}
+            ) : product.caratWeight && Number(product.caratWeight) > 0 ? (
+              <div className="pdp-options" data-testid="pdp-stones">
+                <label>Diamonds</label>
+                <ul className="pdp-info__stones">
+                  <li className="pdp-info__stone">
+                    <span className="pdp-info__stone-label">
+                      <ThemeIcon
+                        name="vairis_diamond_mark"
+                        category="brand"
+                        size={16}
+                        className="pdp-info__stone-icon"
+                      />
+                      {product.stoneType || "Natural Diamond"}
+                    </span>
+                    <span className="pdp-info__stone-carat">{Number(product.caratWeight).toFixed(2)} ct</span>
+                  </li>
+                </ul>
+              </div>
+            ) : null}
 
             {metals.length > 1 && (
               <div className="pdp-options">
@@ -427,43 +502,69 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 <summary>Price Breakup</summary>
                 <table>
                   <tbody>
-                    <tr>
-                      <td>Gold value ({Number(selectedVariant?.weightGrams).toFixed(3)} g)</td>
-                      <td>₹{Math.round(breakdown.goldValue).toLocaleString("en-IN")}</td>
-                    </tr>
-                    {breakdown.stoneLines.map((l, i) => (
-                      <tr key={i}>
-                        <td>
-                          {l.typeLabel} ({l.caratWeight.toFixed(2)} ct × ₹
-                          {l.ratePerCarat.toLocaleString("en-IN")}/ct)
-                        </td>
-                        <td>₹{Math.round(l.value).toLocaleString("en-IN")}</td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td>Making charges</td>
-                      <td>₹{Math.round(breakdown.making).toLocaleString("en-IN")}</td>
-                    </tr>
-                    {breakdown.goldVA > 0 && (
-                      <tr>
-                        <td>{breakdown.vaLabel}</td>
-                        <td>₹{Math.round(breakdown.goldVA).toLocaleString("en-IN")}</td>
-                      </tr>
-                    )}
-                    {breakdown.miscCharges > 0 && (
-                      <tr>
-                        <td>Hallmarking &amp; certification</td>
-                        <td>₹{Math.round(breakdown.miscCharges).toLocaleString("en-IN")}</td>
-                      </tr>
-                    )}
-                    <tr>
-                      <td>GST</td>
-                      <td>₹{Math.round(breakdown.gst).toLocaleString("en-IN")}</td>
-                    </tr>
-                    <tr className="pdp-info__breakup-total">
-                      <td>Total</td>
-                      <td>₹{Math.round(breakdown.total).toLocaleString("en-IN")}</td>
-                    </tr>
+                    {(() => {
+                      const roundedGold = Math.round(breakdown.goldValue);
+                      const roundedStones = breakdown.stoneLines.length > 0
+                        ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
+                        : Math.round(breakdown.stoneValue);
+                      const roundedMaking = Math.round(breakdown.making);
+                      const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
+                      const roundedMisc = breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
+                      const roundedGST = Math.round(breakdown.gst);
+                      const tableTotal = roundedGold + roundedStones + roundedMaking + roundedVA + roundedMisc + roundedGST;
+                      return (
+                        <>
+                          <tr>
+                            <td>Gold value ({Number(selectedVariant?.weightGrams).toFixed(3)} g)</td>
+                            <td>₹{roundedGold.toLocaleString("en-IN")}</td>
+                          </tr>
+                          {breakdown.stoneLines.map((l, i) => (
+                            <tr key={i}>
+                              <td>
+                                {l.typeLabel} ({l.caratWeight.toFixed(2)} ct × ₹
+                                {l.ratePerCarat.toLocaleString("en-IN")}/ct)
+                              </td>
+                              <td>₹{Math.round(l.value).toLocaleString("en-IN")}</td>
+                            </tr>
+                          ))}
+                          {breakdown.stoneLines.length === 0 && (breakdown.stoneValue > 0 || (product.caratWeight && Number(product.caratWeight) > 0)) && (
+                            <tr>
+                              <td>
+                                {product.stoneType || "Diamond"}
+                                {product.caratWeight && Number(product.caratWeight) > 0
+                                  ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
+                                  : ""}
+                              </td>
+                              <td>{breakdown.stoneValue > 0 ? `₹${Math.round(breakdown.stoneValue).toLocaleString("en-IN")}` : "Included"}</td>
+                            </tr>
+                          )}
+                          <tr>
+                            <td>Making charges</td>
+                            <td>₹{roundedMaking.toLocaleString("en-IN")}</td>
+                          </tr>
+                          {roundedVA > 0 && (
+                            <tr>
+                              <td>{breakdown.vaLabel}</td>
+                              <td>₹{roundedVA.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedMisc > 0 && (
+                            <tr>
+                              <td>Hallmarking &amp; certification</td>
+                              <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          <tr>
+                            <td>GST</td>
+                            <td>₹{roundedGST.toLocaleString("en-IN")}</td>
+                          </tr>
+                          <tr className="pdp-info__breakup-total">
+                            <td>Total</td>
+                            <td>₹{tableTotal.toLocaleString("en-IN")}</td>
+                          </tr>
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </details>
@@ -560,6 +661,8 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
           price={product.showPrice ? price : undefined}
           onAddToCart={handleAddToCart}
           addingToCart={addingToCart}
+          onBuyNow={handleBuyNow}
+          buyingNow={buyingNow}
           expertLabel="Enquire on WhatsApp"
           onExpertClick={() => setQuoteModalOpen(true)}
           canPurchase={product.showPrice}

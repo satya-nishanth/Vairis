@@ -97,7 +97,9 @@ export default async function ProductPage({ params }: Props) {
   const productUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com"}/product/${product.id}`;
 
   const offers =
-    showPrice && prices.length > 1 && minPrice !== maxPrice
+    !showPrice || minPrice <= 0
+      ? undefined
+      : prices.length > 1 && minPrice !== maxPrice
       ? {
           "@type": "AggregateOffer",
           priceCurrency: "INR",
@@ -112,7 +114,7 @@ export default async function ProductPage({ params }: Props) {
       : {
           "@type": "Offer",
           priceCurrency: "INR",
-          price: showPrice ? minPrice : 0,
+          price: minPrice,
           availability: inStock
             ? "https://schema.org/InStock"
             : "https://schema.org/PreOrder",
@@ -127,7 +129,7 @@ export default async function ProductPage({ params }: Props) {
     sku: product.itemCode ?? product.id,
     image: product.images.filter((s) => s && !/\.(mp4|webm|mov)(\?|$)/i.test(s)),
     brand: { "@type": "Brand", name: "VAIRIS" },
-    offers,
+    ...(offers ? { offers } : {}),
     ...(reviewAgg._count.id > 0 && reviewAgg._avg.rating
       ? {
           aggregateRating: {
@@ -156,6 +158,8 @@ export default async function ProductPage({ params }: Props) {
         comingSoon: product.comingSoon,
         showPrice,
         stones: toStoneViews(product.stones),
+        stoneType: product.stoneType ?? null,
+        caratWeight: product.caratWeight ? product.caratWeight.toString() : null,
         variants: product.variants.map((v) => ({
           id: v.id,
           metalType: v.metalType,

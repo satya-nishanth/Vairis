@@ -12,7 +12,7 @@ export function HeaderCartLink() {
   if (!CHECKOUT_ENABLED) return null;
 
   return (
-    <Link href="/cart" className="cart-badge" aria-label={`Cart${count ? `, ${count} items` : ""}`}>
+    <Link href="/cart" className="cart-badge" aria-label={`Cart${count ? `, ${count} ${count === 1 ? "item" : "items"}` : ""}`}>
       <IconCart />
       {count > 0 && <span className="cart-badge__count">{count}</span>}
     </Link>

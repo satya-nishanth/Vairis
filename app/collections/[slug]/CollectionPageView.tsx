@@ -35,7 +35,7 @@ export function CollectionPageView({ collection, products, emptyState }: Props) 
             <Breadcrumbs
               items={[
                 { label: "Home", href: "/" },
-                { label: "Collections", href: "/all-products/rings" },
+                { label: "Collections", href: "/collections" },
                 { label: collection.title },
               ]}
             />

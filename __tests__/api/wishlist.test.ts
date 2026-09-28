@@ -13,6 +13,12 @@ jest.mock('@/lib/prisma', () => ({
     product: {
       findUnique: jest.fn(),
     },
+    goldRate: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    pricingSettings: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   },
 }))
 jest.mock('@/lib/auth', () => ({

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Fragment } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { TrustBar } from "@/components/layout/TrustBar";
@@ -20,23 +21,30 @@ import { marketingImages } from "@/lib/images";
 import { getBanner } from "@/lib/site-content";
 import { getActiveHomeSections } from "@/lib/home-sections";
 import { HomeDbSections } from "@/components/home/HomeDbSections";
+import { getHomeCategoryCarouselItems } from "@/lib/home-categories";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "VAIRIS | Everyday Diamond & Fine Jewellery",
+  description: "Minimal diamond jewellery in 18kt and 14kt gold. Solitaire rings, bracelets, pendants, and earrings for everyday elegance.",
+};
 
 export default async function HomePage() {
   const layout = pageLayouts.home;
   // Admin-customizable hero (slot "home-hero", /admin/content) — every
   // field falls back to the built-in copy below when unset.
-  const [hero, dbSections] = await Promise.all([
+  const [hero, dbSections, homeCategories] = await Promise.all([
     getBanner("home-hero"),
     getActiveHomeSections().catch(() => []),
+    getHomeCategoryCarouselItems().catch(() => categories),
   ]);
 
   return (
     <PageShell {...layout}>
       <main className="home-main">
         <Section className="section--shop-categories section--shop-categories--mobile-only">
-          <CategoryCarouselSection categories={categories} variant="compact" />
+          <CategoryCarouselSection categories={homeCategories} variant="compact" />
         </Section>
 
         <section className="hero">
@@ -84,7 +92,7 @@ export default async function HomePage() {
         <HomeDbSections sections={dbSections} />
 
         <Section className="section--shop-categories section--shop-categories--desktop-only">
-          <CategoryCarouselSection categories={categories} variant="marquee" />
+          <CategoryCarouselSection categories={homeCategories} variant="marquee" />
         </Section>
 
         <Section background="card" className="section--why-vairis">

@@ -30,7 +30,7 @@ function QuickAddButton({ product }: { product: Product }) {
   const handleQuickAdd = async () => {
     if (!product.variantId) return;
     if (hydrated && !isLoggedIn) {
-      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.slug}`)}&msg=${encodeURIComponent("Please sign in to add this item to your bag")}`);
+      router.push(`/auth/login?next=${encodeURIComponent(`/product/${product.slug}`)}&reason=cart`);
       return;
     }
     setAdding(true);
@@ -89,7 +89,7 @@ export function ProductCard({
               {product.hasMultiplePrices ? `From ${formatPrice(product.price)}` : formatPrice(product.price)}
             </p>
           ) : (
-            product.priceHidden && <p className="product-card__price product-card__price--on-request">Price on Request</p>
+            <p className="product-card__price product-card__price--on-request">Price on Request</p>
           )}
           {product.meta && <p className="product-card__meta">{product.meta}</p>}
           {CHECKOUT_ENABLED && showActions && product.variantId && (

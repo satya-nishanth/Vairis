@@ -237,7 +237,7 @@
   flex-shrink: 0;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .site-header__inner {
     flex-wrap: wrap;
     row-gap: 12px;

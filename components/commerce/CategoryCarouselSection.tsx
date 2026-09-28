@@ -4,7 +4,7 @@ import { CategoryCard } from "@/components/commerce/CategoryCard";
 import type { ShopCategory } from "@/lib/catalogue-ui";
 
 type CategoryItem = {
-  slug: ShopCategory;
+  slug: ShopCategory | string;
   title: string;
   description: string;
   images: string[];
@@ -16,6 +16,7 @@ type CategoryCarouselSectionProps = {
 };
 
 export function CategoryCarouselSection({ categories, variant = "marquee" }: CategoryCarouselSectionProps) {
+  if (!categories || categories.length === 0) return null;
   const isCompact = variant === "compact";
   const items = isCompact ? categories : [...categories, ...categories];
 

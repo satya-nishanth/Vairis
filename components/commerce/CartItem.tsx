@@ -32,7 +32,12 @@ export function CartItem({ item, onIncrement, onDecrement, onRemove }: CartItemP
         <p className="cart-item__meta">{item.meta}</p>
 
         <div className="cart-item__qty">
-          <button type="button" aria-label="Decrease quantity" onClick={onDecrement}>
+          <button
+            type="button"
+            aria-label="Decrease quantity"
+            onClick={onDecrement}
+            disabled={item.quantity <= 1}
+          >
             −
           </button>
           <span>{item.quantity}</span>

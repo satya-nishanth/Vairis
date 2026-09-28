@@ -38,7 +38,11 @@ function loadLocal(): Set<string> {
 function saveLocal(ids: Set<string>) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify([...ids]));
+    if (ids.size === 0) {
+      localStorage.removeItem(LOCAL_KEY);
+    } else {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify([...ids]));
+    }
   } catch {
     // Ignore storage quota errors
   }
@@ -107,9 +111,10 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         setIds(merged);
         saveLocal(merged);
       } else if (event === "SIGNED_OUT") {
-        // Keep the items wishlisted on this device so the user still sees their wishlist
-        const local = loadLocal();
-        setIds(local);
+        setIds(new Set());
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(LOCAL_KEY);
+        }
       }
     });
     return () => sub.subscription.unsubscribe();

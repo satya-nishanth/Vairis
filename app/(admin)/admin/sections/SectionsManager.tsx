@@ -43,6 +43,9 @@ export function SectionsManager({
   const [subtitle, setSubtitle] = useState('')
   const [collectionSlug, setCollectionSlug] = useState(collections[0]?.slug ?? '')
   const [configText, setConfigText] = useState('')
+  const [startsAt, setStartsAt] = useState('')
+  const [endsAt, setEndsAt] = useState('')
+  const [active, setActive] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -65,7 +68,15 @@ export function SectionsManager({
     const res = await fetch('/api/admin/sections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, title: title || null, subtitle: subtitle || null, config }),
+      body: JSON.stringify({
+        kind,
+        title: title || null,
+        subtitle: subtitle || null,
+        config,
+        active,
+        startsAt: startsAt ? new Date(startsAt).toISOString() : null,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+      }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -76,6 +87,9 @@ export function SectionsManager({
     setTitle('')
     setSubtitle('')
     setConfigText('')
+    setStartsAt('')
+    setEndsAt('')
+    setActive(true)
     router.refresh()
   }
 
@@ -153,6 +167,20 @@ export function SectionsManager({
           <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
             Subtitle (optional)
             <input style={input} value={subtitle} onChange={(e) => setSubtitle(e.target.value)} />
+          </label>
+        </div>
+        <div className="admin-grid-3">
+          <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
+            Start date (optional)
+            <input type="date" style={input} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+          </label>
+          <label style={{ fontSize: '0.75rem', display: 'grid', gap: 4 }}>
+            End date (optional)
+            <input type="date" style={input} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+          </label>
+          <label style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 8, marginTop: 20 }}>
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            Active immediately
           </label>
         </div>
         {error && <p style={{ color: '#dc2626', fontSize: '0.8125rem' }}>{error}</p>}

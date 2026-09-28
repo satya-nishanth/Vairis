@@ -7,6 +7,8 @@ import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { ProductCard } from "@/components/commerce/ProductCard";
 import { useWishlist } from "@/components/commerce/WishlistProvider";
+import { useCart } from "@/components/commerce/CartProvider";
+import { CartModalProvider } from "@/components/commerce/CartModal";
 import { pageLayouts } from "@/lib/layout-config";
 import { categoryHref } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
@@ -41,6 +43,7 @@ function toProduct(p: any, i: number): Product {
 export function WishlistPageView() {
   const layout = pageLayouts.wishlist;
   const { ids, count, isLoggedIn } = useWishlist();
+  const { count: cartCount } = useCart();
   const [apiProducts, setApiProducts] = useState<Product[] | null>(null);
   const [guestCache, setGuestCache] = useState<Map<string, Product>>(new Map());
 
@@ -103,48 +106,50 @@ export function WishlistPageView() {
   const loading = ids.size > 0 && products.length === 0 && (isLoggedIn ? apiProducts === null : !guestResolved);
 
   return (
-    <PageShell
-      {...layout}
-      breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Wishlist" },
-      ]}
-    >
-      <Container>
-        <div className="wishlist-page">
-          <h1 className="wishlist-page__title">Wishlist ({count})</h1>
-          <p className="wishlist-page__lead">
-            Pieces you&apos;ve saved for later — insured delivery on every
-            order.
-          </p>
-
-          {loading ? null : products.length === 0 ? (
-            <div className="wishlist-empty">
-              <p>
-                Your wishlist is empty. Explore our collections and tap the
-                heart on pieces you love.
-              </p>
-              <Button href={categoryHref("rings")} variant="primary">
-                Shop Rings
-              </Button>
-            </div>
-          ) : (
-            <div className="wishlist-grid">
-              {products.map((product) => (
-                <ProductCard key={product.catalogueId} product={product} />
-              ))}
-            </div>
-          )}
-
-          {products.length > 0 && (
-            <p style={{ marginTop: 32, fontSize: "0.875rem" }}>
-              <Link href="/cart">View cart</Link>
-              {" · "}
-              <Link href={categoryHref("rings")}>Continue shopping</Link>
+    <CartModalProvider bagCount={cartCount}>
+      <PageShell
+        {...layout}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Wishlist" },
+        ]}
+      >
+        <Container>
+          <div className="wishlist-page">
+            <h1 className="wishlist-page__title">Wishlist ({count})</h1>
+            <p className="wishlist-page__lead">
+              Pieces you&apos;ve saved for later — insured delivery on every
+              order.
             </p>
-          )}
-        </div>
-      </Container>
-    </PageShell>
+
+            {loading ? null : products.length === 0 ? (
+              <div className="wishlist-empty">
+                <p>
+                  Your wishlist is empty. Explore our collections and tap the
+                  heart on pieces you love.
+                </p>
+                <Button href={categoryHref("rings")} variant="primary">
+                  Shop Rings
+                </Button>
+              </div>
+            ) : (
+              <div className="wishlist-grid">
+                {products.map((product) => (
+                  <ProductCard key={product.catalogueId} product={product} />
+                ))}
+              </div>
+            )}
+
+            {products.length > 0 && (
+              <p style={{ marginTop: 32, fontSize: "0.875rem" }}>
+                <Link href="/cart">View cart</Link>
+                {" · "}
+                <Link href={categoryHref("rings")}>Continue shopping</Link>
+              </p>
+            )}
+          </div>
+        </Container>
+      </PageShell>
+    </CartModalProvider>
   );
 }
