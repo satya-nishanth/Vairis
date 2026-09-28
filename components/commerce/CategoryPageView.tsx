@@ -38,6 +38,8 @@ type CategoryPageViewProps = {
   heroImagesOverride?: string[];
   heroImageFits?: BannerImageFit[];
   introOverride?: string;
+  filterGroups?: { id: "styles" | "metals"; title: string; options: string[] }[];
+  labelProductMap?: Record<string, string[]>;
 };
 
 function usePlpPageSize() {
@@ -57,7 +59,11 @@ function usePlpPageSize() {
   return pageSize;
 }
 
-function filterProducts(products: Product[], filters: FilterState): Product[] {
+function filterProducts(
+  products: Product[],
+  filters: FilterState,
+  labelProductMap?: Record<string, string[]>
+): Product[] {
   let result = [...products];
 
   if (filters.metals.length > 0) {
@@ -67,7 +73,27 @@ function filterProducts(products: Product[], filters: FilterState): Product[] {
   if (filters.styles.length > 0) {
     const wanted = filters.styles.map((s) => s.toLowerCase());
     result = result.filter((p) => {
-      const text = p.styleText ?? "";
+      // 1. Explicitly mapped label check
+      const isExplicitlyTagged = filters.styles.some((label) => {
+        const mapped = labelProductMap?.[label];
+        return (
+          mapped &&
+          (mapped.includes(p.slug) ||
+            mapped.includes(p.sku ?? "") ||
+            (p.catalogueId && mapped.includes(p.catalogueId)))
+        );
+      });
+      if (isExplicitlyTagged) return true;
+
+      // 2. Keyword/style match across product attributes
+      const text = [
+        p.styleText ?? "",
+        p.description ?? "",
+        p.name ?? "",
+        p.sku ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
       return wanted.some((s) => text.includes(s));
     });
   }
@@ -118,6 +144,8 @@ export function CategoryPageView({
   heroImagesOverride,
   heroImageFits,
   introOverride,
+  filterGroups: filterGroupsProp,
+  labelProductMap,
 }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const isBuiltIn = isShopCategory(category);
@@ -132,15 +160,18 @@ export function CategoryPageView({
   const { count: bagCount } = useCart();
   // Only real DB products — never fall back to mock catalogue (broken PDP links)
   const allProducts = useMemo(() => prismaProducts ?? [], [prismaProducts]);
-  const filterGroups = isBuiltIn && PLP_FILTER_GROUPS[category]
-    ? PLP_FILTER_GROUPS[category]
-    : [
-        {
-          id: "metals" as const,
-          title: "Metal",
-          options: ["Yellow Gold", "White Gold", "Rose Gold", "18K Gold"],
-        },
-      ];
+  const filterGroups =
+    filterGroupsProp && filterGroupsProp.length > 0
+      ? filterGroupsProp
+      : isBuiltIn && PLP_FILTER_GROUPS[category]
+      ? PLP_FILTER_GROUPS[category]
+      : [
+          {
+            id: "metals" as const,
+            title: "Metal",
+            options: ["Yellow Gold", "White Gold", "Rose Gold", "18K Gold"],
+          },
+        ];
   // Admin SiteBanner images[] win over built-in category hero set
   const heroImages =
     heroImagesOverride && heroImagesOverride.length > 0
@@ -175,7 +206,10 @@ export function CategoryPageView({
   const pageParam = parseInt(searchParams.get("page") || "1", 10);
   const pageFromUrl = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
-  const filteredProducts = useMemo(() => filterProducts(allProducts, filters), [allProducts, filters]);
+  const filteredProducts = useMemo(
+    () => filterProducts(allProducts, filters, labelProductMap),
+    [allProducts, filters, labelProductMap]
+  );
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const currentPage = Math.min(pageFromUrl, totalPages);
   const pageProducts = filteredProducts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
