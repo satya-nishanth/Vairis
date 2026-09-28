@@ -41,6 +41,8 @@ describe('invoiceFromProducts', () => {
     expect(payload.lines[0].wastage).toBe(2562)
     expect(payload.lines[0].making).toBe(4200)
     expect(payload.lines[0].stoneValue).toBe(53000)
+    expect(payload.lines[0].diamondValue).toBe(53000)
+    expect(payload.lines[0].otherStoneValue).toBe(0)
     expect(payload.lines[0].taxable).toBe(85382)
     expect(totals.taxable).toBe(85382)
     expect(totals.gstAmount).toBeCloseTo(85382 * 0.03, 6)
@@ -154,6 +156,61 @@ describe('order invoice from priceBreakdown', () => {
     expect(payload.lines[0].lockedPricing).toBe(true)
     expect(payload.lines[0].goldValue).toBeCloseTo(21516.35, 2)
     expect(payload.lines[0].taxable).toBeCloseTo(23737.17, 2)
+    expect(payload.invoiceDate).toBe('2026-08-24')
+    expect(payload.billedTo.name).toBe('Test')
+    expect(payload.billedTo.phone).toBe('+91 9876543210')
+    expect(payload.billedTo.lines).toContain('12 MG Road')
+    // Legacy snap with stoneValue only → entire gem lump on Diamonds, Stones 0
+    expect(payload.lines[0].diamondValue).toBe(0)
+    expect(payload.lines[0].otherStoneValue).toBe(0)
+  })
+
+  it('payloadFromOrder puts diamondValue on Diamonds and otherStoneValue on Stones', () => {
+    const order: PrefillOrder = {
+      id: 'ord_gems',
+      status: 'PAYMENT_CONFIRMED',
+      createdAt: new Date('2026-08-24T10:00:00Z'),
+      contactName: 'Test',
+      contactPhone: '9876543210',
+      addressLine1: '12 MG Road',
+      addressLine2: null,
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      pincode: '560001',
+      user: { name: 'Test', email: 't@example.com' },
+      payment: {
+        razorpayPaymentId: 'pay_x',
+        razorpayOrderId: 'order_x',
+        status: 'CAPTURED',
+        createdAt: new Date('2026-08-24T10:00:00Z'),
+      },
+      items: [
+        {
+          ...orderItem,
+          priceBreakdown: {
+            ...snap,
+            stoneValue: 93600,
+            diamondValue: 93600,
+            otherStoneValue: 0,
+            stoneLines: [
+              {
+                typeLabel: 'Colourless Diamond',
+                caratWeight: 0.5,
+                ratePerCarat: 187200,
+                value: 93600,
+              },
+            ],
+            taxable: 21516.35 + 1075.82 + 1100 + 93600 + 45,
+            gst: 0,
+            total: 0,
+          },
+        },
+      ],
+    }
+    const payload = payloadFromOrder(order, { GOLD_18K: 99999 }, DEFAULT_PRICING_CONFIG)
+    expect(payload.lines[0].diamondValue).toBe(93600)
+    expect(payload.lines[0].otherStoneValue).toBe(0)
+    expect(payload.lines[0].stoneValue).toBe(93600)
   })
 
   it('payloadFromOrder uses paymentReceivedAt for Received On when offline', () => {
