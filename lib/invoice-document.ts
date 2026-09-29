@@ -2,6 +2,7 @@ import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
   isOrderItemPriceSnapshot,
+  splitGemValues,
   type OrderItemPriceSnapshot,
   type PricingConfig,
   type StoneInput,
@@ -19,7 +20,12 @@ export type InvoiceParty = {
 export type InvoiceStoneRow = {
   label: string
   caratWeight: number
+  /** Active ₹/ct shown on the invoice (std or exch depending on line.withExchange). */
   ratePerCarat: number
+  /** Standard (without-exchange) ₹/ct — kept so toggling Exchange on a locked line can swap display. */
+  ratePerCaratStd?: number
+  /** With-exchange ₹/ct. */
+  ratePerCaratExchange?: number
   value: number
   exchange: boolean
 }
@@ -42,7 +48,12 @@ export type InvoiceLine = {
   flatMaking: number
   making: number
   stones: InvoiceStoneRow[]
+  /** Total gem cost (diamonds + other stones). Used for taxable. */
   stoneValue: number
+  /** Diamond portion of stoneValue (matches order selling / finance split). */
+  diamondValue: number
+  /** Non-diamond / coloured-stone portion of stoneValue. */
+  otherStoneValue: number
   leadIncentive: number
   miscCharges: number
   /** Legacy flat stone cost when the product has no stone rows. */
@@ -249,6 +260,8 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
     wastage: unit.goldVA,
     making: unit.making,
     stoneValue: unit.stoneValue,
+    diamondValue: unit.diamondValue,
+    otherStoneValue: unit.otherStoneValue,
     stones,
     itemValue: unit.goldValue + unit.stoneValue,
     makingPlusWastage: unit.making + unit.goldVA,
@@ -308,6 +321,8 @@ export function blankLine(): InvoiceLine {
     making: 0,
     stones: [],
     stoneValue: 0,
+    diamondValue: 0,
+    otherStoneValue: 0,
     leadIncentive: 0,
     miscCharges: 0,
     legacyStoneCharges: 0,
@@ -321,16 +336,48 @@ const EMPTY_PARTY: InvoiceParty = { name: '', lines: '', phone: '' }
 
 function stoneRowsFromInputs(stones: StoneInput[], withExchange: boolean): InvoiceStoneRow[] {
   return stones.map((s) => {
-    const rate = Number(withExchange ? s.ratePerCaratExchange : s.ratePerCarat)
+    const std = Number(s.ratePerCarat)
+    const exch = Number(s.ratePerCaratExchange)
+    const rate = Number(withExchange ? exch : std)
     const carat = Number(s.caratWeight)
     return {
       label: s.typeLabel ?? 'Diamond',
       caratWeight: carat,
       ratePerCarat: rate,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
       value: carat * rate,
       exchange: withExchange,
     }
   })
+}
+
+/**
+ * Flip Exchange opted on an invoice line without unlocking live gold/making calc
+ * and without changing Diamonds/Stones ₹ totals (those are already settled amounts).
+ * Only updates the flag and the displayed ₹/ct (std ↔ exch) on the invoice.
+ * PDP/checkout are untouched.
+ */
+export function applyInvoiceExchangeFlag(line: InvoiceLine, withExchange: boolean): InvoiceLine {
+  const stones = line.stones.map((s) => {
+    const std = Number(s.ratePerCaratStd ?? s.ratePerCarat)
+    const exch = Number(s.ratePerCaratExchange ?? s.ratePerCarat)
+    const ratePerCarat = withExchange ? exch : std
+    return {
+      ...s,
+      exchange: withExchange,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
+      ratePerCarat,
+      // Keep existing line value — diamonds ₹ total is already final.
+    }
+  })
+
+  return {
+    ...line,
+    withExchange,
+    stones,
+  }
 }
 
 export function lineFromProduct(
@@ -492,6 +539,8 @@ export type PrefillOrder = {
   city: string
   state: string
   pincode: string
+  /** Order-level discount (₹) — copied onto the invoice payable. */
+  discountAmount?: { toString(): string } | number | null
   /** Offline/manual settlement date (invoice Received On). */
   paymentReceivedAt?: Date | string | null
   user: { name: string; email: string }
@@ -558,14 +607,29 @@ function resolvedReceivedOn(order: PrefillOrder): string {
   return payment ? payment.createdAt.toISOString().slice(0, 10) : ''
 }
 
-function stonesFromSnapshot(snap: OrderItemPriceSnapshot): InvoiceStoneRow[] {
-  return (snap.stoneLines ?? []).map((s) => ({
-    label: s.typeLabel || 'Diamond',
-    caratWeight: Number(s.caratWeight),
-    ratePerCarat: Number(s.ratePerCarat),
-    value: Number(s.value),
-    exchange: Boolean(snap.withExchange),
-  }))
+function stonesFromSnapshot(
+  snap: OrderItemPriceSnapshot,
+  catalogueStones?: StoneInput[],
+): InvoiceStoneRow[] {
+  return (snap.stoneLines ?? []).map((s) => {
+    const label = s.typeLabel || 'Diamond'
+    const match = catalogueStones?.find(
+      (p) => (p.typeLabel ?? 'Diamond').toLowerCase() === label.toLowerCase(),
+    )
+    const snapRate = Number(s.ratePerCarat)
+    const std = match ? Number(match.ratePerCarat) : snapRate
+    const exch = match ? Number(match.ratePerCaratExchange) : snapRate
+    const exchange = Boolean(snap.withExchange)
+    return {
+      label,
+      caratWeight: Number(s.caratWeight),
+      ratePerCarat: snapRate,
+      ratePerCaratStd: std,
+      ratePerCaratExchange: exch,
+      value: Number(s.value),
+      exchange,
+    }
+  })
 }
 
 /**
@@ -585,11 +649,13 @@ export function lineFromOrderItem(
   if (snap) {
     const wastagePct =
       snap.goldValue > 0 ? (snap.goldVA / snap.goldValue) * 100 : Number(config.vaGoldPct)
-    const snapStones = stonesFromSnapshot(snap)
+    const catalogueStones = toStoneInputs(v.product.stones)
+    const snapStones = stonesFromSnapshot(snap, catalogueStones)
     const stones =
       snapStones.length > 0
         ? snapStones
-        : stoneRowsFromInputs(toStoneInputs(v.product.stones), withExchange)
+        : stoneRowsFromInputs(catalogueStones, withExchange)
+    const gems = splitGemValues(snap)
 
     return recomputeLine(
       {
@@ -612,9 +678,10 @@ export function lineFromOrderItem(
         making: Number(snap.making),
         stones,
         stoneValue: Number(snap.stoneValue),
+        diamondValue: gems.diamonds,
+        otherStoneValue: gems.stones,
         miscCharges: Number(snap.miscCharges),
-        legacyStoneCharges:
-          Number(snap.stoneValue) > 0 && snapStones.length === 0 ? Number(snap.stoneValue) : 0,
+        legacyStoneCharges: gems.stones,
         leadIncentive: 0,
         itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
         makingPlusWastage: Number(snap.making) + Number(snap.goldVA),
@@ -660,6 +727,7 @@ export function payloadFromOrder(
     phone: order.contactPhone ? `+91 ${order.contactPhone}` : '',
   }
   const lines = flattenItems(order).map((item) => lineFromOrderItem(item, rates, config))
+  const discountRaw = order.discountAmount != null ? Number(order.discountAmount) : 0
   const payload: InvoicePayload = {
     seller: sellerDefaults(),
     billedTo: party,
@@ -670,11 +738,13 @@ export function payloadFromOrder(
       received: resolvedReceivedOn(order),
       status: paid ? 'Paid in full' : 'Unpaid',
     },
-    invoiceDate: new Date().toISOString().slice(0, 10),
+    // Start from the order placed date (admin can still edit on the form).
+    invoiceDate: order.createdAt.toISOString().slice(0, 10),
     placeOfSupply: /maharashtra/i.test(order.state)
       ? 'Maharashtra (27)'
       : order.state || 'Maharashtra (27)',
     gstScheme: 'JEWELLERY',
+    discount: discountRaw > 0 ? discountRaw : undefined,
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: lines.length > 0 ? lines : [blankLine()],
   }

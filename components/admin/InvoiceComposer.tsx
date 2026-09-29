@@ -10,6 +10,7 @@ import {
   applyInvoiceSeller,
   lineFromCatalogueVariant,
   recomputeLine,
+  applyInvoiceExchangeFlag,
   sellerDefaults,
   totalsFromPayload,
   type InvoiceCatalogueVariant,
@@ -20,6 +21,7 @@ import {
   type InvoiceStoneRow,
 } from '@/lib/invoice-document'
 import { formatINRGrouped, INVOICE_GST_SCHEMES, normalizeInvoiceGstScheme } from '@/lib/invoice-tax'
+import { splitGemValues } from '@/lib/pricing'
 import type { PricingConfig } from '@/lib/pricing'
 
 type CatalogueProps = {
@@ -438,6 +440,12 @@ function LineEditor({
   onRemove: () => void
 }) {
   const computed = recomputeLine(line, 'Wastage')
+  const gems = splitGemValues({
+    stoneValue: Number(line.stoneValue) || 0,
+    diamondValue: line.diamondValue,
+    otherStoneValue: line.otherStoneValue,
+    stoneLines: line.stones.map((s) => ({ typeLabel: s.label, value: s.value })),
+  })
 
   function patch(partial: Partial<InvoiceLine>) {
     // Formula drivers unlock live calc. Amount fields (goldValue/wastage/making/
@@ -451,7 +459,7 @@ function LineEditor({
       'legacyStoneCharges',
       'leadIncentive',
       'stones',
-      'withExchange',
+      // withExchange is handled separately — flag + ₹/ct only; keep locked order amounts
     ]
     const unlock = Object.keys(partial).some((k) => unlockKeys.includes(k))
     onChange({
@@ -459,6 +467,10 @@ function LineEditor({
       ...partial,
       ...(unlock ? { lockedPricing: false } : null),
     })
+  }
+
+  function setExchangeOpted(checked: boolean) {
+    onChange(applyInvoiceExchangeFlag(line, checked))
   }
 
   function patchStone(idx: number, partial: Partial<InvoiceStoneRow>) {
@@ -476,8 +488,8 @@ function LineEditor({
       </div>
       {line.lockedPricing ? (
         <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#065f46' }}>
-          Amounts from order price breakdown (not live rates). Edit Gold/Wastage/Making/Stones ₹ to
-          adjust; editing weight or rate unlocks live recalculation.
+          Amounts from order price breakdown (not live rates). Edit Gold/Wastage/Making/Diamonds/Stones ₹
+          to adjust; editing weight or rate unlocks live recalculation.
         </p>
       ) : null}
       <div className="inv-composer__grid">
@@ -492,7 +504,7 @@ function LineEditor({
           <input
             type="checkbox"
             checked={line.withExchange}
-            onChange={(e) => patch({ withExchange: e.target.checked })}
+            onChange={(e) => setExchangeOpted(e.target.checked)}
           />
           Exchange opted
         </label>
@@ -529,10 +541,33 @@ function LineEditor({
               onChange={(v) => patch({ making: Number(v) })}
             />
             <Field
+              label="Diamonds ₹"
+              type="number"
+              value={gems.diamonds}
+              onChange={(v) => {
+                const diamondValue = Number(v) || 0
+                const otherStoneValue = gems.stones
+                patch({
+                  diamondValue,
+                  otherStoneValue,
+                  stoneValue: diamondValue + otherStoneValue,
+                })
+              }}
+            />
+            <Field
               label="Stones ₹"
               type="number"
-              value={line.stoneValue}
-              onChange={(v) => patch({ stoneValue: Number(v) })}
+              value={gems.stones}
+              onChange={(v) => {
+                const otherStoneValue = Number(v) || 0
+                const diamondValue = gems.diamonds
+                patch({
+                  diamondValue,
+                  otherStoneValue,
+                  stoneValue: diamondValue + otherStoneValue,
+                  legacyStoneCharges: otherStoneValue,
+                })
+              }}
             />
             <Field
               label="Misc / delivery ₹"
@@ -622,7 +657,7 @@ function LineEditor({
         </>
       ) : line.stones.length > 0 ? (
         <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 8 }}>
-          Stones detail:{' '}
+          Gem detail:{' '}
           {line.stones
             .map((s) => `${s.label || 'Diamond'} ${s.caratWeight} ct × ₹${s.ratePerCarat}/ct`)
             .join(' · ')}
@@ -630,8 +665,8 @@ function LineEditor({
       ) : null}
       <p style={{ fontSize: '0.8rem', marginTop: 8 }}>
         Gold ₹{formatINRGrouped(computed.goldValue, 0)} · wastage ₹{formatINRGrouped(computed.wastage, 0)} · making ₹
-        {formatINRGrouped(computed.making, 0)} · stones ₹{formatINRGrouped(computed.stoneValue, 0)} · taxable ₹
-        {formatINRGrouped(computed.taxable)}
+        {formatINRGrouped(computed.making, 0)} · diamonds ₹{formatINRGrouped(gems.diamonds, 0)} · stones ₹
+        {formatINRGrouped(gems.stones, 0)} · taxable ₹{formatINRGrouped(computed.taxable)}
       </p>
     </section>
   )
