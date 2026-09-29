@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
@@ -34,45 +33,7 @@ export default async function EditProductPage({
   const linkedLabels = getProductLinkedLabels(product, allFilters)
 
   return (
-    <div className="admin-page">
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
-          ← Products
-        </Link>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>Edit Product</h1>
-        <p style={{ fontSize: '0.875rem', color: '#9ca3af', marginTop: '0.125rem' }}>{product.name}</p>
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-          <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>
-            Linked Filter Labels:
-          </span>
-          {linkedLabels.length > 0 ? (
-            linkedLabels.map((lbl) => (
-              <span
-                key={lbl}
-                style={{
-                  fontSize: '0.75rem',
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  background: '#eff6ff',
-                  color: '#1d4ed8',
-                  border: '1px solid #bfdbfe',
-                  fontWeight: 500,
-                }}
-              >
-                🏷️ {lbl}
-              </span>
-            ))
-          ) : (
-            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>None</span>
-          )}
-          <Link
-            href="/admin/filters"
-            style={{ fontSize: '0.75rem', color: '#6366f1', marginLeft: 6, textDecoration: 'underline' }}
-          >
-            Manage Filters →
-          </Link>
-        </div>
-      </div>
+    <div className="admin-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <ProductForm
         mode="edit"
         categories={storeCategories.map((c) => ({ slug: c.slug, name: c.name }))}
