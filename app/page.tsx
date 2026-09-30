@@ -33,12 +33,13 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const layout = pageLayouts.home;
   // Admin-customizable hero (slot "home-hero", /admin/content) — every
-  // field falls back to the built-in copy below when unset.
-  const [hero, dbSections, homeCategories] = await Promise.all([
+  const [hero, dbSections, rawHomeCategories] = await Promise.all([
     getBanner("home-hero"),
     getActiveHomeSections().catch(() => []),
     getHomeCategoryCarouselItems().catch(() => categories),
   ]);
+  const homeCategories =
+    rawHomeCategories && rawHomeCategories.length > 0 ? rawHomeCategories : categories;
 
   return (
     <PageShell {...layout}>

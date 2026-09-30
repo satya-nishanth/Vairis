@@ -95,4 +95,20 @@ describe("getHomeCategoryCarouselItems", () => {
     expect(whereArg.isActive).toBe(true);
     expect(items[0].images).toEqual(["/images/products/live-earring.jpg"]);
   });
+
+  it("guarantees a non-empty carousel by falling back to stocked categories if no live products or custom items match", async () => {
+    jest.spyOn(storeCategoriesModule, "getStoreCategories").mockResolvedValueOnce([]);
+    (prisma.product.findMany as jest.Mock).mockResolvedValue([]);
+
+    const items = await getHomeCategoryCarouselItems();
+    expect(items.length).toBeGreaterThan(0);
+    const slugs = items.map((i) => i.slug);
+    expect(slugs).toContain("rings");
+    expect(slugs).toContain("earrings");
+    expect(slugs).toContain("bracelets");
+    for (const item of items) {
+      expect(item.images.length).toBeGreaterThan(0);
+      expect(item.title).toBeTruthy();
+    }
+  });
 });

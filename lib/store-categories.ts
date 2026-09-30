@@ -151,7 +151,7 @@ export async function getStoreCategories(options?: {
     });
 
     if (rows && rows.length > 0) {
-      return rows.map((r: any) => ({
+      const dbCategories: StoreCategoryRecord[] = rows.map((r: any) => ({
         id: r.id,
         slug: r.slug,
         name: r.name,
@@ -160,25 +160,44 @@ export async function getStoreCategories(options?: {
         showInHeader: r.showInHeader,
         sortOrder: r.sortOrder,
         isActive: r.isActive,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
+        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
         productIds: (r.products ?? [])
           .filter((p: any) => !options?.activeOnly || (p.product?.isActive && p.product?.status === "LIVE"))
           .map((p: any) => p.productId),
       }));
+
+      // Merge with default categories to make sure core storefront categories are never dropped
+      const existingSlugs = new Set(dbCategories.map((c) => c.slug.toLowerCase()));
+      const missingDefaults = DEFAULT_STORE_CATEGORIES.filter(
+        (d) => !existingSlugs.has(d.slug.toLowerCase()),
+      );
+      let combined = [...dbCategories, ...missingDefaults];
+      if (options?.activeOnly) {
+        combined = combined.filter((c) => c.isActive);
+      }
+      if (options?.inHeader !== undefined) {
+        combined = combined.filter((c) => c.showInHeader === options.inHeader);
+      }
+      return combined.sort((a, b) => a.sortOrder - b.sortOrder);
     }
   } catch {
     // Fall back to JSON storage
   }
 
-  let items = readJsonFile();
+  const items = readJsonFile();
+  const existingSlugs = new Set(items.map((c) => c.slug.toLowerCase()));
+  const missingDefaults = DEFAULT_STORE_CATEGORIES.filter(
+    (d) => !existingSlugs.has(d.slug.toLowerCase()),
+  );
+  let combined = [...items, ...missingDefaults];
   if (options?.activeOnly) {
-    items = items.filter((i) => i.isActive);
+    combined = combined.filter((i) => i.isActive);
   }
   if (options?.inHeader !== undefined) {
-    items = items.filter((i) => i.showInHeader === options.inHeader);
+    combined = combined.filter((i) => i.showInHeader === options.inHeader);
   }
-  return items.sort((a, b) => a.sortOrder - b.sortOrder);
+  return combined.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export async function getHeaderNavCategories(): Promise<{ slug: string; name: string }[]> {
@@ -338,43 +357,91 @@ export async function updateStoreCategory(
     productIds: string[];
   }>,
 ): Promise<StoreCategoryRecord | null> {
+  const normSlug = input.slug
+    ? input.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    : undefined;
+
+  let dbRecord: StoreCategoryRecord | null = null;
+  try {
+    const existing = await (prisma as any).storeCategory.findFirst({
+      where: { OR: [{ id }, { slug: id }, ...(normSlug ? [{ slug: normSlug }] : [])] },
+      include: {
+        products: { select: { productId: true }, orderBy: { sortOrder: "asc" } },
+      },
+    });
+
+    if (existing) {
+      const existingProductIds = (existing.products ?? []).map((p: any) => p.productId);
+      const targetProductIds =
+        input.productIds !== undefined ? input.productIds : existingProductIds;
+      const targetSlug = normSlug ?? existing.slug;
+
+      const updated = await (prisma as any).storeCategory.update({
+        where: { id: existing.id },
+        data: {
+          ...(input.name !== undefined && { name: input.name }),
+          ...(targetSlug && { slug: targetSlug }),
+          ...(input.description !== undefined && { description: input.description }),
+          ...(input.image !== undefined && { image: input.image }),
+          ...(input.showInHeader !== undefined && { showInHeader: input.showInHeader }),
+          ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
+          ...(input.isActive !== undefined && { isActive: input.isActive }),
+          ...(input.productIds !== undefined
+            ? {
+                products: {
+                  deleteMany: {},
+                  create: targetProductIds.map((pId: string, idx: number) => ({
+                    productId: pId,
+                    sortOrder: idx,
+                  })),
+                },
+              }
+            : {}),
+        },
+        include: { products: { select: { productId: true }, orderBy: { sortOrder: "asc" } } },
+      });
+
+      dbRecord = {
+        id: updated.id,
+        slug: updated.slug,
+        name: updated.name,
+        description: updated.description,
+        image: updated.image,
+        showInHeader: updated.showInHeader,
+        sortOrder: updated.sortOrder,
+        isActive: updated.isActive,
+        createdAt: updated.createdAt ? new Date(updated.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: updated.updatedAt ? new Date(updated.updatedAt).toISOString() : new Date().toISOString(),
+        productIds: (updated.products ?? []).map((p: any) => p.productId),
+      };
+    }
+  } catch (err) {
+    console.warn("[store-categories] DB update failed, falling back to JSON:", err);
+  }
+
   const items = readJsonFile();
-  const itemIndex = items.findIndex((c) => c.id === id || c.slug === id);
+  const itemIndex = items.findIndex((c) => c.id === id || c.slug === id || (normSlug && c.slug === normSlug));
+
+  if (dbRecord) {
+    if (itemIndex >= 0) {
+      items[itemIndex] = dbRecord;
+    } else {
+      items.push(dbRecord);
+    }
+    writeJsonFile(items);
+    return dbRecord;
+  }
+
   if (itemIndex < 0) return null;
 
   const current = items[itemIndex];
   const updated: StoreCategoryRecord = {
     ...current,
     ...input,
-    slug: input.slug ? input.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-") : current.slug,
+    slug: normSlug ?? current.slug,
     updatedAt: new Date().toISOString(),
     productIds: input.productIds !== undefined ? input.productIds : current.productIds,
   };
-
-  try {
-    await (prisma as any).storeCategory.update({
-      where: { id: current.id },
-      data: {
-        name: updated.name,
-        slug: updated.slug,
-        description: updated.description,
-        image: updated.image,
-        showInHeader: updated.showInHeader,
-        sortOrder: updated.sortOrder,
-        isActive: updated.isActive,
-        ...(input.productIds !== undefined
-          ? {
-              products: {
-                deleteMany: {},
-                create: updated.productIds.map((pId) => ({ productId: pId })),
-              },
-            }
-          : {}),
-      },
-    });
-  } catch {
-    // Ignore DB error, update JSON
-  }
 
   items[itemIndex] = updated;
   writeJsonFile(items);
@@ -382,18 +449,27 @@ export async function updateStoreCategory(
 }
 
 export async function deleteStoreCategory(id: string): Promise<boolean> {
-  const items = readJsonFile();
-  const filtered = items.filter((c) => c.id !== id && c.slug !== id);
-  if (filtered.length === items.length) return false;
-
+  let dbSuccess = false;
   try {
-    await (prisma as any).storeCategory.delete({
-      where: { id },
+    const existing = await (prisma as any).storeCategory.findFirst({
+      where: { OR: [{ id }, { slug: id }] },
     });
-  } catch {
-    // Ignore DB error
+    if (existing) {
+      await (prisma as any).storeCategory.delete({
+        where: { id: existing.id },
+      });
+      dbSuccess = true;
+    }
+  } catch (err) {
+    console.warn("[store-categories] DB delete failed:", err);
   }
 
-  writeJsonFile(filtered);
-  return true;
+  const items = readJsonFile();
+  const filtered = items.filter((c) => c.id !== id && c.slug !== id);
+  const jsonSuccess = filtered.length !== items.length;
+  if (jsonSuccess) {
+    writeJsonFile(filtered);
+  }
+
+  return dbSuccess || jsonSuccess;
 }
