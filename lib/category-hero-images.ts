@@ -17,3 +17,16 @@ export function getCategoryHeroImages(category: ShopCategory): string[] {
   const fallback = marketingImages.plp.heroByCategory[category];
   return fallback ? [fallback] : [];
 }
+
+/** Single resilient hero image fallback for any category or title label */
+export function getCategoryFallbackHero(categoryOrLabel: string): string {
+  const norm = categoryOrLabel.toLowerCase().trim().replace(/[\s_]+/g, "-") as ShopCategory;
+  const fromDisk = heroManifest.images[norm];
+  if (fromDisk && fromDisk.length > 0 && fromDisk[0]) {
+    return fromDisk[0];
+  }
+  const fallback = marketingImages.plp.heroByCategory[norm];
+  if (fallback) return fallback;
+  return "/images/category_hero/rings/rings.png";
+}
+

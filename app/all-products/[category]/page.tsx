@@ -148,7 +148,9 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         categoryIntro={storeCat?.description ?? undefined}
         prismaProducts={prismaProducts}
         heroImagesOverride={
-          heroBanner?.images?.length ? heroBanner.images : (storeCat?.image ? [storeCat.image] : undefined)
+          heroBanner?.images?.length
+            ? heroBanner.images
+            : (!isBuiltIn && storeCat?.image ? [storeCat.image] : undefined)
         }
         heroImageFits={
           heroBanner?.images?.length ? heroBanner.imageFits : undefined
