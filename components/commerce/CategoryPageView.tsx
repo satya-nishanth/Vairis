@@ -16,7 +16,10 @@ import { CategoryHeroMediaCarousel } from "@/components/commerce/CategoryHeroMed
 import { CategoryHeroStory } from "@/components/commerce/CategoryHeroStory";
 import { CategoryPagination } from "@/components/commerce/CategoryPagination";
 import type { CategoryStory } from "@/lib/category-stories";
-import { getCategoryHeroImages } from "@/lib/category-hero-images";
+import {
+  getCategoryHeroImages,
+  getCategoryFallbackHero,
+} from "@/lib/category-hero-images";
 import { pageLayouts } from "@/lib/layout-config";
 import { useCart } from "@/components/commerce/CartProvider";
 import type { Product } from "@/lib/ui-data";
@@ -27,7 +30,6 @@ import {
   PLP_MOBILE_PAGE_SIZE,
   PLP_PAGE_SIZE,
   isShopCategory,
-  type ShopCategory,
 } from "@/lib/catalogue-ui";
 
 type CategoryPageViewProps = {
@@ -320,6 +322,7 @@ export function CategoryPageView({
             images={heroImages}
             label={meta.title}
             imageFits={imageFits}
+            fallbackSrc={getCategoryFallbackHero(category)}
           />
         </section>
 

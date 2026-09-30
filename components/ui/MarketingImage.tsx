@@ -10,6 +10,7 @@ type MarketingImageProps = {
   height: number;
   className?: string;
   placeholderLabel?: string;
+  fallbackSrc?: string;
   priority?: boolean;
   fill?: boolean;
   style?: React.CSSProperties;
@@ -22,11 +23,28 @@ export function MarketingImage({
   height,
   className,
   placeholderLabel,
+  fallbackSrc,
   priority,
   fill,
   style,
 }: MarketingImageProps) {
+  const [prevSrc, setPrevSrc] = useState(src);
+  const [currentSrc, setCurrentSrc] = useState(src);
   const [failed, setFailed] = useState(false);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setCurrentSrc(src);
+    setFailed(false);
+  }
+
+  const handleError = () => {
+    if (fallbackSrc && currentSrc !== fallbackSrc) {
+      setCurrentSrc(fallbackSrc);
+    } else {
+      setFailed(true);
+    }
+  };
 
   if (failed) {
     return (
@@ -40,7 +58,7 @@ export function MarketingImage({
         role="img"
         aria-label={alt}
       >
-        {placeholderLabel ?? alt}
+        {placeholderLabel ?? null}
       </div>
     );
   }
@@ -48,7 +66,7 @@ export function MarketingImage({
   if (fill) {
     return (
       <Image
-        src={src}
+        src={currentSrc}
         alt={alt}
         fill
         className={className}
@@ -56,14 +74,14 @@ export function MarketingImage({
         unoptimized
         priority={priority}
         sizes="(max-width: 900px) 100vw, 55vw"
-        onError={() => setFailed(true)}
+        onError={handleError}
       />
     );
   }
 
   return (
     <Image
-      src={src}
+      src={currentSrc}
       alt={alt}
       width={width}
       height={height}
@@ -71,7 +89,7 @@ export function MarketingImage({
       style={style}
       unoptimized
       priority={priority}
-      onError={() => setFailed(true)}
+      onError={handleError}
     />
   );
 }
