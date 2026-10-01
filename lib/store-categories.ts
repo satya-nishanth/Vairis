@@ -190,15 +190,15 @@ async function syncJsonFromDb() {
 }
 
 /**
- * Ensure JSON/default categories exist in DB (by slug). Never deletes or overwrites
- * existing DB rows — so creating “asda” no longer hides Rings/Earrings that only lived in JSON.
+ * Ensure built-in default categories exist in DB (by slug). Never deletes or
+ * overwrites existing rows. Seeds only DEFAULT_STORE_CATEGORIES — not the JSON
+ * file — so deleting a custom category cannot be undone by re-seed on next read.
  */
 async function ensureDefaultCategoriesInDb(): Promise<void> {
   const existing = await prisma.storeCategory.findMany({ select: { slug: true } });
   const have = new Set(existing.map((e) => e.slug.toLowerCase()));
-  const seed = readJsonFile();
 
-  for (const item of seed) {
+  for (const item of DEFAULT_STORE_CATEGORIES) {
     if (have.has(item.slug.toLowerCase())) continue;
     try {
       await prisma.storeCategory.create({
@@ -336,7 +336,7 @@ export async function createStoreCategory(input: {
     include: categoryInclude,
   });
 
-  await syncJsonFromDb();
+  void syncJsonFromDb();
   return mapRow(created);
 }
 
@@ -359,8 +359,18 @@ export async function updateStoreCategory(
   const nextSlug = input.slug
     ? input.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
     : current.slug;
-  const nextProductIds =
+  let nextProductIds =
     input.productIds !== undefined ? input.productIds.filter(Boolean) : current.productIds;
+
+  // Drop ids that are not real Product rows (catalogue stubs / enum-merge noise).
+  if (input.productIds !== undefined && nextProductIds.length > 0) {
+    const existing = await prisma.product.findMany({
+      where: { id: { in: nextProductIds } },
+      select: { id: true },
+    });
+    const ok = new Set(existing.map((p) => p.id));
+    nextProductIds = nextProductIds.filter((pid) => ok.has(pid));
+  }
 
   try {
     const updated = await prisma.storeCategory.update({
@@ -384,24 +394,11 @@ export async function updateStoreCategory(
       },
       include: categoryInclude,
     });
-    await syncJsonFromDb();
+    void syncJsonFromDb();
     return mapRow(updated);
   } catch (err) {
     console.error("[store-categories] Prisma update failed:", err);
-    // Last-resort JSON-only update (dev without table)
-    const items = readJsonFile();
-    const itemIndex = items.findIndex((c) => c.id === current.id || c.slug === current.slug);
-    if (itemIndex < 0) return null;
-    const updated: StoreCategoryRecord = {
-      ...current,
-      ...input,
-      slug: nextSlug,
-      productIds: nextProductIds,
-      updatedAt: new Date().toISOString(),
-    };
-    items[itemIndex] = updated;
-    writeJsonFile(items);
-    return updated;
+    throw err instanceof Error ? err : new Error("Failed to update category");
   }
 }
 
@@ -411,15 +408,11 @@ export async function deleteStoreCategory(id: string): Promise<boolean> {
 
   try {
     await prisma.storeCategory.delete({ where: { id: current.id } });
-    await syncJsonFromDb();
+    void syncJsonFromDb();
     return true;
   } catch (err) {
     console.error("[store-categories] Prisma delete failed:", err);
-    const items = readJsonFile();
-    const filtered = items.filter((c) => c.id !== current.id && c.slug !== current.slug);
-    if (filtered.length === items.length) return false;
-    writeJsonFile(filtered);
-    return true;
+    throw err instanceof Error ? err : new Error("Failed to delete category");
   }
 }
 

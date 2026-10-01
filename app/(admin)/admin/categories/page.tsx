@@ -50,17 +50,9 @@ export default async function AdminCategoriesPage() {
 
   const allProductsList = Array.from(productsMap.values());
 
-  // Ensure default/existing categories have their matching products pre-assigned (ONLY active LIVE products)
-  const enhancedCategories = categories.map((cat) => {
-    const matchingIds = allProductsList
-      .filter((p) => p.isActive && p.status === "LIVE" && p.category && (p.category.toLowerCase() === cat.slug.toLowerCase() || p.category.toUpperCase() === cat.slug.toUpperCase()))
-      .map((p) => p.id);
-    const mergedProductIds = Array.from(new Set([...(cat.productIds ?? []), ...matchingIds]));
-    return {
-      ...cat,
-      productIds: mergedProductIds,
-    };
-  });
+  // Do NOT merge enum-matched product ids into category.productIds — that poisoned
+  // edit/save (FK failures) and made delete/edit look broken for DB-backed categories.
+  // CategoriesManager computes the badge count from allProducts + assigned ids.
 
   return (
     <div className="admin-page" style={{ maxWidth: 1040 }}>
@@ -80,7 +72,7 @@ export default async function AdminCategoriesPage() {
         ]}
       />
       <CategoriesManager
-        categories={enhancedCategories}
+        categories={categories}
         allProducts={allProductsList.map((p) => ({
           id: p.id,
           label: `${p.name}${p.itemCode ? ` (${p.itemCode})` : ""}${p.status && p.status !== "LIVE" ? ` [${p.status}]` : ""}${p.isActive === false ? " [INACTIVE]" : ""} — ${p.category.toLowerCase()}`,

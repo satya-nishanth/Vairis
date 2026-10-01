@@ -72,9 +72,17 @@ export async function DELETE(
 ) {
   await requireAdmin();
   const { id } = await params;
-  const success = await deleteStoreCategory(id);
-  if (!success) {
-    return NextResponse.json({ error: "Category not found" }, { status: 404 });
+  try {
+    const success = await deleteStoreCategory(id);
+    if (!success) {
+      return NextResponse.json({ error: "Category not found" }, { status: 404 });
+    }
+    return new NextResponse(null, { status: 204 });
+  } catch (err: any) {
+    console.error("[api/admin/categories/[id]] delete failed:", err);
+    return NextResponse.json(
+      { error: err?.message || "Failed to delete category" },
+      { status: 500 },
+    );
   }
-  return new NextResponse(null, { status: 204 });
 }

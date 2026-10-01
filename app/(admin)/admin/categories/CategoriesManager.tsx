@@ -174,11 +174,24 @@ export function CategoriesManager({
         setCategories((prev) => prev.filter((c) => c.id !== cat.id));
         router.refresh();
       } else {
-        alert("Failed to delete category.");
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to delete category.");
       }
     } catch {
       alert("Network error deleting category.");
     }
+  }
+
+  function displayProductCount(cat: StoreCategoryRecord): number {
+    const assigned = new Set(cat.productIds ?? []);
+    for (const p of allProducts) {
+      if (!p.category) continue;
+      const match =
+        p.category.toLowerCase() === cat.slug.toLowerCase() ||
+        p.category.toUpperCase() === cat.slug.toUpperCase();
+      if (match) assigned.add(p.id);
+    }
+    return assigned.size;
   }
 
   const filteredProducts = allProducts.filter(
@@ -240,13 +253,13 @@ export function CategoriesManager({
                       display: "inline-block",
                       padding: "2px 8px",
                       borderRadius: 12,
-                      background: (cat.productIds?.length ?? 0) > 0 ? "#e0f2fe" : "#f3f4f6",
-                      color: (cat.productIds?.length ?? 0) > 0 ? "#0369a1" : "#9ca3af",
+                      background: displayProductCount(cat) > 0 ? "#e0f2fe" : "#f3f4f6",
+                      color: displayProductCount(cat) > 0 ? "#0369a1" : "#9ca3af",
                       fontSize: "0.75rem",
                       fontWeight: 600,
                     }}
                   >
-                    {cat.productIds?.length ?? 0}
+                    {displayProductCount(cat)}
                   </span>
                 </td>
                 <td style={{ padding: "14px 16px" }}>
