@@ -14,15 +14,19 @@ export function NavCollections() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (cache) return;
-    fetch("/api/nav-collections")
+    let cancelled = false
+    fetch('/api/nav-collections', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : []))
       .then((rows: NavCollection[]) => {
-        cache = rows;
-        setItems(rows);
+        if (cancelled || !Array.isArray(rows)) return
+        cache = rows
+        setItems(rows)
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

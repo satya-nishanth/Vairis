@@ -48,7 +48,7 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
       })
       .catch(() => {});
 
-    fetch("/api/nav-collections")
+    fetch("/api/nav-collections", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : []))
       .then((data: DynamicNavCollection[]) => {
         if (Array.isArray(data) && data.length > 0) {

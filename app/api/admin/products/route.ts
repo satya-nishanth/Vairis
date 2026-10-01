@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
-import { getStoreCategoryBySlug, updateStoreCategory } from '@/lib/store-categories'
+import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
 import { sortProductsByPriority, setProductPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
-
-const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES'] as const
 
 const variantSchema = z.object({
   metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD']),
@@ -117,9 +115,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return validationError(parsed.error)
 
   const data = parsed.data
-  const catUpper = data.category.toUpperCase().replace(/-/g, '_')
-  const isPrismaEnum = (CATEGORIES as readonly string[]).includes(catUpper)
-  const dbCategory = isPrismaEnum ? (catUpper as (typeof CATEGORIES)[number]) : 'PENDANTS'
+  // Built-in slugs map to Product.category enum. Custom store cats keep a required
+  // enum placeholder (PENDANTS) — membership lives on StoreCategoryProduct.
+  const dbCategory = toPrismaProductCategory(data.category) ?? 'PENDANTS'
 
   const product = await prisma.product.create({
     data: {
@@ -170,15 +168,10 @@ export async function POST(req: NextRequest) {
 
   setProductPriority(product.id, data.priority)
 
-  // Link to store category
+  // Move product onto the chosen store category (unlink any previous).
   try {
     const catSlug = data.category.toLowerCase().replace(/_/g, '-')
-    const storeCat = await getStoreCategoryBySlug(catSlug)
-    if (storeCat && !storeCat.productIds.includes(product.id)) {
-      await updateStoreCategory(storeCat.id, {
-        productIds: [...storeCat.productIds, product.id],
-      })
-    }
+    await assignProductToStoreCategory(catSlug, product.id)
   } catch (err) {
     console.warn('[api/admin/products] failed linking to store category:', err)
   }

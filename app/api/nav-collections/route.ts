@@ -9,18 +9,14 @@ export async function GET() {
     where: {
       active: true,
       showInNav: true,
-      products: {
-        some: {
-          product: {
-            isActive: true,
-            status: 'LIVE',
-          },
-        },
-      },
     },
     orderBy: { sortOrder: 'asc' },
     select: { slug: true, title: true },
     take: 20,
   })
-  return NextResponse.json(collections)
+  return NextResponse.json(collections, {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  })
 }

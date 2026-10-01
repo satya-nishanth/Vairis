@@ -19,6 +19,10 @@ export default async function EditProductPage({
       include: {
         variants: true,
         stones: { orderBy: { sortOrder: 'asc' } },
+        storeCategories: {
+          include: { category: { select: { slug: true } } },
+          take: 1,
+        },
       },
     }),
     prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
@@ -31,6 +35,10 @@ export default async function EditProductPage({
   if (!product) notFound()
 
   const linkedLabels = getProductLinkedLabels(product, allFilters)
+  const storeSlug = product.storeCategories[0]?.category?.slug
+  const formCategory = storeSlug
+    ? storeSlug.toUpperCase().replace(/-/g, '_')
+    : product.category
 
   return (
     <div className="admin-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -51,7 +59,7 @@ export default async function EditProductPage({
           labels: linkedLabels,
           name: product.name,
           description: product.description,
-          category: product.category,
+          category: formCategory,
           itemCode: product.itemCode ?? '',
           designStyle: product.designStyle ?? '',
           totalLengthMm: product.totalLengthMm?.toString() ?? '',

@@ -233,7 +233,11 @@ export function CollectionsManager({
     setBusy(false)
     if (!res.ok) {
       const j = await res.json().catch(() => ({}))
-      setError(j.error ?? 'Save failed')
+      const msg =
+        res.status === 409
+          ? (j.error ?? 'A collection with this slug already exists — pick a different slug.')
+          : (j.error ?? `Save failed (${res.status})`)
+      setError(msg)
       return
     }
     setCreating(false)
