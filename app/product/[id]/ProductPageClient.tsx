@@ -79,12 +79,12 @@ type Props = {
 function pieceBreakdown(
   piece: PieceView,
   variant: Variant,
-  rate: number,
+  rate: number | undefined,
   storePricing: PricingConfig,
   productOverride: { vaGoldPct?: number | null; vaLabel?: string | null } | null,
   withExchange: boolean,
 ): PriceBreakdown | undefined {
-  if (!(Number(variant.weightGrams) > 0)) return undefined;
+  if (!rate || !(Number(variant.weightGrams) > 0)) return undefined;
   const config = resolvePiecePricingConfig(storePricing, productOverride, piece);
   const stones: StoneInput[] = piece.stones.map((s) => ({
     caratWeight: s.caratWeight,
@@ -207,7 +207,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       const part = pieceBreakdown(
         piece,
         v,
-        rateMap[v.metalType] ?? 0,
+        rateMap[v.metalType],
         pricingConfig,
         productOverride,
         exchange,
@@ -234,10 +234,28 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
 
-  const metals = [...new Set(allVariants.map((v) => v.metalType))];
-  const selectedMetal = selectedVariant?.metalType ?? metals[0];
-  // Sizes from the primary (first) piece — size is a product option, not a second line item.
+  // Only metals available on every piece (same rule as set pricing).
+  const metals = product.pieces.reduce<string[]>((acc, piece, i) => {
+    const pieceMetals = [...new Set(piece.variants.map((v) => v.metalType))];
+    if (i === 0) return pieceMetals;
+    return acc.filter((m) => pieceMetals.includes(m));
+  }, []);
   const primaryPiece = product.pieces[0];
+  const selectedMetal =
+    selectedVariant && metals.includes(selectedVariant.metalType)
+      ? selectedVariant.metalType
+      : metals[0];
+
+  useEffect(() => {
+    if (!selectedMetal) return;
+    if (selectedVariant && selectedVariant.metalType === selectedMetal) return;
+    const next =
+      primaryPiece?.variants.find((v) => v.metalType === selectedMetal) ??
+      allVariants.find((v) => v.metalType === selectedMetal);
+    if (next) setSelectedVariantId(next.id);
+  }, [selectedMetal, selectedVariant, primaryPiece, allVariants]);
+
+  // Sizes from the primary (first) piece — size is a product option, not a second line item.
   const sizesForMetal = (primaryPiece?.variants ?? []).filter(
     (v) => v.metalType === selectedMetal && v.size,
   );
@@ -275,7 +293,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
 
   // No self-serve checkout without a price to charge — WhatsApp enquiry
   // remains the only CTA for price-hidden products, same as CHECKOUT_ENABLED=false.
-  const canAddToCart = CHECKOUT_ENABLED && product.showPrice;
+  const canAddToCart = CHECKOUT_ENABLED && product.showPrice && price != null;
 
   // Deterministic on server and client (unlike window.location.href, which
   // differs between SSR and the browser and causes a hydration mismatch —
@@ -827,7 +845,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
           buyingNow={buyingNow}
           expertLabel="Enquire on WhatsApp"
           onExpertClick={() => setQuoteModalOpen(true)}
-          canPurchase={product.showPrice}
+          canPurchase={product.showPrice && price != null}
         />
       )}
       <QuoteEnquiryModal

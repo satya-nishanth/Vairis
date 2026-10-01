@@ -12,8 +12,9 @@ import {
 } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
-import { calculatePrice, sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
+import { sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import { getPricingConfig, resolvePricingConfig } from '@/lib/pricing-data'
+import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import {
   allocateInventoryForOrderItem,
   InventoryError,
@@ -335,6 +336,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     include: {
       product: {
         include: {
+          pieces: true,
+          variants: true,
           stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
         },
       },
@@ -446,26 +449,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         vaLabel: resolvePricingConfig(pricingConfig, v.product).vaLabel,
       })
     } else if (rate != null) {
-      const breakdown = calculatePrice(
+      const snapshot = toSetOrderItemSnapshot(
+        v,
+        v.product.variants,
+        rateMap,
+        pricingConfig,
+        v.product.stones,
         {
-          weightGrams: v.weightGrams.toString(),
-          makingChargePerGram: v.makingChargePerGram.toString(),
-          flatMakingCharge: v.flatMakingCharge.toString(),
-          stoneCharges: v.stoneCharges.toString(),
-          miscCharges: v.miscCharges.toString(),
+          vaGoldPct: v.product.vaGoldPct != null ? Number(v.product.vaGoldPct) : null,
+          vaLabel: v.product.vaLabel,
         },
-        rate,
-        {
-          stones: toStoneInputs(v.product.stones),
-          withExchange: false,
-          config: resolvePricingConfig(pricingConfig, v.product),
-        },
+        v.product.pieces.map((p) => ({
+          id: p.id,
+          vaGoldPct: p.vaGoldPct != null ? Number(p.vaGoldPct) : null,
+          vaLabel: p.vaLabel,
+        })),
+        false,
       )
-      priceBreakdown = toOrderItemPriceSnapshot(breakdown, {
-        goldRatePerGram: rate,
-        weightGrams: Number(v.weightGrams),
-        metalType: v.metalType,
-      })
+      if (snapshot) priceBreakdown = snapshot
     }
     const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
