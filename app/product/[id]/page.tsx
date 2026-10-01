@@ -1,20 +1,33 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { calculatePrice } from "@/lib/pricing";
-import { getPricingConfig, getShowPricesGlobal, toStoneInputs, toStoneViews, resolvePriceVisibility } from "@/lib/pricing-data";
+import { getPricingConfig, getShowPricesGlobal, toStoneViews, resolvePriceVisibility } from "@/lib/pricing-data";
+import { computeCatalogueFromPrice } from "@/lib/product-piece-pricing";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 import { sortProductsByPriority } from "@/lib/product-priorities";
+import { getAllCategoryFilters, getProductLinkedLabels } from "@/lib/category-filters";
 import ProductPageClient from "./ProductPageClient";
 
 export const revalidate = 120;
 
 type Props = { params: Promise<{ id: string }> };
 
+const productInclude = {
+  pieces: {
+    orderBy: { sortOrder: "asc" as const },
+    include: {
+      variants: true,
+      stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" as const } },
+    },
+  },
+  variants: true,
+  stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" as const } },
+};
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const product = await prisma.product.findUnique({
-    where: { id, isActive: true, status: 'LIVE' },
+    where: { id, isActive: true, status: "LIVE" },
     select: { name: true, description: true, images: true },
   });
   if (!product) return {};
@@ -31,13 +44,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg] = await Promise.all([
+  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg, allFilters] = await Promise.all([
     prisma.product.findUnique({
-      where: { id, isActive: true, status: 'LIVE' },
-      include: {
-        variants: true,
-        stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" } },
-      },
+      where: { id, isActive: true, status: "LIVE" },
+      include: productInclude,
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
@@ -47,10 +57,12 @@ export default async function ProductPage({ params }: Props) {
       _avg: { rating: true },
       _count: { id: true },
     }),
+    getAllCategoryFilters(),
   ]);
 
   if (!product) notFound();
 
+  const productLabels = getProductLinkedLabels(product, allFilters);
   const showPrice = resolvePriceVisibility(product.priceVisibility, showPricesGlobal);
 
   const relatedDbProducts = await prisma.product.findMany({
@@ -58,59 +70,30 @@ export default async function ProductPage({ params }: Props) {
       category: product.category,
       id: { not: product.id },
       isActive: true,
-      status: 'LIVE',
+      status: "LIVE",
     },
-    orderBy: { name: 'asc' },
-    include: {
-      variants: true,
-      stones: { include: { diamondRate: true } },
-    },
+    orderBy: { name: "asc" },
+    include: productInclude,
   });
   const relatedProducts = sortProductsByPriority(relatedDbProducts)
     .slice(0, 4)
     .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
 
-  // JSON-LD Product schema — price from the cheapest variant at current
-  // rates (without-exchange), real review aggregates only.
-  const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]));
-  const stoneInputs = toStoneInputs(product.stones);
-  const prices = product.variants
-    .filter((v) => Number(v.weightGrams) > 0 && rateMap[v.metalType])
-    .map((v) =>
-      Math.round(
-        calculatePrice(
-          {
-            weightGrams: Number(v.weightGrams),
-            makingChargePerGram: Number(v.makingChargePerGram),
-            flatMakingCharge: Number(v.flatMakingCharge),
-            stoneCharges: Number(v.stoneCharges),
-            miscCharges: Number(v.miscCharges),
-          },
-          rateMap[v.metalType],
-          { stones: stoneInputs, withExchange: false, config: pricingConfig },
-        ).total,
-      ),
-    );
+  const fromPrice = computeCatalogueFromPrice(
+    product.variants,
+    goldRates,
+    pricingConfig,
+    product.stones,
+    product,
+    product.pieces,
+  );
   const inStock = product.variants.some((v) => v.stock > 0);
-  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+  const minPrice = fromPrice?.price ?? 0;
   const productUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com"}/product/${product.id}`;
 
   const offers =
     !showPrice || minPrice <= 0
       ? undefined
-      : prices.length > 1 && minPrice !== maxPrice
-      ? {
-          "@type": "AggregateOffer",
-          priceCurrency: "INR",
-          lowPrice: minPrice,
-          highPrice: maxPrice,
-          offerCount: prices.length,
-          availability: inStock
-            ? "https://schema.org/InStock"
-            : "https://schema.org/PreOrder",
-          url: productUrl,
-        }
       : {
           "@type": "Offer",
           priceCurrency: "INR",
@@ -126,11 +109,11 @@ export default async function ProductPage({ params }: Props) {
     "@type": "Product",
     name: product.name,
     description: product.description ?? undefined,
+    image: product.images.filter(Boolean),
     sku: product.itemCode ?? product.id,
-    image: product.images.filter((s) => s && !/\.(mp4|webm|mov)(\?|$)/i.test(s)),
-    brand: { "@type": "Brand", name: "VAIRIS" },
-    ...(offers ? { offers } : {}),
-    ...(reviewAgg._count.id > 0 && reviewAgg._avg.rating
+    brand: { "@type": "Brand", name: "Vairis" },
+    offers,
+    ...(reviewAgg._count.id > 0 && reviewAgg._avg.rating != null
       ? {
           aggregateRating: {
             "@type": "AggregateRating",
@@ -141,6 +124,49 @@ export default async function ProductPage({ params }: Props) {
       : {}),
   };
 
+  const pieces =
+    product.pieces.length > 0
+      ? product.pieces.map((p) => ({
+          id: p.id,
+          name: p.name,
+          vaGoldPct: p.vaGoldPct != null ? Number(p.vaGoldPct) : null,
+          vaLabel: p.vaLabel,
+          stones: toStoneViews(p.stones),
+          variants: p.variants.map((v) => ({
+            id: v.id,
+            pieceId: p.id,
+            metalType: v.metalType,
+            sku: v.sku,
+            size: v.size,
+            weightGrams: v.weightGrams.toString(),
+            makingChargePerGram: v.makingChargePerGram.toString(),
+            flatMakingCharge: v.flatMakingCharge.toString(),
+            stoneCharges: v.stoneCharges.toString(),
+            miscCharges: v.miscCharges.toString(),
+          })),
+        }))
+      : [
+          {
+            id: "_default",
+            name: "Main",
+            vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
+            vaLabel: product.vaLabel,
+            stones: toStoneViews(product.stones),
+            variants: product.variants.map((v) => ({
+              id: v.id,
+              pieceId: null as string | null,
+              metalType: v.metalType,
+              sku: v.sku,
+              size: v.size,
+              weightGrams: v.weightGrams.toString(),
+              makingChargePerGram: v.makingChargePerGram.toString(),
+              flatMakingCharge: v.flatMakingCharge.toString(),
+              stoneCharges: v.stoneCharges.toString(),
+              miscCharges: v.miscCharges.toString(),
+            })),
+          },
+        ];
+
   return (
     <>
       <script
@@ -148,36 +174,28 @@ export default async function ProductPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <ProductPageClient
-      product={{
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        category: product.category,
-        images: product.images.filter(Boolean),
-        itemCode: product.itemCode,
-        comingSoon: product.comingSoon,
-        showPrice,
-        stones: toStoneViews(product.stones),
-        stoneType: product.stoneType ?? null,
-        caratWeight: product.caratWeight ? product.caratWeight.toString() : null,
-        variants: product.variants.map((v) => ({
-          id: v.id,
-          metalType: v.metalType,
-          sku: v.sku,
-          size: v.size,
-          weightGrams: v.weightGrams.toString(),
-          makingChargePerGram: v.makingChargePerGram.toString(),
-          flatMakingCharge: v.flatMakingCharge.toString(),
-          stoneCharges: v.stoneCharges.toString(),
-          miscCharges: v.miscCharges.toString(),
-        })),
-      }}
-      goldRates={goldRates.map((r) => ({
-        metalType: r.metalType,
-        ratePerGram: r.ratePerGram.toString(),
-      }))}
-      pricingConfig={pricingConfig}
-      relatedProducts={relatedProducts}
+        product={{
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          category: product.category,
+          images: product.images.filter(Boolean),
+          itemCode: product.itemCode,
+          comingSoon: product.comingSoon,
+          showPrice,
+          labels: productLabels,
+          stoneType: product.stoneType ?? null,
+          caratWeight: product.caratWeight ? product.caratWeight.toString() : null,
+          vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
+          vaLabel: product.vaLabel,
+          pieces,
+        }}
+        goldRates={goldRates.map((r) => ({
+          metalType: r.metalType,
+          ratePerGram: r.ratePerGram.toString(),
+        }))}
+        pricingConfig={pricingConfig}
+        relatedProducts={relatedProducts}
       />
     </>
   );

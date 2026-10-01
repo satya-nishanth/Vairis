@@ -7,7 +7,7 @@ import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
 import { calculatePrice, sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
 import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
 
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
         goldRatePerGram: rate ?? 0,
         weightGrams: Number(v.weightGrams),
         metalType: v.metalType,
-        vaLabel: pricingConfig.vaLabel,
+        vaLabel: resolvePricingConfig(pricingConfig, v.product).vaLabel,
       })
     } else if (rate != null) {
       const breakdown = calculatePrice(
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
         {
           stones: toStoneInputs(v.product.stones),
           withExchange: false,
-          config: pricingConfig,
+          config: resolvePricingConfig(pricingConfig, v.product),
         },
       )
       priceBreakdown = toOrderItemPriceSnapshot(breakdown, {

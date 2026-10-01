@@ -5,6 +5,16 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
 import { setProductPriority } from '@/lib/product-priorities'
+import {
+  getAllCategoryFilters,
+  getProductLinkedLabels,
+  setProductLabels,
+} from '@/lib/category-filters'
+import {
+  flattenPieceVariants,
+  normalizePiecesFromBody,
+  syncProductPieces,
+} from '@/lib/admin-product-pieces'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +38,63 @@ const patchVariantSchema = z.object({
   size: z.string().optional(),
 })
 
+const patchStoneSchema = z.object({
+  diamondRateId: z.string().min(1),
+  caratWeight: z
+    .union([z.string(), z.number()])
+    .transform(Number)
+    .refine((n) => !Number.isNaN(n) && n > 0, 'Carat weight must be positive'),
+  count: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
+  label: z.string().optional().nullable(),
+  ratePerCarat: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isNaN(n) ? null : n
+    }),
+  ratePerCaratExchange: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isNaN(n) ? null : n
+    }),
+})
+
+const vaPct = z
+  .union([z.string(), z.number(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined || v === '') return null
+    const n = Number(v)
+    return Number.isNaN(n) ? null : n
+  })
+  .refine((n) => n === null || (n >= 0 && n <= 100), 'Wastage % must be between 0 and 100')
+
+const vaLabelSchema = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined) return null
+    const t = String(v).trim()
+    return t || null
+  })
+
+const patchPieceSchema = z.object({
+  id: z.string().optional().nullable(),
+  name: z.string().default('Main'),
+  vaGoldPct: vaPct,
+  vaLabel: vaLabelSchema,
+  variants: z.array(patchVariantSchema).default([]),
+  stones: z.array(patchStoneSchema).default([]),
+})
+
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -48,35 +115,37 @@ const patchSchema = z.object({
   status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).optional(),
   priority: z.coerce.number().int().optional(),
   priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).optional(),
-  stones: z
-    .array(
-      z.object({
-        diamondRateId: z.string().min(1),
-        caratWeight: z
-          .union([z.string(), z.number()])
-          .transform(Number)
-          .refine((n) => !Number.isNaN(n) && n > 0, 'Carat weight must be positive'),
-        count: z
-          .union([z.string(), z.number(), z.null()])
-          .optional()
-          .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
-        label: z.string().optional().nullable(),
-      }),
-    )
-    .optional(),
-  // Drafts may have zero variants; LIVE needs ≥1 (checked against DB state below).
+  vaGoldPct: vaPct,
+  vaLabel: vaLabelSchema,
+  pieces: z.array(patchPieceSchema).optional(),
+  stones: z.array(patchStoneSchema).optional(),
   variants: z.array(patchVariantSchema).optional(),
+  labels: z.array(z.string()).optional(),
 })
 
 export async function GET(_: NextRequest, { params }: { params: Params }) {
   await requireAdmin()
   const { id } = await params
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: { variants: true, stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } } },
-  })
+  const [product, allFilters] = await Promise.all([
+    prisma.product.findUnique({
+      where: { id },
+      include: {
+        pieces: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            variants: true,
+            stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+          },
+        },
+        variants: true,
+        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      },
+    }),
+    getAllCategoryFilters(),
+  ])
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(product)
+  const labels = getProductLinkedLabels(product, allFilters)
+  return NextResponse.json({ ...product, labels })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Params }) {
@@ -112,13 +181,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
           : null
       const targetStatus = data.status ?? existing!.status
       const targetComingSoon = data.comingSoon ?? existing!.comingSoon
+      const syncingPieces =
+        data.pieces !== undefined || data.variants !== undefined || data.stones !== undefined
+
       if (targetStatus === 'LIVE') {
-        const variantWeights =
-          data.variants !== undefined
-            ? data.variants.map((v) => Number(v.weightGrams))
-            : (await tx.productVariant.findMany({ where: { productId: id }, select: { weightGrams: true } })).map(
-                (v) => Number(v.weightGrams),
-              )
+        let variantWeights: number[]
+        if (syncingPieces) {
+          const pieces = normalizePiecesFromBody({
+            pieces: data.pieces as any,
+            variants: data.variants as any,
+            stones: data.stones as any,
+            vaGoldPct: data.vaGoldPct,
+            vaLabel: data.vaLabel,
+          })
+          variantWeights = flattenPieceVariants(pieces).map((v) => Number(v.weightGrams))
+        } else {
+          variantWeights = (
+            await tx.productVariant.findMany({ where: { productId: id }, select: { weightGrams: true } })
+          ).map((v) => Number(v.weightGrams))
+        }
         if (variantWeights.length < 1) {
           throw new Error('A live product needs at least one variant')
         }
@@ -129,66 +210,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
         }
       }
 
-      // Stones have no order/cart FKs — replace wholesale.
-      if (data.stones !== undefined) {
-        await tx.productStone.deleteMany({ where: { productId: id } })
-        if (data.stones.length) {
-          await tx.productStone.createMany({
-            data: data.stones.map((s, i) => ({
-              productId: id,
-              diamondRateId: s.diamondRateId,
-              caratWeight: s.caratWeight,
-              count: s.count,
-              label: s.label || null,
-              sortOrder: i,
-            })),
-          })
-        }
-      }
-
-      // Upsert variants by SKU so cart/order FKs stay valid (deleteMany breaks them).
-      if (data.variants !== undefined) {
-        const existing = await tx.productVariant.findMany({ where: { productId: id } })
-        const bySku = new Map(existing.map((v) => [v.sku, v]))
-        const keepIds = new Set<string>()
-
-        for (const v of data.variants) {
-          const found = bySku.get(v.sku)
-          const fields = {
-            metalType: v.metalType,
-            weightGrams: v.weightGrams,
-            makingChargePerGram: v.makingChargePerGram,
-            flatMakingCharge: v.flatMakingCharge,
-            stoneCharges: v.stoneCharges,
-            miscCharges: v.miscCharges,
-            stock: v.stock,
-            size: v.size || null,
-          }
-
-          if (found) {
-            await tx.productVariant.update({ where: { id: found.id }, data: fields })
-            keepIds.add(found.id)
-          } else {
-            const created = await tx.productVariant.create({
-              data: { productId: id, sku: v.sku, ...fields },
-            })
-            keepIds.add(created.id)
-          }
-        }
-
-        const toRemove = existing.filter((v) => !keepIds.has(v.id))
-        if (toRemove.length) {
-          const removeIds = toRemove.map((v) => v.id)
-          const orderRefs = await tx.orderItem.count({ where: { variantId: { in: removeIds } } })
-          if (orderRefs > 0) {
-            throw new Error(
-              'Cannot remove a variant that appears on past orders. Keep the SKU or contact support.',
-            )
-          }
-          // Drop cart lines pointing at removed variants, then delete.
-          await tx.cartItem.deleteMany({ where: { variantId: { in: removeIds } } })
-          await tx.productVariant.deleteMany({ where: { id: { in: removeIds } } })
-        }
+      if (syncingPieces) {
+        const pieces = normalizePiecesFromBody({
+          pieces: data.pieces as any,
+          variants: data.variants as any,
+          stones: data.stones as any,
+          vaGoldPct: data.vaGoldPct,
+          vaLabel: data.vaLabel,
+        })
+        await syncProductPieces(tx, id, pieces)
       }
 
       const resolvedCategory = data.category !== undefined ? toPrismaProductCategory(data.category) : undefined
@@ -215,8 +245,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
           ...(data.status !== undefined && { status: data.status }),
           ...(data.priority !== undefined && { priority: data.priority }),
           ...(data.priceVisibility !== undefined && { priceVisibility: data.priceVisibility }),
+          ...(!syncingPieces && data.vaGoldPct !== undefined && { vaGoldPct: data.vaGoldPct }),
+          ...(!syncingPieces && data.vaLabel !== undefined && { vaLabel: data.vaLabel }),
         },
-        include: { variants: true, stones: { include: { diamondRate: true } } },
+        include: {
+          pieces: {
+            orderBy: { sortOrder: 'asc' },
+            include: { variants: true, stones: { include: { diamondRate: true } } },
+          },
+          variants: true,
+          stones: { include: { diamondRate: true } },
+        },
       })
     })
 
@@ -233,7 +272,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
       setProductPriority(id, data.priority)
     }
 
-    return NextResponse.json(product)
+    let finalLabels: string[] | undefined
+    if (data.labels !== undefined) {
+      try {
+        const catSlug = (data.category ?? product.category).toLowerCase().replace(/_/g, '-')
+        const savedConfig = await setProductLabels(id, catSlug, data.labels, product)
+        finalLabels = getProductLinkedLabels(product, savedConfig)
+      } catch (err) {
+        console.warn('[api/admin/products/[id]] failed setting product labels:', err)
+      }
+    }
+
+    return NextResponse.json({ ...product, ...(finalLabels !== undefined ? { labels: finalLabels } : {}) })
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('Cannot remove a variant')) {
       return NextResponse.json({ error: err.message }, { status: 409 })

@@ -46,7 +46,7 @@ export async function GET() {
   return NextResponse.json({
     vaGoldPct: Number(settings?.vaGoldPct ?? 10),
     vaStonePct: Number(settings?.vaStonePct ?? 0),
-    vaLabel: settings?.vaLabel ?? 'Wastage',
+    vaLabel: settings?.vaLabel ?? 'Value Addition',
     showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,

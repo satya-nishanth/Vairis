@@ -141,6 +141,12 @@ model Product {
   /// follows the global toggle; SHOW/HIDE always win regardless of it.
   priceVisibility PriceVisibility @default(INHERIT)
 
+  /// Null = inherit store PricingSettings.vaGoldPct / vaLabel.
+  /// Prefer per-piece overrides on ProductPiece when present.
+  vaGoldPct   Decimal?
+  vaLabel     String?
+
+  pieces      ProductPiece[]
   variants    ProductVariant[]
   stones      ProductStone[]
   wishlists   Wishlist[]
@@ -148,6 +154,23 @@ model Product {
   collections CollectionProduct[]
   storeCategories StoreCategoryProduct[]
   inventoryItems InventoryItem[]
+}
+
+/// A sellable piece within a product (e.g. Necklace + Earrings in a set).
+/// Single-item products have one piece. Each piece has its own variants & stones.
+model ProductPiece {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String   @default("Main")
+  sortOrder Int      @default(0)
+  /// Null = inherit Product.vaGoldPct / store PricingSettings.
+  vaGoldPct Decimal?
+  vaLabel   String?
+  variants  ProductVariant[]
+  stones    ProductStone[]
+
+  @@index([productId, sortOrder])
 }
 
 /// Per-carat diamond pricing — one row per diamond type, two rates each
@@ -170,14 +193,20 @@ model ProductStone {
   id            String      @id @default(cuid())
   productId     String
   product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  pieceId       String?
+  piece         ProductPiece? @relation(fields: [pieceId], references: [id], onDelete: Cascade)
   diamondRateId String
   diamondRate   DiamondRate @relation(fields: [diamondRateId], references: [id])
   caratWeight   Decimal
   count         Int?
   label         String?
+  /// Null = use DiamondRate store defaults for this type.
+  ratePerCarat         Decimal?
+  ratePerCaratExchange Decimal?
   sortOrder     Int         @default(0)
 
   @@index([productId, sortOrder])
+  @@index([pieceId, sortOrder])
 }
 
 /// Singleton (id=1). Wastage = disclosed % on gold value only. Label admin-editable.
@@ -185,7 +214,7 @@ model PricingSettings {
   id         Int      @id @default(1)
   vaGoldPct  Decimal  @default(10)
   vaStonePct Decimal  @default(0)
-  vaLabel    String   @default("Wastage")
+  vaLabel    String   @default("Value Addition")
   /// Storefront-wide default for whether prices are shown at all. Many
   /// products (no finalized diamond/gold cost yet) should read
   /// "Price on Request" instead of a computed number — Product.priceVisibility
@@ -204,6 +233,8 @@ model ProductVariant {
   id                  String      @id @default(cuid())
   productId           String
   product             Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  pieceId             String?
+  piece               ProductPiece? @relation(fields: [pieceId], references: [id], onDelete: Cascade)
   metalType           MetalType
   size                String?
   weightGrams         Decimal
@@ -216,6 +247,8 @@ model ProductVariant {
   cartItems           CartItem[]
   orderItems          OrderItem[]
   inventoryItems      InventoryItem[]
+
+  @@index([pieceId])
 }
 
 model GoldRate {

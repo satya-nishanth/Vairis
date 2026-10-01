@@ -95,7 +95,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
         <h2>Wastage</h2>
         <p className="pform__section-note">
           Percentage applied on gold value only (not diamonds). Shown as a separate
-          &ldquo;{form.vaLabel || 'Wastage'}&rdquo; line. GST is 3% on gold + wastage +
+          &ldquo;{form.vaLabel || 'Value Addition'}&rdquo; line. GST is 3% on gold + wastage +
           making + stones. Displayed weights and carats are never changed.
         </p>
         <div className="pform__grid pform__grid--2">
@@ -120,9 +120,9 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               value={form.vaLabel}
               onChange={(e) => setForm((f) => ({ ...f, vaLabel: e.target.value }))}
               className="pform__input"
-              placeholder="Wastage"
+              placeholder="Value Addition"
             />
-            <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Wastage&rdquo;.</p>
+            <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Value Addition&rdquo;.</p>
           </div>
         </div>
       </section>

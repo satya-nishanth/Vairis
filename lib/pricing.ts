@@ -12,7 +12,8 @@
  *   total      = taxable + GST
  *
  * goldVA on the breakdown IS wastage (same field). stoneVA is always 0.
- * Wastage % + label come from PricingSettings (admin-editable).
+ * Wastage % + label come from PricingSettings (admin-editable; default label
+ * "Value Addition"). Products may override both; null = inherit store defaults.
  * Diamond per-carat rates come from DiamondRate (with/without exchange).
  * Weights and carats shown to the customer are always the true values.
  */
@@ -28,7 +29,33 @@ export interface PricingConfig {
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   vaGoldPct: 10,
   vaStonePct: 0,
-  vaLabel: 'Wastage',
+  vaLabel: 'Value Addition',
+}
+
+/** Optional per-product override of store wastage % / label (null = inherit). */
+export type PricingOverride = {
+  /** Accepts Prisma Decimal via Number()/toString. */
+  vaGoldPct?: number | string | { toString(): string } | null
+  vaLabel?: string | null
+}
+
+/** Merge store PricingSettings with a product's optional wastage override. */
+export function resolvePricingConfig(
+  store: PricingConfig,
+  override?: PricingOverride | null,
+): PricingConfig {
+  const rawPct = override?.vaGoldPct
+  const hasPct =
+    rawPct !== null &&
+    rawPct !== undefined &&
+    rawPct !== '' &&
+    !Number.isNaN(Number(rawPct))
+  const label = typeof override?.vaLabel === 'string' ? override.vaLabel.trim() : ''
+  return {
+    vaGoldPct: hasPct ? Number(rawPct) : store.vaGoldPct,
+    vaStonePct: store.vaStonePct,
+    vaLabel: label || store.vaLabel,
+  }
 }
 
 export interface StoneInput {

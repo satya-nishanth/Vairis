@@ -4,12 +4,16 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
 import { sortProductsByPriority, setProductPriority } from '@/lib/product-priorities'
+import {
+  createProductPieces,
+  flattenPieceVariants,
+  normalizePiecesFromBody,
+} from '@/lib/admin-product-pieces'
 
 export const dynamic = 'force-dynamic'
 
 const variantSchema = z.object({
   metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD']),
-  // 0 allowed for catalogue stubs / coming-soon — priced variants need > 0
   weightGrams: z
     .union([z.string(), z.number()])
     .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))
@@ -37,54 +41,115 @@ const stoneSchema = z.object({
     .optional()
     .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
   label: z.string().optional().nullable(),
+  ratePerCarat: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isNaN(n) ? null : n
+    }),
+  ratePerCaratExchange: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isNaN(n) ? null : n
+    }),
 })
 
-const productSchema = z.object({
-  name: z.string().min(1, 'Product name is required'),
-  description: z.string().default(''),
-  category: z.string().min(1, 'Category is required'),
-  itemCode: z.string().optional().nullable(),
-  designStyle: z.string().optional().nullable(),
-  totalLengthMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
-  motifSizeMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
-  thicknessMm: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
-  stoneType: z.string().optional().nullable(),
-  stoneShape: z.string().optional().nullable(),
-  stoneDimMm: z.string().optional().nullable(),
-  gemCount: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
-  caratWeight: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => (v ? Number(v) : null)),
-  images: z.array(z.string()).default([]),
-  isActive: z.boolean().default(true),
-  comingSoon: z.boolean().default(false),
-  status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
-  priority: z.coerce.number().int().default(0),
-  priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).default('INHERIT'),
-  stones: z.array(stoneSchema).default([]),
-  // Drafts only need a title — LIVE products need at least one variant
-  // (enforced in superRefine below).
+const vaPct = z
+  .union([z.string(), z.number(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined || v === '') return null
+    const n = Number(v)
+    return Number.isNaN(n) ? null : n
+  })
+  .refine((n) => n === null || (n >= 0 && n <= 100), 'Wastage % must be between 0 and 100')
+
+const vaLabel = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === null || v === undefined) return null
+    const t = String(v).trim()
+    return t || null
+  })
+
+const pieceSchema = z.object({
+  id: z.string().optional().nullable(),
+  name: z.string().default('Main'),
+  vaGoldPct: vaPct,
+  vaLabel,
   variants: z.array(variantSchema).default([]),
-}).superRefine((data, ctx) => {
-  if (data.status !== 'LIVE') return
-  if (data.variants.length < 1) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['variants'],
-      message: 'A live product needs at least one variant',
-    })
-    return
-  }
-  // A variant with weight 0 silently produces no price at all on the
-  // storefront (calculatePrice requires weight > 0) — the PDP just shows
-  // "Enquire on WhatsApp" with no indication anything is wrong. Coming-soon
-  // products are exempt since they're allowed to ship without pricing yet.
-  if (!data.comingSoon && !data.variants.some((v) => Number(v.weightGrams) > 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['variants'],
-      message: 'A live product needs at least one variant with a gold weight greater than 0 — otherwise no price ever shows on the storefront',
-    })
-  }
+  stones: z.array(stoneSchema).default([]),
 })
+
+const productSchema = z
+  .object({
+    name: z.string().min(1, 'Product name is required'),
+    description: z.string().default(''),
+    category: z.string().min(1, 'Category is required'),
+    itemCode: z.string().optional().nullable(),
+    designStyle: z.string().optional().nullable(),
+    totalLengthMm: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    motifSizeMm: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    thicknessMm: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    stoneType: z.string().optional().nullable(),
+    stoneShape: z.string().optional().nullable(),
+    stoneDimMm: z.string().optional().nullable(),
+    gemCount: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    caratWeight: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => (v ? Number(v) : null)),
+    images: z.array(z.string()).default([]),
+    isActive: z.boolean().default(true),
+    comingSoon: z.boolean().default(false),
+    status: z.enum(['DRAFT', 'AI_DRAFT', 'LIVE']).default('DRAFT'),
+    priority: z.coerce.number().int().default(0),
+    priceVisibility: z.enum(['INHERIT', 'SHOW', 'HIDE']).default('INHERIT'),
+    vaGoldPct: vaPct,
+    vaLabel,
+    pieces: z.array(pieceSchema).optional(),
+    stones: z.array(stoneSchema).default([]),
+    variants: z.array(variantSchema).default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status !== 'LIVE') return
+    const pieces = normalizePiecesFromBody(data)
+    const variants = flattenPieceVariants(pieces)
+    if (variants.length < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['variants'],
+        message: 'A live product needs at least one variant',
+      })
+      return
+    }
+    if (!data.comingSoon && !variants.some((v) => Number(v.weightGrams) > 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['variants'],
+        message:
+          'A live product needs at least one variant with a gold weight greater than 0 — otherwise no price ever shows on the storefront',
+      })
+    }
+  })
 
 function validationError(error: z.ZodError) {
   const flat = error.flatten()
@@ -102,7 +167,7 @@ export async function GET() {
   await requireAdmin()
   const products = await prisma.product.findMany({
     orderBy: { name: 'asc' },
-    include: { variants: true },
+    include: { variants: true, pieces: true },
   })
   return NextResponse.json(sortProductsByPriority(products))
 }
@@ -115,60 +180,49 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return validationError(parsed.error)
 
   const data = parsed.data
-  // Built-in slugs map to Product.category enum. Custom store cats keep a required
-  // enum placeholder (PENDANTS) — membership lives on StoreCategoryProduct.
+  const pieces = normalizePiecesFromBody(data)
   const dbCategory = toPrismaProductCategory(data.category) ?? 'PENDANTS'
+  const first = pieces[0]
 
-  const product = await prisma.product.create({
-    data: {
-      name: data.name,
-      description: data.description,
-      category: dbCategory,
-      itemCode: data.itemCode || null,
-      designStyle: data.designStyle || null,
-      totalLengthMm: data.totalLengthMm,
-      motifSizeMm: data.motifSizeMm,
-      thicknessMm: data.thicknessMm,
-      stoneType: data.stoneType || null,
-      stoneShape: data.stoneShape || null,
-      stoneDimMm: data.stoneDimMm || null,
-      gemCount: data.gemCount,
-      caratWeight: data.caratWeight,
-      images: data.images,
-      isActive: data.isActive,
-      comingSoon: data.comingSoon,
-      status: data.status,
-      priority: data.priority,
-      priceVisibility: data.priceVisibility,
-      stones: {
-        create: data.stones.map((s, i) => ({
-          diamondRateId: s.diamondRateId,
-          caratWeight: s.caratWeight,
-          count: s.count,
-          label: s.label || null,
-          sortOrder: i,
-        })),
+  const product = await prisma.$transaction(async (tx) => {
+    const created = await tx.product.create({
+      data: {
+        name: data.name,
+        description: data.description,
+        category: dbCategory,
+        itemCode: data.itemCode || null,
+        designStyle: data.designStyle || null,
+        totalLengthMm: data.totalLengthMm,
+        motifSizeMm: data.motifSizeMm,
+        thicknessMm: data.thicknessMm,
+        stoneType: data.stoneType || null,
+        stoneShape: data.stoneShape || null,
+        stoneDimMm: data.stoneDimMm || null,
+        gemCount: data.gemCount,
+        caratWeight: data.caratWeight,
+        images: data.images,
+        isActive: data.isActive,
+        comingSoon: data.comingSoon,
+        status: data.status,
+        priority: data.priority,
+        priceVisibility: data.priceVisibility,
+        vaGoldPct: first?.vaGoldPct ?? data.vaGoldPct ?? null,
+        vaLabel: first?.vaLabel ?? data.vaLabel ?? null,
       },
-      variants: {
-        create: data.variants.map((v) => ({
-          metalType: v.metalType,
-          weightGrams: v.weightGrams,
-          makingChargePerGram: v.makingChargePerGram,
-          flatMakingCharge: v.flatMakingCharge,
-          stoneCharges: v.stoneCharges,
-          miscCharges: v.miscCharges,
-          stock: v.stock,
-          sku: v.sku,
-          size: v.size || null,
-        })),
+    })
+    await createProductPieces(tx, created.id, pieces)
+    return tx.product.findUniqueOrThrow({
+      where: { id: created.id },
+      include: {
+        pieces: { orderBy: { sortOrder: 'asc' }, include: { variants: true, stones: true } },
+        variants: true,
+        stones: { include: { diamondRate: true } },
       },
-    },
-    include: { variants: true, stones: { include: { diamondRate: true } } },
+    })
   })
 
   setProductPriority(product.id, data.priority)
 
-  // Move product onto the chosen store category (unlink any previous).
   try {
     const catSlug = data.category.toLowerCase().replace(/_/g, '-')
     await assignProductToStoreCategory(catSlug, product.id)

@@ -12,6 +12,7 @@ export type CartLineItem = {
   meta: string;
   quantity: number;
   unitPrice: number;
+  priceUnavailable?: boolean;
 };
 
 type CartItemProps = {
@@ -54,7 +55,9 @@ export function CartItem({ item, onIncrement, onDecrement, onRemove }: CartItemP
 
         <p className="cart-item__note">Insured Delivery · Easy Returns · Secure Packaging</p>
       </div>
-      <p className="cart-item__price">{formatPrice(item.unitPrice * item.quantity)}</p>
+      <p className="cart-item__price">
+        {item.priceUnavailable ? "Price unavailable" : formatPrice(item.unitPrice * item.quantity)}
+      </p>
     </article>
   );
 }

@@ -14,7 +14,7 @@ async function main() {
   await prisma.pricingSettings.upsert({
     where: { id: 1 },
     update: {},
-    create: { id: 1, vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Wastage' },
+    create: { id: 1, vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Value Addition' },
   })
   const colorless = await prisma.diamondRate.upsert({
     where: { code: 'COLORLESS' },

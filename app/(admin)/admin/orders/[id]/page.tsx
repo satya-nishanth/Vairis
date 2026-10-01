@@ -480,7 +480,7 @@ export default async function AdminOrderDetailPage({
                   </p>
                 )
               }
-              const vaLabel = b.vaLabel || 'Wastage'
+              const vaLabel = b.vaLabel || 'Value Addition'
               const gems = splitGemValues(b)
               const rows: { label: string; value: string }[] = [
                 ...(b.weightGrams != null

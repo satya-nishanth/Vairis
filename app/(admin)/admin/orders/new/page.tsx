@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
 import { calculatePrice } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
 import { ManualOrderForm } from './ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -59,7 +59,7 @@ export default async function NewManualOrderPage({
                 miscCharges: v.miscCharges.toString(),
               },
               rate,
-              { stones: toStoneInputs(p.stones), withExchange: false, config: pricingConfig },
+              { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
             ).total,
           )
         : 0

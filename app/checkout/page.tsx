@@ -140,9 +140,10 @@ export default function CheckoutPage() {
   const [promoBusy, setPromoBusy] = useState(false);
 
   const subtotal = useMemo(
-    () => items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0),
+    () => items.reduce((sum, i) => sum + (i.unitPrice != null ? i.unitPrice * i.quantity : 0), 0),
     [items],
   );
+  const hasUnpriced = items.some((i) => i.unitPrice == null);
   const discount = promo?.discount ?? 0;
   const grandTotal = Math.max(0, Math.round(subtotal - discount));
 
@@ -267,6 +268,10 @@ export default function CheckoutPage() {
     e.preventDefault();
     setError(null);
     setSetupNotice(false);
+    if (hasUnpriced) {
+      setError("One or more cart items could not be priced. Return to cart and remove them, or enquire on WhatsApp.");
+      return;
+    }
     setPaying(true);
     track("begin_checkout", { meta: { value: grandTotal, items: items.length } });
 
@@ -710,7 +715,7 @@ export default function CheckoutPage() {
             editCartHref="/cart"
             footer={
               <>
-                <button type="submit" className="btn btn-primary btn--full" disabled={paying}>
+                <button type="submit" className="btn btn-primary btn--full" disabled={paying || hasUnpriced}>
                   {paying ? "Opening secure payment…" : `Pay ${formatPrice(grandTotal)}`}
                 </button>
                 <p className="summary-badges">IGI · BIS Hallmarked · Insured Delivery</p>
@@ -797,7 +802,9 @@ export default function CheckoutPage() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {formatPrice(item.unitPrice * item.quantity)}
+                      {item.unitPrice != null
+                        ? formatPrice(item.unitPrice * item.quantity)
+                        : "Unavailable"}
                     </span>
                   </div>
                 ))}

@@ -1,0 +1,72 @@
+{
+  "necklaces": {
+    "categorySlug": "necklaces",
+    "categoryName": "Necklaces",
+    "labels": [
+      "Solitaire",
+      "Layering",
+      "Minimal",
+      "Office Wear",
+      "Everyday Wear"
+    ],
+    "metals": [
+      "Yellow Gold",
+      "White Gold",
+      "Rose Gold"
+    ],
+    "labelProductMap": {},
+    "labelExcludedMap": {
+      "Solitaire": [
+        "cmuph1j3s000o6o9dy4wmnczn"
+      ],
+      "Layering": [
+        "cmuph1j3s000o6o9dy4wmnczn"
+      ],
+      "Minimal": [
+        "cmuph1j3s000o6o9dy4wmnczn"
+      ],
+      "Office Wear": [
+        "cmuph1j3s000o6o9dy4wmnczn"
+      ],
+      "Everyday Wear": [
+        "cmuph1j3s000o6o9dy4wmnczn"
+      ]
+    },
+    "updatedAt": "2026-10-01T13:48:08.811Z"
+  },
+  "earrings": {
+    "categorySlug": "earrings",
+    "categoryName": "Earrings",
+    "labels": [
+      "Studs",
+      "Drops",
+      "Hoops",
+      "Everyday Wear",
+      "Office Wear"
+    ],
+    "metals": [
+      "Yellow Gold",
+      "White Gold",
+      "Rose Gold"
+    ],
+    "labelProductMap": {},
+    "labelExcludedMap": {
+      "Studs": [
+        "cmpqkpcmx0034uori6t3imt2t"
+      ],
+      "Drops": [
+        "cmpqkpcmx0034uori6t3imt2t"
+      ],
+      "Hoops": [
+        "cmpqkpcmx0034uori6t3imt2t"
+      ],
+      "Everyday Wear": [
+        "cmpqkpcmx0034uori6t3imt2t"
+      ],
+      "Office Wear": [
+        "cmpqkpcmx0034uori6t3imt2t"
+      ]
+    },
+    "updatedAt": "2026-10-01T13:47:20.045Z"
+  }
+}
