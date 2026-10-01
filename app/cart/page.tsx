@@ -92,7 +92,11 @@ export default function CartPage() {
     );
   }
 
-  const subtotal = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const subtotal = items.reduce(
+    (sum, i) => sum + (i.unitPrice != null ? i.unitPrice * i.quantity : 0),
+    0,
+  );
+  const hasUnpriced = items.some((i) => i.unitPrice == null);
 
   return (
     <PageShell {...layout} breadcrumbs={breadcrumbs}>
@@ -101,6 +105,11 @@ export default function CartPage() {
           Your Cart ({count} {count === 1 ? "Item" : "Items"})
         </h1>
         <p className="cart-page__lead">Insured delivery on every order.</p>
+        {hasUnpriced && (
+          <p role="alert" className="cart-page__lead" style={{ color: "var(--color-danger, #b91c1c)" }}>
+            One or more items could not be priced. Remove them or enquire on WhatsApp before checkout.
+          </p>
+        )}
 
         <div className="cart-layout">
           <div>
@@ -116,9 +125,10 @@ export default function CartPage() {
                     METAL_LABELS[item.variant.metalType] ?? item.variant.metalType
                   }${item.variant.size ? ` · Size ${item.variant.size}` : ""}${
                     item.withExchange ? " · With Exchange" : ""
-                  }`,
+                  }${item.priceError ? ` · ${item.priceError}` : ""}`,
                   quantity: item.quantity,
-                  unitPrice: item.unitPrice,
+                  unitPrice: item.unitPrice ?? 0,
+                  priceUnavailable: item.unitPrice == null,
                 }}
                 onIncrement={() => updateQuantity(item.id, item.quantity + 1)}
                 onDecrement={() => {

@@ -17,8 +17,15 @@ export default async function EditProductPage({
     prisma.product.findUnique({
       where: { id },
       include: {
+        pieces: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            variants: true,
+            stones: { orderBy: { sortOrder: 'asc' }, include: { diamondRate: true } },
+          },
+        },
         variants: true,
-        stones: { orderBy: { sortOrder: 'asc' } },
+        stones: { orderBy: { sortOrder: 'asc' }, include: { diamondRate: true } },
         storeCategories: {
           include: { category: { select: { slug: true } } },
           take: 1,
@@ -39,6 +46,61 @@ export default async function EditProductPage({
   const formCategory = storeSlug
     ? storeSlug.toUpperCase().replace(/-/g, '_')
     : product.category
+
+  const mapStone = (s: (typeof product.stones)[number]) => {
+    const useStore = s.ratePerCarat == null && s.ratePerCaratExchange == null
+    return {
+      diamondRateId: s.diamondRateId,
+      caratWeight: s.caratWeight.toString(),
+      count: s.count?.toString() ?? '',
+      label: s.label ?? '',
+      useStoreRates: useStore,
+      ratePerCarat: useStore
+        ? String(s.diamondRate.ratePerCarat)
+        : String(s.ratePerCarat),
+      ratePerCaratExchange: useStore
+        ? String(s.diamondRate.ratePerCaratExchange)
+        : String(s.ratePerCaratExchange),
+    }
+  }
+
+  const mapVariant = (v: (typeof product.variants)[number]) => ({
+    metalType: v.metalType,
+    size: v.size ?? '',
+    weightGrams: v.weightGrams.toString(),
+    makingChargePerGram: v.makingChargePerGram.toString(),
+    flatMakingCharge: v.flatMakingCharge.toString(),
+    stoneCharges: v.stoneCharges.toString(),
+    miscCharges: v.miscCharges.toString(),
+    stock: v.stock.toString(),
+    sku: v.sku,
+  })
+
+  const pieces =
+    product.pieces.length > 0
+      ? product.pieces.map((p) => {
+          const inherit = p.vaGoldPct == null && p.vaLabel == null
+          return {
+            key: p.id,
+            id: p.id,
+            name: p.name,
+            inheritWastage: inherit,
+            vaGoldPct:
+              p.vaGoldPct != null
+                ? String(p.vaGoldPct)
+                : product.vaGoldPct != null
+                  ? String(product.vaGoldPct)
+                  : String(pricingConfig.vaGoldPct),
+            vaLabel:
+              p.vaLabel ||
+              product.vaLabel ||
+              pricingConfig.vaLabel ||
+              'Value Addition',
+            variants: p.variants.map(mapVariant),
+            stones: p.stones.map(mapStone),
+          }
+        })
+      : undefined
 
   return (
     <div className="admin-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -76,23 +138,13 @@ export default async function EditProductPage({
           status: product.status,
           priority: product.priority ?? 0,
           priceVisibility: product.priceVisibility,
-          stones: product.stones.map((s) => ({
-            diamondRateId: s.diamondRateId,
-            caratWeight: s.caratWeight.toString(),
-            count: s.count?.toString() ?? '',
-            label: s.label ?? '',
-          })),
-          variants: product.variants.map((v) => ({
-            metalType: v.metalType,
-            size: v.size ?? '',
-            weightGrams: v.weightGrams.toString(),
-            makingChargePerGram: v.makingChargePerGram.toString(),
-            flatMakingCharge: v.flatMakingCharge.toString(),
-            stoneCharges: v.stoneCharges.toString(),
-            miscCharges: v.miscCharges.toString(),
-            stock: v.stock.toString(),
-            sku: v.sku,
-          })),
+          pieces,
+          // Legacy fallback when no pieces row yet
+          inheritWastage: product.vaGoldPct == null && product.vaLabel == null,
+          vaGoldPct: product.vaGoldPct != null ? String(product.vaGoldPct) : undefined,
+          vaLabel: product.vaLabel ?? undefined,
+          stones: product.stones.map(mapStone),
+          variants: product.variants.map(mapVariant),
         }}
       />
     </div>

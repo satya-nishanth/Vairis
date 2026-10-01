@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
 import { calculatePrice, isOrderItemPriceSnapshot, unitSnapshotToSellingComponents } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
 import { ManualOrderForm, type ManualOrderEditPrefill } from '../../new/ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -83,7 +83,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
                 miscCharges: v.miscCharges.toString(),
               },
               rate,
-              { stones: toStoneInputs(p.stones), withExchange: false, config: pricingConfig },
+              { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
             ).total,
           )
         : 0

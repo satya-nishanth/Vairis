@@ -19,8 +19,8 @@ import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
-import { calculatePrice, type PricingConfig, type StoneInput } from "@/lib/pricing";
-import type { StoneView } from "@/lib/pricing-data";
+import { calculatePrice, type PricingConfig, type PriceBreakdown, type StoneInput } from "@/lib/pricing";
+import { resolvePiecePricingConfig, type StoneView } from "@/lib/pricing-data";
 import type { Product } from "@/lib/ui-data";
 import { track } from "@/lib/analytics-client";
 
@@ -32,6 +32,7 @@ const METAL_LABELS: Record<string, string> = {
 
 type Variant = {
   id: string;
+  pieceId: string | null;
   metalType: string;
   weightGrams: string;
   makingChargePerGram: string;
@@ -40,6 +41,15 @@ type Variant = {
   miscCharges: string;
   sku: string | null;
   size: string | null;
+};
+
+type PieceView = {
+  id: string;
+  name: string;
+  vaGoldPct: number | null;
+  vaLabel: string | null;
+  stones: StoneView[];
+  variants: Variant[];
 };
 
 type ProductData = {
@@ -51,10 +61,11 @@ type ProductData = {
   itemCode: string | null;
   comingSoon: boolean;
   showPrice: boolean;
-  stones: StoneView[];
-  variants: Variant[];
+  pieces: PieceView[];
   stoneType?: string | null;
   caratWeight?: string | null;
+  vaGoldPct?: number | null;
+  vaLabel?: string | null;
   labels?: string[];
 };
 
@@ -64,6 +75,35 @@ type Props = {
   pricingConfig: PricingConfig;
   relatedProducts?: Product[];
 };
+
+function pieceBreakdown(
+  piece: PieceView,
+  variant: Variant,
+  rate: number,
+  storePricing: PricingConfig,
+  productOverride: { vaGoldPct?: number | null; vaLabel?: string | null } | null,
+  withExchange: boolean,
+): PriceBreakdown | undefined {
+  if (!(Number(variant.weightGrams) > 0)) return undefined;
+  const config = resolvePiecePricingConfig(storePricing, productOverride, piece);
+  const stones: StoneInput[] = piece.stones.map((s) => ({
+    caratWeight: s.caratWeight,
+    ratePerCarat: s.ratePerCarat,
+    ratePerCaratExchange: s.ratePerCaratExchange,
+    typeLabel: s.typeLabel,
+  }));
+  return calculatePrice(
+    {
+      weightGrams: Number(variant.weightGrams),
+      makingChargePerGram: Number(variant.makingChargePerGram),
+      flatMakingCharge: Number(variant.flatMakingCharge),
+      stoneCharges: Number(variant.stoneCharges),
+      miscCharges: Number(variant.miscCharges),
+    },
+    rate,
+    { stones, withExchange, config },
+  );
+}
 
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
   const { openCartModal } = useCartModal();
@@ -78,24 +118,32 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   const paramMetal = searchParams?.get("metal");
   const paramSize = searchParams?.get("size");
 
+  const multiPiece = product.pieces.length > 1;
+  const allVariants = product.pieces.flatMap((p) => p.variants);
+  const allStones = product.pieces.flatMap((p) => p.stones);
+  const productOverride = {
+    vaGoldPct: product.vaGoldPct ?? null,
+    vaLabel: product.vaLabel ?? null,
+  };
+
   const initialVariant = useMemo(() => {
     if (paramMetal || paramSize) {
-      const match = product.variants.find((v) => {
+      const match = allVariants.find((v) => {
         const metalMatch = !paramMetal || v.metalType.toLowerCase() === paramMetal.toLowerCase();
         const sizeMatch = !paramSize || v.size === paramSize;
         return metalMatch && sizeMatch;
       });
       if (match) return match.id;
     }
-    return product.variants[0]?.id ?? null;
-  }, [product.variants, paramMetal, paramSize]);
+    return product.pieces[0]?.variants[0]?.id ?? null;
+  }, [allVariants, product.pieces, paramMetal, paramSize]);
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(initialVariant);
   const swipeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!selectedVariantId) return;
-    const variant = product.variants.find((v) => v.id === selectedVariantId);
+    const variant = allVariants.find((v) => v.id === selectedVariantId);
     if (!variant) return;
     const url = new URL(window.location.href);
     let changed = false;
@@ -110,7 +158,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     if (changed) {
       window.history.replaceState(null, "", url.toString());
     }
-  }, [selectedVariantId, product.variants]);
+  }, [selectedVariantId, allVariants]);
 
   const gallery = useMemo(
     () =>
@@ -135,58 +183,71 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     [goldRates],
   );
 
-  const selectedVariant = product.variants.find(
-    (v) => v.id === selectedVariantId,
-  );
-
+  const selectedVariant = allVariants.find((v) => v.id === selectedVariantId);
   const [withExchange, setWithExchange] = useState(false);
-  const hasStones = product.stones.length > 0;
+  const hasStones = allStones.length > 0;
 
-  const stoneInputs: StoneInput[] = useMemo(
-    () =>
-      product.stones.map((s) => ({
-        caratWeight: s.caratWeight,
-        ratePerCarat: s.ratePerCarat,
-        ratePerCaratExchange: s.ratePerCaratExchange,
-        typeLabel: s.typeLabel,
-      })),
-    [product.stones],
-  );
+  type PiecePriced = {
+    piece: PieceView;
+    variant: Variant;
+    breakdown: PriceBreakdown;
+    weightGrams: number;
+  };
 
-  const priceFor = (exchange: boolean) =>
-    selectedVariant && Number(selectedVariant.weightGrams) > 0
-      ? calculatePrice(
-          {
-            weightGrams: Number(selectedVariant.weightGrams),
-            makingChargePerGram: Number(selectedVariant.makingChargePerGram),
-            flatMakingCharge: Number(selectedVariant.flatMakingCharge),
-            stoneCharges: Number(selectedVariant.stoneCharges),
-            miscCharges: Number(selectedVariant.miscCharges),
-          },
-          rateMap[selectedVariant.metalType] ?? 0,
-          { stones: stoneInputs, withExchange: exchange, config: pricingConfig },
-        )
+  // Per-piece breakups; set total = sum. Multi-piece requires every piece to
+  // price at the selected metal (same rule as cart/checkout).
+  const pricePiecesFor = (exchange: boolean): PiecePriced[] | null => {
+    if (!selectedVariant && !allVariants.length) return null;
+    const metal = selectedVariant?.metalType ?? allVariants[0]?.metalType;
+    if (!metal) return null;
+    const out: PiecePriced[] = [];
+    for (const piece of product.pieces) {
+      const v = piece.variants.find((x) => x.metalType === metal);
+      if (!v) return null;
+      const part = pieceBreakdown(
+        piece,
+        v,
+        rateMap[v.metalType] ?? 0,
+        pricingConfig,
+        productOverride,
+        exchange,
+      );
+      if (!part) return null;
+      out.push({ piece, variant: v, breakdown: part, weightGrams: Number(v.weightGrams) });
+    }
+    return out.length ? out : null;
+  };
+
+  const piecePrices = pricePiecesFor(withExchange) ?? [];
+  const price =
+    piecePrices.length > 0
+      ? Math.round(piecePrices.reduce((sum, p) => sum + p.breakdown.total, 0))
+      : undefined;
+  const priceWithoutPieces = pricePiecesFor(false);
+  const priceWithPieces = pricePiecesFor(true);
+  const priceWithoutTotal =
+    priceWithoutPieces && priceWithoutPieces.length > 0
+      ? priceWithoutPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
+      : undefined;
+  const priceWithTotal =
+    priceWithPieces && priceWithPieces.length > 0
+      ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
 
-  const breakdown = priceFor(withExchange);
-  const price = breakdown ? Math.round(breakdown.total) : undefined;
-  const priceWithout = priceFor(false);
-  const priceWith = priceFor(true);
-
-  // Metal + size selection: metals are unique; sizes belong to the chosen
-  // metal. Plain derivations — the React Compiler memoizes them.
-  const metals = [...new Set(product.variants.map((v) => v.metalType))];
+  const metals = [...new Set(allVariants.map((v) => v.metalType))];
   const selectedMetal = selectedVariant?.metalType ?? metals[0];
-  const sizesForMetal = product.variants.filter(
+  // Sizes from the primary (first) piece — size is a product option, not a second line item.
+  const primaryPiece = product.pieces[0];
+  const sizesForMetal = (primaryPiece?.variants ?? []).filter(
     (v) => v.metalType === selectedMetal && v.size,
   );
 
   const selectMetal = (metal: string) => {
-    // Keep the current size when the new metal has it; else first variant of metal.
-    const sameSize = product.variants.find(
+    const sameSize = primaryPiece?.variants.find(
       (v) => v.metalType === metal && v.size === selectedVariant?.size,
     );
-    const fallback = product.variants.find((v) => v.metalType === metal);
+    const fallback = primaryPiece?.variants.find((v) => v.metalType === metal)
+      ?? allVariants.find((v) => v.metalType === metal);
     setSelectedVariantId((sameSize ?? fallback)?.id ?? null);
   };
 
@@ -442,49 +503,67 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               <p className="pdp-info__description">{product.description}</p>
             )}
 
-            {hasStones ? (
-              <div className="pdp-options" data-testid="pdp-stones">
-                <label>Diamonds</label>
-                <ul className="pdp-info__stones">
-                  {product.stones.map((s) => (
-                    <li key={s.id} className="pdp-info__stone">
-                      <span className="pdp-info__stone-label">
-                        <ThemeIcon
-                          name="vairis_diamond_mark"
-                          category="brand"
-                          size={16}
-                          className="pdp-info__stone-icon"
-                        />
-                        {s.label ? `${s.label} — ` : ""}
-                        {s.typeLabel}
-                        {s.count ? ` × ${s.count}` : ""}
-                      </span>
-                      <span className="pdp-info__stone-carat">{s.caratWeight.toFixed(2)} ct</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : product.caratWeight && Number(product.caratWeight) > 0 ? (
-              <div className="pdp-options" data-testid="pdp-stones">
-                <label>Diamonds</label>
-                <ul className="pdp-info__stones">
-                  <li className="pdp-info__stone">
-                    <span className="pdp-info__stone-label">
-                      <ThemeIcon
-                        name="vairis_diamond_mark"
-                        category="brand"
-                        size={16}
-                        className="pdp-info__stone-icon"
-                      />
-                      {product.stoneType || "Natural Diamond"}
-                    </span>
-                    <span className="pdp-info__stone-carat">{Number(product.caratWeight).toFixed(2)} ct</span>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
+            {multiPiece && (
+              <p className="pdp-info__meta" data-testid="pdp-set-note">
+                Complete set price — one product, not separate items.
+              </p>
+            )}
 
-            {metals.length > 1 && (
+            {hasStones
+              ? product.pieces.map((piece) =>
+                  piece.stones.length > 0 ? (
+                    <div
+                      key={piece.id}
+                      className="pdp-options"
+                      data-testid={multiPiece ? `pdp-stones-${piece.id}` : "pdp-stones"}
+                    >
+                      <label>{multiPiece ? `Diamonds — ${piece.name}` : "Diamonds"}</label>
+                      <ul className="pdp-info__stones">
+                        {piece.stones.map((s) => (
+                          <li key={s.id} className="pdp-info__stone">
+                            <span className="pdp-info__stone-label">
+                              <ThemeIcon
+                                name="vairis_diamond_mark"
+                                category="brand"
+                                size={16}
+                                className="pdp-info__stone-icon"
+                              />
+                              {s.label ? `${s.label} — ` : ""}
+                              {s.typeLabel}
+                              {s.count ? ` × ${s.count}` : ""}
+                            </span>
+                            <span className="pdp-info__stone-carat">
+                              {s.caratWeight.toFixed(2)} ct
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null,
+                )
+              : product.caratWeight && Number(product.caratWeight) > 0 ? (
+                  <div className="pdp-options" data-testid="pdp-stones">
+                    <label>Diamonds</label>
+                    <ul className="pdp-info__stones">
+                      <li className="pdp-info__stone">
+                        <span className="pdp-info__stone-label">
+                          <ThemeIcon
+                            name="vairis_diamond_mark"
+                            category="brand"
+                            size={16}
+                            className="pdp-info__stone-icon"
+                          />
+                          {product.stoneType || "Natural Diamond"}
+                        </span>
+                        <span className="pdp-info__stone-carat">
+                          {Number(product.caratWeight).toFixed(2)} ct
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                ) : null}
+
+            {metals.length > 0 && (
               <div className="pdp-options">
                 <label>Metal</label>
                 <div className="pdp-variants">
@@ -522,7 +601,11 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               </div>
             )}
 
-            {product.showPrice && hasStones && priceWith && priceWithout && (
+            {product.showPrice &&
+              hasStones &&
+              priceWithTotal != null &&
+              priceWithoutTotal != null &&
+              Math.round(priceWithTotal) !== Math.round(priceWithoutTotal) && (
               <div className="pdp-options" data-testid="pdp-exchange">
                 <label>Diamond Pricing</label>
                 <div className="pdp-variants">
@@ -532,7 +615,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     aria-pressed={!withExchange}
                     onClick={() => setWithExchange(false)}
                   >
-                    Without Exchange — ₹{Math.round(priceWithout.total).toLocaleString("en-IN")}
+                    Without Exchange — ₹{Math.round(priceWithoutTotal).toLocaleString("en-IN")}
                   </button>
                   <button
                     type="button"
@@ -540,7 +623,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     aria-pressed={withExchange}
                     onClick={() => setWithExchange(true)}
                   >
-                    With Exchange — ₹{Math.round(priceWith.total).toLocaleString("en-IN")}
+                    With Exchange — ₹{Math.round(priceWithTotal).toLocaleString("en-IN")}
                   </button>
                 </div>
                 <p className="pdp-info__meta">
@@ -550,25 +633,38 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               </div>
             )}
 
-            {product.showPrice && breakdown && (
-              <details className="pdp-info__breakup" data-testid="pdp-breakup">
-                <summary>Price Breakup</summary>
-                <table>
-                  <tbody>
-                    {(() => {
-                      const roundedGold = Math.round(breakdown.goldValue);
-                      const roundedStones = breakdown.stoneLines.length > 0
-                        ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
-                        : Math.round(breakdown.stoneValue);
-                      const roundedMaking = Math.round(breakdown.making);
-                      const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
-                      const roundedMisc = breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
-                      const roundedGST = Math.round(breakdown.gst);
-                      const tableTotal = roundedGold + roundedStones + roundedMaking + roundedVA + roundedMisc + roundedGST;
-                      return (
-                        <>
+            {product.showPrice && piecePrices.length > 0 && (
+              <div className="pdp-info__breakups" data-testid="pdp-breakup">
+                {piecePrices.map(({ piece, breakdown, weightGrams }) => {
+                  const roundedGold = Math.round(breakdown.goldValue);
+                  const roundedStones =
+                    breakdown.stoneLines.length > 0
+                      ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
+                      : Math.round(breakdown.stoneValue);
+                  const roundedMaking = Math.round(breakdown.making);
+                  const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
+                  const roundedMisc =
+                    breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
+                  const roundedGST = Math.round(breakdown.gst);
+                  const tableTotal =
+                    roundedGold +
+                    roundedStones +
+                    roundedMaking +
+                    roundedVA +
+                    roundedMisc +
+                    roundedGST;
+                  return (
+                    <details
+                      key={piece.id}
+                      className="pdp-info__breakup"
+                    >
+                      <summary>
+                        {multiPiece ? `Price breakup — ${piece.name}` : "Price Breakup"}
+                      </summary>
+                      <table>
+                        <tbody>
                           <tr>
-                            <td>Gold value ({Number(selectedVariant?.weightGrams).toFixed(3)} g)</td>
+                            <td>Gold value ({weightGrams.toFixed(3)} g)</td>
                             <td>₹{roundedGold.toLocaleString("en-IN")}</td>
                           </tr>
                           {breakdown.stoneLines.map((l, i) => (
@@ -580,17 +676,23 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                               <td>₹{Math.round(l.value).toLocaleString("en-IN")}</td>
                             </tr>
                           ))}
-                          {breakdown.stoneLines.length === 0 && (breakdown.stoneValue > 0 || (product.caratWeight && Number(product.caratWeight) > 0)) && (
-                            <tr>
-                              <td>
-                                {product.stoneType || "Diamond"}
-                                {product.caratWeight && Number(product.caratWeight) > 0
-                                  ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
-                                  : ""}
-                              </td>
-                              <td>{breakdown.stoneValue > 0 ? `₹${Math.round(breakdown.stoneValue).toLocaleString("en-IN")}` : "Included"}</td>
-                            </tr>
-                          )}
+                          {breakdown.stoneLines.length === 0 &&
+                            (breakdown.stoneValue > 0 ||
+                              (product.caratWeight && Number(product.caratWeight) > 0)) && (
+                              <tr>
+                                <td>
+                                  {product.stoneType || "Diamond"}
+                                  {product.caratWeight && Number(product.caratWeight) > 0
+                                    ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
+                                    : ""}
+                                </td>
+                                <td>
+                                  {breakdown.stoneValue > 0
+                                    ? `₹${Math.round(breakdown.stoneValue).toLocaleString("en-IN")}`
+                                    : "Included"}
+                                </td>
+                              </tr>
+                            )}
                           <tr>
                             <td>Making charges</td>
                             <td>₹{roundedMaking.toLocaleString("en-IN")}</td>
@@ -612,15 +714,22 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                             <td>₹{roundedGST.toLocaleString("en-IN")}</td>
                           </tr>
                           <tr className="pdp-info__breakup-total">
-                            <td>Total</td>
+                            <td>{multiPiece ? `${piece.name} total` : "Total"}</td>
                             <td>₹{tableTotal.toLocaleString("en-IN")}</td>
                           </tr>
-                        </>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </details>
+                        </tbody>
+                      </table>
+                    </details>
+                  );
+                })}
+                {multiPiece && price != null && (
+                  <p className="pdp-info__set-total" data-testid="pdp-set-total">
+                    Set total{" "}
+                    <strong>₹{price.toLocaleString("en-IN")}</strong>
+                    <span className="pdp-info__meta"> incl. GST</span>
+                  </p>
+                )}
+              </div>
             )}
 
             {product.comingSoon ? (

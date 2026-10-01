@@ -1,16 +1,28 @@
 import type { MetalType } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { calculatePrice, type PricingConfig } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
+import { type PricingConfig } from '@/lib/pricing'
+import { getPricingConfig, type StoneWithRate } from '@/lib/pricing-data'
+import { priceVariantUnit } from '@/lib/product-piece-pricing'
 
 export type VariantForPricing = {
+  id?: string
+  pieceId?: string | null
   weightGrams: { toString(): string } | number | string
   makingChargePerGram: { toString(): string } | number | string
   flatMakingCharge: { toString(): string } | number | string
   stoneCharges: { toString(): string } | number | string
   miscCharges: { toString(): string } | number | string
   metalType: MetalType
-  product: { stones: StoneWithRate[] }
+  product: {
+    stones: StoneWithRate[]
+    vaGoldPct?: number | string | { toString(): string } | null
+    vaLabel?: string | null
+  }
+  piece?: {
+    id: string
+    vaGoldPct?: number | string | { toString(): string } | null
+    vaLabel?: string | null
+  } | null
 }
 
 /** Live PDP-style unit price (without exchange) for a catalogue variant. */
@@ -20,19 +32,24 @@ export function computeVariantLiveUnitPrice(
   pricingConfig: PricingConfig,
   withExchange = false,
 ): number | null {
-  if (!ratePerGram) return null
-  const total = calculatePrice(
+  return priceVariantUnit(
     {
-      weightGrams: String(variant.weightGrams),
-      makingChargePerGram: String(variant.makingChargePerGram),
-      flatMakingCharge: String(variant.flatMakingCharge),
-      stoneCharges: String(variant.stoneCharges),
-      miscCharges: String(variant.miscCharges),
+      id: variant.id ?? '',
+      pieceId: variant.pieceId ?? variant.piece?.id ?? null,
+      metalType: variant.metalType,
+      weightGrams: variant.weightGrams as never,
+      makingChargePerGram: variant.makingChargePerGram as never,
+      flatMakingCharge: variant.flatMakingCharge as never,
+      stoneCharges: variant.stoneCharges as never,
+      miscCharges: variant.miscCharges as never,
     },
     ratePerGram,
-    { stones: toStoneInputs(variant.product.stones), withExchange, config: pricingConfig },
-  ).total
-  return Math.round(total)
+    pricingConfig,
+    variant.product.stones,
+    variant.product,
+    variant.piece ?? null,
+    withExchange,
+  )
 }
 
 export async function getLiveUnitPricesByVariantId(
@@ -45,6 +62,7 @@ export async function getLiveUnitPricesByVariantId(
     prisma.productVariant.findMany({
       where: { id: { in: unique } },
       include: {
+        piece: true,
         product: {
           include: { stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } } },
         },

@@ -3,8 +3,8 @@ import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import { getAppUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { calculatePrice, toOrderItemPriceSnapshot } from '@/lib/pricing'
-import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
+import { getPricingConfig } from '@/lib/pricing-data'
+import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import { computeOrderAmounts } from '@/lib/orders'
 import { validatePromo } from '@/lib/promo'
 import { getPaymentGateway } from '@/lib/payments'
@@ -72,8 +72,11 @@ export async function POST(req: NextRequest) {
       include: {
         variant: {
           include: {
+            piece: true,
             product: {
               include: {
+                pieces: true,
+                variants: true,
                 stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
               },
             },
@@ -104,42 +107,37 @@ export async function POST(req: NextRequest) {
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  // Server-side price snapshot per line (same formula the PDP shows) —
-  // stones priced at the per-carat rate for the item's exchange choice.
-  // Full breakdown is frozen on OrderItem.priceBreakdown; price = unit total.
+  // One cart line = one sellable product. Multi-piece sets use the summed
+  // set total (display breakup only — never multiple OrderItems).
   const lines = cartItems.map((item) => {
-    const rate = rateMap[item.variant.metalType]
-    if (!rate) {
-      throw new Error(`No gold rate for ${item.variant.metalType} — cannot price order`)
-    }
-    const weightGrams = Number(item.variant.weightGrams)
-    const breakdown = calculatePrice(
+    const product = item.variant.product
+    const snapshot = toSetOrderItemSnapshot(
+      item.variant,
+      product.variants,
+      rateMap,
+      pricingConfig,
+      product.stones,
       {
-        weightGrams: item.variant.weightGrams.toString(),
-        makingChargePerGram: item.variant.makingChargePerGram.toString(),
-        flatMakingCharge: item.variant.flatMakingCharge.toString(),
-        stoneCharges: item.variant.stoneCharges.toString(),
-        miscCharges: item.variant.miscCharges.toString(),
+        vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
+        vaLabel: product.vaLabel,
       },
-      rate,
-      {
-        stones: toStoneInputs(item.variant.product.stones),
-        withExchange: item.withExchange,
-        config: pricingConfig,
-      },
+      product.pieces.map((p) => ({
+        id: p.id,
+        vaGoldPct: p.vaGoldPct != null ? Number(p.vaGoldPct) : null,
+        vaLabel: p.vaLabel,
+      })),
+      item.withExchange,
     )
-    const unitPrice = Math.round(breakdown.total)
+    if (!snapshot) {
+      throw new Error(`Cannot price cart line for variant ${item.variantId}`)
+    }
     return {
       variantId: item.variantId,
-      productName: item.variant.product.name,
+      productName: product.name,
       quantity: item.quantity,
-      unitPrice,
+      unitPrice: Math.round(snapshot.total),
       withExchange: item.withExchange,
-      priceBreakdown: toOrderItemPriceSnapshot(breakdown, {
-        goldRatePerGram: rate,
-        weightGrams,
-        metalType: item.variant.metalType,
-      }),
+      priceBreakdown: snapshot,
     }
   })
 

@@ -1,5 +1,11 @@
 import { prisma } from '@/lib/prisma'
-import { DEFAULT_PRICING_CONFIG, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import {
+  DEFAULT_PRICING_CONFIG,
+  resolvePricingConfig,
+  type PricingConfig,
+  type PricingOverride,
+  type StoneInput,
+} from '@/lib/pricing'
 import type { ProductStone, DiamondRate } from '@prisma/client'
 
 /**
@@ -9,6 +15,8 @@ import type { ProductStone, DiamondRate } from '@prisma/client'
  */
 
 export type StoneWithRate = ProductStone & { diamondRate: DiamondRate }
+export type { PricingOverride }
+export { resolvePricingConfig }
 
 export async function getPricingConfig(): Promise<PricingConfig> {
   const row = await prisma.pricingSettings.findUnique({ where: { id: 1 } })
@@ -39,10 +47,37 @@ export function resolvePriceVisibility(
 export function toStoneInputs(stones: StoneWithRate[]): StoneInput[] {
   return stones.map((s) => ({
     caratWeight: Number(s.caratWeight),
-    ratePerCarat: Number(s.diamondRate.ratePerCarat),
-    ratePerCaratExchange: Number(s.diamondRate.ratePerCaratExchange),
+    ratePerCarat:
+      s.ratePerCarat != null ? Number(s.ratePerCarat) : Number(s.diamondRate.ratePerCarat),
+    ratePerCaratExchange:
+      s.ratePerCaratExchange != null
+        ? Number(s.ratePerCaratExchange)
+        : Number(s.diamondRate.ratePerCaratExchange),
     typeLabel: s.diamondRate.label,
   }))
+}
+
+/** Stones for a variant: prefer same piece; else all product stones (legacy). */
+export function stonesForVariant(
+  stones: StoneWithRate[],
+  pieceId: string | null | undefined,
+): StoneWithRate[] {
+  if (!pieceId) return stones
+  // Piece-scoped variant: only that piece's stones (never fall back to the
+  // whole product — that double-counts diamonds on multi-piece sets).
+  return stones.filter((s) => s.pieceId === pieceId)
+}
+
+/** Piece VA overrides product VA, which overrides store settings. */
+export function resolvePiecePricingConfig(
+  store: PricingConfig,
+  product?: PricingOverride | null,
+  piece?: PricingOverride | null,
+): PricingConfig {
+  return resolvePricingConfig(store, {
+    vaGoldPct: piece?.vaGoldPct ?? product?.vaGoldPct ?? null,
+    vaLabel: piece?.vaLabel ?? product?.vaLabel ?? null,
+  })
 }
 
 /** Serializable stone shape for client components (PDP). */
@@ -63,7 +98,11 @@ export function toStoneViews(stones: StoneWithRate[]): StoneView[] {
     caratWeight: Number(s.caratWeight),
     count: s.count,
     label: s.label,
-    ratePerCarat: Number(s.diamondRate.ratePerCarat),
-    ratePerCaratExchange: Number(s.diamondRate.ratePerCaratExchange),
+    ratePerCarat:
+      s.ratePerCarat != null ? Number(s.ratePerCarat) : Number(s.diamondRate.ratePerCarat),
+    ratePerCaratExchange:
+      s.ratePerCaratExchange != null
+        ? Number(s.ratePerCaratExchange)
+        : Number(s.diamondRate.ratePerCaratExchange),
   }))
 }

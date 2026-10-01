@@ -35,7 +35,8 @@ export type CartLine = {
   quantity: number;
   withExchange: boolean;
   variant: CartVariant;
-  unitPrice: number;
+  unitPrice: number | null;
+  priceError?: string | null;
 };
 
 type CartContextValue = {

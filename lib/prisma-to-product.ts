@@ -1,13 +1,22 @@
 import type { Product as PrismaProduct, ProductVariant, GoldRate } from "@prisma/client";
-import { calculatePrice, DEFAULT_PRICING_CONFIG, type PricingConfig } from "@/lib/pricing";
-import { toStoneInputs, resolvePriceVisibility, type StoneWithRate } from "@/lib/pricing-data";
+import { DEFAULT_PRICING_CONFIG, type PricingConfig } from "@/lib/pricing";
+import { resolvePriceVisibility, type StoneWithRate } from "@/lib/pricing-data";
+import { computeCatalogueFromPrice } from "@/lib/product-piece-pricing";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 import type { ProductCategory } from "@/lib/catalogue-ui";
 
+type PieceRow = {
+  id: string;
+  name: string;
+  vaGoldPct?: number | string | { toString(): string } | null;
+  vaLabel?: string | null;
+};
+
 type PrismaProductWithVariants = PrismaProduct & {
   variants: ProductVariant[];
   stones?: StoneWithRate[];
+  pieces?: PieceRow[];
 };
 
 export function formatDisplayName(
@@ -48,38 +57,19 @@ export function prismaToProduct(
   let variantId: string | undefined;
   let hasMultiplePrices = false;
   if (!priceHidden && !p.comingSoon && p.variants.length > 0 && goldRates.length > 0) {
-    const rateMap = Object.fromEntries(
-      goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]),
+    const from = computeCatalogueFromPrice(
+      p.variants,
+      goldRates,
+      pricingConfig,
+      p.stones ?? [],
+      p,
+      p.pieces ?? null,
     );
-    const stones = toStoneInputs(p.stones ?? []);
-    const priced = p.variants
-      .map((v) => {
-        const rate = rateMap[v.metalType];
-        const weight = Number(v.weightGrams);
-        // Skip stub variants (weight 0) — avoid fake ₹misc-only prices
-        if (!rate || !(weight > 0)) return null;
-        // PLP "from" price: cheapest variant, without-exchange diamond rate
-        const total = calculatePrice(
-          {
-            weightGrams: weight,
-            makingChargePerGram: Number(v.makingChargePerGram),
-            flatMakingCharge: Number(v.flatMakingCharge),
-            stoneCharges: Number(v.stoneCharges),
-            miscCharges: Number(v.miscCharges),
-          },
-          rate,
-          { stones, withExchange: false, config: pricingConfig },
-        ).total;
-        return { id: v.id, total };
-      })
-      .filter((x): x is { id: string; total: number } => x !== null);
-    if (priced.length > 0) {
-      const cheapest = priced.reduce((a, b) => (b.total < a.total ? b : a));
-      const mostExpensive = priced.reduce((a, b) => (b.total > a.total ? b : a));
-      price = Math.round(cheapest.total);
-      variantId = cheapest.id;
-      hasMultiplePrices = priced.length > 1 && Math.round(cheapest.total) !== Math.round(mostExpensive.total);
-    } else if (!priceHidden && !p.comingSoon && Number(p.basePrice) > 0) {
+    if (from) {
+      price = from.price;
+      variantId = from.variantId;
+      hasMultiplePrices = from.hasMultiplePrices;
+    } else if (Number(p.basePrice) > 0) {
       price = Math.round(Number(p.basePrice));
       if (p.variants.length > 0) {
         variantId = p.variants[0].id;

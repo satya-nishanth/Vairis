@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 import { ProductFilterLabelsEditor } from './ProductFilterLabelsEditor'
-import { calculatePrice, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import AdminProductBuildPrice from './AdminProductBuildPrice'
+import { calculatePrice, resolvePricingConfig, type PricingConfig, type StoneInput } from '@/lib/pricing'
 import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 
 export type CategoryOption = { slug: string; name: string }
@@ -44,11 +45,32 @@ const FALLBACK_RATES: Record<string, number> = {
   ROSE_GOLD: 5100,
 }
 
-function buildSku(itemCode: string, metalType: string, size?: string): string {
+/** Always unique within a product: NECKL1, EARRI2, P3, … */
+function pieceSkuSlug(name: string, index: number): string {
+  const cleaned = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '')
+    .slice(0, 5)
+  return `${cleaned || 'P'}${index + 1}`
+}
+
+/**
+ * Auto SKU format:
+ * - one piece:  ITEM-18K
+ * - multi-piece: ITEM-NECKL1-18K / ITEM-EARRI2-18K (unique per piece)
+ */
+function buildSku(
+  itemCode: string,
+  metalType: string,
+  size?: string,
+  pieceSlug?: string,
+): string {
   if (!itemCode) return ''
   const suffix = METAL_TYPES.find((m) => m.value === metalType)?.skuSuffix ?? metalType
   const sizePart = size?.trim() ? `-${size.trim().toUpperCase().replace(/\s+/g, '')}` : ''
-  return `${itemCode.toUpperCase()}-${suffix}${sizePart}`
+  const piecePart = pieceSlug ? `-${pieceSlug}` : ''
+  return `${itemCode.toUpperCase()}${piecePart}-${suffix}${sizePart}`
 }
 
 type Variant = {
@@ -68,6 +90,10 @@ type FormStone = {
   caratWeight: string
   count: string
   label: string
+  /** When true, use DiamondRate store defaults (persist null overrides). */
+  useStoreRates: boolean
+  ratePerCarat: string
+  ratePerCaratExchange: string
 }
 
 export type DiamondRateOption = {
@@ -75,6 +101,17 @@ export type DiamondRateOption = {
   label: string
   ratePerCarat: number
   ratePerCaratExchange: number
+}
+
+type FormPiece = {
+  key: string
+  id?: string
+  name: string
+  variants: Variant[]
+  stones: FormStone[]
+  inheritWastage: boolean
+  vaGoldPct: string
+  vaLabel: string
 }
 
 type FormData = {
@@ -92,8 +129,7 @@ type FormData = {
   gemCount: string
   caratWeight: string
   images: string[]
-  variants: Variant[]
-  stones: FormStone[]
+  pieces: FormPiece[]
   isActive: boolean
   comingSoon: boolean
   status: 'DRAFT' | 'AI_DRAFT' | 'LIVE'
@@ -103,7 +139,16 @@ type FormData = {
 }
 
 type Props = {
-  initialData?: Partial<FormData> & { id?: string; labels?: string[] }
+  initialData?: Partial<FormData> & {
+    id?: string
+    labels?: string[]
+    /** Legacy flat fields — wrapped into Main when pieces absent */
+    variants?: Variant[]
+    stones?: FormStone[]
+    inheritWastage?: boolean
+    vaGoldPct?: string
+    vaLabel?: string
+  }
   mode: 'create' | 'edit'
   diamondRates: DiamondRateOption[]
   goldRates?: Record<string, number>
@@ -128,15 +173,81 @@ function emptyVariant(): Variant {
 }
 
 function emptyStone(diamondRates: DiamondRateOption[]): FormStone {
+  const first = diamondRates[0]
   return {
-    diamondRateId: diamondRates[0]?.id ?? '',
+    diamondRateId: first?.id ?? '',
     caratWeight: '',
     count: '',
     label: '',
+    useStoreRates: true,
+    ratePerCarat: first ? String(first.ratePerCarat) : '',
+    ratePerCaratExchange: first ? String(first.ratePerCaratExchange) : '',
   }
 }
 
-function initialForm(data?: Partial<FormData>): FormData {
+function emptyPiece(
+  store: PricingConfig,
+  name = 'Main',
+  variants?: Variant[],
+  stones?: FormStone[],
+  va?: { inheritWastage: boolean; vaGoldPct: string; vaLabel: string },
+): FormPiece {
+  return {
+    key: `piece-${Math.random().toString(36).slice(2, 10)}`,
+    name,
+    variants: variants?.length ? variants : [emptyVariant()],
+    stones: stones ?? [],
+    inheritWastage: va?.inheritWastage ?? true,
+    vaGoldPct: va?.vaGoldPct ?? String(store.vaGoldPct),
+    vaLabel: va?.vaLabel ?? (store.vaLabel || 'Value Addition'),
+  }
+}
+
+function initialForm(
+  data?: Props['initialData'],
+  storePricing?: PricingConfig,
+): FormData {
+  const store = storePricing ?? { vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Value Addition' }
+
+  let pieces: FormPiece[]
+  if (data?.pieces?.length) {
+    pieces = data.pieces.map((p, i) => ({
+      key: p.key || p.id || `piece-${i}`,
+      id: p.id,
+      name: p.name || (i === 0 ? 'Main' : `Piece ${i + 1}`),
+      variants: p.variants?.length ? p.variants : [emptyVariant()],
+      stones: p.stones ?? [],
+      inheritWastage: p.inheritWastage ?? true,
+      vaGoldPct: p.vaGoldPct ?? String(store.vaGoldPct),
+      vaLabel: p.vaLabel || store.vaLabel || 'Value Addition',
+    }))
+  } else {
+    const hasOverride =
+      data?.inheritWastage === false ||
+      (data?.vaGoldPct !== undefined && data?.vaGoldPct !== null && String(data.vaGoldPct) !== '') ||
+      (data?.vaLabel !== undefined && data?.vaLabel !== null && String(data.vaLabel) !== '')
+    const inherit = data?.inheritWastage !== undefined ? data.inheritWastage : !hasOverride
+    pieces = [
+      emptyPiece(
+        store,
+        'Main',
+        data?.variants as Variant[] | undefined,
+        data?.stones as FormStone[] | undefined,
+        {
+          inheritWastage: inherit,
+          vaGoldPct:
+            data?.vaGoldPct !== undefined && data?.vaGoldPct !== null && String(data.vaGoldPct) !== ''
+              ? String(data.vaGoldPct)
+              : String(store.vaGoldPct),
+          vaLabel:
+            data?.vaLabel !== undefined && data?.vaLabel !== null && String(data.vaLabel) !== ''
+              ? String(data.vaLabel)
+              : store.vaLabel || 'Value Addition',
+        },
+      ),
+    ]
+  }
+
   return {
     name: data?.name ?? '',
     description: data?.description ?? '',
@@ -152,8 +263,7 @@ function initialForm(data?: Partial<FormData>): FormData {
     gemCount: data?.gemCount ?? '',
     caratWeight: data?.caratWeight ?? '',
     images: data?.images ?? [],
-    variants: data?.variants?.length ? (data.variants as Variant[]) : [emptyVariant()],
-    stones: data?.stones ?? [],
+    pieces,
     isActive: data?.isActive ?? true,
     comingSoon: data?.comingSoon ?? false,
     status: data?.status ?? 'DRAFT',
@@ -163,7 +273,7 @@ function initialForm(data?: Partial<FormData>): FormData {
   }
 }
 
-type TabKey = 'all' | 'general' | 'media' | 'labels' | 'variants' | 'specs'
+type TabKey = 'all' | 'general' | 'media' | 'labels' | 'pricing'
 
 export default function ProductForm({
   initialData,
@@ -176,7 +286,9 @@ export default function ProductForm({
   returnTo,
 }: Props) {
   const router = useRouter()
-  const [form, setForm] = useState<FormData>(() => initialForm(initialData))
+  const storePricing = pricingConfig ?? { vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Value Addition' }
+  const [form, setForm] = useState<FormData>(() => initialForm(initialData, storePricing))
+  const [activePieceIdx, setActivePieceIdx] = useState(0)
   const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [filtersMap, setFiltersMap] = useState<Record<string, any>>(allCategoryFilters ?? {})
   const [categoryList, setCategoryList] = useState<CategoryOption[]>(
@@ -226,70 +338,149 @@ export default function ProductForm({
     filtersMap[currentCategorySlug.replace(/s$/, '')] ||
     filtersMap[`${currentCategorySlug}s`]
   const availableLabels: string[] = currentCategoryConfig?.labels || []
+  const currentCategoryName =
+    categoryOptions.find((c) => c.value === form.category)?.label ||
+    form.category.replace(/_/g, ' ')
 
   const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
   const isDraft = form.status !== 'LIVE'
+  const activePiece = form.pieces[Math.min(activePieceIdx, form.pieces.length - 1)] ?? form.pieces[0]
 
-  const stoneInputs = form.stones.flatMap((s): StoneInput[] => {
+  const effectivePricing = resolvePricingConfig(
+    storePricing,
+    activePiece?.inheritWastage
+      ? null
+      : { vaGoldPct: activePiece?.vaGoldPct, vaLabel: activePiece?.vaLabel },
+  )
+
+  const stoneInputs = (activePiece?.stones ?? []).flatMap((s): StoneInput[] => {
     const rate = diamondRates.find((r) => r.id === s.diamondRateId)
     const carat = parseFloat(s.caratWeight)
     if (!rate || !carat || carat <= 0) return []
+    const std = s.useStoreRates
+      ? rate.ratePerCarat
+      : parseFloat(s.ratePerCarat) || rate.ratePerCarat
+    const exch = s.useStoreRates
+      ? rate.ratePerCaratExchange
+      : parseFloat(s.ratePerCaratExchange) || rate.ratePerCaratExchange
     return [
       {
         caratWeight: carat,
-        ratePerCarat: rate.ratePerCarat,
-        ratePerCaratExchange: rate.ratePerCaratExchange,
+        ratePerCarat: std,
+        ratePerCaratExchange: exch,
         typeLabel: rate.label,
       },
     ]
   })
 
-  function calcEstimatedPrice(v: Variant, withExchange: boolean): number | null {
+  function calcEstimatedBreakdown(v: Variant, withExchange: boolean) {
     const weight = parseFloat(v.weightGrams)
     if (!weight || weight <= 0) return null
-    return Math.round(
-      calculatePrice(
-        {
-          weightGrams: weight,
-          makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
-          flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
-          stoneCharges: parseFloat(v.stoneCharges) || 0,
-          miscCharges: parseFloat(v.miscCharges) || 0,
-        },
-        rates[v.metalType] ?? 0,
-        { stones: stoneInputs, withExchange, config: pricingConfig }
-      ).total
+    return calculatePrice(
+      {
+        weightGrams: weight,
+        makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
+        flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
+        stoneCharges: parseFloat(v.stoneCharges) || 0,
+        miscCharges: parseFloat(v.miscCharges) || 0,
+      },
+      rates[v.metalType] ?? 0,
+      { stones: stoneInputs, withExchange, config: effectivePricing },
     )
   }
 
-  // Quick summary computations
   const totalStock = useMemo(() => {
-    return form.variants.reduce((acc, v) => acc + (parseInt(v.stock, 10) || 0), 0)
-  }, [form.variants])
+    return form.pieces.reduce(
+      (acc, p) => acc + p.variants.reduce((a, v) => a + (parseInt(v.stock, 10) || 0), 0),
+      0,
+    )
+  }, [form.pieces])
 
   const minEstimatedPrice = useMemo(() => {
-    let min: number | null = null
-    for (const v of form.variants) {
-      const p = calcEstimatedPrice(v, false)
-      if (p !== null && (min === null || p < min)) {
-        min = p
+    let sum = 0
+    let any = false
+    for (const piece of form.pieces) {
+      const cfg = resolvePricingConfig(
+        storePricing,
+        piece.inheritWastage ? null : { vaGoldPct: piece.vaGoldPct, vaLabel: piece.vaLabel },
+      )
+      const stones = piece.stones.flatMap((s): StoneInput[] => {
+        const rate = diamondRates.find((r) => r.id === s.diamondRateId)
+        const carat = parseFloat(s.caratWeight)
+        if (!rate || !carat || carat <= 0) return []
+        return [
+          {
+            caratWeight: carat,
+            ratePerCarat: s.useStoreRates ? rate.ratePerCarat : parseFloat(s.ratePerCarat) || rate.ratePerCarat,
+            ratePerCaratExchange: s.useStoreRates
+              ? rate.ratePerCaratExchange
+              : parseFloat(s.ratePerCaratExchange) || rate.ratePerCaratExchange,
+            typeLabel: rate.label,
+          },
+        ]
+      })
+      let pieceMin: number | null = null
+      for (const v of piece.variants) {
+        const weight = parseFloat(v.weightGrams)
+        if (!weight || weight <= 0) continue
+        const total = Math.round(
+          calculatePrice(
+            {
+              weightGrams: weight,
+              makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
+              flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
+              stoneCharges: parseFloat(v.stoneCharges) || 0,
+              miscCharges: parseFloat(v.miscCharges) || 0,
+            },
+            rates[v.metalType] ?? 0,
+            { stones, withExchange: false, config: cfg },
+          ).total,
+        )
+        if (pieceMin === null || total < pieceMin) pieceMin = total
+      }
+      if (pieceMin != null) {
+        sum += pieceMin
+        any = true
       }
     }
-    return min
-  }, [form.variants, stoneInputs, rates, pricingConfig])
+    return any ? sum : null
+  }, [form.pieces, diamondRates, rates, storePricing])
 
-  const currentCategoryName = useMemo(() => {
-    return categoryOptions.find((c) => c.value === form.category.toUpperCase())?.label || form.category
-  }, [categoryOptions, form.category])
+  function skuFor(piece: FormPiece, pieceIndex: number, metalType: string, size?: string) {
+    const slug =
+      form.pieces.length > 1 ? pieceSkuSlug(piece.name, pieceIndex) : undefined
+    return buildSku(form.itemCode, metalType, size, slug)
+  }
+
+  /** Rewrite auto SKUs; multi-piece embeds a unique per-piece slug (NECKL1, EARRI2, …). */
+  function withAutoSkus(pieces: FormPiece[], itemCode: string): FormPiece[] {
+    const multi = pieces.length > 1
+    const slugs = pieces.map((p, pi) => (multi ? pieceSkuSlug(p.name, pi) : undefined))
+    return pieces.map((p, pi) => {
+      const slug = slugs[pi]
+      return {
+        ...p,
+        variants: p.variants.map((v) => {
+          const auto = buildSku(itemCode, v.metalType, v.size, slug)
+          const knownAutos = [
+            buildSku(itemCode, v.metalType, v.size),
+            auto,
+            ...slugs
+              .filter((s): s is string => Boolean(s))
+              .map((s) => buildSku(itemCode, v.metalType, v.size, s)),
+          ]
+          const looksAuto = !v.sku.trim() || knownAutos.includes(v.sku)
+          return looksAuto ? { ...v, sku: auto } : v
+        }),
+      }
+    })
+  }
 
   function set<K extends keyof FormData>(field: K, value: FormData[K]) {
     setForm((f) => {
       const next = { ...f, [field]: value }
       if (field === 'itemCode') {
-        next.variants = f.variants.map((v) => ({
-          ...v,
-          sku: buildSku(value as string, v.metalType, v.size),
-        }))
+        next.pieces = withAutoSkus(f.pieces, value as string)
       }
       return next
     })
@@ -297,69 +488,184 @@ export default function ProductForm({
 
   function setVariant(idx: number, field: keyof Variant, value: string) {
     setForm((f) => {
-      const v = [...f.variants]
-      const prev = v[idx]
-      v[idx] = { ...prev, [field]: value }
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      const piece = pieces[pi]
+      const variants = [...piece.variants]
+      const prev = variants[idx]
+      variants[idx] = { ...prev, [field]: value }
       if ((field === 'metalType' || field === 'size') && f.itemCode) {
-        const wasAuto = !prev.sku || prev.sku === buildSku(f.itemCode, prev.metalType, prev.size)
-        if (wasAuto) v[idx].sku = buildSku(f.itemCode, v[idx].metalType, v[idx].size)
+        const multi = f.pieces.length > 1
+        const slug = multi ? pieceSkuSlug(piece.name, pi) : undefined
+        const prevAuto = buildSku(f.itemCode, prev.metalType, prev.size, slug)
+        const prevLegacy = buildSku(f.itemCode, prev.metalType, prev.size)
+        const wasAuto = !prev.sku || prev.sku === prevLegacy || prev.sku === prevAuto
+        if (wasAuto) {
+          variants[idx].sku = buildSku(
+            f.itemCode,
+            variants[idx].metalType,
+            variants[idx].size,
+            slug,
+          )
+        }
       }
-      return { ...f, variants: v }
+      pieces[pi] = { ...piece, variants }
+      return { ...f, pieces }
     })
   }
 
   function addVariant() {
+    const pi = Math.min(activePieceIdx, form.pieces.length - 1)
+    const piece = form.pieces[pi]
     const nv = emptyVariant()
-    nv.sku = buildSku(form.itemCode, nv.metalType)
-    setForm((f) => ({ ...f, variants: [...f.variants, nv] }))
+    nv.sku = skuFor(piece, pi, nv.metalType)
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      const idx = Math.min(activePieceIdx, pieces.length - 1)
+      pieces[idx] = { ...pieces[idx], variants: [...pieces[idx].variants, nv] }
+      return { ...f, pieces }
+    })
   }
 
   function removeVariant(idx: number) {
-    setForm((f) => ({ ...f, variants: f.variants.filter((_, i) => i !== idx) }))
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      pieces[pi] = { ...pieces[pi], variants: pieces[pi].variants.filter((_, i) => i !== idx) }
+      return { ...f, pieces }
+    })
   }
 
-  function setStone(idx: number, field: keyof FormStone, value: string) {
+  function setStone(idx: number, field: keyof FormStone, value: string | boolean) {
     setForm((f) => {
-      const s = [...f.stones]
-      s[idx] = { ...s[idx], [field]: value }
-      return { ...f, stones: s }
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      const stones = [...pieces[pi].stones]
+      const prev = stones[idx]
+      const next = { ...prev, [field]: value } as FormStone
+      if (field === 'diamondRateId') {
+        const rate = diamondRates.find((r) => r.id === value)
+        if (rate && next.useStoreRates) {
+          next.ratePerCarat = String(rate.ratePerCarat)
+          next.ratePerCaratExchange = String(rate.ratePerCaratExchange)
+        }
+      }
+      if (field === 'useStoreRates' && value === true) {
+        const rate = diamondRates.find((r) => r.id === next.diamondRateId)
+        if (rate) {
+          next.ratePerCarat = String(rate.ratePerCarat)
+          next.ratePerCaratExchange = String(rate.ratePerCaratExchange)
+        }
+      }
+      stones[idx] = next
+      pieces[pi] = { ...pieces[pi], stones }
+      return { ...f, pieces }
     })
   }
 
   function addStone() {
-    setForm((f) => ({ ...f, stones: [...f.stones, emptyStone(diamondRates)] }))
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      pieces[pi] = { ...pieces[pi], stones: [...pieces[pi].stones, emptyStone(diamondRates)] }
+      return { ...f, pieces }
+    })
   }
 
   function removeStone(idx: number) {
-    setForm((f) => ({ ...f, stones: f.stones.filter((_, i) => i !== idx) }))
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      pieces[pi] = { ...pieces[pi], stones: pieces[pi].stones.filter((_, i) => i !== idx) }
+      return { ...f, pieces }
+    })
+  }
+
+  function addPiece() {
+    const n = form.pieces.length + 1
+    const piece = emptyPiece(storePricing, n === 2 ? 'Earrings' : `Piece ${n}`)
+    setForm((f) => {
+      const pieces = withAutoSkus([...f.pieces, piece], f.itemCode)
+      return { ...f, pieces }
+    })
+    setActivePieceIdx(form.pieces.length)
+  }
+
+  function removePiece(idx: number) {
+    if (form.pieces.length <= 1) return
+    setForm((f) => {
+      const next = f.pieces.filter((_, i) => i !== idx)
+      return { ...f, pieces: withAutoSkus(next, f.itemCode) }
+    })
+    setActivePieceIdx((i) => Math.max(0, i >= idx ? i - 1 : i))
+  }
+
+  function renamePiece(idx: number, name: string) {
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      pieces[idx] = { ...pieces[idx], name }
+      return { ...f, pieces: withAutoSkus(pieces, f.itemCode) }
+    })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    for (const v of form.variants) {
-      if (v.makingChargePerGram !== '' && parseFloat(v.makingChargePerGram) < 0) {
-        setError('Making Charge cannot be negative.')
-        return
+    for (const piece of form.pieces) {
+      for (const v of piece.variants) {
+        if (v.makingChargePerGram !== '' && parseFloat(v.makingChargePerGram) < 0) {
+          setError('Making Charge cannot be negative.')
+          return
+        }
       }
     }
 
     setSaving(true)
     setError('')
 
-    const variants = isDraft
-      ? form.variants.filter((v) => v.sku.trim() || parseFloat(v.weightGrams) > 0)
-      : form.variants
-
-    const stones = form.stones.filter((s) => parseFloat(s.caratWeight) > 0 && s.diamondRateId)
+    const pieces = withAutoSkus(form.pieces, form.itemCode).map((p, i) => ({
+      id: p.id || null,
+      name: p.name.trim() || (i === 0 ? 'Main' : `Piece ${i + 1}`),
+      vaGoldPct: p.inheritWastage ? null : parseFloat(p.vaGoldPct),
+      vaLabel: p.inheritWastage ? null : p.vaLabel.trim() || null,
+      variants: (isDraft
+        ? p.variants.filter((v) => v.sku.trim() || parseFloat(v.weightGrams) > 0)
+        : p.variants
+      ).map((v) => ({ ...v })),
+      stones: p.stones
+        .filter((s) => parseFloat(s.caratWeight) > 0 && s.diamondRateId)
+        .map((s) => ({
+          diamondRateId: s.diamondRateId,
+          caratWeight: s.caratWeight,
+          count: s.count || null,
+          label: s.label || null,
+          ratePerCarat: s.useStoreRates ? null : parseFloat(s.ratePerCarat) || null,
+          ratePerCaratExchange: s.useStoreRates ? null : parseFloat(s.ratePerCaratExchange) || null,
+        })),
+    }))
 
     const payload = {
-      ...form,
-      priority: parseInt(String(form.priority), 10) || 0,
-      variants,
-      stones,
+      name: form.name,
+      description: form.description,
+      category: form.category,
+      itemCode: form.itemCode,
+      designStyle: form.designStyle,
+      totalLengthMm: form.totalLengthMm,
+      motifSizeMm: form.motifSizeMm,
+      thicknessMm: form.thicknessMm,
+      stoneType: form.stoneType,
+      stoneShape: form.stoneShape,
+      stoneDimMm: form.stoneDimMm,
+      gemCount: form.gemCount,
+      caratWeight: form.caratWeight,
       images: form.images.filter(Boolean),
+      isActive: form.isActive,
+      comingSoon: form.comingSoon,
+      status: form.status,
+      priority: parseInt(String(form.priority), 10) || 0,
+      priceVisibility: form.priceVisibility,
       labels: form.labels,
+      pieces,
     }
 
     const url = mode === 'create' ? '/api/admin/products' : `/api/admin/products/${initialData?.id}`
@@ -389,6 +695,7 @@ export default function ProductForm({
     router.refresh()
   }
 
+
   const primaryImage = form.images.find(Boolean)
 
   const TABS = [
@@ -396,8 +703,12 @@ export default function ProductForm({
     { id: 'general' as TabKey, label: 'Basic Info', icon: '📝' },
     { id: 'media' as TabKey, label: 'Images', icon: '🖼️', count: form.images.filter(Boolean).length },
     { id: 'labels' as TabKey, label: 'Filter Labels', icon: '🏷️', count: (form.labels ?? []).length },
-    { id: 'variants' as TabKey, label: 'Variants & Pricing', icon: '💍', count: form.variants.length },
-    { id: 'specs' as TabKey, label: 'Specs & Diamonds', icon: '💎', count: form.stones.length },
+    {
+      id: 'pricing' as TabKey,
+      label: 'Build & Price',
+      icon: '💍',
+      count: form.pieces.reduce((n, p) => n + p.variants.length + p.stones.length, 0),
+    },
   ]
 
   return (
@@ -677,7 +988,7 @@ export default function ProductForm({
             Variants &amp; Stock
           </div>
           <div style={{ fontSize: '1rem', fontWeight: 600, color: '#111827', marginTop: '2px' }}>
-            {form.variants.length} Metal Options
+            {form.pieces.reduce((n, p) => n + p.variants.length, 0)} Metal Options
           </div>
           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
             {totalStock} units available across sizes
@@ -699,7 +1010,9 @@ export default function ProductForm({
             {minEstimatedPrice ? `₹${minEstimatedPrice.toLocaleString('en-IN')}` : 'Price on Request'}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
-            {form.stones.length > 0 ? `${form.stones.length} diamond entries included` : 'Pure gold jewellery item'}
+            {form.pieces.some((p) => p.stones.length > 0)
+              ? `${form.pieces.reduce((n, p) => n + p.stones.length, 0)} diamond entries included`
+              : 'Pure gold jewellery item'}
           </div>
         </div>
       </div>
@@ -1016,568 +1329,55 @@ export default function ProductForm({
         </section>
       )}
 
-      {/* ─── SECTION 4: METAL VARIANTS & PRICING ─── */}
-      {(activeTab === 'all' || activeTab === 'variants') && (
-        <section
-          className="pform__section"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            padding: '20px',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-          }}
-        >
-          <div className="pform__variant-head" style={{ marginBottom: '14px' }}>
-            <div>
-              <h2 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                💍 Metal Variants &amp; Pricing
-              </h2>
-              <p className="pform__section-note" style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
-                Add one row per metal choice you offer. Pricing fields determine the retail price shown to customers.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={addVariant}
-              className="pform__addvariant"
-              style={{
-                padding: '6px 14px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                borderRadius: '6px',
-                background: '#111827',
-                color: '#ffffff',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              + Add variant
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {form.variants.map((v, idx) => {
-              const estimated = calcEstimatedPrice(v, false)
-              const estimatedExchange = calcEstimatedPrice(v, true)
-              const makingHigh = parseFloat(v.makingChargePerGram) > 1500
-              const stonesHigh = parseFloat(v.stoneCharges) > 500000
-              const metalMeta = METAL_TYPES.find((m) => m.value === v.metalType)
-
-              return (
-                <div
-                  key={idx}
-                  className="pform__variant"
-                  style={{
-                    background: '#fcfcfd',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    padding: '16px',
-                  }}
-                >
-                  {/* Variant Header Pill */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '12px',
-                      paddingBottom: '8px',
-                      borderBottom: '1px solid #f3f4f6',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span
-                        style={{
-                          fontSize: '0.6875rem',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          background: metalMeta?.badgeColor ?? '#f3f4f6',
-                          color: metalMeta?.badgeText ?? '#111827',
-                          border: `1px solid ${metalMeta?.badgeBorder ?? '#e5e7eb'}`,
-                        }}
-                      >
-                        Variant #{idx + 1}: {metalMeta?.label ?? v.metalType}
-                      </span>
-                      {v.sku && (
-                        <span style={{ fontSize: '0.6875rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                          SKU: {v.sku}
-                        </span>
-                      )}
-                    </div>
-                    {form.variants.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeVariant(idx)}
-                        className="pform__variant-remove"
-                        aria-label="Remove variant"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem',
-                          fontWeight: 500,
-                        }}
-                      >
-                        Remove variant ×
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Row 1: Identity */}
-                  <div className="pform__grid pform__grid--12">
-                    <div className="pform__field pform__span-3">
-                      <label>Metal Type</label>
-                      <select
-                        value={v.metalType}
-                        onChange={(e) => setVariant(idx, 'metalType', e.target.value)}
-                        className="pform__input"
-                      >
-                        {METAL_TYPES.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="pform__field pform__span-2">
-                      <label>Size</label>
-                      <input
-                        value={v.size}
-                        onChange={(e) => setVariant(idx, 'size', e.target.value)}
-                        className="pform__input"
-                        placeholder="e.g. 12 / M"
-                        data-testid="variant-size"
-                      />
-                    </div>
-                    <div className="pform__field pform__span-2">
-                      <label>Weight (g)</label>
-                      <input
-                        type="number"
-                        step="0.001"
-                        value={v.weightGrams}
-                        onChange={(e) => setVariant(idx, 'weightGrams', e.target.value)}
-                        className="pform__input"
-                        placeholder="8.500"
-                      />
-                    </div>
-                    <div className="pform__field pform__span-2">
-                      <label>Stock</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        data-testid="variant-stock"
-                        value={v.stock}
-                        onChange={(e) => setVariant(idx, 'stock', e.target.value)}
-                        className="pform__input"
-                      />
-                    </div>
-                    <div className="pform__field pform__span-3">
-                      <label>SKU</label>
-                      <input
-                        value={v.sku}
-                        onChange={(e) => setVariant(idx, 'sku', e.target.value)}
-                        className="pform__input"
-                        placeholder="AJBR-74-G18K"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Pricing Breakdown */}
-                  <div className="pform__pricing" style={{ marginTop: '12px', paddingTop: '10px' }}>
-                    <p className="pform__pricing-head" style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', marginBottom: '8px' }}>
-                      Pricing Breakdown — Used to Compute Retail Price
-                    </p>
-                    <div className="pform__grid pform__grid--4">
-                      <div className="pform__field">
-                        <label>Making ₹/g</label>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={v.makingChargePerGram}
-                          onChange={(e) => setVariant(idx, 'makingChargePerGram', e.target.value)}
-                          className={makingHigh ? 'pform__input pform__input--warn' : 'pform__input'}
-                          placeholder="e.g. 400"
-                        />
-                        <p className="pform__hint">Labour per gram</p>
-                        {makingHigh && <p className="pform__warn">⚠ Unusually high</p>}
-                      </div>
-
-                      <div className="pform__field">
-                        <label>Flat Making (₹)</label>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={v.flatMakingCharge}
-                          onChange={(e) => setVariant(idx, 'flatMakingCharge', e.target.value)}
-                          className="pform__input"
-                          placeholder="0"
-                        />
-                        <p className="pform__hint">Fixed clasp/engraving</p>
-                      </div>
-
-                      <div className="pform__field">
-                        <label>Stone Charges (₹)</label>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={v.stoneCharges}
-                          onChange={(e) => setVariant(idx, 'stoneCharges', e.target.value)}
-                          className={stonesHigh ? 'pform__input pform__input--warn' : 'pform__input'}
-                          placeholder="0"
-                        />
-                        <p className="pform__hint">Total gem cost</p>
-                        {stonesHigh && <p className="pform__warn">⚠ Above ₹5L</p>}
-                      </div>
-
-                      <div className="pform__field">
-                        <label>Misc (₹)</label>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={v.miscCharges}
-                          onChange={(e) => setVariant(idx, 'miscCharges', e.target.value)}
-                          className="pform__input"
-                          placeholder="45"
-                        />
-                        <p className="pform__hint">BIS hallmark (₹45)</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Live calculated price banner */}
-                  {estimated !== null && (
-                    <div
-                      className="pform__estimate"
-                      style={{
-                        marginTop: '12px',
-                        padding: '10px 14px',
-                        borderRadius: '6px',
-                        background: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '6px',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#166534' }}>
-                        Computed Retail Price ({metalMeta?.label} · gold + labour{stoneInputs.length ? ' + diamonds' : ''}):
-                      </span>
-                      <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#14532d' }}>
-                        ₹{estimated.toLocaleString('en-IN')}
-                        {stoneInputs.length > 0 && estimatedExchange !== null && (
-                          <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#166534', marginLeft: 8 }}>
-                            (with exchange ₹{estimatedExchange.toLocaleString('en-IN')})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ─── SECTION 5: DESIGN SPECIFICATIONS & DIAMONDS ─── */}
-      {(activeTab === 'all' || activeTab === 'specs') && (
-        <>
-          {/* CAD Physical specs */}
-          <section
-            className="pform__section"
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              padding: '20px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-            }}
-          >
-            <h2 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#111827', margin: '0 0 12px 0' }}>
-              📐 Design Specifications
-            </h2>
-            <div className="pform__grid pform__grid--3">
-              <div className="pform__field">
-                <label htmlFor="pf-length">Total Length (mm)</label>
-                <input
-                  id="pf-length"
-                  type="number"
-                  step="0.01"
-                  value={form.totalLengthMm}
-                  onChange={(e) => set('totalLengthMm', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 152.4 (6 inch)"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-motif">Motif Size (mm)</label>
-                <input
-                  id="pf-motif"
-                  type="number"
-                  step="0.01"
-                  value={form.motifSizeMm}
-                  onChange={(e) => set('motifSizeMm', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 9"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-thickness">Thickness/Depth (mm)</label>
-                <input
-                  id="pf-thickness"
-                  type="number"
-                  step="0.01"
-                  value={form.thicknessMm}
-                  onChange={(e) => set('thicknessMm', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 2.7"
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Gemstone */}
-          <section
-            className="pform__section"
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              padding: '20px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-            }}
-          >
-            <h2 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#111827', margin: '0 0 12px 0' }}>
-              💎 Gemstone Details
-            </h2>
-            <div className="pform__grid pform__grid--2">
-              <div className="pform__field">
-                <label htmlFor="pf-stonetype">Stone Type</label>
-                <input
-                  id="pf-stonetype"
-                  value={form.stoneType}
-                  onChange={(e) => set('stoneType', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. Diamond"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-stoneshape">Stone Shape</label>
-                <input
-                  id="pf-stoneshape"
-                  value={form.stoneShape}
-                  onChange={(e) => set('stoneShape', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. Round"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-stonedim">Stone Dimensions (mm)</label>
-                <input
-                  id="pf-stonedim"
-                  value={form.stoneDimMm}
-                  onChange={(e) => set('stoneDimMm', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 4.80 x 4.80"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-gemcount">Gem Count</label>
-                <input
-                  id="pf-gemcount"
-                  type="number"
-                  value={form.gemCount}
-                  onChange={(e) => set('gemCount', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 5"
-                />
-              </div>
-              <div className="pform__field">
-                <label htmlFor="pf-carat">Total Carat Weight (ctw)</label>
-                <input
-                  id="pf-carat"
-                  type="number"
-                  step="0.01"
-                  value={form.caratWeight}
-                  onChange={(e) => set('caratWeight', e.target.value)}
-                  className="pform__input"
-                  placeholder="e.g. 2.00"
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Diamonds (priced per carat) */}
-          <section
-            className="pform__section"
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              padding: '20px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-            }}
-          >
-            <div className="pform__variant-head" style={{ marginBottom: '14px' }}>
-              <div>
-                <h2 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#111827', margin: 0 }}>
-                  Diamonds (priced per carat)
-                </h2>
-                <p className="pform__section-note" style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
-                  One row per diamond entry — e.g. centre stone &amp; accent stones. Priced from rates in Settings → Pricing.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={addStone}
-                className="pform__addvariant"
-                data-testid="add-stone"
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  borderRadius: '6px',
-                  background: '#111827',
-                  color: '#ffffff',
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                + Add diamond
-              </button>
-            </div>
-
-            {diamondRates.length === 0 && (
-              <p className="pform__warn">
-                No diamond rates configured — add types at Settings → Pricing first.
-              </p>
-            )}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {form.stones.map((s, idx) => {
-                const rate = diamondRates.find((r) => r.id === s.diamondRateId)
-                const carat = parseFloat(s.caratWeight) || 0
-                return (
-                  <div
-                    key={idx}
-                    className="pform__variant"
-                    data-testid="stone-row"
-                    style={{
-                      background: '#fcfcfd',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      padding: '14px',
-                    }}
-                  >
-                    <div className="pform__grid pform__grid--12">
-                      <div className="pform__field pform__span-3">
-                        <label>Diamond Type</label>
-                        <select
-                          value={s.diamondRateId}
-                          onChange={(e) => setStone(idx, 'diamondRateId', e.target.value)}
-                          className="pform__input"
-                        >
-                          {diamondRates.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
-                        {rate && (
-                          <p className="pform__hint">
-                            ₹{rate.ratePerCarat.toLocaleString('en-IN')}/ct · exch ₹
-                            {rate.ratePerCaratExchange.toLocaleString('en-IN')}/ct
-                          </p>
-                        )}
-                      </div>
-                      <div className="pform__field pform__span-2">
-                        <label>Carat (ct)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={s.caratWeight}
-                          onChange={(e) => setStone(idx, 'caratWeight', e.target.value)}
-                          className="pform__input"
-                          placeholder="0.50"
-                        />
-                      </div>
-                      <div className="pform__field pform__span-2">
-                        <label>Count (optional)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={s.count}
-                          onChange={(e) => setStone(idx, 'count', e.target.value)}
-                          className="pform__input"
-                          placeholder="e.g. 5"
-                        />
-                      </div>
-                      <div className="pform__field pform__span-4">
-                        <label>Label (optional)</label>
-                        <input
-                          value={s.label}
-                          onChange={(e) => setStone(idx, 'label', e.target.value)}
-                          className="pform__input"
-                          placeholder="e.g. Centre stone / Blue accents"
-                        />
-                      </div>
-                      <div className="pform__span-1">
-                        <button
-                          type="button"
-                          onClick={() => removeStone(idx)}
-                          className="pform__variant-remove"
-                          aria-label="Remove diamond"
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            fontWeight: 600,
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                    {rate && carat > 0 && (
-                      <div
-                        className="pform__estimate"
-                        style={{
-                          marginTop: '8px',
-                          padding: '6px 10px',
-                          background: '#eff6ff',
-                          borderRadius: '4px',
-                          fontSize: '0.75rem',
-                          color: '#1e40af',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <span className="pform__estimate-label">Stone value</span>
-                        <span className="pform__estimate-value" style={{ fontWeight: 600 }}>
-                          ₹{Math.round(carat * rate.ratePerCarat).toLocaleString('en-IN')} · exch ₹
-                          {Math.round(carat * rate.ratePerCaratExchange).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        </>
+      {/* ─── BUILD & PRICE (variants + diamonds + specs, one scroll) ─── */}
+      {(activeTab === 'all' || activeTab === 'pricing') && (
+        <AdminProductBuildPrice
+          variants={activePiece?.variants ?? []}
+          stones={activePiece?.stones ?? []}
+          diamondRates={diamondRates}
+          storePricing={storePricing}
+          effectivePricing={effectivePricing}
+          vaGoldPct={activePiece?.vaGoldPct ?? '10'}
+          vaLabel={activePiece?.vaLabel ?? 'Value Addition'}
+          totalLengthMm={form.totalLengthMm}
+          motifSizeMm={form.motifSizeMm}
+          thicknessMm={form.thicknessMm}
+          stoneType={form.stoneType}
+          stoneShape={form.stoneShape}
+          stoneDimMm={form.stoneDimMm}
+          gemCount={form.gemCount}
+          caratWeight={form.caratWeight}
+          calcBreakdown={calcEstimatedBreakdown}
+          onAddVariant={addVariant}
+          onRemoveVariant={removeVariant}
+          onSetVariant={(idx, field, value) => setVariant(idx, field, value)}
+          onAddStone={addStone}
+          onRemoveStone={removeStone}
+          onSetStone={(idx, field, value) => setStone(idx, field, value)}
+          onSetVaGoldPct={(v) =>
+            setForm((f) => {
+              const pieces = [...f.pieces]
+              const pi = Math.min(activePieceIdx, pieces.length - 1)
+              pieces[pi] = { ...pieces[pi], vaGoldPct: v, inheritWastage: false }
+              return { ...f, pieces }
+            })
+          }
+          onSetVaLabel={(v) =>
+            setForm((f) => {
+              const pieces = [...f.pieces]
+              const pi = Math.min(activePieceIdx, pieces.length - 1)
+              pieces[pi] = { ...pieces[pi], vaLabel: v, inheritWastage: false }
+              return { ...f, pieces }
+            })
+          }
+          onSetField={(field, value) => set(field as keyof FormData, value as never)}
+          pieces={form.pieces.map((p) => ({ key: p.key, id: p.id, name: p.name }))}
+          activePieceIndex={Math.min(activePieceIdx, form.pieces.length - 1)}
+          onSelectPiece={setActivePieceIdx}
+          onAddPiece={addPiece}
+          onRemovePiece={removePiece}
+          onRenamePiece={renamePiece}
+        />
       )}
 
       {/* ─── BOTTOM ACTION BAR ─── */}

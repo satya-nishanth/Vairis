@@ -840,6 +840,27 @@
   background: var(--bg-card);
 }
 
+.pdp-info__breakups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.pdp-info__breakups .pdp-info__breakup {
+  margin: 0;
+}
+
+.pdp-info__set-total {
+  margin: 4px 0 0;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+
+.pdp-info__set-total strong {
+  font-weight: 700;
+}
+
 .pdp-info__breakup summary {
   cursor: pointer;
   padding: 12px 14px;
