@@ -19,6 +19,10 @@ export default async function EditProductPage({
       include: {
         variants: true,
         stones: { orderBy: { sortOrder: 'asc' } },
+        storeCategories: {
+          include: { category: { select: { slug: true } } },
+          take: 1,
+        },
       },
     }),
     prisma.diamondRate.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
@@ -28,6 +32,12 @@ export default async function EditProductPage({
   ])
 
   if (!product) notFound()
+
+  // Prefer StoreCategory join slug so custom cats don't show as PENDANTS in the form.
+  const storeSlug = product.storeCategories[0]?.category?.slug
+  const formCategory = storeSlug
+    ? storeSlug.toUpperCase().replace(/-/g, '_')
+    : product.category
 
   return (
     <div className="admin-page">
@@ -53,7 +63,7 @@ export default async function EditProductPage({
           id: product.id,
           name: product.name,
           description: product.description,
-          category: product.category,
+          category: formCategory,
           itemCode: product.itemCode ?? '',
           designStyle: product.designStyle ?? '',
           totalLengthMm: product.totalLengthMm?.toString() ?? '',

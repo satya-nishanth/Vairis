@@ -3,14 +3,12 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
-import { getStoreCategoryBySlug, updateStoreCategory } from '@/lib/store-categories'
+import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
 import { setProductPriority } from '@/lib/product-priorities'
 
 export const dynamic = 'force-dynamic'
 
 type Params = Promise<{ id: string }>
-
-const CATEGORIES = ['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES'] as const
 
 const patchVariantSchema = z.object({
   metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD'] as const),
@@ -193,11 +191,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
         }
       }
 
-      let dbCategory: (typeof CATEGORIES)[number] | undefined
+      let dbCategory: ReturnType<typeof toPrismaProductCategory> | undefined
       if (data.category !== undefined) {
-        const catUpper = data.category.toUpperCase().replace(/-/g, '_')
-        const isPrismaEnum = (CATEGORIES as readonly string[]).includes(catUpper)
-        dbCategory = isPrismaEnum ? (catUpper as (typeof CATEGORIES)[number]) : 'PENDANTS'
+        // Custom store slugs must not overwrite Product.category with PENDANTS.
+        // Only update the enum when the value is a real Category enum member.
+        dbCategory = toPrismaProductCategory(data.category) ?? undefined
       }
 
       return tx.product.update({
@@ -230,12 +228,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
     if (data.category !== undefined) {
       try {
         const catSlug = data.category.toLowerCase().replace(/_/g, '-')
-        const storeCat = await getStoreCategoryBySlug(catSlug)
-        if (storeCat && !storeCat.productIds.includes(id)) {
-          await updateStoreCategory(storeCat.id, {
-            productIds: [...storeCat.productIds, id],
-          })
-        }
+        await assignProductToStoreCategory(catSlug, id)
       } catch (err) {
         console.warn('[api/admin/products/[id]] failed linking to store category:', err)
       }

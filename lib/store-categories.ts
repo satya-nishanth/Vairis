@@ -99,6 +99,56 @@ export const DEFAULT_STORE_CATEGORIES: StoreCategoryRecord[] = [
 
 const DATA_FILE = path.join(process.cwd(), "data", "store-categories.json");
 
+const categoryInclude = {
+  products: {
+    select: {
+      productId: true,
+      product: { select: { id: true, isActive: true, status: true } },
+    },
+    orderBy: { sortOrder: "asc" as const },
+  },
+};
+
+function mapRow(
+  r: {
+    id: string;
+    slug: string;
+    name: string;
+    description: string | null;
+    image: string | null;
+    showInHeader: boolean;
+    sortOrder: number;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    products?: { productId: string; product?: { isActive: boolean; status: string } | null }[];
+  },
+  options?: { activeOnly?: boolean },
+): StoreCategoryRecord {
+  // Keep ALL linked product ids for admin/mutations. LIVE filter is only for
+  // storefront-facing reads (activeOnly) — otherwise draft links get wiped on save.
+  const productIds = (r.products ?? [])
+    .filter((p) => {
+      if (!options?.activeOnly) return true;
+      return p.product?.isActive && p.product?.status === "LIVE";
+    })
+    .map((p) => p.productId);
+
+  return {
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    description: r.description,
+    image: r.image,
+    showInHeader: r.showInHeader,
+    sortOrder: r.sortOrder,
+    isActive: r.isActive,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    productIds,
+  };
+}
+
 function readJsonFile(): StoreCategoryRecord[] {
   try {
     if (fs.existsSync(DATA_FILE)) {
@@ -126,59 +176,84 @@ function writeJsonFile(items: StoreCategoryRecord[]) {
   }
 }
 
+/** Mirror DB → JSON so local fallback never diverges after mutations. */
+async function syncJsonFromDb() {
+  try {
+    const rows = await prisma.storeCategory.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: categoryInclude,
+    });
+    writeJsonFile(rows.map((r) => mapRow(r)));
+  } catch (err) {
+    console.warn("[store-categories] JSON sync skipped:", err);
+  }
+}
+
+/**
+ * Ensure JSON/default categories exist in DB (by slug). Never deletes or overwrites
+ * existing DB rows — so creating “asda” no longer hides Rings/Earrings that only lived in JSON.
+ */
+async function ensureDefaultCategoriesInDb(): Promise<void> {
+  const existing = await prisma.storeCategory.findMany({ select: { slug: true } });
+  const have = new Set(existing.map((e) => e.slug.toLowerCase()));
+  const seed = readJsonFile();
+
+  for (const item of seed) {
+    if (have.has(item.slug.toLowerCase())) continue;
+    try {
+      await prisma.storeCategory.create({
+        data: {
+          slug: item.slug,
+          name: item.name,
+          description: item.description,
+          image: item.image,
+          showInHeader: item.showInHeader,
+          sortOrder: item.sortOrder,
+          isActive: item.isActive,
+        },
+      });
+      have.add(item.slug.toLowerCase());
+    } catch (err) {
+      console.warn(`[store-categories] seed failed slug=${item.slug}:`, err);
+    }
+  }
+}
+
+function filterJsonItems(
+  items: StoreCategoryRecord[],
+  options?: { inHeader?: boolean; activeOnly?: boolean },
+): StoreCategoryRecord[] {
+  let next = items;
+  if (options?.activeOnly) next = next.filter((i) => i.isActive);
+  if (options?.inHeader !== undefined) {
+    next = next.filter((i) => i.showInHeader === options.inHeader);
+  }
+  return next.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 export async function getStoreCategories(options?: {
   inHeader?: boolean;
   activeOnly?: boolean;
 }): Promise<StoreCategoryRecord[]> {
   try {
-    // Attempt database query first
-    const where: any = {};
+    await ensureDefaultCategoriesInDb();
+
+    const where: { isActive?: boolean; showInHeader?: boolean } = {};
     if (options?.activeOnly) where.isActive = true;
     if (options?.inHeader !== undefined) where.showInHeader = options.inHeader;
 
-    const rows = await (prisma as any).storeCategory.findMany({
+    const rows = await prisma.storeCategory.findMany({
       where,
       orderBy: { sortOrder: "asc" },
-      include: {
-        products: {
-          select: {
-            productId: true,
-            product: { select: { id: true, isActive: true, status: true } },
-          },
-          orderBy: { sortOrder: "asc" },
-        },
-      },
+      include: categoryInclude,
     });
 
-    if (rows && rows.length > 0) {
-      return rows.map((r: any) => ({
-        id: r.id,
-        slug: r.slug,
-        name: r.name,
-        description: r.description,
-        image: r.image,
-        showInHeader: r.showInHeader,
-        sortOrder: r.sortOrder,
-        isActive: r.isActive,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-        productIds: (r.products ?? [])
-          .filter((p: any) => !options?.activeOnly || (p.product?.isActive && p.product?.status === "LIVE"))
-          .map((p: any) => p.productId),
-      }));
-    }
+    // DB is source of truth whenever the query succeeds.
+    return rows.map((r) => mapRow(r, options));
   } catch {
-    // Fall back to JSON storage
+    // Table missing / Prisma down → JSON fallback only.
+    return filterJsonItems(readJsonFile(), options);
   }
-
-  let items = readJsonFile();
-  if (options?.activeOnly) {
-    items = items.filter((i) => i.isActive);
-  }
-  if (options?.inHeader !== undefined) {
-    items = items.filter((i) => i.showInHeader === options.inHeader);
-  }
-  return items.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export async function getHeaderNavCategories(): Promise<{ slug: string; name: string }[]> {
@@ -192,70 +267,38 @@ export async function getHeaderNavCategories(): Promise<{ slug: string; name: st
 export async function getStoreCategoryBySlug(slug: string): Promise<StoreCategoryRecord | null> {
   const norm = slug.trim().toLowerCase();
   try {
-    const row = await (prisma as any).storeCategory.findUnique({
+    await ensureDefaultCategoriesInDb();
+    const row = await prisma.storeCategory.findUnique({
       where: { slug: norm },
-      include: {
-        products: {
-          select: {
-            productId: true,
-            product: { select: { id: true, isActive: true, status: true } },
-          },
-          orderBy: { sortOrder: "asc" },
-        },
-      },
+      include: categoryInclude,
     });
-    if (row) {
-      return {
-        id: row.id,
-        slug: row.slug,
-        name: row.name,
-        description: row.description,
-        image: row.image,
-        showInHeader: row.showInHeader,
-        sortOrder: row.sortOrder,
-        isActive: row.isActive,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-        productIds: (row.products ?? [])
-          .filter((p: any) => p.product?.isActive && p.product?.status === "LIVE")
-          .map((p: any) => p.productId),
-      };
-    }
+    // DB healthy: miss = null. Do not fall through to JSON (avoids ghost categories).
+    return row ? mapRow(row) : null;
   } catch {
-    // Fall back to JSON
+    // Prisma/table unavailable → JSON fallback only.
+    const items = readJsonFile();
+    return items.find((c) => c.slug.toLowerCase() === norm) ?? null;
   }
-
-  const items = readJsonFile();
-  return items.find((c) => c.slug.toLowerCase() === norm) ?? null;
 }
 
 export async function getStoreCategoryById(id: string): Promise<StoreCategoryRecord | null> {
   try {
-    const row = await (prisma as any).storeCategory.findUnique({
+    const row = await prisma.storeCategory.findUnique({
       where: { id },
-      include: { products: { select: { productId: true } } },
+      include: categoryInclude,
     });
-    if (row) {
-      return {
-        id: row.id,
-        slug: row.slug,
-        name: row.name,
-        description: row.description,
-        image: row.image,
-        showInHeader: row.showInHeader,
-        sortOrder: row.sortOrder,
-        isActive: row.isActive,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-        productIds: (row.products ?? []).map((p: any) => p.productId),
-      };
-    }
-  } catch {
-    // Fall back to JSON
-  }
+    if (row) return mapRow(row);
 
-  const items = readJsonFile();
-  return items.find((c) => c.id === id) ?? null;
+    // Allow lookup by slug if callers pass slug as id
+    const bySlug = await prisma.storeCategory.findUnique({
+      where: { slug: id },
+      include: categoryInclude,
+    });
+    return bySlug ? mapRow(bySlug) : null;
+  } catch {
+    const items = readJsonFile();
+    return items.find((c) => c.id === id || c.slug === id) ?? null;
+  }
 }
 
 export async function createStoreCategory(input: {
@@ -273,56 +316,28 @@ export async function createStoreCategory(input: {
   const image = input.image?.trim() || null;
   const showInHeader = input.showInHeader ?? true;
   const sortOrder = input.sortOrder ?? 10;
-  const productIds = Array.isArray(input.productIds) ? input.productIds : [];
+  const productIds = Array.isArray(input.productIds) ? input.productIds.filter(Boolean) : [];
 
-  const now = new Date().toISOString();
-  const newRecord: StoreCategoryRecord = {
-    id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    slug,
-    name,
-    description,
-    image,
-    showInHeader,
-    sortOrder,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-    productIds,
-  };
+  await ensureDefaultCategoriesInDb();
 
-  try {
-    const created = await (prisma as any).storeCategory.create({
-      data: {
-        slug,
-        name,
-        description,
-        image,
-        showInHeader,
-        sortOrder,
-        isActive: true,
-        products: {
-          create: productIds.map((pId) => ({
-            productId: pId,
-          })),
-        },
+  const created = await prisma.storeCategory.create({
+    data: {
+      slug,
+      name,
+      description,
+      image,
+      showInHeader,
+      sortOrder,
+      isActive: true,
+      products: {
+        create: productIds.map((productId) => ({ productId })),
       },
-      include: { products: { select: { productId: true } } },
-    });
-    newRecord.id = created.id;
-  } catch (err) {
-    console.warn("[store-categories] Prisma create failed, saving to local json fallback:", err);
-  }
+    },
+    include: categoryInclude,
+  });
 
-  const items = readJsonFile();
-  const existingIdx = items.findIndex((i) => i.slug === slug);
-  if (existingIdx >= 0) {
-    items[existingIdx] = newRecord;
-  } else {
-    items.push(newRecord);
-  }
-  writeJsonFile(items);
-
-  return newRecord;
+  await syncJsonFromDb();
+  return mapRow(created);
 }
 
 export async function updateStoreCategory(
@@ -338,62 +353,112 @@ export async function updateStoreCategory(
     productIds: string[];
   }>,
 ): Promise<StoreCategoryRecord | null> {
-  const items = readJsonFile();
-  const itemIndex = items.findIndex((c) => c.id === id || c.slug === id);
-  if (itemIndex < 0) return null;
+  const current = await getStoreCategoryById(id);
+  if (!current) return null;
 
-  const current = items[itemIndex];
-  const updated: StoreCategoryRecord = {
-    ...current,
-    ...input,
-    slug: input.slug ? input.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-") : current.slug,
-    updatedAt: new Date().toISOString(),
-    productIds: input.productIds !== undefined ? input.productIds : current.productIds,
-  };
+  const nextSlug = input.slug
+    ? input.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    : current.slug;
+  const nextProductIds =
+    input.productIds !== undefined ? input.productIds.filter(Boolean) : current.productIds;
 
   try {
-    await (prisma as any).storeCategory.update({
+    const updated = await prisma.storeCategory.update({
       where: { id: current.id },
       data: {
-        name: updated.name,
-        slug: updated.slug,
-        description: updated.description,
-        image: updated.image,
-        showInHeader: updated.showInHeader,
-        sortOrder: updated.sortOrder,
-        isActive: updated.isActive,
+        name: input.name ?? current.name,
+        slug: nextSlug,
+        description: input.description !== undefined ? input.description : current.description,
+        image: input.image !== undefined ? input.image : current.image,
+        showInHeader: input.showInHeader ?? current.showInHeader,
+        sortOrder: input.sortOrder ?? current.sortOrder,
+        isActive: input.isActive ?? current.isActive,
         ...(input.productIds !== undefined
           ? {
               products: {
                 deleteMany: {},
-                create: updated.productIds.map((pId) => ({ productId: pId })),
+                create: nextProductIds.map((productId) => ({ productId })),
               },
             }
           : {}),
       },
+      include: categoryInclude,
     });
-  } catch {
-    // Ignore DB error, update JSON
+    await syncJsonFromDb();
+    return mapRow(updated);
+  } catch (err) {
+    console.error("[store-categories] Prisma update failed:", err);
+    // Last-resort JSON-only update (dev without table)
+    const items = readJsonFile();
+    const itemIndex = items.findIndex((c) => c.id === current.id || c.slug === current.slug);
+    if (itemIndex < 0) return null;
+    const updated: StoreCategoryRecord = {
+      ...current,
+      ...input,
+      slug: nextSlug,
+      productIds: nextProductIds,
+      updatedAt: new Date().toISOString(),
+    };
+    items[itemIndex] = updated;
+    writeJsonFile(items);
+    return updated;
   }
-
-  items[itemIndex] = updated;
-  writeJsonFile(items);
-  return updated;
 }
 
 export async function deleteStoreCategory(id: string): Promise<boolean> {
-  const items = readJsonFile();
-  const filtered = items.filter((c) => c.id !== id && c.slug !== id);
-  if (filtered.length === items.length) return false;
+  const current = await getStoreCategoryById(id);
+  if (!current) return false;
 
   try {
-    await (prisma as any).storeCategory.delete({
-      where: { id },
-    });
-  } catch {
-    // Ignore DB error
+    await prisma.storeCategory.delete({ where: { id: current.id } });
+    await syncJsonFromDb();
+    return true;
+  } catch (err) {
+    console.error("[store-categories] Prisma delete failed:", err);
+    const items = readJsonFile();
+    const filtered = items.filter((c) => c.id !== current.id && c.slug !== current.slug);
+    if (filtered.length === items.length) return false;
+    writeJsonFile(filtered);
+    return true;
   }
+}
 
-  writeJsonFile(filtered);
-  return true;
+/**
+ * Move a product onto one store category: drop prior StoreCategoryProduct rows,
+ * then link to the target. Prefer this from product create/update.
+ */
+export async function assignProductToStoreCategory(
+  categorySlug: string,
+  productId: string,
+): Promise<void> {
+  const norm = categorySlug.trim().toLowerCase().replace(/_/g, "-");
+  const cat = await getStoreCategoryBySlug(norm);
+  if (!cat) return;
+
+  await prisma.$transaction([
+    prisma.storeCategoryProduct.deleteMany({ where: { productId } }),
+    prisma.storeCategoryProduct.create({
+      data: { categoryId: cat.id, productId },
+    }),
+  ]);
+  await syncJsonFromDb();
+}
+
+/** @deprecated Use assignProductToStoreCategory (move semantics). */
+export async function linkProductToStoreCategory(
+  categorySlug: string,
+  productId: string,
+): Promise<void> {
+  return assignProductToStoreCategory(categorySlug, productId);
+}
+
+/** Map form/store slug → Prisma Product.category enum, or null for custom store cats. */
+export function toPrismaProductCategory(
+  input: string,
+): "RINGS" | "EARRINGS" | "PENDANTS" | "BRACELETS" | "NECKLACES" | null {
+  const upper = input.trim().toUpperCase().replace(/-/g, "_");
+  const allowed = ["RINGS", "EARRINGS", "PENDANTS", "BRACELETS", "NECKLACES"] as const;
+  return (allowed as readonly string[]).includes(upper)
+    ? (upper as (typeof allowed)[number])
+    : null;
 }
