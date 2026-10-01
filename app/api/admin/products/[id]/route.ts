@@ -191,19 +191,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
         }
       }
 
-      let dbCategory: ReturnType<typeof toPrismaProductCategory> | undefined
-      if (data.category !== undefined) {
-        // Custom store slugs must not overwrite Product.category with PENDANTS.
-        // Only update the enum when the value is a real Category enum member.
-        dbCategory = toPrismaProductCategory(data.category) ?? undefined
-      }
+      const resolvedCategory = data.category !== undefined ? toPrismaProductCategory(data.category) : undefined
 
       return tx.product.update({
         where: { id },
         data: {
           ...(data.name !== undefined && { name: data.name }),
           ...(data.description !== undefined && { description: data.description }),
-          ...(dbCategory !== undefined && { category: dbCategory }),
+          ...(resolvedCategory ? { category: resolvedCategory } : {}),
           ...(data.itemCode !== undefined && { itemCode: data.itemCode || null }),
           ...(data.designStyle !== undefined && { designStyle: data.designStyle || null }),
           ...(data.totalLengthMm !== undefined && { totalLengthMm: data.totalLengthMm }),

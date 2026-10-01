@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StoreCategoryRecord } from "@/lib/store-categories";
 
-type ProductOption = { id: string; label: string };
+type ProductOption = { id: string; label: string; category?: string };
 
 function slugify(text: string) {
   return text
