@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 export default async function AdminCollectionsPage() {
   const [collections, products] = await Promise.all([
     prisma.collection.findMany({
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ updatedAt: 'desc' }],
       include: { products: { orderBy: { sortOrder: 'asc' }, select: { productId: true } } },
     }),
     prisma.product.findMany({
@@ -27,8 +27,9 @@ export default async function AdminCollectionsPage() {
         title="Collections"
         blurb="Curated product groupings shown on collection pages (/collections/slug)."
         tips={[
-          '"Show in nav" pins the collection into the storefront header.',
+          '"Show in nav" pins the collection into the storefront header (Active must also be on).',
           'A product can belong to multiple collections.',
+          'Slug must be unique — reusing gifting / limited-edition will fail to save.',
           'Attach a collection rail to the home page from Home Sections.',
         ]}
       />
