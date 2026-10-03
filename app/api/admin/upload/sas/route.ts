@@ -14,7 +14,7 @@ const ALLOWED_VIDEO_TYPES = [
   'video/x-msvideo',
 ]
 
-const ALLOWED_FOLDERS = ['products', 'quotations/screenshots']
+const ALLOWED_FOLDERS = ['products', 'collections', 'quotations/screenshots']
 
 /** Mint a short-lived Azure Blob SAS so the browser can PUT video bytes directly. */
 export async function POST(req: NextRequest) {

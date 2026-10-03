@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { PageShell } from "@/components/layout/PageShell";
 import { pageLayouts } from "@/lib/layout-config";
 import { ProductImage } from "@/components/ui/ProductImage";
+import {
+  CollectionCoverCollage,
+  collectionCollageImages,
+} from "@/components/commerce/CollectionCoverCollage";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +41,19 @@ export default async function CollectionsIndexPage() {
               },
             },
           },
+        },
+      },
+      products: {
+        where: {
+          product: {
+            isActive: true,
+            status: "LIVE",
+          },
+        },
+        orderBy: { sortOrder: "asc" },
+        take: 4,
+        select: {
+          product: { select: { images: true } },
         },
       },
     },
@@ -92,7 +109,11 @@ export default async function CollectionsIndexPage() {
             }}
           >
             {collections.map((c) => {
-              const coverImage = c.heroImages[0] ?? "";
+              const useCollage = c.coverMode === "COLLAGE";
+              const collageImages = useCollage
+                ? collectionCollageImages(c.products.map((cp) => cp.product))
+                : [];
+              const coverImage = !useCollage ? (c.heroImages[0] ?? "") : "";
               const count = c._count.products;
               return (
                 <Link
@@ -111,7 +132,9 @@ export default async function CollectionsIndexPage() {
                   className="collection-card"
                 >
                   <div style={{ position: "relative", width: "100%", height: "240px", background: "var(--color-surface-muted, #f8f8f8)" }}>
-                    {coverImage ? (
+                    {useCollage ? (
+                      <CollectionCoverCollage images={collageImages} alt={c.title} />
+                    ) : coverImage ? (
                       <ProductImage
                         src={coverImage}
                         alt={c.title}

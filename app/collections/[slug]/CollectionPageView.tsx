@@ -6,6 +6,7 @@ import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { ProductCard } from "@/components/commerce/ProductCard";
 import { CartModalProvider } from "@/components/commerce/CartModal";
 import { CategoryHeroMediaCarousel } from "@/components/commerce/CategoryHeroMediaCarousel";
+import { CollectionCoverCollage } from "@/components/commerce/CollectionCoverCollage";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import type { Product } from "@/lib/ui-data";
@@ -19,6 +20,8 @@ type Props = {
     subtitle: string | null;
     description: string | null;
     heroImages: string[];
+    coverMode: "CUSTOM" | "COLLAGE";
+    collageImages: string[];
   };
   products: Product[];
   emptyState: ReactNode;
@@ -26,6 +29,7 @@ type Props = {
 
 export function CollectionPageView({ collection, products, emptyState }: Props) {
   const { count: bagCount } = useCart();
+  const useCollage = collection.coverMode === "COLLAGE";
 
   return (
     <CartModalProvider bagCount={bagCount}>
@@ -47,9 +51,13 @@ export function CollectionPageView({ collection, products, emptyState }: Props) 
               )}
             </div>
           </div>
-          {collection.heroImages.length > 0 && (
+          {useCollage ? (
+            <div className="plp-hero__media" style={{ position: "relative", minHeight: 280 }}>
+              <CollectionCoverCollage images={collection.collageImages} alt={collection.title} />
+            </div>
+          ) : collection.heroImages.length > 0 ? (
             <CategoryHeroMediaCarousel images={collection.heroImages} label={collection.title} />
-          )}
+          ) : null}
         </section>
 
         <main className="container page-main plp-main">
