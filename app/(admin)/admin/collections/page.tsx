@@ -13,7 +13,7 @@ export default async function AdminCollectionsPage() {
     prisma.product.findMany({
       where: { status: 'LIVE', isActive: true },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, itemCode: true, category: true },
+      select: { id: true, name: true, itemCode: true, category: true, images: true },
     }),
   ])
 
@@ -28,6 +28,8 @@ export default async function AdminCollectionsPage() {
         blurb="Curated product groupings shown on collection pages (/collections/slug)."
         tips={[
           '"Show in nav" pins the collection into the storefront header (Active must also be on).',
+          'Cover: custom image, or a live product collage (updates when products change).',
+          'Cover image (first hero image) is the face on /collections when using custom cover.',
           'A product can belong to multiple collections.',
           'Slug must be unique — reusing gifting / limited-edition will fail to save.',
           'Attach a collection rail to the home page from Home Sections.',
@@ -41,6 +43,7 @@ export default async function AdminCollectionsPage() {
           subtitle: c.subtitle ?? '',
           description: c.description ?? '',
           heroImages: c.heroImages,
+          coverMode: c.coverMode,
           active: c.active,
           showInNav: c.showInNav,
           productIds: c.products.map((p) => p.productId),
@@ -48,6 +51,7 @@ export default async function AdminCollectionsPage() {
         allProducts={products.map((p) => ({
           id: p.id,
           label: `${p.name}${p.itemCode ? ` (${p.itemCode})` : ''} — ${p.category.toLowerCase()}`,
+          frontImage: p.images.find((src) => Boolean(src)) ?? null,
         }))}
       />
     </div>

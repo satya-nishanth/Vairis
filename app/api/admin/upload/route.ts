@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
     const folder = (formData.get('folder') as string) || 'products'
-    const ALLOWED_FOLDERS = ['products', 'quotations/screenshots']
+    const ALLOWED_FOLDERS = ['products', 'collections', 'quotations/screenshots']
     if (!ALLOWED_FOLDERS.includes(folder)) {
       return NextResponse.json({ error: 'Invalid folder' }, { status: 400 })
     }

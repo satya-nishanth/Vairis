@@ -515,6 +515,11 @@ model Review {
 
 // ── CMS: collections + home sections ────────────────────────────────────────
 
+enum CollectionCoverMode {
+  CUSTOM
+  COLLAGE
+}
+
 model Collection {
   id             String              @id @default(cuid())
   slug           String              @unique
@@ -522,6 +527,8 @@ model Collection {
   subtitle       String?
   description    String?
   heroImages     String[]            @default([])
+  /// CUSTOM = heroImages[0] as face; COLLAGE = live grid of product front images.
+  coverMode      CollectionCoverMode @default(CUSTOM)
   seoTitle       String?
   seoDescription String?
   active         Boolean             @default(true)

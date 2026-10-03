@@ -1,7 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import {
+  COLLECTION_COLLAGE_MAX,
+  CollectionCoverCollage,
+} from '@/components/commerce/CollectionCoverCollage'
 
 type CollectionRow = {
   id: string
@@ -10,12 +15,13 @@ type CollectionRow = {
   subtitle: string
   description: string
   heroImages: string[]
+  coverMode: 'CUSTOM' | 'COLLAGE'
   active: boolean
   showInNav: boolean
   productIds: string[]
 }
 
-type ProductOption = { id: string; label: string }
+type ProductOption = { id: string; label: string; frontImage: string | null }
 
 const EMPTY: Omit<CollectionRow, 'id'> = {
   slug: '',
@@ -23,6 +29,7 @@ const EMPTY: Omit<CollectionRow, 'id'> = {
   subtitle: '',
   description: '',
   heroImages: [],
+  coverMode: 'CUSTOM',
   active: true,
   showInNav: false,
   productIds: [],
@@ -35,6 +42,230 @@ const input = {
   fontSize: '0.8125rem',
   width: '100%',
 } as const
+
+function CollectionHeroImages({
+  images,
+  onChange,
+}: {
+  images: string[]
+  onChange: (images: string[]) => void
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [urlDraft, setUrlDraft] = useState('')
+
+  async function uploadFiles(files: FileList | File[]) {
+    const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    if (!list.length) return
+    setUploading(true)
+    const uploaded: string[] = []
+    try {
+      for (const file of list) {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('folder', 'collections')
+        const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || !json.url) {
+          alert(json.error ?? `Upload failed (${res.status})`)
+          break
+        }
+        uploaded.push(json.url as string)
+      }
+      if (uploaded.length) onChange([...images, ...uploaded])
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  function addUrl() {
+    const url = urlDraft.trim()
+    if (!url) return
+    onChange([...images, url])
+    setUrlDraft('')
+  }
+
+  function removeAt(idx: number) {
+    onChange(images.filter((_, i) => i !== idx))
+  }
+
+  function moveToFront(idx: number) {
+    if (idx === 0) return
+    const next = [...images]
+    const [img] = next.splice(idx, 1)
+    next.unshift(img)
+    onChange(next)
+  }
+
+  function move(idx: number, dir: -1 | 1) {
+    const j = idx + dir
+    if (j < 0 || j >= images.length) return
+    const next = [...images]
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    onChange(next)
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Upload images</span>
+        <p style={{ margin: '2px 0 0', fontSize: '0.6875rem', color: '#6b7280' }}>
+          First image is the face on /collections. Extra images show on the collection page carousel.
+        </p>
+      </div>
+
+      {images.length > 0 && (
+        <ul
+          style={{
+            listStyle: 'none',
+            margin: 0,
+            padding: 0,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gap: 8,
+          }}
+        >
+          {images.map((src, i) => (
+            <li
+              key={`${src}-${i}`}
+              style={{
+                position: 'relative',
+                border: i === 0 ? '2px solid #b8963e' : '1px solid #e5e7eb',
+                borderRadius: 8,
+                overflow: 'hidden',
+                background: '#f9fafb',
+              }}
+            >
+              <div style={{ position: 'relative', width: '100%', aspectRatio: '4 / 3' }}>
+                <Image src={src} alt="" fill style={{ objectFit: 'cover' }} sizes="120px" unoptimized />
+              </div>
+              <div
+                style={{
+                  padding: '4px 6px',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 4,
+                  alignItems: 'center',
+                  fontSize: '0.625rem',
+                }}
+              >
+                <span style={{ fontWeight: 600, color: i === 0 ? '#b8963e' : '#6b7280' }}>
+                  {i === 0 ? 'Cover' : `#${i + 1}`}
+                </span>
+                <span style={{ flex: 1 }} />
+                {i > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => moveToFront(i)}
+                    style={{ background: 'none', border: 'none', color: '#b8963e', cursor: 'pointer', padding: 0 }}
+                  >
+                    Set cover
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0}
+                  style={{ background: 'none', border: 'none', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, padding: 0 }}
+                  aria-label="Move earlier"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(i, 1)}
+                  disabled={i === images.length - 1}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: i === images.length - 1 ? 'default' : 'pointer',
+                    opacity: i === images.length - 1 ? 0.3 : 1,
+                    padding: 0,
+                  }}
+                  aria-label="Move later"
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeAt(i)}
+                  style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: 0 }}
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault()
+          if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files)
+        }}
+        onClick={() => !uploading && fileRef.current?.click()}
+        style={{
+          border: '1px dashed #d1d5db',
+          borderRadius: 8,
+          padding: '14px 12px',
+          textAlign: 'center',
+          fontSize: '0.75rem',
+          color: '#6b7280',
+          cursor: uploading ? 'wait' : 'pointer',
+          background: '#fafafa',
+        }}
+      >
+        {uploading ? 'Uploading…' : 'Drop images here or click to upload'}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files?.length) void uploadFiles(e.target.files)
+          }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          style={input}
+          value={urlDraft}
+          onChange={(e) => setUrlDraft(e.target.value)}
+          placeholder="Or paste image URL…"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addUrl()
+            }
+          }}
+        />
+        <button
+          type="button"
+          onClick={addUrl}
+          disabled={!urlDraft.trim()}
+          style={{
+            padding: '8px 12px',
+            fontSize: '0.75rem',
+            borderRadius: 6,
+            border: '1px solid #e5e7eb',
+            background: '#fff',
+            cursor: urlDraft.trim() ? 'pointer' : 'default',
+            opacity: urlDraft.trim() ? 1 : 0.5,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Add URL
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CollectionForm({
   initial,
@@ -59,6 +290,11 @@ function CollectionForm({
       !form.productIds.includes(p.id) &&
       p.label.toLowerCase().includes(productSearch.toLowerCase()),
   )
+
+  const collagePreview = form.productIds
+    .map((id) => allProducts.find((p) => p.id === id)?.frontImage)
+    .filter((src): src is string => Boolean(src))
+    .slice(0, COLLECTION_COLLAGE_MAX)
 
   return (
     <div style={{ display: 'grid', gap: 10, background: '#fff', border: '1px solid #f3f4f6', borderRadius: 8, padding: 16 }}>
@@ -110,6 +346,57 @@ function CollectionForm({
           onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
         />
       </label>
+
+      <div style={{ display: 'grid', gap: 8 }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Cover</span>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: '0.8125rem', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="radio"
+              name="coverMode"
+              checked={form.coverMode === 'CUSTOM'}
+              onChange={() => setForm((f) => ({ ...f, coverMode: 'CUSTOM' }))}
+            />
+            Custom image
+          </label>
+          <label style={{ fontSize: '0.8125rem', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="radio"
+              name="coverMode"
+              checked={form.coverMode === 'COLLAGE'}
+              onChange={() => setForm((f) => ({ ...f, coverMode: 'COLLAGE' }))}
+            />
+            Product collage
+          </label>
+        </div>
+        {form.coverMode === 'CUSTOM' ? (
+          <CollectionHeroImages
+            images={form.heroImages}
+            onChange={(heroImages) => setForm((f) => ({ ...f, heroImages }))}
+          />
+        ) : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+              Live collage from the first {COLLECTION_COLLAGE_MAX} products with a front image
+              (collection order). Updates when products are added or removed.
+            </p>
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                maxWidth: 320,
+                height: 180,
+                borderRadius: 8,
+                overflow: 'hidden',
+                border: '1px solid #e5e7eb',
+                background: '#f3f4f6',
+              }}
+            >
+              <CollectionCoverCollage images={collagePreview} alt={form.title || 'Collection'} />
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 16 }}>
         <label style={{ fontSize: '0.8125rem', display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -268,8 +555,15 @@ export function CollectionsManager({
         />
       )}
 
-      {collections.map((c) =>
-        editingId === c.id ? (
+      {collections.map((c) => {
+        const listCollage = c.productIds
+          .map((id) => allProducts.find((p) => p.id === id)?.frontImage)
+          .filter((src): src is string => Boolean(src))
+          .slice(0, COLLECTION_COLLAGE_MAX)
+        const useCollage = c.coverMode === 'COLLAGE'
+        const hasCover = useCollage ? listCollage.length > 0 : Boolean(c.heroImages[0])
+
+        return editingId === c.id ? (
           <CollectionForm
             key={c.id}
             initial={c}
@@ -285,21 +579,69 @@ export function CollectionsManager({
             style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid #f3f4f6', borderRadius: 8, padding: '12px 16px' }}
             data-testid="collection-row"
           >
-            <div>
-              <strong style={{ fontSize: '0.875rem' }}>
-                {c.title}
-                <span className={c.active ? 'admin-products__badge is-active' : 'admin-products__badge'} style={{ marginLeft: 8 }}>
-                  {c.active ? 'Active' : 'Hidden'}
-                </span>
-                {c.showInNav && (
-                  <span className="admin-products__badge is-ai" style={{ marginLeft: 6 }}>
-                    In Nav
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+              <div
+                style={{
+                  position: 'relative',
+                  width: 56,
+                  height: 56,
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  background: '#f3f4f6',
+                  flexShrink: 0,
+                  border: '1px solid #e5e7eb',
+                }}
+              >
+                {useCollage && hasCover ? (
+                  <CollectionCoverCollage images={listCollage} alt={c.title} />
+                ) : c.heroImages[0] ? (
+                  <Image
+                    src={c.heroImages[0]}
+                    alt=""
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    sizes="56px"
+                    unoptimized
+                  />
+                ) : (
+                  <span
+                    style={{
+                      display: 'flex',
+                      width: '100%',
+                      height: '100%',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.5625rem',
+                      color: '#9ca3af',
+                      textAlign: 'center',
+                      padding: 4,
+                    }}
+                  >
+                    No cover
                   </span>
                 )}
-              </strong>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '2px 0 0' }}>
-                /collections/{c.slug} · {c.productIds.length} products
-              </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ fontSize: '0.875rem' }}>
+                  {c.title}
+                  <span className={c.active ? 'admin-products__badge is-active' : 'admin-products__badge'} style={{ marginLeft: 8 }}>
+                    {c.active ? 'Active' : 'Hidden'}
+                  </span>
+                  {c.showInNav && (
+                    <span className="admin-products__badge is-ai" style={{ marginLeft: 6 }}>
+                      In Nav
+                    </span>
+                  )}
+                </strong>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '2px 0 0' }}>
+                  /collections/{c.slug} · {c.productIds.length} products
+                  {useCollage
+                    ? ' · collage cover'
+                    : c.heroImages.length > 0
+                      ? ` · ${c.heroImages.length} image${c.heroImages.length === 1 ? '' : 's'}`
+                      : ''}
+                </p>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 12, whiteSpace: 'nowrap' }}>
               <a href={`/collections/${c.slug}`} target="_blank" style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
@@ -321,8 +663,8 @@ export function CollectionsManager({
               </button>
             </div>
           </div>
-        ),
-      )}
+        )
+      })}
       {collections.length === 0 && !creating && (
         <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>No collections yet.</p>
       )}

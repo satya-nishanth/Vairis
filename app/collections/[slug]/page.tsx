@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 import { getPricingConfig, getShowPricesGlobal } from "@/lib/pricing-data";
+import { collectionCollageImages } from "@/components/commerce/CollectionCoverCollage";
 import { CollectionPageView } from "./CollectionPageView";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +13,29 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const collection = await prisma.collection.findUnique({ where: { slug } });
+  const collection = await prisma.collection.findUnique({
+    where: { slug },
+    include: {
+      products: {
+        where: { product: { isActive: true, status: "LIVE" } },
+        orderBy: { sortOrder: "asc" },
+        take: 4,
+        select: { product: { select: { images: true } } },
+      },
+    },
+  });
   if (!collection || !collection.active) return {};
+  const ogImage =
+    collection.coverMode === "COLLAGE"
+      ? collectionCollageImages(collection.products.map((cp) => cp.product))[0]
+      : collection.heroImages[0];
   return {
     title: collection.seoTitle ?? collection.title,
     description: collection.seoDescription ?? collection.description ?? undefined,
     openGraph: {
       title: collection.seoTitle ?? collection.title,
       description: collection.seoDescription ?? collection.description ?? undefined,
-      images: collection.heroImages[0] ? [collection.heroImages[0]] : [],
+      images: ogImage ? [ogImage] : [],
     },
   };
 }
@@ -57,6 +72,13 @@ export default async function CollectionPage({ params }: Props) {
     .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name))
     .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
 
+  // Collage follows collection sort order (not PLP priority sort).
+  const collageImages = collectionCollageImages(
+    collection.products
+      .filter((cp) => cp.product.isActive && cp.product.status === "LIVE")
+      .map((cp) => cp.product),
+  );
+
   return (
     <CollectionPageView
       collection={{
@@ -65,6 +87,8 @@ export default async function CollectionPage({ params }: Props) {
         subtitle: collection.subtitle,
         description: collection.description,
         heroImages: collection.heroImages,
+        coverMode: collection.coverMode,
+        collageImages,
       }}
       products={products}
       emptyState={
