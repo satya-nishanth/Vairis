@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       products: {
         where: { product: { isActive: true, status: "LIVE" } },
         orderBy: { sortOrder: "asc" },
-        take: 4,
+        // No take — collage / OG pick first fronts after skipping empty images.
         select: { product: { select: { images: true } } },
       },
     },

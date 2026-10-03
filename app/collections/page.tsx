@@ -51,7 +51,7 @@ export default async function CollectionsIndexPage() {
           },
         },
         orderBy: { sortOrder: "asc" },
-        take: 4,
+        // No take — collage skips products without a front image, then caps at 4.
         select: {
           product: { select: { images: true } },
         },
