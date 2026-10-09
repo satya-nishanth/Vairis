@@ -32,7 +32,10 @@ function isVideoSlot(index: number) {
 export default function ImageUploader({ images, onChange }: Props) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const addMoreRef = useRef<HTMLInputElement | null>(null)
+  const dragFromRef = useRef<number | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
 
   const padded = normalizeProductImages(images)
 
@@ -42,6 +45,24 @@ export default function ImageUploader({ images, onChange }: Props) {
 
   function emit(next: string[]) {
     onChange(normalizeProductImages(next))
+  }
+
+  function sameKind(a: number, b: number) {
+    return isVideoSlot(a) === isVideoSlot(b)
+  }
+
+  function clearDrag() {
+    dragFromRef.current = null
+    setDragFrom(null)
+    setDragOver(null)
+  }
+
+  function swapSlots(from: number, to: number) {
+    if (from === to || !sameKind(from, to)) return
+    const next = [...padded]
+    while (next.length <= Math.max(from, to)) next.push('')
+    ;[next[from], next[to]] = [next[to], next[from]]
+    emit(next)
   }
 
   async function readUploadError(res: Response): Promise<string> {
@@ -198,24 +219,82 @@ export default function ImageUploader({ images, onChange }: Props) {
   }) {
     const { key, label, hint, accept, index, url } = opts
     const filled = !!url
+    const dragging = dragFrom === index
+    const over =
+      dragOver === index &&
+      dragFrom != null &&
+      dragFrom !== index &&
+      sameKind(dragFrom, index)
 
     return (
       <div key={key}>
         <p className="uploader__slot-label">{label}</p>
 
-        <div className="uploader__tile">
+        <div
+          className={[
+            'uploader__tile',
+            dragging ? 'is-dragging' : '',
+            over ? 'is-drag-over' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          onDragOver={(e) => {
+            const from = dragFromRef.current
+            if (from == null || from === index || !sameKind(from, index)) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            if (dragOver !== index) setDragOver(index)
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setDragOver((cur) => (cur === index ? null : cur))
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const raw = e.dataTransfer.getData('text/plain')
+            const from = Number(raw)
+            if (Number.isFinite(from)) swapSlots(from, index)
+            clearDrag()
+          }}
+        >
           {filled ? (
             <>
-              {isProductVideoUrl(url) ? (
-                <video src={url} className="uploader__media" muted playsInline />
-              ) : (
-                <Image src={url} alt={label} fill className="uploader__media" />
-              )}
-              {isProductVideoUrl(url) && (
-                <div className="uploader__play">
-                  <span>▶</span>
-                </div>
-              )}
+              <div
+                className="uploader__drag"
+                draggable
+                title="Drag to swap with another slot"
+                onDragStart={(e) => {
+                  dragFromRef.current = index
+                  setDragFrom(index)
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', String(index))
+                }}
+                onDragEnd={clearDrag}
+              >
+                {isProductVideoUrl(url) ? (
+                  <video
+                    src={url}
+                    className="uploader__media"
+                    muted
+                    playsInline
+                    draggable={false}
+                  />
+                ) : (
+                  <Image
+                    src={url}
+                    alt={label}
+                    fill
+                    draggable={false}
+                    className="uploader__media"
+                  />
+                )}
+                {isProductVideoUrl(url) && (
+                  <div className="uploader__play">
+                    <span>▶</span>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => inputRefs.current[index]?.click()}
@@ -315,9 +394,10 @@ export default function ImageUploader({ images, onChange }: Props) {
       </div>
 
       <p className="uploader__note">
-        Front → Left → Right → Back required order · Up to {PRODUCT_VIDEO_SLOT_COUNT} videos
-        optional · Extra images unlimited (multi-select OK) &nbsp;·&nbsp; Images: jpg · png · webp —
-        1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB · 720p · 15s
+        Front → Left → Right → Back · Drag a filled tile onto another slot to swap (images↔images,
+        videos↔videos) · Up to {PRODUCT_VIDEO_SLOT_COUNT} videos optional · Extra images unlimited
+        &nbsp;·&nbsp; Images: jpg · png · webp — 1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB ·
+        720p · 15s
         {busy ? ` · ${busy}` : ''}
       </p>
     </div>
