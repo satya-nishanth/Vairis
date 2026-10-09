@@ -68,13 +68,17 @@ export function ProductCard({
     : `${linkPrefix}/${product.slug}`;
   const productId = product.catalogueId ?? product.slug;
   const displayName = formatDisplayName(product.name, product.category);
+  const hoverSrc = product.hoverImage && product.hoverImage !== product.image ? product.hoverImage : null;
 
   return (
-    <article className="product-card">
+    <article className={hoverSrc ? "product-card product-card--has-hover" : "product-card"}>
       <div className="product-card__img-wrap">
-        <Link href={href} className="product-card__img-link" tabIndex={-1} aria-hidden="true" style={{ display: "block", width: "100%", height: "100%" }}>
+        <Link href={href} className="product-card__img-link" tabIndex={-1} aria-hidden="true">
           {product.badge && <span className="product-card__badge">{product.badge}</span>}
-          <ProductImage src={product.image} alt="" fill className="product-card__img" />
+          <ProductImage src={product.image} alt="" fill className="product-card__img product-card__img--face" />
+          {hoverSrc ? (
+            <ProductImage src={hoverSrc} alt="" fill className="product-card__img product-card__img--hover" />
+          ) : null}
         </Link>
         <WishlistButton productId={productId} productName={displayName} />
       </div>

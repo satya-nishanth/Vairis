@@ -5,6 +5,11 @@ import { computeCatalogueFromPrice } from "@/lib/product-piece-pricing";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import type { Product } from "@/lib/ui-data";
 import type { ProductCategory } from "@/lib/catalogue-ui";
+import {
+  normalizeProductImages,
+  productFrontImage,
+  productHoverImage,
+} from "@/lib/product-media";
 
 type PieceRow = {
   id: string;
@@ -79,8 +84,10 @@ export function prismaToProduct(
 
   const category: ProductCategory = prismaCategoryToSlug(p.category);
 
-  const images = (p.images ?? []).filter(Boolean);
-  const primaryImage = images.find((src) => !/\.(mp4|webm|mov)(\?|$)/i.test(src)) ?? images[0] ?? "";
+  const layout = normalizeProductImages(p.images ?? []);
+  const images = layout.filter(Boolean);
+  const primaryImage = productFrontImage(layout);
+  const hoverImage = productHoverImage(layout);
 
   // PLP filter facets
   const METAL_FILTER_LABELS: Record<string, string[]> = {
@@ -100,6 +107,7 @@ export function prismaToProduct(
     description: p.description ?? "",
     price,
     image: primaryImage,
+    hoverImage,
     images,
     category,
     catalogueId: p.id,

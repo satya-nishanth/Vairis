@@ -10,6 +10,7 @@ import {
   STOCKED_CATEGORIES,
 } from "./catalogue-ui";
 import { marketingImages } from "./images";
+import { productHoverImage } from "./product-media";
 
 export type Product = {
   slug: string;
@@ -18,6 +19,8 @@ export type Product = {
   description?: string;
   price?: number;
   image: string;
+  /** Optional PLP hover swap image (slot 7); never used as primary/face. */
+  hoverImage?: string | null;
   images: string[];
   category: ProductCategory;
   badge?: string;
@@ -58,6 +61,7 @@ export function catalogueToProduct(item: CatalogueProduct, index = 0): Product {
     name: `${item.sku} ${label.replace(/s$/, "")}`,
     description: CATEGORY_DESCRIPTIONS[item.category],
     image: item.primaryImage ?? item.images[0] ?? "",
+    hoverImage: productHoverImage(item.images),
     images: item.images,
     category: item.category,
     catalogueId: item.id,

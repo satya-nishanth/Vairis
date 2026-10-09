@@ -2,9 +2,9 @@
 import { useRef, useState } from 'react'
 import Image from 'next/image'
 import {
-  PRODUCT_ANGLE_COUNT,
   PRODUCT_EXTRA_START,
   PRODUCT_VIDEO_SLOT_COUNT,
+  isProductVideoSlot,
   isProductVideoUrl,
   normalizeProductImages,
 } from '@/lib/product-media'
@@ -14,7 +14,7 @@ type Props = {
   onChange: (images: string[]) => void
 }
 
-/** Fixed product views — Front → Left → Right → Back, then up to 3 videos. */
+/** Fixed slots — Front → Left → Right → Back → Videos → Hover. */
 const FIXED_SLOTS = [
   { label: 'Front', hint: 'Front view', accept: 'image/*', index: 0 },
   { label: 'Left', hint: 'Left side', accept: 'image/*', index: 1 },
@@ -23,11 +23,8 @@ const FIXED_SLOTS = [
   { label: 'Video 1', hint: 'Video (≤50MB)', accept: 'video/*', index: 4 },
   { label: 'Video 2', hint: 'Optional', accept: 'video/*', index: 5 },
   { label: 'Video 3', hint: 'Optional', accept: 'video/*', index: 6 },
+  { label: 'Hover', hint: 'PLP hover', accept: 'image/*', index: 7 },
 ] as const
-
-function isVideoSlot(index: number) {
-  return index >= PRODUCT_ANGLE_COUNT && index < PRODUCT_EXTRA_START
-}
 
 export default function ImageUploader({ images, onChange }: Props) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -48,7 +45,7 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   function sameKind(a: number, b: number) {
-    return isVideoSlot(a) === isVideoSlot(b)
+    return isProductVideoSlot(a) === isProductVideoSlot(b)
   }
 
   function clearDrag() {
@@ -147,7 +144,7 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   async function uploadFile(file: File, slotIndex: number) {
-    const videoUpload = isVideoSlot(slotIndex) || file.type.startsWith('video/')
+    const videoUpload = isProductVideoSlot(slotIndex) || file.type.startsWith('video/')
     setBusy(videoUpload ? 'Uploading video…' : 'Uploading…')
     try {
       if (videoUpload) {
@@ -394,8 +391,8 @@ export default function ImageUploader({ images, onChange }: Props) {
       </div>
 
       <p className="uploader__note">
-        Front → Left → Right → Back · Drag a filled tile onto another slot to swap (images↔images,
-        videos↔videos) · Up to {PRODUCT_VIDEO_SLOT_COUNT} videos optional · Extra images unlimited
+        Front → Left → Right → Back · Drag to swap (images↔images, videos↔videos) · Up to{' '}
+        {PRODUCT_VIDEO_SLOT_COUNT} videos · Hover image (PLP swap) · Extra images unlimited
         &nbsp;·&nbsp; Images: jpg · png · webp — 1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB ·
         720p · 15s
         {busy ? ` · ${busy}` : ''}

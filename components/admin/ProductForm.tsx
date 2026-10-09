@@ -9,6 +9,7 @@ import { ProductFilterLabelsEditor } from './ProductFilterLabelsEditor'
 import AdminProductBuildPrice from './AdminProductBuildPrice'
 import { calculatePrice, resolvePricingConfig, type PricingConfig, type StoneInput } from '@/lib/pricing'
 import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
+import { padProductImagesForSave } from '@/lib/product-media'
 
 export type CategoryOption = { slug: string; name: string }
 
@@ -658,7 +659,7 @@ export default function ProductForm({
       stoneDimMm: form.stoneDimMm,
       gemCount: form.gemCount,
       caratWeight: form.caratWeight,
-      images: form.images.filter(Boolean),
+      images: padProductImagesForSave(form.images),
       isActive: form.isActive,
       comingSoon: form.comingSoon,
       status: form.status,
@@ -1280,7 +1281,7 @@ export default function ProductForm({
               🖼️ Product Images
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-              {form.images.filter(Boolean).length} uploaded · Drag a tile to swap slots
+              {form.images.filter(Boolean).length} uploaded · Drag to swap · Hover = PLP swap
             </span>
           </div>
           <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
