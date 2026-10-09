@@ -1,25 +1,32 @@
 'use client'
 import { useRef, useState } from 'react'
 import Image from 'next/image'
+import {
+  PRODUCT_ANGLE_COUNT,
+  PRODUCT_EXTRA_START,
+  PRODUCT_VIDEO_SLOT_COUNT,
+  isProductVideoUrl,
+  normalizeProductImages,
+} from '@/lib/product-media'
 
 type Props = {
   images: string[]
   onChange: (images: string[]) => void
 }
 
-/** Fixed product views — Front → Left → Right → Back, then Video. */
+/** Fixed product views — Front → Left → Right → Back, then up to 3 videos. */
 const FIXED_SLOTS = [
   { label: 'Front', hint: 'Front view', accept: 'image/*', index: 0 },
   { label: 'Left', hint: 'Left side', accept: 'image/*', index: 1 },
   { label: 'Right', hint: 'Right side', accept: 'image/*', index: 2 },
   { label: 'Back', hint: 'Back view', accept: 'image/*', index: 3 },
-  { label: 'Video', hint: 'Video (≤50MB)', accept: 'video/*', index: 4 },
+  { label: 'Video 1', hint: 'Video (≤50MB)', accept: 'video/*', index: 4 },
+  { label: 'Video 2', hint: 'Optional', accept: 'video/*', index: 5 },
+  { label: 'Video 3', hint: 'Optional', accept: 'video/*', index: 6 },
 ] as const
 
-const EXTRA_START = 5
-
-function isVideo(url: string) {
-  return /\.(mp4|webm|mov|avi)(\?|$)/i.test(url)
+function isVideoSlot(index: number) {
+  return index >= PRODUCT_ANGLE_COUNT && index < PRODUCT_EXTRA_START
 }
 
 export default function ImageUploader({ images, onChange }: Props) {
@@ -27,13 +34,15 @@ export default function ImageUploader({ images, onChange }: Props) {
   const addMoreRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  // Ensure array is long enough for fixed slots when reading
-  const padded = [...images]
-  while (padded.length < EXTRA_START) padded.push('')
+  const padded = normalizeProductImages(images)
 
   const extraIndices = padded
-    .map((url, i) => (i >= EXTRA_START && url ? i : -1))
+    .map((url, i) => (i >= PRODUCT_EXTRA_START && url ? i : -1))
     .filter((i) => i >= 0)
+
+  function emit(next: string[]) {
+    onChange(normalizeProductImages(next))
+  }
 
   async function readUploadError(res: Response): Promise<string> {
     try {
@@ -46,10 +55,10 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   async function applyUrl(slotIndex: number, url: string) {
-    const next = [...images]
+    const next = [...padded]
     while (next.length <= slotIndex) next.push('')
     next[slotIndex] = url
-    onChange(next)
+    emit(next)
   }
 
   /** Azure: browser PUTs bytes to Blob via SAS (never buffers video through the app). */
@@ -117,10 +126,10 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   async function uploadFile(file: File, slotIndex: number) {
-    const isVideoSlot = slotIndex === 4 || file.type.startsWith('video/')
-    setBusy(isVideoSlot ? 'Uploading video…' : 'Uploading…')
+    const videoUpload = isVideoSlot(slotIndex) || file.type.startsWith('video/')
+    setBusy(videoUpload ? 'Uploading video…' : 'Uploading…')
     try {
-      if (isVideoSlot) {
+      if (videoUpload) {
         const handled = await uploadVideoDirect(file, slotIndex)
         if (handled) return
       }
@@ -139,8 +148,8 @@ export default function ImageUploader({ images, onChange }: Props) {
       return
     }
     setBusy('Uploading…')
-    let next = [...images]
-    while (next.length < EXTRA_START) next.push('')
+    let next = [...padded]
+    while (next.length < PRODUCT_EXTRA_START) next.push('')
 
     try {
       for (const file of list) {
@@ -158,7 +167,7 @@ export default function ImageUploader({ images, onChange }: Props) {
         }
         next = [...next, json.url]
       }
-      onChange(next)
+      emit(next)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -167,16 +176,16 @@ export default function ImageUploader({ images, onChange }: Props) {
   }
 
   function clearSlot(slotIndex: number) {
-    if (slotIndex < EXTRA_START) {
-      const next = [...images]
+    if (slotIndex < PRODUCT_EXTRA_START) {
+      const next = [...padded]
       while (next.length <= slotIndex) next.push('')
       next[slotIndex] = ''
-      onChange(next)
+      emit(next)
       return
     }
     // Extra gallery: remove the slot entirely so indices stay dense after fixed slots
-    const next = images.filter((_, i) => i !== slotIndex)
-    onChange(next)
+    const next = padded.filter((_, i) => i !== slotIndex)
+    emit(next)
   }
 
   function renderTile(opts: {
@@ -197,12 +206,12 @@ export default function ImageUploader({ images, onChange }: Props) {
         <div className="uploader__tile">
           {filled ? (
             <>
-              {isVideo(url) ? (
+              {isProductVideoUrl(url) ? (
                 <video src={url} className="uploader__media" muted playsInline />
               ) : (
                 <Image src={url} alt={label} fill className="uploader__media" />
               )}
-              {isVideo(url) && (
+              {isProductVideoUrl(url) && (
                 <div className="uploader__play">
                   <span>▶</span>
                 </div>
@@ -306,9 +315,9 @@ export default function ImageUploader({ images, onChange }: Props) {
       </div>
 
       <p className="uploader__note">
-        Front → Left → Right → Back required order · Video optional · Extra images unlimited
-        (multi-select OK) &nbsp;·&nbsp; Images: jpg · png · webp — 1200px &nbsp;·&nbsp; Video: mp4 ·
-        mov — max 50MB · 720p · 15s
+        Front → Left → Right → Back required order · Up to {PRODUCT_VIDEO_SLOT_COUNT} videos
+        optional · Extra images unlimited (multi-select OK) &nbsp;·&nbsp; Images: jpg · png · webp —
+        1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB · 720p · 15s
         {busy ? ` · ${busy}` : ''}
       </p>
     </div>

@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ProductImage } from '@/components/ui/ProductImage'
+import {
+  PRODUCT_EXTRA_START,
+  isProductVideoUrl,
+  normalizeProductImages,
+} from '@/lib/product-media'
 
 type Props = {
   images: string[]
@@ -11,10 +16,6 @@ type Props = {
 
 type GalleryItem = { src: string; index: number; isVideo: boolean }
 type PreviewMode = 'web' | 'mobile'
-
-function isVideo(src: string) {
-  return /\.(mp4|webm|mov)(\?|$)/i.test(src)
-}
 
 /**
  * Single-pane storefront preview: dropdown switches Web ↔ Mobile.
@@ -27,8 +28,8 @@ export function AdminProductGalleryPreview({
 }: Props) {
   const gallery = useMemo<GalleryItem[]>(
     () =>
-      images
-        .map((src, index) => ({ src, index, isVideo: isVideo(src) }))
+      normalizeProductImages(images)
+        .map((src, index) => ({ src, index, isVideo: isProductVideoUrl(src) }))
         .filter((m) => Boolean(m.src)),
     [images],
   )
@@ -86,28 +87,29 @@ export function AdminProductGalleryPreview({
 
   function writeGallery(nextGallery: GalleryItem[]) {
     if (!onChange) return
+    const layout = normalizeProductImages(images)
     const filled = nextGallery.map((g) => g.src)
-    const filledPositions = images
+    const filledPositions = layout
       .map((src, i) => (src ? i : -1))
       .filter((i) => i >= 0)
 
     if (filledPositions.length === filled.length) {
-      const rebuilt = [...images]
+      const rebuilt = [...layout]
       filledPositions.forEach((pos, i) => {
         rebuilt[pos] = filled[i] ?? ''
       })
-      let end = Math.max(4, rebuilt.length - 1)
-      while (end > 4 && !rebuilt[end]) end--
-      onChange(rebuilt.slice(0, end + 1))
+      let end = Math.max(PRODUCT_EXTRA_START - 1, rebuilt.length - 1)
+      while (end > PRODUCT_EXTRA_START - 1 && !rebuilt[end]) end--
+      onChange(normalizeProductImages(rebuilt.slice(0, end + 1)))
       return
     }
 
-    const packed: string[] = ['', '', '', '', '']
+    const packed: string[] = Array.from({ length: PRODUCT_EXTRA_START }, () => '')
     filled.forEach((src, i) => {
-      if (i < 5) packed[i] = src
+      if (i < PRODUCT_EXTRA_START) packed[i] = src
       else packed.push(src)
     })
-    onChange(packed)
+    onChange(normalizeProductImages(packed))
   }
 
   function moveActive(delta: -1 | 1) {
