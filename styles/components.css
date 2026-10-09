@@ -644,8 +644,34 @@
   background: #050505;
 }
 
+.product-card__img-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
 .product-card__img {
   object-fit: cover;
+}
+
+.product-card__img--hover {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .product-card--has-hover:hover .product-card__img--hover {
+    opacity: 1;
+  }
+
+  .product-card--has-hover:hover .product-card__img--face {
+    opacity: 0;
+  }
+
+  .product-card__img--face {
+    transition: opacity 0.25s ease;
+  }
 }
 
 .product-card__desc {
