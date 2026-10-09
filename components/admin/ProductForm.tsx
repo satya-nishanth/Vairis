@@ -1280,7 +1280,7 @@ export default function ProductForm({
               🖼️ Product Images
             </h2>
             <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-              {form.images.filter(Boolean).length} uploaded · Drag to reorder
+              {form.images.filter(Boolean).length} uploaded · Drag a tile to swap slots
             </span>
           </div>
           <ImageUploader images={form.images} onChange={(imgs) => set('images', imgs)} />
