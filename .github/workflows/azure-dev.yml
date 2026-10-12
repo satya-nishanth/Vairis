@@ -57,7 +57,9 @@ jobs:
 
 
       - name: Provision Infrastructure
-        run: azd provision --no-prompt
+        # --no-state: see azure-prod.yml for why — azd's stored-deployment-state diffing
+        # can silently skip real Bicep changes ("Didn't find new changes").
+        run: azd provision --no-prompt --no-state
 
       - name: Deploy Application
         run: azd deploy --no-prompt
