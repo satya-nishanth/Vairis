@@ -8,6 +8,10 @@ param googleClientId string
 param keyVaultUri string
 param userAssignedIdentityId string
 
+// Separate Resend sending domain per environment — each env's Key Vault already holds its
+// own resend-api-key secret, this keeps the "From" address isolated the same way.
+var smtpAdminEmail = environmentName == 'prod' ? 'noreply@thevairis.com' : 'noreply@stage.thevairis.com'
+
 resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'gotrue-vairis-${environmentName}'
   location: location
@@ -24,6 +28,9 @@ resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'db-url', value: postgresConnectionString }
         { name: 'jwt-secret', keyVaultUrl: '${keyVaultUri}secrets/gotrue-jwt-secret', identity: userAssignedIdentityId }
         { name: 'google-secret', keyVaultUrl: '${keyVaultUri}secrets/google-client-secret', identity: userAssignedIdentityId }
+        // Same Resend API key the app itself uses (lib/email.ts) — Resend's SMTP endpoint
+        // accepts the API key as the SMTP password with literal username "resend".
+        { name: 'resend-api-key', keyVaultUrl: '${keyVaultUri}secrets/resend-api-key', identity: userAssignedIdentityId }
       ]
     }
     template: {
@@ -57,6 +64,17 @@ resource gotrue 'Microsoft.App/containerApps@2024-03-01' = {
             // redirect_uri_mismatch on the next hop instead.
             { name: 'GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI', value: '${apiExternalUrl}/callback' }
             { name: 'GOTRUE_MAILER_AUTOCONFIRM', value: 'false' }
+            // Without SMTP config GoTrue falls back to a Noop mail client — signup/recovery
+            // emails are "sent" (200 OK, audit log entry) but never actually go out. Deliberately
+            // NOT setting GOTRUE_MAILER_TEMPLATES_CONFIRMATION here — a custom template URL must
+            // be fetched live from the app on every send, so it can only be wired once the
+            // branded /email-templates/confirmation route is deployed in the same release train.
+            { name: 'GOTRUE_SMTP_HOST', value: 'smtp.resend.com' }
+            { name: 'GOTRUE_SMTP_PORT', value: '465' }
+            { name: 'GOTRUE_SMTP_USER', value: 'resend' }
+            { name: 'GOTRUE_SMTP_PASS', secretRef: 'resend-api-key' }
+            { name: 'GOTRUE_SMTP_ADMIN_EMAIL', value: smtpAdminEmail }
+            { name: 'GOTRUE_SMTP_SENDER_NAME', value: 'VAIRIS' }
           ]
         }
       ]
