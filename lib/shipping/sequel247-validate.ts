@@ -25,7 +25,13 @@ function baseUrl(): string {
   return process.env.SEQUEL247_BASE_URL ?? 'https://test.sequel247.com'
 }
 
+function isMock(): boolean {
+  return process.env.SHIPPING_MOCK === 'true'
+}
+
 export async function checkPincodeServiceability(pincode: string): Promise<ServiceabilityResult> {
+  if (isMock()) return { ok: true, skipped: true }
+
   const cached = cache.get(pincode)
   if (cached) return cached
 

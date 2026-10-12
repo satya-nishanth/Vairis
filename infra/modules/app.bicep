@@ -84,9 +84,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'GOTRUE_INTERNAL_URL', secretRef: 'supabase-url' }
             { name: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', secretRef: 'supabase-anon-key' }
             { name: 'SUPABASE_SERVICE_ROLE_KEY', secretRef: 'supabase-service-role-key' }
-            { name: 'PAYMENT_GATEWAY', value: 'mock' }
-            { name: 'ALLOW_MOCK_PAYMENTS', value: 'false' }
-            { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: 'false' }
+            // Test-mode Razorpay on staging for end-to-end checkout testing; prod stays on
+            // mock until Razorpay LIVE keys land (P3, BIS cert pending).
+            { name: 'PAYMENT_GATEWAY', value: isProd ? 'mock' : 'razorpay' }
+            { name: 'RAZORPAY_KEY_ID', secretRef: 'razorpay-key-id' }
+            { name: 'RAZORPAY_KEY_SECRET', secretRef: 'razorpay-key-secret' }
+            { name: 'RAZORPAY_WEBHOOK_SECRET', secretRef: 'razorpay-webhook-secret' }
+            // Mock checkout stays live on staging so it can be tested end-to-end;
+            // prod stays locked out until Razorpay LIVE keys land (P3).
+            { name: 'ALLOW_MOCK_PAYMENTS', value: isProd ? 'false' : 'true' }
+            { name: 'NEXT_PUBLIC_CHECKOUT_ENABLED', value: isProd ? 'false' : 'true' }
             { name: 'SHIPPING_PROVIDER', value: 'manual' }
             { name: 'SHIPPING_MOCK', value: 'true' }
             { name: 'ADMIN_EMAILS', secretRef: 'admin-emails' }
