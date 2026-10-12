@@ -162,6 +162,11 @@ module app 'modules/app.bicep' = {
       // connection of its own. Shared bearer secret with the bot's INTERNAL_API_KEY below.
       { name: 'discord-bot-token', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/discord-bot-token', identity: identity.outputs.identityId }
       { name: 'internal-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/internal-api-key', identity: identity.outputs.identityId }
+      // Test-mode on staging only — PAYMENT_GATEWAY stays 'mock' on prod (app.bicep), so
+      // these values are inert there. Prod's Key Vault holds harmless placeholders.
+      { name: 'razorpay-key-id', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/razorpay-key-id', identity: identity.outputs.identityId }
+      { name: 'razorpay-key-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/razorpay-key-secret', identity: identity.outputs.identityId }
+      { name: 'razorpay-webhook-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/razorpay-webhook-secret', identity: identity.outputs.identityId }
     ]
   }
 }
