@@ -1,4 +1,4 @@
-import type { MetalType } from '@prisma/client'
+import type { MetalColor, MetalType } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { type PricingConfig } from '@/lib/pricing'
 import { getPricingConfig, type StoneWithRate } from '@/lib/pricing-data'
@@ -13,6 +13,7 @@ export type VariantForPricing = {
   stoneCharges: { toString(): string } | number | string
   miscCharges: { toString(): string } | number | string
   metalType: MetalType
+  metalColor?: MetalColor | null
   product: {
     stones: StoneWithRate[]
     vaGoldPct?: number | string | { toString(): string } | null
@@ -37,6 +38,7 @@ export function computeVariantLiveUnitPrice(
       id: variant.id ?? '',
       pieceId: variant.pieceId ?? variant.piece?.id ?? null,
       metalType: variant.metalType,
+      metalColor: variant.metalColor ?? 'YELLOW',
       weightGrams: variant.weightGrams as never,
       makingChargePerGram: variant.makingChargePerGram as never,
       flatMakingCharge: variant.flatMakingCharge as never,

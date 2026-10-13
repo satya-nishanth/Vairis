@@ -13,6 +13,7 @@ import { padProductImagesForSave } from '@/lib/product-media'
 import {
   FALLBACK_GOLD_RATES,
   buildMetalSku,
+  goldRateKey,
   normalizeMetalColor,
 } from '@/lib/metal'
 
@@ -383,7 +384,7 @@ export default function ProductForm({
         stoneCharges: parseFloat(v.stoneCharges) || 0,
         miscCharges: parseFloat(v.miscCharges) || 0,
       },
-      rates[v.metalType] ?? 0,
+      rates[goldRateKey(v.metalType)] ?? 0,
       { stones: stoneInputs, withExchange, config: effectivePricing },
     )
   }
@@ -431,7 +432,7 @@ export default function ProductForm({
               stoneCharges: parseFloat(v.stoneCharges) || 0,
               miscCharges: parseFloat(v.miscCharges) || 0,
             },
-            rates[v.metalType] ?? 0,
+            rates[goldRateKey(v.metalType)] ?? 0,
             { stones, withExchange: false, config: cfg },
           ).total,
         )
