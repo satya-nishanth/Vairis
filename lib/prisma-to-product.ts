@@ -10,6 +10,7 @@ import {
   productFrontImage,
   productHoverImage,
 } from "@/lib/product-media";
+import { metalFilterLabels } from "@/lib/metal";
 
 type PieceRow = {
   id: string;
@@ -56,6 +57,7 @@ export function prismaToProduct(
   index = 0,
   pricingConfig: PricingConfig = DEFAULT_PRICING_CONFIG,
   showPricesGlobal = true,
+  autoDiscountPercent?: number | null,
 ): Product {
   const priceHidden = !resolvePriceVisibility(p.priceVisibility, showPricesGlobal);
   let price: number | undefined;
@@ -89,14 +91,14 @@ export function prismaToProduct(
   const primaryImage = productFrontImage(layout);
   const hoverImage = productHoverImage(layout);
 
-  // PLP filter facets
-  const METAL_FILTER_LABELS: Record<string, string[]> = {
-    GOLD_18K: ["Yellow Gold", "18K Gold"],
-    GOLD_14K: ["Yellow Gold", "14K Gold"],
-    ROSE_GOLD: ["Rose Gold"],
-  };
   const variants = p.variants ?? [];
-  const metals = [...new Set(variants.flatMap((v) => METAL_FILTER_LABELS[v.metalType] ?? []))];
+  const metals = [
+    ...new Set(
+      variants.flatMap((v) =>
+        metalFilterLabels(v.metalType, v.metalColor ?? "YELLOW"),
+      ),
+    ),
+  ];
   const styleText = [p.designStyle ?? "", p.description ?? "", p.name].join(" ").toLowerCase();
   const inStock = variants.some((v) => v.stock > 0);
 
@@ -113,12 +115,20 @@ export function prismaToProduct(
     catalogueId: p.id,
     video: null,
     variantId,
-    badge: p.comingSoon ? "Coming Soon" : index === 0 ? "Best Seller" : undefined,
+    badge: p.comingSoon
+      ? "Coming Soon"
+      : autoDiscountPercent && autoDiscountPercent > 0
+        ? `${Math.round(autoDiscountPercent)}% off`
+        : index === 0
+          ? "Best Seller"
+          : undefined,
     meta: "Insured Delivery",
     metals,
     styleText,
     inStock,
     priceHidden,
     hasMultiplePrices,
+    autoDiscountPercent:
+      autoDiscountPercent && autoDiscountPercent > 0 ? autoDiscountPercent : undefined,
   };
 }

@@ -28,13 +28,25 @@ export async function GET() {
     getShowPricesGlobal(),
   ])
 
+  const productsForSale = items
+    .map((item) => item.product)
+    .filter((p): p is NonNullable<typeof p> => Boolean(p))
+  const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
+  const saleMap = await autoDiscountPercentsForProducts(productsForSale)
   const responseItems = items.map((item, i) => ({
     id: item.id,
     userId: item.userId,
     productId: item.productId,
     createdAt: item.createdAt,
     product: item.product
-      ? prismaToProduct(item.product, goldRates, i, pricingConfig, showPricesGlobal)
+      ? prismaToProduct(
+          item.product,
+          goldRates,
+          i,
+          pricingConfig,
+          showPricesGlobal,
+          saleMap.get(item.product.id),
+        )
       : null,
   }))
 

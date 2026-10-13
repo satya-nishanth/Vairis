@@ -1,27 +1,41 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
 import { CartItem } from "@/components/commerce/CartItem";
 import { OrderSummary, SecureCheckoutButton } from "@/components/commerce/OrderSummary";
 import { MobileCheckoutBar } from "@/components/commerce/MobileCheckoutBar";
+import {
+  discountSummaryLines,
+  useDiscountPreview,
+} from "@/components/commerce/CartDiscountPanel";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
-
-const METAL_LABELS: Record<string, string> = {
-  GOLD_18K: "18kt Yellow Gold",
-  GOLD_14K: "14kt Yellow Gold",
-  ROSE_GOLD: "Rose Gold 18kt",
-};
+import { formatMetalLabel } from "@/lib/metal";
 
 const breadcrumbs = [{ label: "Home", href: "/" }, { label: "Your Cart" }];
 
 export default function CartPage() {
   const layout = pageLayouts.cart;
   const { items, count, isLoggedIn, hydrated, updateQuantity, removeItem } = useCart();
+
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  const refreshKey = useMemo(
+    () => items.map((i) => `${i.id}:${i.quantity}`).join("|"),
+    [items],
+  );
+  const { preview, busy: previewBusy, reload } = useDiscountPreview(
+    refreshKey,
+    appliedCode,
+  );
 
   // WhatsApp-enquiry mode: cart is disabled until Razorpay is live
   if (!CHECKOUT_ENABLED) {
@@ -97,6 +111,35 @@ export default function CartPage() {
     0,
   );
   const hasUnpriced = items.some((i) => i.unitPrice == null);
+  const payable = preview?.payable ?? Math.max(0, subtotal - (preview?.discountAmount ?? 0));
+  const discountLines = discountSummaryLines(preview?.automatic, preview?.coupon);
+
+  async function applyPromo() {
+    setPromoBusy(true);
+    setPromoError(null);
+    const code = promoInput.trim().toUpperCase();
+    setAppliedCode(code);
+    // reload with new code
+    const res = await fetch("/api/discounts/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promoCode: code }),
+    });
+    const data = await res.json();
+    setPromoBusy(false);
+    if (!res.ok) {
+      setPromoError(data.error ?? "Invalid code");
+      setAppliedCode(null);
+      await reload();
+      return;
+    }
+    if (!data.coupon || data.coupon.amount <= 0) {
+      setPromoError("This code does not apply to your cart");
+      setAppliedCode(null);
+      await reload();
+      return;
+    }
+  }
 
   return (
     <PageShell {...layout} breadcrumbs={breadcrumbs}>
@@ -121,9 +164,10 @@ export default function CartPage() {
                   slug: item.variant.product.id,
                   name: item.variant.product.name,
                   image: item.variant.product.images[0] ?? "",
-                  meta: `${item.variant.product.itemCode ?? item.variant.sku} · ${
-                    METAL_LABELS[item.variant.metalType] ?? item.variant.metalType
-                  }${item.variant.size ? ` · Size ${item.variant.size}` : ""}${
+                  meta: `${item.variant.product.itemCode ?? item.variant.sku} · ${formatMetalLabel(
+                    item.variant.metalType,
+                    item.variant.metalColor,
+                  )}${item.variant.size ? ` · Size ${item.variant.size}` : ""}${
                     item.withExchange ? " · With Exchange" : ""
                   }${item.priceError ? ` · ${item.priceError}` : ""}`,
                   quantity: item.quantity,
@@ -143,15 +187,54 @@ export default function CartPage() {
 
           <OrderSummary
             lines={[
-              { label: "Subtotal", value: formatPrice(subtotal) },
+              { label: "Subtotal (incl. GST)", value: formatPrice(subtotal) },
+              ...discountLines,
               { label: "Making Charges", value: "Included" },
               { label: "Shipping", value: "FREE" },
-              { label: "GST", value: "Included" },
             ]}
-            total={subtotal}
+            total={payable}
+            totalLabel="Payable"
             showEmi
             footer={
               <>
+                <div className="promo-field" style={{ marginBottom: 12 }}>
+                  <input
+                    type="text"
+                    placeholder="Apply code"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    disabled={!!appliedCode}
+                    style={{ textTransform: "uppercase" }}
+                  />
+                  {appliedCode ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setAppliedCode(null);
+                        setPromoInput("");
+                        setPromoError(null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={applyPromo}
+                      disabled={promoBusy || promoInput.trim().length < 3}
+                    >
+                      {promoBusy ? "…" : "Apply"}
+                    </button>
+                  )}
+                </div>
+                {promoError && (
+                  <p style={{ fontSize: "0.75rem", color: "#b91c1c", marginBottom: 8 }}>{promoError}</p>
+                )}
+                {previewBusy && !preview && (
+                  <p style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: 8 }}>
+                    Updating savings…
+                  </p>
+                )}
                 <details className="summary-why">
                   <summary>Why are Vairis prices lower?</summary>
                   <p>We sell direct without showroom overheads.</p>
@@ -163,7 +246,7 @@ export default function CartPage() {
           />
         </div>
       </Container>
-      <MobileCheckoutBar total={subtotal} href="/checkout" label="Proceed to Checkout" />
+      <MobileCheckoutBar total={payable} href="/checkout" label="Proceed to Checkout" />
     </PageShell>
   );
 }

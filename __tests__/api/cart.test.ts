@@ -57,6 +57,7 @@ const fakeCartItem = (overrides: Record<string, unknown> = {}) => ({
     stoneCharges: '0',
     miscCharges: '0',
     metalType: 'GOLD_18K',
+    metalColor: 'YELLOW',
     product: { stones: [] },
   },
   ...overrides,

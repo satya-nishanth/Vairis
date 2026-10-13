@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { promoSchema } from '@/lib/promo'
+import { normalizeScope, replacePromoScopes } from '@/lib/discount-scope'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,27 +20,59 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
     )
   }
   const d = parsed.data
-  if (d.kind === 'PERCENT' && d.value !== undefined && d.value > 100) {
-    return NextResponse.json({ error: 'Percent discount cannot exceed 100' }, { status: 400 })
-  }
 
   try {
+    const valueUpdate =
+      d.kind === 'FREE_DELIVERY'
+        ? { value: 0 }
+        : d.value !== undefined
+          ? { value: d.value }
+          : {}
     const promo = await prisma.promoCode.update({
       where: { id },
       data: {
         ...(d.code !== undefined && { code: d.code }),
         ...(d.description !== undefined && { description: d.description || null }),
         ...(d.kind !== undefined && { kind: d.kind }),
-        ...(d.value !== undefined && { value: d.value }),
+        ...valueUpdate,
         ...(d.minOrderValue !== undefined && { minOrderValue: d.minOrderValue }),
         ...(d.maxDiscount !== undefined && { maxDiscount: d.maxDiscount }),
         ...(d.startsAt !== undefined && { startsAt: d.startsAt ? new Date(d.startsAt) : null }),
         ...(d.endsAt !== undefined && { endsAt: d.endsAt ? new Date(d.endsAt) : null }),
         ...(d.maxRedemptions !== undefined && { maxRedemptions: d.maxRedemptions }),
         ...(d.maxPerUser !== undefined && { maxPerUser: d.maxPerUser }),
+        ...(d.firstOrderOnly !== undefined && { firstOrderOnly: d.firstOrderOnly }),
         ...(d.active !== undefined && { active: d.active }),
       },
     })
+
+    if (
+      d.productIds !== undefined ||
+      d.collectionIds !== undefined ||
+      d.storeCategoryIds !== undefined ||
+      d.categories !== undefined
+    ) {
+      const existing = await prisma.promoCode.findUnique({
+        where: { id },
+        include: {
+          products: { select: { productId: true } },
+          collections: { select: { collectionId: true } },
+          storeCategories: { select: { storeCategoryId: true } },
+          categories: { select: { category: true } },
+        },
+      })
+      await replacePromoScopes(
+        id,
+        normalizeScope({
+          productIds: d.productIds ?? existing?.products.map((x) => x.productId) ?? [],
+          collectionIds: d.collectionIds ?? existing?.collections.map((x) => x.collectionId) ?? [],
+          storeCategoryIds:
+            d.storeCategoryIds ?? existing?.storeCategories.map((x) => x.storeCategoryId) ?? [],
+          categories: d.categories ?? existing?.categories.map((x) => x.category) ?? [],
+        }),
+      )
+    }
+
     return NextResponse.json(promo)
   } catch {
     return NextResponse.json({ error: 'Update failed (missing promo or duplicate code)' }, { status: 409 })
@@ -51,7 +84,6 @@ export async function DELETE(_: NextRequest, { params }: { params: Params }) {
   const { id } = await params
   const redemptions = await prisma.promoRedemption.count({ where: { promoCodeId: id } })
   if (redemptions > 0) {
-    // Keep history intact — deactivate instead of delete.
     await prisma.promoCode.update({ where: { id }, data: { active: false } })
     return NextResponse.json({ deactivated: true })
   }

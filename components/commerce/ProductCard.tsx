@@ -69,18 +69,33 @@ export function ProductCard({
   const productId = product.catalogueId ?? product.slug;
   const displayName = formatDisplayName(product.name, product.category);
   const hoverSrc = product.hoverImage && product.hoverImage !== product.image ? product.hoverImage : null;
+  const salePercent =
+    product.autoDiscountPercent && product.autoDiscountPercent > 0
+      ? Math.round(product.autoDiscountPercent)
+      : null;
+  // Ribbon owns the sale callout — skip duplicate "% off" pill badge.
+  const showBadge = Boolean(product.badge) && salePercent == null;
 
   return (
     <article className={hoverSrc ? "product-card product-card--has-hover" : "product-card"}>
       <div className="product-card__img-wrap">
         <Link href={href} className="product-card__img-link" tabIndex={-1} aria-hidden="true">
-          {product.badge && <span className="product-card__badge">{product.badge}</span>}
+          {showBadge && <span className="product-card__badge">{product.badge}</span>}
+          {salePercent != null && (
+            <span className="product-card__sale-ribbon" aria-label={`${salePercent}% off`}>
+              {salePercent}% off
+            </span>
+          )}
           <ProductImage src={product.image} alt="" fill className="product-card__img product-card__img--face" />
           {hoverSrc ? (
             <ProductImage src={hoverSrc} alt="" fill className="product-card__img product-card__img--hover" />
           ) : null}
         </Link>
-        <WishlistButton productId={productId} productName={displayName} />
+        <WishlistButton
+          productId={productId}
+          productName={displayName}
+          className={salePercent != null ? "product-card__wish--with-sale" : undefined}
+        />
       </div>
       <div className="product-card__body">
         <h3 className="product-card__title">
@@ -90,7 +105,23 @@ export function ProductCard({
         <div className="product-card__footer">
           {product.price != null ? (
             <p className="product-card__price">
-              {product.hasMultiplePrices ? `From ${formatPrice(product.price)}` : formatPrice(product.price)}
+              {salePercent != null ? (
+                <>
+                  {product.hasMultiplePrices ? <span>From </span> : null}
+                  <span style={{ textDecoration: "line-through", opacity: 0.55, marginRight: 8 }}>
+                    {formatPrice(product.price)}
+                  </span>
+                  <span>
+                    {formatPrice(
+                      Math.max(0, Math.round(product.price * (1 - salePercent / 100))),
+                    )}
+                  </span>
+                </>
+              ) : product.hasMultiplePrices ? (
+                `From ${formatPrice(product.price)}`
+              ) : (
+                formatPrice(product.price)
+              )}
             </p>
           ) : (
             <p className="product-card__price product-card__price--on-request">Price on Request</p>

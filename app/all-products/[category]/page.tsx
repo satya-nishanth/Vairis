@@ -116,7 +116,11 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         getShowPricesGlobal(),
       ]);
       const sortedDbProducts = sortProductsByPriority(dbProducts);
-      prismaProducts = sortedDbProducts.map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
+      const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
+      const saleMap = await autoDiscountPercentsForProducts(sortedDbProducts)
+      prismaProducts = sortedDbProducts.map((p, i) =>
+        prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+      );
     } catch (err) {
       // e.g. Category enum value missing on DB (NECKLACES migration not applied)
       console.error(`[plp] failed loading category=${category}`, err);

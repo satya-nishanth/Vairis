@@ -21,7 +21,8 @@ export const dynamic = 'force-dynamic'
 type Params = Promise<{ id: string }>
 
 const patchVariantSchema = z.object({
-  metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD'] as const),
+  metalType: z.enum(['GOLD_9K', 'GOLD_14K', 'GOLD_18K', 'GOLD_22K'] as const),
+  metalColor: z.enum(['YELLOW', 'WHITE', 'ROSE'] as const).default('YELLOW'),
   weightGrams: z
     .union([z.string(), z.number()])
     .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))

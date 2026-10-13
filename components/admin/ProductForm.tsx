@@ -10,6 +10,11 @@ import AdminProductBuildPrice from './AdminProductBuildPrice'
 import { calculatePrice, resolvePricingConfig, type PricingConfig, type StoneInput } from '@/lib/pricing'
 import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 import { padProductImagesForSave } from '@/lib/product-media'
+import {
+  FALLBACK_GOLD_RATES,
+  buildMetalSku,
+  normalizeMetalColor,
+} from '@/lib/metal'
 
 export type CategoryOption = { slug: string; name: string }
 
@@ -20,12 +25,6 @@ const DEFAULT_CATEGORIES: CategoryOption[] = [
   { slug: 'bracelets', name: 'Bracelets' },
   { slug: 'mangalsutra', name: 'Mangalsutra' },
   { slug: 'necklaces', name: 'Necklaces' },
-]
-
-const METAL_TYPES = [
-  { value: 'GOLD_18K', label: '18kt Gold', skuSuffix: 'G18K', badgeColor: '#fef08a', badgeText: '#854d0e', badgeBorder: '#fde047' },
-  { value: 'GOLD_14K', label: '14kt Gold', skuSuffix: 'G14K', badgeColor: '#fef9c3', badgeText: '#a16207', badgeBorder: '#fef08a' },
-  { value: 'ROSE_GOLD', label: 'Rose Gold 18kt', skuSuffix: 'RG', badgeColor: '#ffe4e6', badgeText: '#be123c', badgeBorder: '#fecdd3' },
 ]
 
 const STATUS_OPTIONS = [
@@ -40,12 +39,6 @@ const PRICE_VISIBILITY_OPTIONS = [
   { value: 'HIDE', label: 'Always hide (Price on Request)', hint: 'No checkout price shown — WhatsApp enquiry only.' },
 ] as const
 
-const FALLBACK_RATES: Record<string, number> = {
-  GOLD_18K: 5100,
-  GOLD_14K: 3967,
-  ROSE_GOLD: 5100,
-}
-
 /** Always unique within a product: NECKL1, EARRI2, P3, … */
 function pieceSkuSlug(name: string, index: number): string {
   const cleaned = name
@@ -56,26 +49,9 @@ function pieceSkuSlug(name: string, index: number): string {
   return `${cleaned || 'P'}${index + 1}`
 }
 
-/**
- * Auto SKU format:
- * - one piece:  ITEM-18K
- * - multi-piece: ITEM-NECKL1-18K / ITEM-EARRI2-18K (unique per piece)
- */
-function buildSku(
-  itemCode: string,
-  metalType: string,
-  size?: string,
-  pieceSlug?: string,
-): string {
-  if (!itemCode) return ''
-  const suffix = METAL_TYPES.find((m) => m.value === metalType)?.skuSuffix ?? metalType
-  const sizePart = size?.trim() ? `-${size.trim().toUpperCase().replace(/\s+/g, '')}` : ''
-  const piecePart = pieceSlug ? `-${pieceSlug}` : ''
-  return `${itemCode.toUpperCase()}${piecePart}-${suffix}${sizePart}`
-}
-
 type Variant = {
   metalType: string
+  metalColor: string
   size: string
   weightGrams: string
   makingChargePerGram: string
@@ -159,9 +135,31 @@ type Props = {
   returnTo?: string
 }
 
+function formVariantFromLoaded(v: Partial<Variant>): Variant {
+  let metalType = v.metalType ?? 'GOLD_18K'
+  let metalColor = normalizeMetalColor(v.metalColor)
+  if (metalType === 'ROSE_GOLD') {
+    metalType = 'GOLD_18K'
+    metalColor = 'ROSE'
+  }
+  return {
+    metalType,
+    metalColor,
+    size: v.size ?? '',
+    weightGrams: v.weightGrams ?? '',
+    makingChargePerGram: v.makingChargePerGram ?? '',
+    flatMakingCharge: v.flatMakingCharge ?? '0',
+    stoneCharges: v.stoneCharges ?? '0',
+    miscCharges: v.miscCharges ?? '45',
+    stock: v.stock ?? '0',
+    sku: v.sku ?? '',
+  }
+}
+
 function emptyVariant(): Variant {
   return {
     metalType: 'GOLD_18K',
+    metalColor: 'YELLOW',
     size: '',
     weightGrams: '',
     makingChargePerGram: '',
@@ -216,7 +214,7 @@ function initialForm(
       key: p.key || p.id || `piece-${i}`,
       id: p.id,
       name: p.name || (i === 0 ? 'Main' : `Piece ${i + 1}`),
-      variants: p.variants?.length ? p.variants : [emptyVariant()],
+      variants: p.variants?.length ? p.variants.map(formVariantFromLoaded) : [emptyVariant()],
       stones: p.stones ?? [],
       inheritWastage: p.inheritWastage ?? true,
       vaGoldPct: p.vaGoldPct ?? String(store.vaGoldPct),
@@ -232,7 +230,7 @@ function initialForm(
       emptyPiece(
         store,
         'Main',
-        data?.variants as Variant[] | undefined,
+        data?.variants?.map(formVariantFromLoaded),
         data?.stones as FormStone[] | undefined,
         {
           inheritWastage: inherit,
@@ -343,7 +341,7 @@ export default function ProductForm({
     categoryOptions.find((c) => c.value === form.category)?.label ||
     form.category.replace(/_/g, ' ')
 
-  const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_RATES
+  const rates = goldRates && Object.keys(goldRates).length ? goldRates : FALLBACK_GOLD_RATES
   const isDraft = form.status !== 'LIVE'
   const activePiece = form.pieces[Math.min(activePieceIdx, form.pieces.length - 1)] ?? form.pieces[0]
 
@@ -447,10 +445,22 @@ export default function ProductForm({
     return any ? sum : null
   }, [form.pieces, diamondRates, rates, storePricing])
 
-  function skuFor(piece: FormPiece, pieceIndex: number, metalType: string, size?: string) {
+  function skuFor(
+    piece: FormPiece,
+    pieceIndex: number,
+    metalType: string,
+    metalColor?: string,
+    size?: string,
+  ) {
     const slug =
       form.pieces.length > 1 ? pieceSkuSlug(piece.name, pieceIndex) : undefined
-    return buildSku(form.itemCode, metalType, size, slug)
+    return buildMetalSku(
+      form.itemCode,
+      metalType,
+      metalColor ?? 'YELLOW',
+      size,
+      slug,
+    )
   }
 
   /** Rewrite auto SKUs; multi-piece embeds a unique per-piece slug (NECKL1, EARRI2, …). */
@@ -462,13 +472,14 @@ export default function ProductForm({
       return {
         ...p,
         variants: p.variants.map((v) => {
-          const auto = buildSku(itemCode, v.metalType, v.size, slug)
+          const color = v.metalColor || 'YELLOW'
+          const auto = buildMetalSku(itemCode, v.metalType, color, v.size, slug)
           const knownAutos = [
-            buildSku(itemCode, v.metalType, v.size),
+            buildMetalSku(itemCode, v.metalType, color, v.size),
             auto,
             ...slugs
               .filter((s): s is string => Boolean(s))
-              .map((s) => buildSku(itemCode, v.metalType, v.size, s)),
+              .map((s) => buildMetalSku(itemCode, v.metalType, color, v.size, s)),
           ]
           const looksAuto = !v.sku.trim() || knownAutos.includes(v.sku)
           return looksAuto ? { ...v, sku: auto } : v
@@ -495,16 +506,27 @@ export default function ProductForm({
       const variants = [...piece.variants]
       const prev = variants[idx]
       variants[idx] = { ...prev, [field]: value }
-      if ((field === 'metalType' || field === 'size') && f.itemCode) {
+      if (
+        (field === 'metalType' || field === 'metalColor' || field === 'size') &&
+        f.itemCode
+      ) {
         const multi = f.pieces.length > 1
         const slug = multi ? pieceSkuSlug(piece.name, pi) : undefined
-        const prevAuto = buildSku(f.itemCode, prev.metalType, prev.size, slug)
-        const prevLegacy = buildSku(f.itemCode, prev.metalType, prev.size)
+        const prevColor = prev.metalColor || 'YELLOW'
+        const prevAuto = buildMetalSku(
+          f.itemCode,
+          prev.metalType,
+          prevColor,
+          prev.size,
+          slug,
+        )
+        const prevLegacy = buildMetalSku(f.itemCode, prev.metalType, prevColor, prev.size)
         const wasAuto = !prev.sku || prev.sku === prevLegacy || prev.sku === prevAuto
         if (wasAuto) {
-          variants[idx].sku = buildSku(
+          variants[idx].sku = buildMetalSku(
             f.itemCode,
             variants[idx].metalType,
+            variants[idx].metalColor || 'YELLOW',
             variants[idx].size,
             slug,
           )
@@ -519,7 +541,7 @@ export default function ProductForm({
     const pi = Math.min(activePieceIdx, form.pieces.length - 1)
     const piece = form.pieces[pi]
     const nv = emptyVariant()
-    nv.sku = skuFor(piece, pi, nv.metalType)
+    nv.sku = skuFor(piece, pi, nv.metalType, nv.metalColor)
     setForm((f) => {
       const pieces = [...f.pieces]
       const idx = Math.min(activePieceIdx, pieces.length - 1)

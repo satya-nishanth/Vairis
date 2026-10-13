@@ -103,7 +103,7 @@ test.describe('Admin product CRUD + store reflection', () => {
 
     // SKU input — placeholder "AJBR-74-G18K" (uses short suffix format)
     // After filling itemCode, buildSku auto-sets the SKU value
-    const skuInput = page.getByPlaceholder('AJBR-74-G18K')
+    const skuInput = page.getByPlaceholder(/G18K-YG|G14K-YG/)
     await skuInput.waitFor({ state: 'visible', timeout: 5000 })
     await page.waitForTimeout(300) // let React propagate itemCode → sku
     const currentSku = await skuInput.inputValue()

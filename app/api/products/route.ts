@@ -48,8 +48,10 @@ export async function GET(req: NextRequest) {
   ])
 
   const sorted = sortProductsByPriority(products)
+  const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
+  const saleMap = await autoDiscountPercentsForProducts(sorted)
   const items = sorted.map((p, i) =>
-    prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)
+    prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
   )
 
   return NextResponse.json(items)

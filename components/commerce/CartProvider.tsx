@@ -14,6 +14,7 @@ import { createBrowserClient } from "@supabase/ssr";
 export type CartVariant = {
   id: string;
   metalType: string;
+  metalColor?: string;
   size: string | null;
   weightGrams: string;
   makingChargePerGram: string;

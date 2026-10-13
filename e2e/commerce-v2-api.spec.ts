@@ -408,8 +408,8 @@ test.describe('Promo codes', () => {
     await addToCart(page, variant.id)
 
     const cartRes = await api(page, '/api/cart')
-    const goodsTotal = (cartRes.body as unknown as { unitPrice: number }[]).reduce(
-      (s, i) => s + i.unitPrice,
+    const goodsTotal = (cartRes.body as unknown as { unitPrice: number; quantity?: number }[]).reduce(
+      (s, i) => s + i.unitPrice * (i.quantity ?? 1),
       0,
     )
 
@@ -421,6 +421,14 @@ test.describe('Promo codes', () => {
     const expectedDiscount = Math.min(Math.round(goodsTotal * 0.1), 2000)
     expect(Number(order?.discountAmount)).toBe(expectedDiscount)
     expect(Number(order?.grandTotal)).toBe(goodsTotal - expectedDiscount)
+    const bd = order?.discountBreakdown as {
+      coupon?: { amount?: number; code?: string; percent?: number } | null
+      automatic?: { amount?: number } | null
+    } | null
+    expect(bd?.coupon?.code).toBe(percentCode)
+    expect(bd?.coupon?.amount).toBe(expectedDiscount)
+    // Legs stay separate even when only coupon applies
+    expect(bd?.automatic == null || bd.automatic.amount === 0).toBe(true)
 
     const redemption = await prisma.promoRedemption.findFirst({ where: { orderId } })
     expect(redemption).toBeTruthy()

@@ -704,6 +704,28 @@
   padding: 4px 8px;
   background: var(--bg-card);
   border: 1px solid var(--color-border-light);
+  z-index: 2;
+}
+
+/* Corner sale ribbon — brand olive / Vairis green */
+.product-card__sale-ribbon {
+  position: absolute;
+  top: 18px;
+  right: -42px;
+  z-index: 3;
+  width: 160px;
+  padding: 8px 0;
+  background: var(--brand-olive, var(--color-primary, #5e684e));
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  transform: rotate(45deg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .product-card__wish {
@@ -720,6 +742,12 @@
   border: 1px solid var(--color-border-light);
   z-index: 2;
   transition: transform var(--transition), border-color var(--transition), background var(--transition);
+}
+
+/* Sale ribbon owns the top-right corner — park wishlist top-left */
+.product-card__wish--with-sale {
+  right: auto;
+  left: 12px;
 }
 
 .product-card__wish:hover {

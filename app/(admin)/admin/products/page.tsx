@@ -6,6 +6,8 @@ import { AdminGuide } from '@/components/admin/AdminGuide'
 import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
 import { getStoreCategories } from '@/lib/store-categories'
 import { sortProductsByPriority, getProductPriority } from '@/lib/product-priorities'
+import { getAllCategoryFilters, getProductLinkedLabels } from '@/lib/category-filters'
+import { formatMetalShort } from '@/lib/metal'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,12 +27,13 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
   const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 25
   const pageRaw = Math.max(1, Number(params.page ?? 1) || 1)
 
-  const [storeCategories, counts] = await Promise.all([
+  const [storeCategories, counts, filterConfigs] = await Promise.all([
     getStoreCategories(),
     prisma.product.groupBy({
       by: ['category'],
       _count: { id: true },
     }).catch(() => []),
+    getAllCategoryFilters().catch(() => ({})),
   ])
 
   const categoryTabs = [
@@ -156,9 +159,25 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     totalLengthMm: p.totalLengthMm ? Number(p.totalLengthMm) : null,
     motifSizeMm: p.motifSizeMm ? Number(p.motifSizeMm) : null,
     thicknessMm: p.thicknessMm ? Number(p.thicknessMm) : null,
-    metals: Array.from(new Set(p.variants.map((v) => v.metalType))),
+    metals: Array.from(
+      new Set(
+        p.variants.map((v) => formatMetalShort(v.metalType, v.metalColor ?? 'YELLOW')),
+      ),
+    ),
+    labels: getProductLinkedLabels(
+      {
+        id: p.id,
+        name: p.name,
+        itemCode: p.itemCode,
+        designStyle: p.designStyle,
+        description: p.description,
+        category: p.category,
+      },
+      filterConfigs
+    ),
     variantsList: p.variants.map((v) => ({
       metalType: v.metalType,
+      metalColor: v.metalColor ?? 'YELLOW',
       sku: v.sku,
       size: v.size,
       weightGrams: Number(v.weightGrams),

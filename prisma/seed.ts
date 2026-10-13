@@ -4,8 +4,10 @@ const prisma = new PrismaClient()
 async function main() {
   await prisma.goldRate.createMany({
     data: [
+      { metalType: 'GOLD_22K', ratePerGram: 6233 },
       { metalType: 'GOLD_18K', ratePerGram: 5100 },
       { metalType: 'GOLD_14K', ratePerGram: 3967 },
+      { metalType: 'GOLD_9K', ratePerGram: 2550 },
     ],
     skipDuplicates: true,
   })
@@ -42,9 +44,9 @@ async function main() {
       },
       variants: {
         create: [
-          { metalType: 'GOLD_18K', size: '6', weightGrams: 2.5, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-6' },
-          { metalType: 'GOLD_18K', size: '8', weightGrams: 2.8, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-8' },
-          { metalType: 'GOLD_14K', size: '6', weightGrams: 2.1, makingChargePerGram: 400, miscCharges: 45, stock: 5, sku: 'RING-G14K-6' },
+          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '6', weightGrams: 2.5, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-YG-6' },
+          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '8', weightGrams: 2.8, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-YG-8' },
+          { metalType: 'GOLD_14K', metalColor: 'YELLOW', size: '6', weightGrams: 2.1, makingChargePerGram: 400, miscCharges: 45, stock: 5, sku: 'RING-G14K-YG-6' },
         ],
       },
     },

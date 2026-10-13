@@ -348,9 +348,24 @@
   max-width: 1200px;
 }
 
-.admin-page--finance {
+.admin-page--finance,
+.admin-page--discounts,
+.admin-page--promos {
   width: 100%;
   max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .discount-create-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .discount-create-grid > div:last-child {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px solid #e8e8e6;
+    padding-top: 24px;
+  }
 }
 
 /* —— Finance dashboard —— */

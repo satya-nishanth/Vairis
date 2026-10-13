@@ -12,7 +12,11 @@
     "metals": [
       "Yellow Gold",
       "White Gold",
-      "Rose Gold"
+      "Rose Gold",
+      "18K Gold",
+      "14K Gold",
+      "22K Gold",
+      "9K Gold"
     ],
     "labelProductMap": {},
     "labelExcludedMap": {
@@ -47,7 +51,11 @@
     "metals": [
       "Yellow Gold",
       "White Gold",
-      "Rose Gold"
+      "Rose Gold",
+      "18K Gold",
+      "14K Gold",
+      "22K Gold",
+      "9K Gold"
     ],
     "labelProductMap": {},
     "labelExcludedMap": {

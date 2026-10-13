@@ -13,6 +13,9 @@ import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { track } from "@/lib/analytics-client";
+import { formatMetalLabel } from "@/lib/metal";
+import { couponKindSuffix } from "@/lib/promo-labels";
+import type { PromoKind } from "@prisma/client";
 
 /**
  * Checkout — real order + gateway payment.
@@ -133,9 +136,19 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [saveAddress, setSaveAddress] = useState(true);
 
-  // Promo code
+  // Promo code + automatic discount preview (separate legs)
   const [promoInput, setPromoInput] = useState("");
-  const [promo, setPromo] = useState<{ code: string; discount: number } | null>(null);
+  const [promo, setPromo] = useState<{
+    code: string;
+    discount: number;
+    percent?: number;
+    kind?: PromoKind;
+  } | null>(null);
+  const [automatic, setAutomatic] = useState<{
+    name: string;
+    amount: number;
+    percent: number;
+  } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
 
@@ -144,8 +157,48 @@ export default function CheckoutPage() {
     [items],
   );
   const hasUnpriced = items.some((i) => i.unitPrice == null);
-  const discount = promo?.discount ?? 0;
+  const discount = (automatic?.amount ?? 0) + (promo?.discount ?? 0);
   const grandTotal = Math.max(0, Math.round(subtotal - discount));
+
+  const refreshKey = useMemo(
+    () => items.map((i) => `${i.id}:${i.quantity}`).join("|"),
+    [items],
+  );
+
+  useEffect(() => {
+    if (!isLoggedIn || items.length === 0) return;
+    let cancelled = false;
+    fetch("/api/discounts/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promoCode: promo?.code ?? null }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || data.error) return;
+        setAutomatic(
+          data.automatic && data.automatic.amount > 0
+            ? {
+                name: data.automatic.name,
+                amount: data.automatic.amount,
+                percent: data.automatic.percent,
+              }
+            : null,
+        );
+        if (promo && data.coupon) {
+          setPromo({
+            code: data.coupon.code,
+            discount: data.coupon.amount,
+            percent: data.coupon.percent,
+            kind: data.coupon.kind,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, refreshKey, promo?.code]);
 
   const set = (field: keyof AddressForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setAddress((a) => ({ ...a, [field]: e.target.value }));
@@ -186,10 +239,10 @@ export default function CheckoutPage() {
     setPromoBusy(true);
     setPromoError(null);
     try {
-      const res = await fetch("/api/promo/validate", {
+      const res = await fetch("/api/discounts/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promoInput, cartTotal: subtotal }),
+        body: JSON.stringify({ promoCode: promoInput }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -197,7 +250,26 @@ export default function CheckoutPage() {
         setPromo(null);
         return;
       }
-      setPromo({ code: data.code, discount: data.discount });
+      setAutomatic(
+        data.automatic && data.automatic.amount > 0
+          ? {
+              name: data.automatic.name,
+              amount: data.automatic.amount,
+              percent: data.automatic.percent,
+            }
+          : null,
+      );
+      if (!data.coupon || data.coupon.amount <= 0) {
+        setPromoError("This code does not apply to your cart");
+        setPromo(null);
+        return;
+      }
+      setPromo({
+        code: data.coupon.code,
+        discount: data.coupon.amount,
+        percent: data.coupon.percent,
+        kind: data.coupon.kind,
+      });
     } catch {
       setPromoError("Could not validate the code. Try again.");
     } finally {
@@ -674,7 +746,15 @@ export default function CheckoutPage() {
                 </div>
                 {promo && (
                   <p className="checkout-note" role="status">
-                    ✓ {promo.code} applied — you save {formatPrice(promo.discount)}
+                    ✓ {promo.code} applied
+                    {couponKindSuffix(promo.kind, promo.percent)}{" "}
+                    — {formatPrice(promo.discount)}
+                  </p>
+                )}
+                {automatic && (
+                  <p className="checkout-note" role="status">
+                    Automatic discount {automatic.name} · {automatic.percent}% —{" "}
+                    {formatPrice(automatic.amount)}
                   </p>
                 )}
                 {promoError && (
@@ -705,8 +785,21 @@ export default function CheckoutPage() {
           <OrderSummary
             lines={[
               { label: "Subtotal (incl. GST)", value: formatPrice(subtotal) },
-              ...(discount > 0
-                ? [{ label: `Promo (${promo?.code})`, value: `− ${formatPrice(discount)}` }]
+              ...(automatic && automatic.amount > 0
+                ? [
+                    {
+                      label: `Discount (${automatic.name} · ${automatic.percent}%)`,
+                      value: `− ${formatPrice(automatic.amount)}`,
+                    },
+                  ]
+                : []),
+              ...(promo && promo.discount > 0
+                ? [
+                    {
+                      label: `Coupon (${promo.code}${couponKindSuffix(promo.kind, promo.percent)})`,
+                      value: `− ${formatPrice(promo.discount)}`,
+                    },
+                  ]
                 : []),
               { label: "Shipping", value: "FREE" },
             ]}
@@ -787,7 +880,12 @@ export default function CheckoutPage() {
                         }}
                       >
                         {[
-                          item.variant?.metalType,
+                          item.variant?.metalType
+                            ? formatMetalLabel(
+                                item.variant.metalType,
+                                item.variant.metalColor,
+                              )
+                            : null,
                           item.variant?.size ? `Size ${item.variant.size}` : null,
                           `Qty: ${item.quantity}`,
                         ]

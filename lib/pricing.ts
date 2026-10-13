@@ -18,6 +18,8 @@
  * Weights and carats shown to the customer are always the true values.
  */
 
+import type { PromoKind } from '@prisma/client'
+
 export const GST_RATE = 0.03
 
 export interface PricingConfig {
@@ -153,18 +155,36 @@ export type OrderItemPriceSnapshot = PriceBreakdown & {
   goldRatePerGram: number
   weightGrams: number
   metalType?: string
+  metalColor?: string
   capturedAt: string
+  /** Post-GST automatic discount allocated to this unit (₹). Optional on legacy rows. */
+  autoDiscount?: number
+  autoDiscountPercent?: number
+  autoDiscountLabel?: string
+  /** Post-GST coupon discount allocated to this unit (₹). Optional on legacy rows. */
+  couponDiscount?: number
+  couponDiscountPercent?: number
+  couponCode?: string
+  couponKind?: PromoKind
+  /** max(0, total − autoDiscount − couponDiscount). Optional on legacy rows. */
+  payable?: number
 }
 
 export function toOrderItemPriceSnapshot(
   breakdown: PriceBreakdown,
-  meta: { goldRatePerGram: number; weightGrams: number; metalType?: string },
+  meta: {
+    goldRatePerGram: number
+    weightGrams: number
+    metalType?: string
+    metalColor?: string
+  },
 ): OrderItemPriceSnapshot {
   return {
     ...breakdown,
     goldRatePerGram: meta.goldRatePerGram,
     weightGrams: meta.weightGrams,
     metalType: meta.metalType,
+    metalColor: meta.metalColor,
     capturedAt: new Date().toISOString(),
   }
 }

@@ -3,15 +3,17 @@
 import type { CSSProperties } from 'react'
 import type { PricingConfig, PriceBreakdown } from '@/lib/pricing'
 import { formatINR } from '@/lib/pricing'
-
-const METAL_TYPES = [
-  { value: 'GOLD_18K', label: '18kt Gold', badgeColor: '#fef08a', badgeText: '#854d0e', badgeBorder: '#fde047' },
-  { value: 'GOLD_14K', label: '14kt Gold', badgeColor: '#fef9c3', badgeText: '#a16207', badgeBorder: '#fef08a' },
-  { value: 'ROSE_GOLD', label: 'Rose Gold 18kt', badgeColor: '#ffe4e6', badgeText: '#be123c', badgeBorder: '#fecdd3' },
-]
+import {
+  METAL_COLORS,
+  METAL_PURITIES,
+  colorMeta,
+  formatMetalShort,
+  purityMeta,
+} from '@/lib/metal'
 
 export type BuildPriceVariant = {
   metalType: string
+  metalColor: string
   size: string
   weightGrams: string
   makingChargePerGram: string
@@ -363,7 +365,9 @@ export default function AdminProductBuildPrice(props: Props) {
             const exchBreakdown = calcBreakdown(v, true)
             const makingHigh = parseFloat(v.makingChargePerGram) > 1500
             const stonesHigh = parseFloat(v.stoneCharges) > 500000
-            const metalMeta = METAL_TYPES.find((m) => m.value === v.metalType)
+            const purity = purityMeta(v.metalType)
+            const color = colorMeta(v.metalColor ?? 'YELLOW')
+            const badge = color ?? purity
             const weight = parseFloat(v.weightGrams) || 0
             const showVaFields = idx === 0
 
@@ -395,13 +399,13 @@ export default function AdminProductBuildPrice(props: Props) {
                         fontWeight: 600,
                         padding: '2px 8px',
                         borderRadius: 4,
-                        background: metalMeta?.badgeColor ?? '#f3f4f6',
-                        color: metalMeta?.badgeText ?? '#374151',
-                        border: `1px solid ${metalMeta?.badgeBorder ?? '#e5e7eb'}`,
+                        background: badge?.badgeColor ?? '#f3f4f6',
+                        color: badge?.badgeText ?? '#374151',
+                        border: `1px solid ${badge?.badgeBorder ?? '#e5e7eb'}`,
                       }}
                     >
                       Variant {idx + 1}
-                      {metalMeta ? ` · ${metalMeta.label}` : ''}
+                      {` · ${formatMetalShort(v.metalType, v.metalColor)}`}
                     </span>
                     {v.sku && (
                       <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>
@@ -428,16 +432,30 @@ export default function AdminProductBuildPrice(props: Props) {
                 </div>
 
                 <div className="pform__grid pform__grid--12">
-                  <div className="pform__field pform__span-3">
-                    <label>Metal Type</label>
+                  <div className="pform__field pform__span-2">
+                    <label>Purity</label>
                     <select
                       value={v.metalType}
                       onChange={(e) => props.onSetVariant(idx, 'metalType', e.target.value)}
                       className="pform__input"
                     >
-                      {METAL_TYPES.map((m) => (
+                      {METAL_PURITIES.map((m) => (
                         <option key={m.value} value={m.value}>
                           {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="pform__field pform__span-2">
+                    <label>Color</label>
+                    <select
+                      value={v.metalColor || 'YELLOW'}
+                      onChange={(e) => props.onSetVariant(idx, 'metalColor', e.target.value)}
+                      className="pform__input"
+                    >
+                      {METAL_COLORS.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
                         </option>
                       ))}
                     </select>
@@ -478,7 +496,7 @@ export default function AdminProductBuildPrice(props: Props) {
                       value={v.sku}
                       onChange={(e) => props.onSetVariant(idx, 'sku', e.target.value)}
                       className="pform__input"
-                      placeholder="e.g. AJBN01000CH-G14K"
+                      placeholder="e.g. AJBN01000CH-G14K-YG"
                     />
                   </div>
                 </div>

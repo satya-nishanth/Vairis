@@ -6,7 +6,13 @@ import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
 import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import { computeOrderAmounts } from '@/lib/orders'
-import { validatePromo } from '@/lib/promo'
+import {
+  applyDiscountToSnapshot,
+  loadProductScopeMembership,
+  previewCartDiscounts,
+  discountBasesFromSnapshot,
+  type DiscountLineInput,
+} from '@/lib/discounts'
 import { getPaymentGateway } from '@/lib/payments'
 import { checkPincodeServiceability } from '@/lib/shipping/sequel247-validate'
 import { checkIndiaFormat } from '@/lib/address-schema'
@@ -106,10 +112,24 @@ export async function POST(req: NextRequest) {
   }
 
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
+  const membership = await loadProductScopeMembership(
+    cartItems.map((i) => i.variant.product.id),
+  )
 
   // One cart line = one sellable product. Multi-piece sets use the summed
   // set total (display breakup only — never multiple OrderItems).
-  const lines = cartItems.map((item) => {
+  const priced: {
+    key: string
+    variantId: string
+    productName: string
+    quantity: number
+    unitPrice: number
+    withExchange: boolean
+    priceBreakdown: ReturnType<typeof toSetOrderItemSnapshot>
+    discountLine: DiscountLineInput
+  }[] = []
+
+  for (const item of cartItems) {
     const product = item.variant.product
     const snapshot = toSetOrderItemSnapshot(
       item.variant,
@@ -131,36 +151,78 @@ export async function POST(req: NextRequest) {
     if (!snapshot) {
       throw new Error(`Cannot price cart line for variant ${item.variantId}`)
     }
-    return {
+    const mem = membership.get(product.id) ?? { collectionIds: [], storeCategoryIds: [] }
+    const unitPrice = Math.round(snapshot.total)
+    priced.push({
+      key: item.id,
       variantId: item.variantId,
       productName: product.name,
       quantity: item.quantity,
-      unitPrice: Math.round(snapshot.total),
+      unitPrice,
       withExchange: item.withExchange,
       priceBreakdown: snapshot,
+      discountLine: {
+        key: item.id,
+        variantId: item.variantId,
+        productId: product.id,
+        category: product.category,
+        collectionIds: mem.collectionIds,
+        storeCategoryIds: mem.storeCategoryIds,
+        quantity: item.quantity,
+        ...discountBasesFromSnapshot(snapshot),
+      },
+    })
+  }
+
+  const goodsTotal = priced.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+
+  const preview = await previewCartDiscounts({
+    lines: priced.map((p) => p.discountLine),
+    userId: user.id,
+    promoCode: address.promoCode,
+  })
+  if (!preview.ok) {
+    return NextResponse.json(
+      { error: 'PROMO_INVALID', message: preview.reason },
+      { status: 422 },
+    )
+  }
+
+  const { result } = preview
+  const discountAmount = result.discountAmount
+  const promoCodeId = result.coupon?.id ?? null
+  const allocByKey = new Map(result.allocations.map((a) => [a.key, a]))
+
+  const lines = priced.map((l) => {
+    const alloc = allocByKey.get(l.key)
+    const breakdown = alloc
+      ? applyDiscountToSnapshot(l.priceBreakdown!, alloc)
+      : l.priceBreakdown!
+    return {
+      variantId: l.variantId,
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      withExchange: l.withExchange,
+      priceBreakdown: breakdown,
     }
   })
-
-  const goodsTotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
-
-  // Promo (server-validated; discount applies to the goods total)
-  let discountAmount = 0
-  let promoCodeId: string | null = null
-  if (address.promoCode) {
-    const promoResult = await validatePromo(address.promoCode, user.id, goodsTotal)
-    if (!promoResult.ok) {
-      return NextResponse.json(
-        { error: 'PROMO_INVALID', message: promoResult.reason },
-        { status: 422 },
-      )
-    }
-    discountAmount = promoResult.discount
-    promoCodeId = promoResult.promo.id
-  }
 
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(
     goodsTotal - discountAmount,
   )
+
+  const noteParts: string[] = []
+  if (result.automatic && result.automatic.amount > 0) {
+    noteParts.push(`auto ${result.automatic.percent}% −₹${result.automatic.amount.toLocaleString('en-IN')}`)
+  }
+  if (result.coupon && result.coupon.amount > 0) {
+    noteParts.push(
+      `coupon ${result.coupon.code}${
+        result.coupon.percent != null ? ` ${result.coupon.percent}%` : ` ${result.coupon.kind}`
+      } −₹${result.coupon.amount.toLocaleString('en-IN')}`,
+    )
+  }
 
   // Create our Order first (PAYMENT_PENDING), then the gateway intent with our id
   // as reference so dashboard entries reconcile 1:1.
@@ -172,6 +234,7 @@ export async function POST(req: NextRequest) {
       depositAmount,
       grandTotal,
       discountAmount,
+      discountBreakdown: result.breakdown as unknown as Prisma.InputJsonValue,
       promoCodeId,
       contactName: address.contactName,
       contactPhone: address.contactPhone,
@@ -197,7 +260,10 @@ export async function POST(req: NextRequest) {
       events: {
         create: {
           status: 'PAYMENT_PENDING',
-          note: discountAmount > 0 ? `Order created (promo −₹${discountAmount.toLocaleString('en-IN')})` : 'Order created',
+          note:
+            noteParts.length > 0
+              ? `Order created (${noteParts.join(' · ')})`
+              : 'Order created',
         },
       },
     },
@@ -205,9 +271,14 @@ export async function POST(req: NextRequest) {
 
   // Reserve the promo redemption against this order; released if the order
   // is cancelled before payment or swept as expired.
-  if (promoCodeId) {
+  if (promoCodeId && result.coupon) {
     await prisma.promoRedemption.create({
-      data: { promoCodeId, userId: user.id, orderId: order.id, amount: discountAmount },
+      data: {
+        promoCodeId,
+        userId: user.id,
+        orderId: order.id,
+        amount: result.coupon.amount,
+      },
     })
   }
 

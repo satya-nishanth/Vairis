@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { formatMetalShort } from '@/lib/metal'
 
 export type AdminProductRow = {
   id: string
@@ -29,6 +30,7 @@ export type AdminProductRow = {
   metals?: string[]
   variantsList?: {
     metalType: string
+    metalColor?: string
     sku: string
     size: string | null
     weightGrams: number
@@ -58,19 +60,6 @@ type Props = {
 
 function categoryLabel(cat: string) {
   return cat.charAt(0) + cat.slice(1).toLowerCase().replace(/_/g, ' ')
-}
-
-function formatMetal(m: string) {
-  switch (m) {
-    case 'GOLD_18K':
-      return '18K Gold'
-    case 'GOLD_14K':
-      return '14K Gold'
-    case 'ROSE_GOLD':
-      return 'Rose Gold'
-    default:
-      return m
-  }
 }
 
 export function AdminProductsTable({ products: initialProducts, total, page, rows }: Props) {
@@ -386,7 +375,7 @@ export function AdminProductsTable({ products: initialProducts, total, page, row
                           )}
                           {p.metals && p.metals.length > 0 && (
                             <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>
-                              {p.metals.map(formatMetal).join(' · ')}
+                              {(p.metals ?? []).join(' · ')}
                             </div>
                           )}
                         </div>
@@ -906,7 +895,7 @@ function ProductCardItem({
           )}
           {p.metals && p.metals.length > 0 && (
             <div style={{ color: '#9ca3af', marginTop: 4 }}>
-              {p.metals.map(formatMetal).join(' · ')}
+              {(p.metals ?? []).join(' · ')}
             </div>
           )}
         </div>
@@ -1306,7 +1295,7 @@ function ProductInspectModal({
               {p.metals && p.metals.length > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#6b7280' }}>Metals:</span>
-                  <span style={{ fontWeight: 500, color: '#111827' }}>{p.metals.map(formatMetal).join(', ')}</span>
+                  <span style={{ fontWeight: 500, color: '#111827' }}>{(p.metals ?? []).join(', ')}</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e5e7eb', paddingTop: 4 }}>
@@ -1325,7 +1314,7 @@ function ProductInspectModal({
               <div style={{ padding: '8px 12px', fontSize: '0.75rem' }}>
                 {p.variantsList.map((v, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-                    <span style={{ color: '#374151', fontWeight: 500 }}>{formatMetal(v.metalType)} {v.size ? `· ${v.size}` : ''}</span>
+                    <span style={{ color: '#374151', fontWeight: 500 }}>{formatMetalShort(v.metalType, v.metalColor)} {v.size ? `· ${v.size}` : ''}</span>
                     <span style={{ color: '#6b7280' }}>{v.weightGrams}g · SKU: {v.sku}</span>
                   </div>
                 ))}

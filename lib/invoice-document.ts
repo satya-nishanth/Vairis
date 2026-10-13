@@ -9,6 +9,8 @@ import {
 } from '@/lib/pricing'
 import { amountInWords, normalizeInvoiceGstScheme, splitInvoiceTax, type InvoiceGstScheme } from '@/lib/invoice-tax'
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
+import { couponKindSuffix } from '@/lib/promo-labels'
+import { formatMetalLabel, goldRateKey as purityRateKey } from '@/lib/metal'
 import type { InvoiceStatus } from '@prisma/client'
 
 export type InvoiceParty = {
@@ -155,8 +157,14 @@ export type InvoicePayload = {
    * Loose diamonds = 1.5% (0.75% CGST + 0.75% SGST).
    */
   gstScheme?: InvoiceGstScheme
-  /** Discount in ₹ subtracted after GST + round-off (payable only). */
+  /** Discount in ₹ subtracted after GST + round-off (payable only). Sum of auto + coupon when both set. */
   discount?: number
+  /** Automatic post-GST discount (₹) — shown separately from coupon. */
+  autoDiscount?: number
+  autoDiscountLabel?: string
+  /** Coupon post-GST discount (₹). */
+  couponDiscount?: number
+  couponDiscountLabel?: string
   notes: {
     exchange: string
     certification: string
@@ -193,14 +201,12 @@ export function applyInvoiceSeller(payload: InvoicePayload): InvoicePayload {
   return { ...payload, seller: sellerDefaults() }
 }
 
-export function metalLabel(metalType: string): string {
-  if (metalType === 'GOLD_14K') return '14K Yellow Gold'
-  if (metalType === 'ROSE_GOLD') return '18K Rose Gold'
-  return '18K Yellow Gold'
+export function metalLabel(metalType: string, metalColor?: string | null): string {
+  return formatMetalLabel(metalType, metalColor)
 }
 
-export function goldRateKey(metalType: string): 'GOLD_14K' | 'GOLD_18K' {
-  return metalType === 'GOLD_14K' ? 'GOLD_14K' : 'GOLD_18K'
+export function goldRateKey(metalType: string): 'GOLD_9K' | 'GOLD_14K' | 'GOLD_18K' | 'GOLD_22K' {
+  return purityRateKey(metalType)
 }
 
 export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLine {
@@ -272,7 +278,11 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
 export function totalsFromPayload(payload: InvoicePayload) {
   const lines = payload.lines.map((l) => recomputeLine(l, 'Wastage'))
   const taxable = lines.reduce((s, l) => s + l.taxable, 0)
-  const discount = Math.max(0, Number(payload.discount) || 0)
+  const auto = Math.max(0, Number(payload.autoDiscount) || 0)
+  const coupon = Math.max(0, Number(payload.couponDiscount) || 0)
+  const splitTotal = auto + coupon
+  const discount =
+    splitTotal > 0 ? splitTotal : Math.max(0, Number(payload.discount) || 0)
   const tax = splitInvoiceTax(
     taxable,
     payload.placeOfSupply,
@@ -282,6 +292,8 @@ export function totalsFromPayload(payload: InvoicePayload) {
   return {
     lines,
     ...tax,
+    autoDiscount: auto,
+    couponDiscount: coupon,
     amountInWords: amountInWords(tax.grandTotal),
   }
 }
@@ -541,6 +553,7 @@ export type PrefillOrder = {
   pincode: string
   /** Order-level discount (₹) — copied onto the invoice payable. */
   discountAmount?: { toString(): string } | number | null
+  discountBreakdown?: unknown
   /** Offline/manual settlement date (invoice Received On). */
   paymentReceivedAt?: Date | string | null
   user: { name: string; email: string }
@@ -663,7 +676,7 @@ export function lineFromOrderItem(
         productName: item.productName,
         itemCode: v.product.itemCode ?? '',
         sku: v.sku,
-        metalLabel: metalLabel(snap.metalType || metal),
+        metalLabel: metalLabel(snap.metalType || metal, snap.metalColor),
         withExchange: Boolean(snap.withExchange),
         quantity: item.quantity,
         weightGrams: Number(snap.weightGrams) || Number(v.weightGrams),
@@ -728,6 +741,32 @@ export function payloadFromOrder(
   }
   const lines = flattenItems(order).map((item) => lineFromOrderItem(item, rates, config))
   const discountRaw = order.discountAmount != null ? Number(order.discountAmount) : 0
+  const bd =
+    order.discountBreakdown &&
+    typeof order.discountBreakdown === 'object' &&
+    order.discountBreakdown !== null
+      ? (order.discountBreakdown as {
+          automatic?: { name?: string; amount?: number; percent?: number } | null
+          coupon?: {
+            code?: string
+            kind?: string
+            amount?: number
+            percent?: number
+          } | null
+        })
+      : null
+  const autoAmt = bd?.automatic?.amount != null ? Number(bd.automatic.amount) : 0
+  const couponAmt = bd?.coupon?.amount != null ? Number(bd.coupon.amount) : 0
+  const autoLabel =
+    bd?.automatic && autoAmt > 0
+      ? `${bd.automatic.name ?? 'Discount'}${
+          bd.automatic.percent != null ? ` · ${bd.automatic.percent}%` : ''
+        }`
+      : undefined
+  const couponLabel =
+    bd?.coupon && couponAmt > 0
+      ? `${bd.coupon.code ?? 'Coupon'}${couponKindSuffix(bd.coupon.kind, bd.coupon.percent)}`
+      : undefined
   const payload: InvoicePayload = {
     seller: sellerDefaults(),
     billedTo: party,
@@ -744,7 +783,16 @@ export function payloadFromOrder(
       ? 'Maharashtra (27)'
       : order.state || 'Maharashtra (27)',
     gstScheme: 'JEWELLERY',
-    discount: discountRaw > 0 ? discountRaw : undefined,
+    autoDiscount: autoAmt > 0 ? autoAmt : undefined,
+    autoDiscountLabel: autoLabel,
+    couponDiscount: couponAmt > 0 ? couponAmt : undefined,
+    couponDiscountLabel: couponLabel,
+    discount:
+      autoAmt + couponAmt > 0
+        ? autoAmt + couponAmt
+        : discountRaw > 0
+          ? discountRaw
+          : undefined,
     notes: { ...DEFAULT_INVOICE_NOTES },
     lines: lines.length > 0 ? lines : [blankLine()],
   }
