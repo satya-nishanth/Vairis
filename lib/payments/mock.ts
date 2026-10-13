@@ -35,7 +35,14 @@ function randomId(prefix: string): string {
 }
 
 export function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  // Prefer public URL; on Azure Container Apps NEXT_PUBLIC_APP_URL may be
+  // build-only / unset at runtime — APP_URL is set from the ingress FQDN.
+  // Same-container loopback works for mock self-webhooks when both are missing.
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.APP_URL ??
+    "http://127.0.0.1:3000"
+  );
 }
 
 /** POST a normalized mock webhook event to our own webhook route. */

@@ -75,7 +75,13 @@ export const razorpayGateway: PaymentGateway = {
   },
 
   publicKey() {
-    return process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? null;
+    // Key id is public; fall back to server RAZORPAY_KEY_ID when the
+    // NEXT_PUBLIC_ copy is missing (common on Azure — only the secretRef is set).
+    return (
+      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ??
+      process.env.RAZORPAY_KEY_ID ??
+      null
+    );
   },
 
   async createPaymentIntent(amount, reference) {
