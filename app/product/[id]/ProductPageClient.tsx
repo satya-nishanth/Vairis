@@ -678,7 +678,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               </div>
             )}
 
-            {colorsForSelected.length > 1 && (
+            {colorsForSelected.length > 0 && (
               <div className="pdp-options" data-testid="pdp-metal-color">
                 <label>Color</label>
                 <div className="pdp-variants">
