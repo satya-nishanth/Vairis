@@ -8,6 +8,8 @@ import {
   isOrderItemPriceSnapshot,
   splitGemValues,
 } from '@/lib/pricing'
+import { isOrderDiscountBreakdown } from '@/lib/discounts'
+import { couponKindSuffix } from '@/lib/promo-labels'
 import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
 import { MarkPaidOffline } from './MarkPaidOffline'
@@ -376,17 +378,53 @@ export default async function AdminOrderDetailPage({
                     )}
                   </td>
                 </tr>
-                {Number(order.discountAmount) > 0 && (
-                  <tr>
-                    <th scope="row">Promo discount</th>
-                    <td>
-                      −{inr(order.discountAmount)}
-                      {order.promoCode?.code && (
-                        <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                {(() => {
+                  const bd = isOrderDiscountBreakdown(order.discountBreakdown)
+                    ? order.discountBreakdown
+                    : null
+                  const auto = bd?.automatic
+                  const coupon = bd?.coupon
+                  return (
+                    <>
+                      {auto && auto.amount > 0 && (
+                        <tr>
+                          <th scope="row">Discount</th>
+                          <td>
+                            −{inr(auto.amount)}
+                            <span style={{ color: '#6b7280' }}>
+                              {' '}
+                              · {auto.name} · {auto.percent}%
+                            </span>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                )}
+                      {coupon && coupon.amount > 0 && (
+                        <tr>
+                          <th scope="row">Coupon</th>
+                          <td>
+                            −{inr(coupon.amount)}
+                            <span style={{ color: '#6b7280' }}>
+                              {' '}
+                              · {coupon.code}
+                              {couponKindSuffix(coupon.kind, coupon.percent)}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {!auto && !coupon && Number(order.discountAmount) > 0 && (
+                        <tr>
+                          <th scope="row">Promo discount</th>
+                          <td>
+                            −{inr(order.discountAmount)}
+                            {order.promoCode?.code && (
+                              <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )
+                })()}
                 {Number(order.depositAmount) > 0 && (
                   <tr>
                     <th scope="row">Legacy deposit</th>
@@ -427,17 +465,53 @@ export default async function AdminOrderDetailPage({
                   <th scope="row">This order total</th>
                   <td>{inr(order.grandTotal)}</td>
                 </tr>
-                {Number(order.discountAmount) > 0 && (
-                  <tr>
-                    <th scope="row">Promo discount</th>
-                    <td>
-                      −{inr(order.discountAmount)}
-                      {order.promoCode?.code && (
-                        <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                {(() => {
+                  const bd = isOrderDiscountBreakdown(order.discountBreakdown)
+                    ? order.discountBreakdown
+                    : null
+                  const auto = bd?.automatic
+                  const coupon = bd?.coupon
+                  return (
+                    <>
+                      {auto && auto.amount > 0 && (
+                        <tr>
+                          <th scope="row">Discount</th>
+                          <td>
+                            −{inr(auto.amount)}
+                            <span style={{ color: '#6b7280' }}>
+                              {' '}
+                              · {auto.name} · {auto.percent}%
+                            </span>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                )}
+                      {coupon && coupon.amount > 0 && (
+                        <tr>
+                          <th scope="row">Coupon</th>
+                          <td>
+                            −{inr(coupon.amount)}
+                            <span style={{ color: '#6b7280' }}>
+                              {' '}
+                              · {coupon.code}
+                              {couponKindSuffix(coupon.kind, coupon.percent)}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {!auto && !coupon && Number(order.discountAmount) > 0 && (
+                        <tr>
+                          <th scope="row">Promo discount</th>
+                          <td>
+                            −{inr(order.discountAmount)}
+                            {order.promoCode?.code && (
+                              <span style={{ color: '#6b7280' }}> · {order.promoCode.code}</span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )
+                })()}
                 <tr>
                   <th scope="row">Refunded (this order)</th>
                   <td>{refundedTotal > 0 ? inr(refundedTotal) : '—'}</td>
@@ -510,8 +584,37 @@ export default async function AdminOrderDetailPage({
                 { label: 'GST', value: inr(Math.round(b.gst)) },
                 { label: 'Line total', value: inr(Math.round(b.total)) },
               ]
+              const autoAmt = Number(b.autoDiscount ?? 0)
+              const couponAmt = Number(b.couponDiscount ?? 0)
+              if (autoAmt > 0) {
+                const pct =
+                  b.autoDiscountPercent != null ? ` · ${b.autoDiscountPercent}%` : ''
+                const name = b.autoDiscountLabel ? ` (${b.autoDiscountLabel}${pct})` : pct ? ` (${pct.replace(' · ', '')})` : ''
+                rows.push({
+                  label: `Discount${name}`,
+                  value: `−${inr(Math.round(autoAmt))}`,
+                })
+              }
+              if (couponAmt > 0) {
+                const code = b.couponCode ?? 'Coupon'
+                const detail = couponKindSuffix(b.couponKind, b.couponDiscountPercent)
+                rows.push({
+                  label: `Coupon (${code}${detail})`,
+                  value: `−${inr(Math.round(couponAmt))}`,
+                })
+              }
+              const payableUnit =
+                b.payable != null
+                  ? Number(b.payable)
+                  : Math.max(0, Number(b.total) - autoAmt - couponAmt)
+              if (autoAmt > 0 || couponAmt > 0) {
+                rows.push({ label: 'Payable', value: inr(Math.round(payableUnit)) })
+              }
               if (item.quantity > 1) {
-                rows.push({ label: `× ${item.quantity}`, value: inr(Math.round(b.total * item.quantity)) })
+                rows.push({
+                  label: `× ${item.quantity}`,
+                  value: inr(Math.round(payableUnit * item.quantity)),
+                })
               }
               return (
                 <div key={item.id} style={{ marginBottom: order.items.length > 1 ? 16 : 0 }}>

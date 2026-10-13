@@ -116,8 +116,8 @@ describe('POST /api/admin/products', () => {
     gemCount: 5,
     caratWeight: 2.0,
     variants: [
-      { metalType: 'GOLD_18K', weightGrams: '8.5', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '3', sku: 'AJBR-74-G18K' },
-      { metalType: 'GOLD_14K', weightGrams: '5.95', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '5', sku: 'AJBR-74-G14K' },
+      { metalType: 'GOLD_18K', metalColor: 'YELLOW', weightGrams: '8.5', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '3', sku: 'AJBR-74-G18K-YG' },
+      { metalType: 'GOLD_14K', metalColor: 'YELLOW', weightGrams: '5.95', makingChargePerGram: '400', flatMakingCharge: '0', stoneCharges: '18000', miscCharges: '45', stock: '5', sku: 'AJBR-74-G14K-YG' },
     ],
   }
 
@@ -152,7 +152,7 @@ describe('POST /api/admin/products', () => {
     expect(Number(creates[0].makingChargePerGram)).toBe(400)
     expect(Number(creates[0].stoneCharges)).toBe(18000)
     expect(Number(creates[0].miscCharges)).toBe(45)
-    expect(creates[0].sku).toBe('AJBR-74-G18K')
+    expect(creates[0].sku).toBe('AJBR-74-G18K-YG')
   })
 
   it('converts empty itemCode to null', async () => {
@@ -165,7 +165,7 @@ describe('POST /api/admin/products', () => {
   it('returns 400 when makingChargePerGram is missing from a variant', async () => {
     const badBody = {
       ...validBody,
-      variants: [{ metalType: 'GOLD_18K', weightGrams: '8.5', stock: '3', sku: 'AJBR-74-G18K' }],
+      variants: [{ metalType: 'GOLD_18K', metalColor: 'YELLOW', weightGrams: '8.5', stock: '3', sku: 'AJBR-74-G18K-YG' }],
     }
     const req = makeReq('http://localhost/api/admin/products', 'POST', badBody)
     const res = await createProduct(req)

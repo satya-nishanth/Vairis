@@ -92,11 +92,15 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
           },
         })
         if (!collection || !collection.active) continue
-        const validProducts = (collection.products ?? [])
+        const liveProducts = (collection.products ?? [])
           .map((cp) => cp?.product)
           .filter((p): p is NonNullable<typeof p> => Boolean(p && p.isActive && p.status === 'LIVE'))
           .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.name ?? '').localeCompare(b.name ?? ''))
-          .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal))
+        const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
+        const saleMap = await autoDiscountPercentsForProducts(liveProducts)
+        const validProducts = liveProducts.map((p, i) =>
+          prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+        )
 
         if (validProducts.length === 0) continue
 

@@ -17,10 +17,19 @@ enum Category {
   NECKLACES
 }
 
+/// Gold purity (karat). Used for GoldRate lookup — color is separate.
 enum MetalType {
+  GOLD_9K
   GOLD_14K
   GOLD_18K
-  ROSE_GOLD
+  GOLD_22K
+}
+
+/// Alloy color — does not affect gold rate.
+enum MetalColor {
+  YELLOW
+  WHITE
+  ROSE
 }
 
 enum ProductStatus {
@@ -154,6 +163,8 @@ model Product {
   collections CollectionProduct[]
   storeCategories StoreCategoryProduct[]
   inventoryItems InventoryItem[]
+  automaticDiscountProducts AutomaticDiscountProduct[]
+  promoCodeProducts         PromoCodeProduct[]
 }
 
 /// A sellable piece within a product (e.g. Necklace + Earrings in a set).
@@ -236,6 +247,7 @@ model ProductVariant {
   pieceId             String?
   piece               ProductPiece? @relation(fields: [pieceId], references: [id], onDelete: Cascade)
   metalType           MetalType
+  metalColor          MetalColor  @default(YELLOW)
   size                String?
   weightGrams         Decimal
   makingChargePerGram Decimal     @default(0)
@@ -249,6 +261,7 @@ model ProductVariant {
   inventoryItems      InventoryItem[]
 
   @@index([pieceId])
+  @@index([productId, metalType, metalColor])
 }
 
 model GoldRate {
@@ -280,6 +293,8 @@ model Order {
   promoCodeId        String?
   promoCode          PromoCode?    @relation(fields: [promoCodeId], references: [id])
   discountAmount     Decimal       @default(0)
+  /// Auto + coupon legs (amounts, %, labels). Shape: OrderDiscountBreakdown in lib/discounts.ts
+  discountBreakdown  Json?
   totalAmount        Decimal
   // Jewellery deposit model: customer pays grandTotal = totalAmount * 1.05,
   // depositAmount (5%) is refunded after delivery
@@ -435,6 +450,12 @@ model Wishlist {
 enum PromoKind {
   PERCENT
   FLAT
+  /// Discount = GST-inclusive delivery (miscCharges) on eligible lines.
+  FREE_DELIVERY
+  /// % off GST-inclusive making on eligible lines (capped by making + maxDiscount).
+  MAKING_PERCENT
+  /// Flat ₹ off GST-inclusive making on eligible lines (capped by making).
+  MAKING_FLAT
 }
 
 model PromoCode {
@@ -442,17 +463,130 @@ model PromoCode {
   code           String            @unique // stored uppercase
   description    String?
   kind           PromoKind
-  value          Decimal
+  /// Ignored for FREE_DELIVERY (store 0). Otherwise % or ₹ depending on kind.
+  value          Decimal           @default(0)
   minOrderValue  Decimal           @default(0)
-  maxDiscount    Decimal? // cap for PERCENT codes
+  maxDiscount    Decimal? // cap for PERCENT / MAKING_PERCENT
   startsAt       DateTime?
   endsAt         DateTime?
   maxRedemptions Int?
   maxPerUser     Int               @default(1)
+  /// Only valid if the user has never successfully paid for an order.
+  firstOrderOnly Boolean           @default(false)
   active         Boolean           @default(true)
   createdAt      DateTime          @default(now())
   redemptions    PromoRedemption[]
   orders         Order[]
+  // Empty scope joins = whole cart (backward compatible).
+  products         PromoCodeProduct[]
+  collections      PromoCodeCollection[]
+  storeCategories  PromoCodeStoreCategory[]
+  categories       PromoCodeCategory[]
+}
+
+model PromoCodeProduct {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, productId])
+  @@index([productId])
+}
+
+model PromoCodeCollection {
+  id           String     @id @default(cuid())
+  promoCodeId  String
+  promoCode    PromoCode  @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, collectionId])
+  @@index([collectionId])
+}
+
+model PromoCodeStoreCategory {
+  id              String        @id @default(cuid())
+  promoCodeId     String
+  promoCode       PromoCode     @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  storeCategoryId String
+  storeCategory   StoreCategory @relation(fields: [storeCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, storeCategoryId])
+  @@index([storeCategoryId])
+}
+
+model PromoCodeCategory {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  category    Category
+
+  @@unique([promoCodeId, category])
+}
+
+/// Automatic (no-code) % discount. Empty scope = all products.
+model AutomaticDiscount {
+  id          String    @id @default(cuid())
+  name        String
+  /// Customer-facing reason shown on PDP (e.g. "Festive edit"). Falls back to name when null.
+  displayName String?
+  active      Boolean   @default(true)
+  percent     Decimal
+  maxDiscount Decimal?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  /// Higher wins when multiple rules match a line.
+  priority    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products         AutomaticDiscountProduct[]
+  collections      AutomaticDiscountCollection[]
+  storeCategories  AutomaticDiscountStoreCategory[]
+  categories       AutomaticDiscountCategory[]
+}
+
+model AutomaticDiscountProduct {
+  id                  String            @id @default(cuid())
+  automaticDiscountId String
+  automaticDiscount   AutomaticDiscount @relation(fields: [automaticDiscountId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([automaticDiscountId, productId])
+  @@index([productId])
+}
+
+model AutomaticDiscountCollection {
+  id                  String            @id @default(cuid())
+  automaticDiscountId String
+  automaticDiscount   AutomaticDiscount @relation(fields: [automaticDiscountId], references: [id], onDelete: Cascade)
+  collectionId        String
+  collection          Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([automaticDiscountId, collectionId])
+  @@index([collectionId])
+}
+
+model AutomaticDiscountStoreCategory {
+  id                  String            @id @default(cuid())
+  automaticDiscountId String
+  automaticDiscount   AutomaticDiscount @relation(fields: [automaticDiscountId], references: [id], onDelete: Cascade)
+  storeCategoryId     String
+  storeCategory       StoreCategory     @relation(fields: [storeCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([automaticDiscountId, storeCategoryId])
+  @@index([storeCategoryId])
+}
+
+model AutomaticDiscountCategory {
+  id                  String            @id @default(cuid())
+  automaticDiscountId String
+  automaticDiscount   AutomaticDiscount @relation(fields: [automaticDiscountId], references: [id], onDelete: Cascade)
+  category            Category
+
+  @@unique([automaticDiscountId, category])
 }
 
 model PromoRedemption {
@@ -535,7 +669,9 @@ model Collection {
   showInNav      Boolean             @default(false)
   sortOrder      Int                 @default(0)
   updatedAt      DateTime            @updatedAt
-  products       CollectionProduct[]
+  products            CollectionProduct[]
+  automaticDiscounts  AutomaticDiscountCollection[]
+  promoCodes          PromoCodeCollection[]
 }
 
 model CollectionProduct {
@@ -563,7 +699,9 @@ model StoreCategory {
   isActive     Boolean                @default(true)
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
-  products     StoreCategoryProduct[]
+  products           StoreCategoryProduct[]
+  automaticDiscounts AutomaticDiscountStoreCategory[]
+  promoCodes         PromoCodeStoreCategory[]
 }
 
 model StoreCategoryProduct {

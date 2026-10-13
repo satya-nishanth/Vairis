@@ -13,7 +13,8 @@ import {
 export const dynamic = 'force-dynamic'
 
 const variantSchema = z.object({
-  metalType: z.enum(['GOLD_18K', 'GOLD_14K', 'ROSE_GOLD']),
+  metalType: z.enum(['GOLD_9K', 'GOLD_14K', 'GOLD_18K', 'GOLD_22K']),
+  metalColor: z.enum(['YELLOW', 'WHITE', 'ROSE']).default('YELLOW'),
   weightGrams: z
     .union([z.string(), z.number()])
     .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v)))

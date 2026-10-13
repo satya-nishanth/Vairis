@@ -66,11 +66,15 @@ export default async function CollectionPage({ params }: Props) {
 
   if (!collection || !collection.active) notFound();
 
-  const products = collection.products
+  const liveProducts = collection.products
     .map((cp) => cp.product)
     .filter((p) => p.isActive && p.status === "LIVE")
-    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name))
-    .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
+    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name));
+  const { autoDiscountPercentsForProducts } = await import("@/lib/auto-discount-display");
+  const saleMap = await autoDiscountPercentsForProducts(liveProducts);
+  const products = liveProducts.map((p, i) =>
+    prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+  );
 
   // Collage follows collection sort order (not PLP priority sort).
   const collageImages = collectionCollageImages(

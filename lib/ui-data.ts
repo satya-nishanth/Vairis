@@ -40,6 +40,8 @@ export type Product = {
   priceHidden?: boolean;
   /** Whether the product has multiple variants with differing prices (PLP shows "From ₹...") */
   hasMultiplePrices?: boolean;
+  /** Active automatic discount % for badge / strikethrough (display-only). */
+  autoDiscountPercent?: number;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

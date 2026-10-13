@@ -74,6 +74,8 @@ export default async function FinanceOrdersPage({
           contactName: true,
           contactPhone: true,
           grandTotal: true,
+          discountAmount: true,
+          discountBreakdown: true,
           status: true,
           createdAt: true,
           items: { select: { productName: true, quantity: true }, take: 4 },
@@ -142,6 +144,39 @@ export default async function FinanceOrdersPage({
           status: order.status,
           itemsLabel,
           createdAt: order.createdAt.toISOString(),
+          ...(() => {
+            const bd = order.discountBreakdown as {
+              automatic?: { name?: string; amount?: number; percent?: number } | null
+              coupon?: {
+                code?: string
+                kind?: string
+                amount?: number
+                percent?: number
+              } | null
+            } | null
+            const autoAmt = bd?.automatic?.amount != null ? Number(bd.automatic.amount) : 0
+            const couponAmt = bd?.coupon?.amount != null ? Number(bd.coupon.amount) : 0
+            return {
+              autoDiscount: autoAmt > 0 ? autoAmt : undefined,
+              autoDiscountLabel:
+                autoAmt > 0 && bd?.automatic
+                  ? `${bd.automatic.name ?? 'Discount'}${
+                      bd.automatic.percent != null ? ` · ${bd.automatic.percent}%` : ''
+                    }`
+                  : undefined,
+              couponDiscount: couponAmt > 0 ? couponAmt : undefined,
+              couponDiscountLabel:
+                couponAmt > 0 && bd?.coupon
+                  ? `${bd.coupon.code ?? 'Coupon'}${
+                      bd.coupon.kind === 'PERCENT' && bd.coupon.percent != null
+                        ? ` · ${bd.coupon.percent}%`
+                        : bd.coupon.kind === 'FLAT'
+                          ? ' · flat'
+                          : ''
+                    }`
+                  : undefined,
+            }
+          })(),
         },
         paidToAccountId: order.finance?.paidToAccountId || fallbackPaidTo,
         purchaseFromAccountId: order.finance?.purchaseFromAccountId ?? null,

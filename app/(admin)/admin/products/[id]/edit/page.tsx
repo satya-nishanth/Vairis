@@ -66,6 +66,7 @@ export default async function EditProductPage({
 
   const mapVariant = (v: (typeof product.variants)[number]) => ({
     metalType: v.metalType,
+    metalColor: v.metalColor ?? 'YELLOW',
     size: v.size ?? '',
     weightGrams: v.weightGrams.toString(),
     makingChargePerGram: v.makingChargePerGram.toString(),

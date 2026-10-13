@@ -12,7 +12,33 @@ jest.mock('@/lib/prisma', () => ({
     order: { create: jest.fn(), update: jest.fn() },
     promoRedemption: { create: jest.fn(), deleteMany: jest.fn() },
     payment: { create: jest.fn() },
+    automaticDiscount: { findMany: jest.fn().mockResolvedValue([]) },
+    collectionProduct: { findMany: jest.fn().mockResolvedValue([]) },
+    storeCategoryProduct: { findMany: jest.fn().mockResolvedValue([]) },
+    promoCode: { findUnique: jest.fn().mockResolvedValue(null) },
   },
+}))
+jest.mock('@/lib/product-piece-pricing', () => ({
+  toSetOrderItemSnapshot: jest.fn().mockReturnValue({
+    goldValue: 30000,
+    goldVA: 3000,
+    making: 500,
+    stoneValue: 0,
+    diamondValue: 0,
+    otherStoneValue: 0,
+    stoneLines: [],
+    stoneVA: 0,
+    vaTotal: 3000,
+    vaLabel: 'Value Addition',
+    miscCharges: 0,
+    taxable: 33500,
+    gst: 1005,
+    total: 34505,
+    withExchange: false,
+    goldRatePerGram: 6000,
+    weightGrams: 5,
+    capturedAt: new Date().toISOString(),
+  }),
 }))
 jest.mock('@/lib/auth', () => ({ getAppUser: jest.fn() }))
 jest.mock('@/lib/payments', () => ({ getPaymentGateway: jest.fn() }))
@@ -60,12 +86,22 @@ const cartItemFixture = {
   withExchange: false,
   variant: {
     metalType: 'GOLD_22K',
+    metalColor: 'YELLOW',
     weightGrams: 5,
     makingChargePerGram: 100,
     flatMakingCharge: 0,
     stoneCharges: 0,
     miscCharges: 0,
-    product: { name: 'Test Ring', stones: [] },
+    product: {
+      id: 'p1',
+      name: 'Test Ring',
+      category: 'RINGS',
+      stones: [],
+      pieces: [],
+      variants: [],
+      vaGoldPct: null,
+      vaLabel: null,
+    },
   },
 }
 const goldRateFixture = [{ metalType: 'GOLD_22K', ratePerGram: 6000 }]

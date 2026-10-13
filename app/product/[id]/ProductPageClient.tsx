@@ -23,17 +23,13 @@ import { calculatePrice, type PricingConfig, type PriceBreakdown, type StoneInpu
 import { resolvePiecePricingConfig, type StoneView } from "@/lib/pricing-data";
 import type { Product } from "@/lib/ui-data";
 import { track } from "@/lib/analytics-client";
-
-const METAL_LABELS: Record<string, string> = {
-  GOLD_18K: "18kt Yellow Gold",
-  GOLD_14K: "14kt Yellow Gold",
-  ROSE_GOLD: "Rose Gold 18kt",
-};
+import { colorMeta, purityMeta } from "@/lib/metal";
 
 type Variant = {
   id: string;
   pieceId: string | null;
   metalType: string;
+  metalColor?: string;
   weightGrams: string;
   makingChargePerGram: string;
   flatMakingCharge: string;
@@ -42,6 +38,14 @@ type Variant = {
   sku: string | null;
   size: string | null;
 };
+
+function variantColor(v: Variant): string {
+  return v.metalColor ?? "YELLOW";
+}
+
+function sameMetalOption(v: Variant, purity: string, color: string): boolean {
+  return v.metalType === purity && variantColor(v) === color;
+}
 
 type PieceView = {
   id: string;
@@ -67,6 +71,10 @@ type ProductData = {
   vaGoldPct?: number | null;
   vaLabel?: string | null;
   labels?: string[];
+  /** Display-only automatic discount % (authoritative at checkout). */
+  autoDiscountPercent?: number | null;
+  /** Customer-facing reason for the discount (admin “Display name”). */
+  autoDiscountDisplayName?: string | null;
 };
 
 type Props = {
@@ -116,6 +124,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   const [activeThumb, setActiveThumb] = useState(0);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const paramMetal = searchParams?.get("metal");
+  const paramColor = searchParams?.get("color");
   const paramSize = searchParams?.get("size");
 
   const multiPiece = product.pieces.length > 1;
@@ -127,16 +136,18 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   };
 
   const initialVariant = useMemo(() => {
-    if (paramMetal || paramSize) {
+    if (paramMetal || paramColor || paramSize) {
       const match = allVariants.find((v) => {
         const metalMatch = !paramMetal || v.metalType.toLowerCase() === paramMetal.toLowerCase();
+        const colorMatch =
+          !paramColor || variantColor(v).toLowerCase() === paramColor.toLowerCase();
         const sizeMatch = !paramSize || v.size === paramSize;
-        return metalMatch && sizeMatch;
+        return metalMatch && colorMatch && sizeMatch;
       });
       if (match) return match.id;
     }
     return product.pieces[0]?.variants[0]?.id ?? null;
-  }, [allVariants, product.pieces, paramMetal, paramSize]);
+  }, [allVariants, product.pieces, paramMetal, paramColor, paramSize]);
 
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(initialVariant);
   const swipeRef = useRef<HTMLDivElement>(null);
@@ -149,6 +160,11 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     let changed = false;
     if (variant.metalType && url.searchParams.get("metal") !== variant.metalType) {
       url.searchParams.set("metal", variant.metalType);
+      changed = true;
+    }
+    const color = variantColor(variant);
+    if (url.searchParams.get("color") !== color) {
+      url.searchParams.set("color", color);
       changed = true;
     }
     if (variant.size && url.searchParams.get("size") !== variant.size) {
@@ -198,11 +214,16 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
   // price at the selected metal (same rule as cart/checkout).
   const pricePiecesFor = (exchange: boolean): PiecePriced[] | null => {
     if (!selectedVariant && !allVariants.length) return null;
-    const metal = selectedVariant?.metalType ?? allVariants[0]?.metalType;
-    if (!metal) return null;
+    const purity = selectedVariant?.metalType ?? allVariants[0]?.metalType;
+    const color = selectedVariant
+      ? variantColor(selectedVariant)
+      : allVariants[0]
+        ? variantColor(allVariants[0])
+        : "YELLOW";
+    if (!purity) return null;
     const out: PiecePriced[] = [];
     for (const piece of product.pieces) {
-      const v = piece.variants.find((x) => x.metalType === metal);
+      const v = piece.variants.find((x) => sameMetalOption(x, purity, color));
       if (!v) return null;
       const part = pieceBreakdown(
         piece,
@@ -234,39 +255,67 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
 
-  // Only metals available on every piece (same rule as set pricing).
-  const metals = product.pieces.reduce<string[]>((acc, piece, i) => {
-    const pieceMetals = [...new Set(piece.variants.map((v) => v.metalType))];
-    if (i === 0) return pieceMetals;
-    return acc.filter((m) => pieceMetals.includes(m));
+  // Purity + color available on every piece (same rule as set pricing).
+  const purities = product.pieces.reduce<string[]>((acc, piece, i) => {
+    const piecePurities = [...new Set(piece.variants.map((v) => v.metalType))];
+    if (i === 0) return piecePurities;
+    return acc.filter((m) => piecePurities.includes(m));
   }, []);
+
+  const colorsForPurity = (purity: string) =>
+    product.pieces.reduce<string[]>((acc, piece, i) => {
+      const pieceColors = [
+        ...new Set(
+          piece.variants.filter((v) => v.metalType === purity).map((v) => variantColor(v)),
+        ),
+      ];
+      if (i === 0) return pieceColors;
+      return acc.filter((c) => pieceColors.includes(c));
+    }, []);
+
   const primaryPiece = product.pieces[0];
-  const selectedMetal =
-    selectedVariant && metals.includes(selectedVariant.metalType)
+  const selectedPurity =
+    selectedVariant && purities.includes(selectedVariant.metalType)
       ? selectedVariant.metalType
-      : metals[0];
+      : purities[0];
+  const colorsForSelected = selectedPurity ? colorsForPurity(selectedPurity) : [];
+  const selectedColor =
+    selectedVariant && colorsForSelected.includes(variantColor(selectedVariant))
+      ? variantColor(selectedVariant)
+      : colorsForSelected[0] ?? "YELLOW";
+
+  const pickVariantForMetal = (purity: string, color: string) => {
+    const sameSize = primaryPiece?.variants.find(
+      (v) => sameMetalOption(v, purity, color) && v.size === selectedVariant?.size,
+    );
+    const fallback =
+      primaryPiece?.variants.find((v) => sameMetalOption(v, purity, color)) ??
+      allVariants.find((v) => sameMetalOption(v, purity, color));
+    setSelectedVariantId((sameSize ?? fallback)?.id ?? null);
+  };
 
   useEffect(() => {
-    if (!selectedMetal) return;
-    if (selectedVariant && selectedVariant.metalType === selectedMetal) return;
-    const next =
-      primaryPiece?.variants.find((v) => v.metalType === selectedMetal) ??
-      allVariants.find((v) => v.metalType === selectedMetal);
-    if (next) setSelectedVariantId(next.id);
-  }, [selectedMetal, selectedVariant, primaryPiece, allVariants]);
+    if (!selectedPurity || !selectedColor) return;
+    if (selectedVariant && sameMetalOption(selectedVariant, selectedPurity, selectedColor)) {
+      return;
+    }
+    pickVariantForMetal(selectedPurity, selectedColor);
+  }, [selectedPurity, selectedColor, selectedVariant, primaryPiece, allVariants]);
 
   // Sizes from the primary (first) piece — size is a product option, not a second line item.
   const sizesForMetal = (primaryPiece?.variants ?? []).filter(
-    (v) => v.metalType === selectedMetal && v.size,
+    (v) => sameMetalOption(v, selectedPurity, selectedColor) && v.size,
   );
 
-  const selectMetal = (metal: string) => {
-    const sameSize = primaryPiece?.variants.find(
-      (v) => v.metalType === metal && v.size === selectedVariant?.size,
-    );
-    const fallback = primaryPiece?.variants.find((v) => v.metalType === metal)
-      ?? allVariants.find((v) => v.metalType === metal);
-    setSelectedVariantId((sameSize ?? fallback)?.id ?? null);
+  const selectPurity = (purity: string) => {
+    const colors = colorsForPurity(purity);
+    const color = colors.includes(selectedColor) ? selectedColor : colors[0] ?? "YELLOW";
+    pickVariantForMetal(purity, color);
+  };
+
+  const selectColor = (color: string) => {
+    if (!selectedPurity) return;
+    pickVariantForMetal(selectedPurity, color);
   };
 
   useEffect(() => {
@@ -509,10 +558,39 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             )}
 
             {product.showPrice && price != null ? (
-              <p className="pdp-info__price">
-                ₹{price.toLocaleString("en-IN")}
-                <span className="pdp-info__meta"> incl. GST</span>
-              </p>
+              <>
+                <p className="pdp-info__price">
+                  {product.autoDiscountPercent && product.autoDiscountPercent > 0 ? (
+                    <>
+                      <span style={{ textDecoration: "line-through", opacity: 0.55, marginRight: 10 }}>
+                        ₹{price.toLocaleString("en-IN")}
+                      </span>
+                      ₹
+                      {Math.max(
+                        0,
+                        Math.round(price * (1 - product.autoDiscountPercent / 100)),
+                      ).toLocaleString("en-IN")}
+                      <span className="pdp-info__meta"> incl. GST</span>
+                    </>
+                  ) : (
+                    <>
+                      ₹{price.toLocaleString("en-IN")}
+                      <span className="pdp-info__meta"> incl. GST</span>
+                    </>
+                  )}
+                </p>
+                {product.autoDiscountPercent && product.autoDiscountPercent > 0 && (
+                    <p
+                      className="pdp-info__meta"
+                      style={{ marginTop: 6, marginBottom: 0, color: "var(--brand-olive, #5e684e)" }}
+                      data-testid="pdp-discount-display-name"
+                    >
+                      {product.autoDiscountDisplayName
+                        ? `Discount: ${product.autoDiscountDisplayName} - ${Math.round(product.autoDiscountPercent)}% Off`
+                        : `Discount: ${Math.round(product.autoDiscountPercent)}% Off`}
+                    </p>
+                  )}
+              </>
             ) : (
               !product.showPrice && <p className="pdp-info__price pdp-info__price--on-request">Price on Request</p>
             )}
@@ -581,19 +659,38 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   </div>
                 ) : null}
 
-            {metals.length > 0 && (
+            {purities.length > 0 && (
               <div className="pdp-options">
                 <label>Metal</label>
                 <div className="pdp-variants">
-                  {metals.map((m) => (
+                  {purities.map((m) => (
                     <button
                       key={m}
                       type="button"
-                      className={`btn ${m === selectedMetal ? "btn-primary" : "btn-secondary"}`}
-                      aria-pressed={m === selectedMetal}
-                      onClick={() => selectMetal(m)}
+                      className={`btn ${m === selectedPurity ? "btn-primary" : "btn-secondary"}`}
+                      aria-pressed={m === selectedPurity}
+                      onClick={() => selectPurity(m)}
                     >
-                      {METAL_LABELS[m] ?? m}
+                      {purityMeta(m)?.label ?? m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {colorsForSelected.length > 1 && (
+              <div className="pdp-options" data-testid="pdp-metal-color">
+                <label>Color</label>
+                <div className="pdp-variants">
+                  {colorsForSelected.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`btn ${c === selectedColor ? "btn-primary" : "btn-secondary"}`}
+                      aria-pressed={c === selectedColor}
+                      onClick={() => selectColor(c)}
+                    >
+                      {colorMeta(c)?.shortLabel ?? c}
                     </button>
                   ))}
                 </div>

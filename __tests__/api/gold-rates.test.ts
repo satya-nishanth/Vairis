@@ -7,6 +7,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {
     goldRate: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       upsert: jest.fn(),
     },
   },
@@ -16,55 +17,65 @@ const mockGoldRate = prisma.goldRate as jest.Mocked<typeof prisma.goldRate>
 
 beforeEach(() => jest.clearAllMocks())
 
-// ── GET /api/gold-rates ───────────────────────────────────────────────────────
-
 describe('GET /api/gold-rates', () => {
-  it('returns 18K and 14K rates', async () => {
-    mockGoldRate.findUnique
-      .mockResolvedValueOnce({
+  it('returns all purity rates from DB', async () => {
+    mockGoldRate.findMany.mockResolvedValue([
+      {
         metalType: 'GOLD_18K',
         ratePerGram: 5100 as any,
         fetchedAt: new Date('2026-05-14T10:00:00Z'),
-      } as any)
-      .mockResolvedValueOnce({
+      },
+      {
         metalType: 'GOLD_14K',
         ratePerGram: 3967 as any,
         fetchedAt: new Date('2026-05-14T10:00:00Z'),
-      } as any)
+      },
+      {
+        metalType: 'GOLD_22K',
+        ratePerGram: 6233 as any,
+        fetchedAt: new Date('2026-05-14T10:00:00Z'),
+      },
+      {
+        metalType: 'GOLD_9K',
+        ratePerGram: 2550 as any,
+        fetchedAt: new Date('2026-05-14T10:00:00Z'),
+      },
+    ] as any)
 
     const res = await GET()
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.rates['18K']).toBe(5100)
     expect(data.rates['14K']).toBe(3967)
+    expect(data.rates['22K']).toBe(6233)
+    expect(data.rates['9K']).toBe(2550)
     expect(data.unit).toBe('₹/gram')
   })
 
-  it('falls back to computed 14K if not in DB', async () => {
-    mockGoldRate.findUnique
-      .mockResolvedValueOnce({
+  it('falls back to computed rates from 18K when rows missing', async () => {
+    mockGoldRate.findMany.mockResolvedValue([
+      {
         metalType: 'GOLD_18K',
         ratePerGram: 5400 as any,
         fetchedAt: new Date(),
-      } as any)
-      .mockResolvedValueOnce(null) // GOLD_14K not found
+      },
+    ] as any)
 
     const res = await GET()
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.rates['18K']).toBe(5400)
-    // fallback: 5400 * 14/18 = 4200
     expect(data.rates['14K']).toBe(4200)
+    expect(data.rates['22K']).toBe(6600)
+    expect(data.rates['9K']).toBe(2700)
   })
 
   it('returns 503 when no 18K rate in DB', async () => {
-    mockGoldRate.findUnique.mockResolvedValue(null)
+    mockGoldRate.findMany.mockResolvedValue([])
     const res = await GET()
     expect(res.status).toBe(503)
   })
 })
-
-// ── POST /api/admin/sync-gold-rate ───────────────────────────────────────────
 
 const SECRET = 'test-secret-123'
 const makeReq = (authHeader?: string) =>
@@ -130,6 +141,9 @@ describe('POST /api/admin/sync-gold-rate — rate limiting', () => {
     expect(data.updated).toBe(true)
     expect(data.rates).toHaveProperty('18K')
     expect(data.rates).toHaveProperty('14K')
+    expect(data.rates).toHaveProperty('22K')
+    expect(data.rates).toHaveProperty('9K')
+    expect(mockGoldRate.upsert).toHaveBeenCalledTimes(4)
   })
 })
 

@@ -1,7 +1,9 @@
-import type { Prisma } from '@prisma/client'
+import type { MetalColor, MetalType, Prisma } from '@prisma/client'
+import { buildMetalSku, normalizeMetalColor } from '@/lib/metal'
 
 export type PieceVariantInput = {
-  metalType: 'GOLD_18K' | 'GOLD_14K' | 'ROSE_GOLD'
+  metalType: MetalType
+  metalColor?: MetalColor | string | null
   weightGrams: number
   makingChargePerGram: number
   flatMakingCharge: number
@@ -89,6 +91,7 @@ export async function createProductPieces(
           productId,
           pieceId: piece.id,
           metalType: v.metalType,
+          metalColor: normalizeMetalColor(v.metalColor),
           weightGrams: v.weightGrams,
           makingChargePerGram: v.makingChargePerGram,
           flatMakingCharge: v.flatMakingCharge,
@@ -119,7 +122,7 @@ export async function createProductPieces(
 }
 
 /**
- * Replace pieces for an existing product. Variants matched by piece+metal+size
+ * Replace pieces for an existing product. Variants matched by piece+purity+color+size
  * (SKU alone is unsafe for sets — necklace/earrings often shared the same SKU).
  * Stones replaced wholesale. Pieces not in payload are removed when safe.
  */
@@ -172,13 +175,15 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
 
     for (const v of p.variants) {
       const sizeKey = v.size || null
-      // Prefer same piece + metal + size (preserves both weights in a set)
+      const color = normalizeMetalColor(v.metalColor)
+      // Prefer same piece + purity + color + size (preserves both weights in a set)
       let found =
         existingVariants.find(
           (ev) =>
             !keepVariantIds.has(ev.id) &&
             ev.pieceId === pieceId &&
             ev.metalType === v.metalType &&
+            ev.metalColor === color &&
             (ev.size || null) === sizeKey,
         ) ?? null
 
@@ -201,6 +206,7 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
             (ev) =>
               !keepVariantIds.has(ev.id) &&
               ev.metalType === v.metalType &&
+              ev.metalColor === color &&
               (ev.size || null) === sizeKey &&
               (!ev.pieceId || ev.pieceId === pieceId),
           ) ?? null
@@ -208,7 +214,7 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
 
       let sku = (v.sku || '').trim()
       if (!sku) {
-        sku = `${pieceSlug}-${v.metalType}${sizeKey ? `-${sizeKey}` : ''}`
+        sku = buildMetalSku(pieceSlug, v.metalType, color, sizeKey)
       }
       // Guarantee uniqueness across pieces kept in this sync
       if (claimedSkus.has(sku) || (bySku.has(sku) && bySku.get(sku)!.id !== found?.id && keepVariantIds.has(bySku.get(sku)!.id))) {
@@ -226,6 +232,7 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
 
       const fields = {
         metalType: v.metalType,
+        metalColor: color,
         weightGrams: v.weightGrams,
         makingChargePerGram: v.makingChargePerGram,
         flatMakingCharge: v.flatMakingCharge,

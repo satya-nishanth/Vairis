@@ -7,6 +7,7 @@ import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
 import { getStoreCategories } from '@/lib/store-categories'
 import { sortProductsByPriority, getProductPriority } from '@/lib/product-priorities'
 import { getAllCategoryFilters, getProductLinkedLabels } from '@/lib/category-filters'
+import { formatMetalShort } from '@/lib/metal'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,7 +159,11 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     totalLengthMm: p.totalLengthMm ? Number(p.totalLengthMm) : null,
     motifSizeMm: p.motifSizeMm ? Number(p.motifSizeMm) : null,
     thicknessMm: p.thicknessMm ? Number(p.thicknessMm) : null,
-    metals: Array.from(new Set(p.variants.map((v) => v.metalType))),
+    metals: Array.from(
+      new Set(
+        p.variants.map((v) => formatMetalShort(v.metalType, v.metalColor ?? 'YELLOW')),
+      ),
+    ),
     labels: getProductLinkedLabels(
       {
         id: p.id,
@@ -172,6 +177,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     ),
     variantsList: p.variants.map((v) => ({
       metalType: v.metalType,
+      metalColor: v.metalColor ?? 'YELLOW',
       sku: v.sku,
       size: v.size,
       weightGrams: Number(v.weightGrams),

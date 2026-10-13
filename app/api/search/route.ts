@@ -87,10 +87,19 @@ export async function GET(req: NextRequest) {
     })
     .catch(() => {})
 
+  const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
+  const saleMap = await autoDiscountPercentsForProducts(products)
   return NextResponse.json({
     query: q,
     results: products.map((p, i) => {
-      const ui = prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal)
+      const ui = prismaToProduct(
+        p,
+        goldRates,
+        i,
+        pricingConfig,
+        showPricesGlobal,
+        saleMap.get(p.id),
+      )
       return {
         id: p.id,
         name: p.name,
@@ -99,6 +108,8 @@ export async function GET(req: NextRequest) {
         image: ui.image,
         price: ui.price,
         slug: ui.slug,
+        autoDiscountPercent: ui.autoDiscountPercent,
+        badge: ui.badge,
       }
     }),
   })
