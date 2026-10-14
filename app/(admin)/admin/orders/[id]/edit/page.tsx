@@ -140,6 +140,17 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
   if (first && isOrderItemPriceSnapshot(first.priceBreakdown)) {
     selling = unitSnapshotToSellingComponents(first.priceBreakdown, first.quantity)
   }
+  // Flat manual discountAmount only — leave checkout promo/coupon on the order record.
+  const hasStructuredPromo =
+    order.promoCodeId != null || order.discountBreakdown != null
+  const orderDiscount = Number(order.discountAmount ?? 0)
+  if (
+    !hasStructuredPromo &&
+    orderDiscount > 0 &&
+    (selling?.discount == null || selling.discount === 0)
+  ) {
+    selling = { ...(selling ?? {}), discount: Math.round(orderDiscount) }
+  }
 
   const editOrder: ManualOrderEditPrefill = {
     orderId: order.id,

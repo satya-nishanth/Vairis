@@ -40,6 +40,7 @@ const SELLING_FIELDS = [
   { key: 'wastage', label: 'Wastage' },
   { key: 'delivery', label: 'Delivery' },
   { key: 'gst', label: 'GST' },
+  { key: 'discount', label: 'Discount' },
 ] as const
 
 type SellingKey = (typeof SELLING_FIELDS)[number]['key']
@@ -72,6 +73,7 @@ function emptySelling(): SellingBreakdown {
     wastage: '',
     delivery: '',
     gst: '',
+    discount: '',
   }
 }
 
@@ -301,6 +303,7 @@ export function ManualOrderForm({
       wastage: 0,
       delivery: 0,
       gst: 0,
+      discount: 0,
     }
     for (const f of SELLING_FIELDS) {
       const raw = selling[f.key].trim()
@@ -309,7 +312,7 @@ export function ManualOrderForm({
     return out
   }, [selling])
 
-  const sellingTotal = useMemo(
+  const sellingGross = useMemo(
     () =>
       sellingParsed.gold +
       sellingParsed.diamonds +
@@ -320,7 +323,12 @@ export function ManualOrderForm({
       sellingParsed.gst,
     [sellingParsed],
   )
-  const hasSellingBreakdown = sellingTotal > 0
+  /** Net = gross − discount (manual). Gross alone also matches checkout pre-discount item prices. */
+  const sellingTotal = useMemo(
+    () => sellingGross - sellingParsed.discount,
+    [sellingGross, sellingParsed.discount],
+  )
+  const hasSellingBreakdown = sellingGross + sellingParsed.discount > 0
 
   async function search(q: string) {
     setQuery(q)
@@ -531,7 +539,10 @@ export function ManualOrderForm({
   const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))
   const grandTotal = total
   const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`
-  const sellingMismatch = hasSellingBreakdown && Math.round(sellingTotal) !== total
+  const sellingMismatch =
+    hasSellingBreakdown &&
+    Math.round(sellingTotal) !== total &&
+    Math.round(sellingGross) !== total
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -1274,8 +1285,8 @@ export function ManualOrderForm({
       <div style={card}>
         <strong style={{ fontSize: '0.875rem' }}>3 · Selling price breakdown</strong>
         <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '8px 0 0' }}>
-          Optional. Saved on the order as price breakdown (gold, diamonds, wastage, delivery, GST).
-          Purchase / cost stays in Finance only.
+          Optional. Saved on the order as price breakdown (gold, diamonds, wastage, delivery, GST,
+          discount). Purchase / cost stays in Finance only.
           {lines.length > 1 ? ' For multi-item orders, breakdown is stored on the first line.' : ''}
         </p>
 
