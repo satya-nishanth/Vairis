@@ -307,7 +307,8 @@ export function ManualOrderForm({
     }
     for (const f of SELLING_FIELDS) {
       const raw = selling[f.key].trim()
-      out[f.key] = raw === '' ? 0 : Number(raw)
+      const n = raw === '' ? 0 : Number(raw)
+      out[f.key] = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
     }
     return out
   }, [selling])
@@ -524,7 +525,11 @@ export function ManualOrderForm({
   function applySellingToSingleLine() {
     if (lines.length !== 1 || sellingTotal <= 0) return
     setLines((ls) =>
-      ls.map((l, i) => (i === 0 ? { ...l, unitPrice: Math.round(sellingTotal / l.quantity) } : l)),
+      ls.map((l, i) =>
+        i === 0
+          ? { ...l, unitPrice: Math.round((sellingTotal / l.quantity) * 100) / 100 }
+          : l,
+      ),
     )
   }
 
@@ -536,13 +541,15 @@ export function ManualOrderForm({
     })
   }, [inventoryOptions, itemSearch])
 
-  const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))
+  const total = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0) * 100) / 100
   const grandTotal = total
-  const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`
+  const inr = (n: number) =>
+    `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
+  const paise = (n: number) => Math.round(n * 100)
   const sellingMismatch =
     hasSellingBreakdown &&
-    Math.round(sellingTotal) !== total &&
-    Math.round(sellingGross) !== total
+    paise(sellingTotal) !== paise(total) &&
+    paise(sellingGross) !== paise(total)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -572,7 +579,7 @@ export function ManualOrderForm({
         items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId, internalBuild }) => ({
           variantId,
           quantity,
-          unitPrice,
+          unitPrice: Math.round(unitPrice * 100) / 100,
           inventoryItemId,
           ...(internalBuild ? { internalBuild } : {}),
         })),
@@ -1242,7 +1249,9 @@ export function ManualOrderForm({
                 />
                 <input
                   type="number"
-                  min={1}
+                  min={0.01}
+                  step="0.01"
+                  inputMode="decimal"
                   value={line.unitPrice}
                   onChange={(e) =>
                     setLines((ls) =>
@@ -1323,7 +1332,9 @@ export function ManualOrderForm({
             <tfoot>
               <tr style={{ borderTop: '1px solid #e5e7eb' }}>
                 <td style={{ padding: '10px 6px', fontWeight: 600 }}>Total</td>
-                <td style={{ padding: '10px 6px', fontWeight: 600 }}>{inr(Math.round(sellingTotal))}</td>
+                <td style={{ padding: '10px 6px', fontWeight: 600 }}>
+                  {inr(Math.round(sellingTotal * 100) / 100)}
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -1331,7 +1342,7 @@ export function ManualOrderForm({
 
         {sellingMismatch && (
           <p style={{ fontSize: '0.75rem', color: '#92400e', marginTop: 10 }}>
-            Breakdown total ({inr(Math.round(sellingTotal))}) differs from goods total ({inr(total)}).
+            Breakdown total ({inr(Math.round(sellingTotal * 100) / 100)}) differs from goods total ({inr(total)}).
             {lines.length === 1 && (
               <>
                 {' '}

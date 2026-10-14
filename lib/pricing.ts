@@ -22,6 +22,11 @@ import type { PromoKind } from '@prisma/client'
 
 export const GST_RATE = 0.03
 
+/** Round INR to paise (2 decimal places). */
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 export interface PricingConfig {
   vaGoldPct: number
   vaStonePct: number
@@ -301,18 +306,17 @@ export function unitSnapshotToSellingComponents(
   discount: number
 } {
   const q = Math.max(1, quantity)
-  const round = (n: number) => Math.round(n)
   const gems = splitGemValues(snapshot)
   // Only autoDiscount — coupon stays on Order.discountBreakdown / snapshot.coupon*.
   return {
-    gold: round(snapshot.goldValue * q),
-    diamonds: round(gems.diamonds * q),
-    stones: round(gems.stones * q),
-    making: round(snapshot.making * q),
-    wastage: round((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
-    delivery: round(snapshot.miscCharges * q),
-    gst: round(snapshot.gst * q),
-    discount: round((snapshot.autoDiscount ?? 0) * q),
+    gold: roundMoney(snapshot.goldValue * q),
+    diamonds: roundMoney(gems.diamonds * q),
+    stones: roundMoney(gems.stones * q),
+    making: roundMoney(snapshot.making * q),
+    wastage: roundMoney((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
+    delivery: roundMoney(snapshot.miscCharges * q),
+    gst: roundMoney(snapshot.gst * q),
+    discount: roundMoney((snapshot.autoDiscount ?? 0) * q),
   }
 }
 
@@ -339,8 +343,9 @@ export function sellingBreakdownMatchesGoods(
     selling.delivery +
     selling.gst
   const discount = selling.discount ?? 0
-  const rounded = Math.round(goodsTotal)
-  return Math.round(gross - discount) === rounded || Math.round(gross) === rounded
+  const paise = (n: number) => Math.round(n * 100)
+  const goods = paise(goodsTotal)
+  return paise(gross - discount) === goods || paise(gross) === goods
 }
 
 export interface VariantPriceInput {

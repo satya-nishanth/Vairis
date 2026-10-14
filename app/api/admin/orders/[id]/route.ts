@@ -13,6 +13,7 @@ import {
 import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
 import {
+  roundMoney,
   sellingBreakdownMatchesGoods,
   sellingComponentsToUnitSnapshot,
   toOrderItemPriceSnapshot,
@@ -415,7 +416,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   ])
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
   if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
     const gross =
@@ -426,9 +427,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       d.sellingBreakdown.wastage +
       d.sellingBreakdown.delivery +
       d.sellingBreakdown.gst
-    const sellingTotal = gross - (d.sellingBreakdown.discount ?? 0)
+    const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
-      { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
+      { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
       { status: 400 },
     )
   }
@@ -440,7 +441,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const orderDiscountAmount = hasStructuredPromo
     ? undefined
     : d.sellingBreakdown != null
-      ? Math.round(d.sellingBreakdown.discount ?? 0)
+      ? roundMoney(d.sellingBreakdown.discount ?? 0)
       : 0
 
   const itemRows = d.items.map((i, index) => {
@@ -492,7 +493,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
       quantity: i.quantity,
-      price: Math.round(i.unitPrice),
+      price: roundMoney(i.unitPrice),
       productName: v.product.name,
     }
     if (priceBreakdown) {
