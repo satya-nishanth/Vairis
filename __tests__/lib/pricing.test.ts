@@ -169,8 +169,14 @@ describe('calculatePrice (estimator formula)', () => {
       discount: 1_000,
     }
     expect(sellingBreakdownMatchesGoods(components, 44_000)).toBe(true) // net
-    expect(sellingBreakdownMatchesGoods(components, 45_000)).toBe(true) // gross
+    expect(sellingBreakdownMatchesGoods(components, 45_000)).toBe(true) // gross (edit)
     expect(sellingBreakdownMatchesGoods(components, 40_000)).toBe(false)
+    expect(
+      sellingBreakdownMatchesGoods(components, 45_000, { requireNetIfDiscounted: true }),
+    ).toBe(false)
+    expect(
+      sellingBreakdownMatchesGoods(components, 44_000, { requireNetIfDiscounted: true }),
+    ).toBe(true)
   })
 
   it('round-trips selling components to 2 decimal places', () => {

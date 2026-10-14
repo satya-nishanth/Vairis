@@ -135,7 +135,7 @@ describe('POST /api/admin/orders — sellingBreakdown validation', () => {
     expect(createArg.data.discountAmount).toBe(1000)
   })
 
-  it('accepts checkout-style prices where gross equals goods and discount is present', async () => {
+  it('rejects create when discount is set but unit prices are still pre-discount (gross)', async () => {
     const res = await POST(
       req(
         baseBody({
@@ -149,12 +149,12 @@ describe('POST /api/admin/orders — sellingBreakdown validation', () => {
             delivery: 0,
             gst: 5000,
             discount: 1000,
-          }, // gross 45000 === goods; net would be 44000
+          }, // gross === goods; would overcharge if accepted
         }),
       ),
     )
-    expect(res.status).toBe(201)
-    expect(prisma.order.create).toHaveBeenCalled()
+    expect(res.status).toBe(400)
+    expect(prisma.order.create).not.toHaveBeenCalled()
   })
 
   it('allows omitting sellingBreakdown entirely', async () => {

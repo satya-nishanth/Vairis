@@ -320,7 +320,14 @@ export function unitSnapshotToSellingComponents(
   }
 }
 
-/** Selling breakdown matches goods when net equals (manual) or gross equals (checkout pre-discount prices). */
+/**
+ * Selling breakdown matches goods when net equals (manual: unit prices are
+ * post-discount) or gross equals (checkout: unit prices are pre-discount).
+ *
+ * On create (`requireNetIfDiscounted`), a positive discount may only match
+ * net — otherwise grandTotal would capture gross while discountAmount is also
+ * stored (overcharge). Edits keep the gross option so checkout orders still save.
+ */
 export function sellingBreakdownMatchesGoods(
   selling: {
     gold: number
@@ -333,6 +340,7 @@ export function sellingBreakdownMatchesGoods(
     discount?: number
   },
   goodsTotal: number,
+  opts?: { requireNetIfDiscounted?: boolean },
 ): boolean {
   const gross =
     selling.gold +
@@ -345,7 +353,9 @@ export function sellingBreakdownMatchesGoods(
   const discount = selling.discount ?? 0
   const paise = (n: number) => Math.round(n * 100)
   const goods = paise(goodsTotal)
-  return paise(gross - discount) === goods || paise(gross) === goods
+  const netOk = paise(gross - discount) === goods
+  if (opts?.requireNetIfDiscounted && discount > 0) return netOk
+  return netOk || paise(gross) === goods
 }
 
 export interface VariantPriceInput {
