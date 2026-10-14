@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  OrderLineBuildEditor,
+  type DiamondRateOption,
+} from '@/components/admin/OrderLineBuildEditor'
+import type { OrderItemInternalBuild } from '@/lib/order-internal-build'
 
 type VariantOption = {
   variantId: string
@@ -14,6 +19,7 @@ type VariantOption = {
   suggestedPrice: number
 }
 type Customer = { id: string; email: string; name: string; mobile: string | null }
+type OrderAttachmentDraft = { url: string; fileName: string; contentType: string }
 type Line = {
   variantId: string
   quantity: number
@@ -21,6 +27,8 @@ type Line = {
   inventoryItemId?: string
   maxQty?: number
   fromInventory?: boolean
+  internalBuild?: OrderItemInternalBuild
+  buildOpen?: boolean
 }
 
 /** Selling components stored on OrderItem.priceBreakdown (not finance purchase). */
@@ -52,6 +60,7 @@ export type ManualOrderEditPrefill = {
   lines: Line[]
   /** Order-level selling components (numbers → form strings). */
   selling?: Partial<Record<SellingKey, number>>
+  attachments?: OrderAttachmentDraft[]
 }
 
 function emptySelling(): SellingBreakdown {
@@ -130,12 +139,14 @@ type HolderOption = { id: string; name: string }
 export function ManualOrderForm({
   variantOptions,
   holders,
+  diamondRates = [],
   quotation = null,
   isFinance = false,
   editOrder = null,
 }: {
   variantOptions: VariantOption[]
   holders: HolderOption[]
+  diamondRates?: DiamondRateOption[]
   quotation?: Quotation
   isFinance?: boolean
   editOrder?: ManualOrderEditPrefill | null
@@ -178,7 +189,16 @@ export function ManualOrderForm({
     potentialPrice: '',
   })
 
-  const [lines, setLines] = useState<Line[]>(editOrder?.lines ?? [])
+  const [lines, setLines] = useState<Line[]>(() =>
+    (editOrder?.lines ?? []).map((l) => ({
+      ...l,
+      buildOpen: Boolean(l.internalBuild),
+    })),
+  )
+  const [attachments, setAttachments] = useState<OrderAttachmentDraft[]>(
+    () => editOrder?.attachments ?? [],
+  )
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
   const [paid, setPaid] = useState(true)
   const [paymentNote, setPaymentNote] = useState('')
   const [paymentReceivedAt, setPaymentReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
@@ -186,6 +206,43 @@ export function ManualOrderForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selling, setSelling] = useState<SellingBreakdown>(() => sellingFromPrefill(editOrder?.selling))
+
+  async function fetchBuildPrefill(
+    variantId: string,
+    inventoryItemId?: string,
+  ): Promise<OrderItemInternalBuild | undefined> {
+    const q = new URLSearchParams({ variantId })
+    if (inventoryItemId) q.set('inventoryItemId', inventoryItemId)
+    const res = await fetch(`/api/admin/orders/build-prefill?${q}`)
+    if (!res.ok) return undefined
+    const data = (await res.json()) as { build?: OrderItemInternalBuild }
+    return data.build
+  }
+
+  async function uploadOrderAttachment(file: File) {
+    setUploadingAttachment(true)
+    setError(null)
+    try {
+      const fd = new FormData()
+      fd.set('file', file)
+      const res = await fetch('/api/admin/orders/upload', { method: 'POST', body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error ?? 'Upload failed')
+        return
+      }
+      setAttachments((prev) => [
+        ...prev,
+        {
+          url: data.url as string,
+          fileName: (data.fileName as string) || file.name,
+          contentType: (data.contentType as string) || file.type || '',
+        },
+      ])
+    } finally {
+      setUploadingAttachment(false)
+    }
+  }
 
   const filteredVariants = useMemo(() => {
     const q = itemSearch.trim().toLowerCase()
@@ -330,10 +387,20 @@ export function ManualOrderForm({
     }
   }
 
-  function addLine(variantId: string) {
+  async function addLine(variantId: string) {
     const opt = variantOptions.find((v) => v.variantId === variantId)
     if (!opt) return
-    setLines((ls) => [...ls, { variantId, quantity: 1, unitPrice: opt.suggestedPrice }])
+    const internalBuild = await fetchBuildPrefill(variantId)
+    setLines((ls) => [
+      ...ls,
+      {
+        variantId,
+        quantity: 1,
+        unitPrice: opt.suggestedPrice,
+        internalBuild,
+        buildOpen: true,
+      },
+    ])
     setItemSearch('')
   }
 
@@ -353,7 +420,8 @@ export function ManualOrderForm({
     if (mode === 'inventory') void ensureInventoryLoaded()
   }
 
-  function addInventoryLine(row: InventoryOption) {
+  async function addInventoryLine(row: InventoryOption) {
+    const internalBuild = await fetchBuildPrefill(row.variantId, row.inventoryItemId)
     setLines((ls) => [
       ...ls,
       {
@@ -363,6 +431,8 @@ export function ManualOrderForm({
         inventoryItemId: row.inventoryItemId,
         maxQty: row.qtyOnHand,
         fromInventory: true,
+        internalBuild,
+        buildOpen: true,
       },
     ])
     setItemSearch('')
@@ -429,7 +499,7 @@ export function ManualOrderForm({
       }
       setInventoryOptions((prev) => [entry, ...prev.filter((r) => r.inventoryItemId !== entry.inventoryItemId)])
       setInventoryLoaded(true)
-      addInventoryLine(entry)
+      await addInventoryLine(entry)
       setNewInventory((n) => ({
         ...n,
         variantId: '',
@@ -488,12 +558,14 @@ export function ManualOrderForm({
       const body: Record<string, unknown> = {
         userId: customer.id,
         ...address,
-        items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId }) => ({
+        items: lines.map(({ variantId, quantity, unitPrice, inventoryItemId, internalBuild }) => ({
           variantId,
           quantity,
           unitPrice,
           inventoryItemId,
+          ...(internalBuild ? { internalBuild } : {}),
         })),
+        attachments,
       }
       if (hasSellingBreakdown) {
         body.sellingBreakdown = sellingParsed
@@ -780,7 +852,7 @@ export function ManualOrderForm({
                     <button
                       key={v.variantId}
                       type="button"
-                      onClick={() => addLine(v.variantId)}
+                      onClick={() => void addLine(v.variantId)}
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -1059,7 +1131,7 @@ export function ManualOrderForm({
                         <button
                           key={r.inventoryItemId}
                           type="button"
-                          onClick={() => addInventoryLine(r)}
+                          onClick={() => void addInventoryLine(r)}
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -1098,70 +1170,102 @@ export function ManualOrderForm({
           const labelText = opt?.label ?? 'Item'
           const maxQ = line.fromInventory && line.maxQty ? line.maxQty : 20
           return (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                gap: 8,
-                alignItems: 'center',
-                marginTop: 10,
-                fontSize: '0.8125rem',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span
+            <div key={idx} style={{ marginTop: 10, fontSize: '0.8125rem' }}>
+              <div
                 style={{
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
                 }}
               >
-                {labelText}
-                {line.fromInventory && (
-                  <span className="inv-line-badge" style={{ marginLeft: 6 }}>
-                    inventory
-                  </span>
-                )}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={maxQ}
-                value={line.quantity}
-                onChange={(e) =>
-                  setLines((ls) =>
-                    ls.map((l, i) =>
-                      i === idx
-                        ? { ...l, quantity: Math.min(maxQ, Math.max(1, Number(e.target.value))) }
-                        : l,
-                    ),
-                  )
-                }
-                style={{ ...input, width: 64 }}
-                aria-label="Quantity"
-              />
-              <input
-                type="number"
-                min={1}
-                value={line.unitPrice}
-                onChange={(e) =>
-                  setLines((ls) =>
-                    ls.map((l, i) => (i === idx ? { ...l, unitPrice: Number(e.target.value) } : l)),
-                  )
-                }
-                style={{ ...input, width: 130 }}
-                aria-label="Unit price (₹)"
-              />
-              <button
-                type="button"
-                onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))}
-                style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer' }}
-                aria-label="Remove line"
-              >
-                ×
-              </button>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {labelText}
+                  {line.fromInventory && (
+                    <span className="inv-line-badge" style={{ marginLeft: 6 }}>
+                      inventory
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLines((ls) =>
+                      ls.map((l, i) => (i === idx ? { ...l, buildOpen: !l.buildOpen } : l)),
+                    )
+                  }
+                  style={{
+                    border: '1px solid #d1d5db',
+                    background: '#fff',
+                    padding: '4px 8px',
+                    fontSize: '0.6875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {line.buildOpen ? 'Hide build' : 'Build details'}
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxQ}
+                  value={line.quantity}
+                  onChange={(e) =>
+                    setLines((ls) =>
+                      ls.map((l, i) =>
+                        i === idx
+                          ? { ...l, quantity: Math.min(maxQ, Math.max(1, Number(e.target.value))) }
+                          : l,
+                      ),
+                    )
+                  }
+                  style={{ ...input, width: 64 }}
+                  aria-label="Quantity"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={line.unitPrice}
+                  onChange={(e) =>
+                    setLines((ls) =>
+                      ls.map((l, i) => (i === idx ? { ...l, unitPrice: Number(e.target.value) } : l)),
+                    )
+                  }
+                  style={{ ...input, width: 130 }}
+                  aria-label="Unit price (₹)"
+                />
+                <button
+                  type="button"
+                  onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))}
+                  style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer' }}
+                  aria-label="Remove line"
+                >
+                  ×
+                </button>
+              </div>
+              {line.buildOpen && line.internalBuild && (
+                <OrderLineBuildEditor
+                  build={line.internalBuild}
+                  diamondRates={diamondRates}
+                  onChange={(next) =>
+                    setLines((ls) =>
+                      ls.map((l, i) => (i === idx ? { ...l, internalBuild: next } : l)),
+                    )
+                  }
+                />
+              )}
+              {line.buildOpen && !line.internalBuild && (
+                <p style={{ fontSize: '0.75rem', color: '#92400e', marginTop: 8 }}>
+                  Build could not be prefilled — remove and re-add the item, or check the variant.
+                </p>
+              )}
             </div>
           )
         })}
@@ -1368,6 +1472,60 @@ export function ManualOrderForm({
           <p>Goods total: {inr(total)}</p>
           <p style={{ fontWeight: 600 }}>Customer pays: {inr(grandTotal)}</p>
         </div>
+      </div>
+
+      <div style={card}>
+        <strong style={{ fontSize: '0.875rem' }}>6 · Internal attachments</strong>
+        <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '8px 0 0' }}>
+          Images or PDF — not visible to the customer.
+        </p>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
+          multiple
+          disabled={uploadingAttachment}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            e.target.value = ''
+            for (const f of files) void uploadOrderAttachment(f)
+          }}
+          style={{ marginTop: 10, fontSize: '0.8125rem' }}
+        />
+        {uploadingAttachment && (
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 6 }}>Uploading…</p>
+        )}
+        {attachments.length > 0 && (
+          <ul style={{ listStyle: 'none', margin: '10px 0 0', padding: 0 }}>
+            {attachments.map((a, i) => (
+              <li
+                key={`${a.url}-${i}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: '0.8125rem',
+                  padding: '6px 0',
+                  borderBottom: '1px solid #f3f4f6',
+                }}
+              >
+                <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#032b24', flex: 1 }}>
+                  {a.fileName}
+                </a>
+                <span style={{ color: '#9ca3af', fontSize: '0.6875rem' }}>
+                  {a.contentType.includes('pdf') ? 'PDF' : 'Image'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                  style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer' }}
+                  aria-label="Remove attachment"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {error && (

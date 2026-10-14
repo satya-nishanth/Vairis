@@ -11,6 +11,10 @@ import { getPricingConfig, resolvePricingConfig } from '@/lib/pricing-data'
 import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
+import {
+  internalBuildSchema,
+  orderAttachmentInputSchema,
+} from '@/lib/order-internal-build'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +72,8 @@ const manualOrderSchema = z.object({
         unitPrice: z.number().positive().max(10000000),
         /** When set, decrements this inventory line inside the same transaction. */
         inventoryItemId: z.string().min(1).optional(),
+        /** Admin-only physical build — not customer-visible. */
+        internalBuild: internalBuildSchema.optional(),
       }),
     )
     .min(1),
@@ -86,6 +92,8 @@ const manualOrderSchema = z.object({
       gst: z.number().min(0).max(100000000),
     })
     .optional(),
+  /** Admin-only attachments (images + PDF). */
+  attachments: z.array(orderAttachmentInputSchema).max(30).optional(),
 })
 
 /**
@@ -244,6 +252,9 @@ export async function POST(req: NextRequest) {
     if (priceBreakdown) {
       row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
     }
+    if (i.internalBuild) {
+      row.internalBuild = i.internalBuild as unknown as Prisma.InputJsonValue
+    }
     return row
   })
 
@@ -292,6 +303,16 @@ export async function POST(req: NextRequest) {
           items: {
             create: itemRows,
           },
+          attachments:
+            d.attachments && d.attachments.length > 0
+              ? {
+                  create: d.attachments.map((a) => ({
+                    url: a.url,
+                    fileName: a.fileName,
+                    contentType: a.contentType ?? '',
+                  })),
+                }
+              : undefined,
           events: {
             create: [
               { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },

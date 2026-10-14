@@ -21,6 +21,10 @@ import {
   releaseInventoryAllocationsForOrder,
 } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
+import {
+  internalBuildSchema,
+  orderAttachmentInputSchema,
+} from '@/lib/order-internal-build'
 
 export const dynamic = 'force-dynamic'
 
@@ -273,6 +277,7 @@ const editOrderSchema = z.object({
         quantity: z.number().int().min(1).max(20),
         unitPrice: z.number().positive().max(10000000),
         inventoryItemId: z.string().min(1).optional(),
+        internalBuild: internalBuildSchema.optional(),
       }),
     )
     .min(1),
@@ -287,6 +292,8 @@ const editOrderSchema = z.object({
       gst: z.number().min(0).max(100000000),
     })
     .optional(),
+  /** Replace-all admin attachments. Omit to leave unchanged; pass [] to clear. */
+  attachments: z.array(orderAttachmentInputSchema).max(30).optional(),
 })
 
 /**
@@ -477,6 +484,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (priceBreakdown) {
       row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
     }
+    if (i.internalBuild) {
+      row.internalBuild = i.internalBuild as unknown as Prisma.InputJsonValue
+    }
     return row
   })
 
@@ -484,6 +494,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await prisma.$transaction(async (tx) => {
       await releaseInventoryAllocationsForOrder(tx, { orderId: id, actor: inventoryActor })
       await tx.orderItem.deleteMany({ where: { orderId: id } })
+
+      if (d.attachments !== undefined) {
+        await tx.orderAttachment.deleteMany({ where: { orderId: id } })
+        if (d.attachments.length > 0) {
+          await tx.orderAttachment.createMany({
+            data: d.attachments.map((a) => ({
+              orderId: id,
+              url: a.url,
+              fileName: a.fileName,
+              contentType: a.contentType ?? '',
+            })),
+          })
+        }
+      }
 
       await tx.order.update({
         where: { id },
