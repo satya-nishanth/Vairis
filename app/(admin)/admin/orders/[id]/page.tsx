@@ -6,6 +6,7 @@ import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
 import {
   isOrderItemPriceSnapshot,
+  roundMoney,
   splitGemValues,
 } from '@/lib/pricing'
 import { isOrderDiscountBreakdown } from '@/lib/discounts'
@@ -73,7 +74,7 @@ export default async function AdminOrderDetailPage({
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   const inr = (n: unknown) =>
-    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
   const inrRate = (n: unknown) =>
     `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
   const provider = getShippingProvider(order.country)
@@ -588,8 +589,18 @@ export default async function AdminOrderDetailPage({
                   </p>
                 )
               }
+              // Order matches admin edit selling breakdown:
+              // Gold → Diamonds → Stones → Making → Wastage → Delivery → GST → Discount
               const vaLabel = b.vaLabel || 'Value Addition'
               const gems = splitGemValues(b)
+              const money = (n: number) => inr(roundMoney(n))
+              // Checkout freezes OrderItem.price as Math.round(snapshot.total); prefer
+              // the charged unit when it matches so Line total agrees with Items.
+              const chargedUnit = Number(item.price)
+              const lineTotalAmt =
+                Math.round(Number(b.total)) === Math.round(chargedUnit)
+                  ? chargedUnit
+                  : roundMoney(Number(b.total))
               const rows: { label: string; value: string }[] = [
                 ...(b.weightGrams != null
                   ? [{ label: 'Weight', value: `${Number(b.weightGrams)} g` }]
@@ -602,21 +613,19 @@ export default async function AdminOrderDetailPage({
                       },
                     ]
                   : []),
-                { label: 'Gold', value: inr(Math.round(b.goldValue)) },
-                { label: vaLabel, value: inr(Math.round(b.goldVA)) },
-                { label: 'Making', value: inr(Math.round(b.making)) },
-                { label: 'Diamonds', value: inr(Math.round(gems.diamonds)) },
-                { label: 'Stones', value: inr(Math.round(gems.stones)) },
+                { label: 'Gold', value: money(b.goldValue) },
+                { label: 'Diamonds', value: money(gems.diamonds) },
+                { label: 'Stones', value: money(gems.stones) },
                 ...(b.stoneLines ?? []).map((line) => ({
                   label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
-                  value: inr(Math.round(line.value)),
+                  value: money(line.value),
                 })),
-                ...(b.miscCharges
-                  ? [{ label: 'Delivery', value: inr(Math.round(b.miscCharges)) }]
-                  : []),
-                { label: 'Taxable', value: inr(Math.round(b.taxable)) },
-                { label: 'GST', value: inr(Math.round(b.gst)) },
-                { label: 'Line total', value: inr(Math.round(b.total)) },
+                { label: 'Making', value: money(b.making) },
+                { label: vaLabel, value: money(b.goldVA) },
+                { label: 'Delivery', value: money(b.miscCharges) },
+                { label: 'Taxable', value: money(b.taxable) },
+                { label: 'GST', value: money(b.gst) },
+                { label: 'Line total', value: money(lineTotalAmt) },
               ]
               const autoAmt = Number(b.autoDiscount ?? 0)
               const couponAmt = Number(b.couponDiscount ?? 0)
@@ -626,7 +635,7 @@ export default async function AdminOrderDetailPage({
                 const name = b.autoDiscountLabel ? ` (${b.autoDiscountLabel}${pct})` : pct ? ` (${pct.replace(' · ', '')})` : ''
                 rows.push({
                   label: `Discount${name}`,
-                  value: `−${inr(Math.round(autoAmt))}`,
+                  value: `−${money(autoAmt)}`,
                 })
               }
               if (couponAmt > 0) {
@@ -634,7 +643,7 @@ export default async function AdminOrderDetailPage({
                 const detail = couponKindSuffix(b.couponKind, b.couponDiscountPercent)
                 rows.push({
                   label: `Coupon (${code}${detail})`,
-                  value: `−${inr(Math.round(couponAmt))}`,
+                  value: `−${money(couponAmt)}`,
                 })
               }
               const payableUnit =
@@ -642,12 +651,12 @@ export default async function AdminOrderDetailPage({
                   ? Number(b.payable)
                   : Math.max(0, Number(b.total) - autoAmt - couponAmt)
               if (autoAmt > 0 || couponAmt > 0) {
-                rows.push({ label: 'Payable', value: inr(Math.round(payableUnit)) })
+                rows.push({ label: 'Payable', value: money(payableUnit) })
               }
               if (item.quantity > 1) {
                 rows.push({
                   label: `× ${item.quantity}`,
-                  value: inr(Math.round(payableUnit * item.quantity)),
+                  value: money(payableUnit * item.quantity),
                 })
               }
               return (

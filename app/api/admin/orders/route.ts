@@ -7,6 +7,7 @@ import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
 import {
+  roundMoney,
   sellingBreakdownMatchesGoods,
   sellingComponentsToUnitSnapshot,
   toOrderItemPriceSnapshot,
@@ -179,7 +180,7 @@ export async function POST(req: NextRequest) {
   ])
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
   // Mirrors ManualOrderForm's own `sellingMismatch` warning (client-side only,
   // non-blocking) — reject server-side too, since priceBreakdown feeds
@@ -194,15 +195,15 @@ export async function POST(req: NextRequest) {
       d.sellingBreakdown.wastage +
       d.sellingBreakdown.delivery +
       d.sellingBreakdown.gst
-    const sellingTotal = gross - (d.sellingBreakdown.discount ?? 0)
+    const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
-      { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
+      { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
       { status: 400 },
     )
   }
 
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
-  const orderDiscountAmount = Math.round(d.sellingBreakdown?.discount ?? 0)
+  const orderDiscountAmount = roundMoney(d.sellingBreakdown?.discount ?? 0)
 
   const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
@@ -253,7 +254,7 @@ export async function POST(req: NextRequest) {
     const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
       quantity: i.quantity,
-      price: Math.round(i.unitPrice),
+      price: roundMoney(i.unitPrice),
       productName: v.product.name,
     }
     if (priceBreakdown) {
