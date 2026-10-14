@@ -48,6 +48,7 @@
     "jest-environment-jsdom": "^30.4.1",
     "prisma": "^5.22.0",
     "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

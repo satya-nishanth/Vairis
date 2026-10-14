@@ -75,9 +75,22 @@ export default async function ProductPage({ params }: Props) {
     orderBy: { name: "asc" },
     include: productInclude,
   });
-  const relatedProducts = sortProductsByPriority(relatedDbProducts)
-    .slice(0, 4)
-    .map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal));
+  const { autoDiscountInfoForProducts } = await import('@/lib/auto-discount-display')
+  const relatedSorted = sortProductsByPriority(relatedDbProducts).slice(0, 4)
+  const saleMap = await autoDiscountInfoForProducts([product, ...relatedSorted])
+  const relatedProducts = relatedSorted.map((p, i) =>
+    prismaToProduct(
+      p,
+      goldRates,
+      i,
+      pricingConfig,
+      showPricesGlobal,
+      saleMap.get(p.id)?.percent,
+    ),
+  )
+  const productSale = saleMap.get(product.id) ?? null
+  const productSalePercent = productSale?.percent ?? null
+  const productSaleDisplayName = productSale?.displayName ?? null
 
   const fromPrice = computeCatalogueFromPrice(
     product.variants,
@@ -136,6 +149,7 @@ export default async function ProductPage({ params }: Props) {
             id: v.id,
             pieceId: p.id,
             metalType: v.metalType,
+            metalColor: v.metalColor,
             sku: v.sku,
             size: v.size,
             weightGrams: v.weightGrams.toString(),
@@ -156,6 +170,7 @@ export default async function ProductPage({ params }: Props) {
               id: v.id,
               pieceId: null as string | null,
               metalType: v.metalType,
+              metalColor: v.metalColor,
               sku: v.sku,
               size: v.size,
               weightGrams: v.weightGrams.toString(),
@@ -189,6 +204,8 @@ export default async function ProductPage({ params }: Props) {
           vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
           vaLabel: product.vaLabel,
           pieces,
+          autoDiscountPercent: productSalePercent,
+          autoDiscountDisplayName: productSaleDisplayName,
         }}
         goldRates={goldRates.map((r) => ({
           metalType: r.metalType,

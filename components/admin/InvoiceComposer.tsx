@@ -366,14 +366,35 @@ export function InvoiceComposer({
         </div>
         <h3 style={{ marginTop: 16, fontSize: '0.875rem' }}>Totals</h3>
         <Field
-          label="Discount (₹, after GST)"
+          label={`Discount (₹, after GST)${payload.autoDiscountLabel ? ` — ${payload.autoDiscountLabel}` : ''}`}
           type="number"
-          value={payload.discount ?? ''}
+          value={payload.autoDiscount ?? ''}
           onChange={(v) =>
-            setPayload((p) => ({
-              ...p,
-              discount: v.trim() === '' ? 0 : Math.max(0, Number(v) || 0),
-            }))
+            setPayload((p) => {
+              const autoDiscount = v.trim() === '' ? 0 : Math.max(0, Number(v) || 0)
+              const couponDiscount = Math.max(0, Number(p.couponDiscount) || 0)
+              return {
+                ...p,
+                autoDiscount,
+                discount: autoDiscount + couponDiscount,
+              }
+            })
+          }
+        />
+        <Field
+          label={`Coupon (₹, after GST)${payload.couponDiscountLabel ? ` — ${payload.couponDiscountLabel}` : ''}`}
+          type="number"
+          value={payload.couponDiscount ?? ''}
+          onChange={(v) =>
+            setPayload((p) => {
+              const couponDiscount = v.trim() === '' ? 0 : Math.max(0, Number(v) || 0)
+              const autoDiscount = Math.max(0, Number(p.autoDiscount) || 0)
+              return {
+                ...p,
+                couponDiscount,
+                discount: autoDiscount + couponDiscount,
+              }
+            })
           }
         />
         <p>Taxable: ₹{formatINRGrouped(totals.taxable)}</p>
@@ -393,8 +414,22 @@ export function InvoiceComposer({
             ? `(${formatINRGrouped(Math.abs(totals.roundOff))})`
             : formatINRGrouped(totals.roundOff)}
         </p>
-        {totals.discount > 0 ? (
-          <p>Discount ({formatINRGrouped(totals.discount)})</p>
+        {totals.autoDiscount > 0 ? (
+          <p>
+            Discount{payload.autoDiscountLabel ? ` (${payload.autoDiscountLabel})` : ''}{' '}
+            (−{formatINRGrouped(totals.autoDiscount)})
+          </p>
+        ) : null}
+        {totals.couponDiscount > 0 ? (
+          <p>
+            Coupon{payload.couponDiscountLabel ? ` (${payload.couponDiscountLabel})` : ''}{' '}
+            (−{formatINRGrouped(totals.couponDiscount)})
+          </p>
+        ) : null}
+        {totals.autoDiscount <= 0 &&
+        totals.couponDiscount <= 0 &&
+        totals.discount > 0 ? (
+          <p>Discount (−{formatINRGrouped(totals.discount)})</p>
         ) : null}
         <p style={{ fontWeight: 600, fontSize: '1.125rem' }}>
           Payable ₹{formatINRGrouped(totals.grandTotal, 0)}

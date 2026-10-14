@@ -205,7 +205,27 @@ export function InvoicePrintView({
               {totals.roundOff < 0 ? `(${formatINRGrouped(Math.abs(totals.roundOff))})` : formatINRGrouped(totals.roundOff)}
             </span>
           </div>
-          {totals.discount > 0 ? (
+          {totals.autoDiscount > 0 ? (
+            <div className="inv-doc__round">
+              <span>
+                Discount
+                {payload.autoDiscountLabel ? ` (${payload.autoDiscountLabel})` : ''}
+              </span>
+              <span>({formatINRGrouped(totals.autoDiscount)})</span>
+            </div>
+          ) : null}
+          {totals.couponDiscount > 0 ? (
+            <div className="inv-doc__round">
+              <span>
+                Coupon
+                {payload.couponDiscountLabel ? ` (${payload.couponDiscountLabel})` : ''}
+              </span>
+              <span>({formatINRGrouped(totals.couponDiscount)})</span>
+            </div>
+          ) : null}
+          {totals.autoDiscount <= 0 &&
+          totals.couponDiscount <= 0 &&
+          totals.discount > 0 ? (
             <div className="inv-doc__round">
               <span>Discount</span>
               <span>({formatINRGrouped(totals.discount)})</span>

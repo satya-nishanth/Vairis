@@ -1,6 +1,6 @@
 [
   {
-    "id": "cat_rings",
+    "id": "cmuntsg7j000mv420ie9a017k",
     "slug": "rings",
     "name": "Rings",
     "description": "Stackable bands and solitaires designed for everyday wear.",
@@ -8,12 +8,14 @@
     "showInHeader": true,
     "sortOrder": 1,
     "isActive": true,
-    "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-01-01T00:00:00.000Z",
-    "productIds": []
+    "createdAt": "2026-09-30T08:10:38.479Z",
+    "updatedAt": "2026-09-30T08:10:38.479Z",
+    "productIds": [
+      "cmpqigmyl0007e0xt8hpiatmv"
+    ]
   },
   {
-    "id": "cat_earrings",
+    "id": "cmuntsg80000nv420gdp09wwq",
     "slug": "earrings",
     "name": "Earrings",
     "description": "Delicate studs and drops made for coffee runs and evenings.",
@@ -21,12 +23,14 @@
     "showInHeader": true,
     "sortOrder": 2,
     "isActive": true,
-    "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-01-01T00:00:00.000Z",
-    "productIds": []
+    "createdAt": "2026-09-30T08:10:38.496Z",
+    "updatedAt": "2026-09-30T08:10:38.496Z",
+    "productIds": [
+      "cmpqkpcmx0034uori6t3imt2t"
+    ]
   },
   {
-    "id": "cat_pendants",
+    "id": "cmuntsg84000ov420xdrdetke",
     "slug": "pendants",
     "name": "Pendants",
     "description": "Timeless solitaires on fine chains — your everyday signature.",
@@ -34,12 +38,12 @@
     "showInHeader": true,
     "sortOrder": 3,
     "isActive": true,
-    "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "createdAt": "2026-09-30T08:10:38.501Z",
+    "updatedAt": "2026-09-30T08:10:38.501Z",
     "productIds": []
   },
   {
-    "id": "cat_bracelets",
+    "id": "cmuntsg88000pv420ljo5701m",
     "slug": "bracelets",
     "name": "Bracelets",
     "description": "Light tennis and chain bracelets that layer beautifully.",
@@ -47,14 +51,12 @@
     "showInHeader": true,
     "sortOrder": 4,
     "isActive": true,
-    "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-09-24T06:52:16.787Z",
-    "productIds": [
-      "p1"
-    ]
+    "createdAt": "2026-09-30T08:10:38.505Z",
+    "updatedAt": "2026-09-30T08:10:38.505Z",
+    "productIds": []
   },
   {
-    "id": "cat_mangalsutra",
+    "id": "cmuntsg8c000qv420sh4znqgb",
     "slug": "mangalsutra",
     "name": "Mangalsutra",
     "description": "Modern diamond mangalsutras designed for everyday grace.",
@@ -62,12 +64,12 @@
     "showInHeader": true,
     "sortOrder": 5,
     "isActive": true,
-    "createdAt": "2026-09-27T00:00:00.000Z",
-    "updatedAt": "2026-09-27T00:00:00.000Z",
+    "createdAt": "2026-09-30T08:10:38.508Z",
+    "updatedAt": "2026-09-30T08:10:38.508Z",
     "productIds": []
   },
   {
-    "id": "cat_necklaces",
+    "id": "cmuntsg8f000rv42070yrzm3l",
     "slug": "necklaces",
     "name": "Necklaces",
     "description": "Minimal diamonds designed for workdays, dinners and confidence.",
@@ -75,8 +77,36 @@
     "showInHeader": true,
     "sortOrder": 6,
     "isActive": true,
-    "createdAt": "2026-01-01T00:00:00.000Z",
-    "updatedAt": "2026-09-24T10:04:32.675Z",
+    "createdAt": "2026-09-30T08:10:38.511Z",
+    "updatedAt": "2026-09-30T08:10:38.511Z",
+    "productIds": [
+      "cmuph1j3s000o6o9dy4wmnczn"
+    ]
+  },
+  {
+    "id": "cmuntsg8j000sv420t3bvxzl3",
+    "slug": "test",
+    "name": "test",
+    "description": null,
+    "image": null,
+    "showInHeader": false,
+    "sortOrder": 7,
+    "isActive": true,
+    "createdAt": "2026-09-30T08:10:38.515Z",
+    "updatedAt": "2026-09-30T08:10:38.515Z",
+    "productIds": []
+  },
+  {
+    "id": "cmunth3mf000lv420q6lyl15r",
+    "slug": "asda",
+    "name": "asda",
+    "description": null,
+    "image": null,
+    "showInHeader": false,
+    "sortOrder": 8,
+    "isActive": true,
+    "createdAt": "2026-09-30T08:01:48.951Z",
+    "updatedAt": "2026-09-30T08:01:48.951Z",
     "productIds": []
   }
 ]

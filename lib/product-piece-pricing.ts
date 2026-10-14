@@ -19,12 +19,24 @@ type VariantLike = Pick<
   | 'id'
   | 'pieceId'
   | 'metalType'
+  | 'metalColor'
   | 'weightGrams'
   | 'makingChargePerGram'
   | 'flatMakingCharge'
   | 'stoneCharges'
   | 'miscCharges'
 >
+
+function metalKey(v: Pick<VariantLike, 'metalType' | 'metalColor'>): string {
+  return `${v.metalType}:${v.metalColor ?? 'YELLOW'}`
+}
+
+function sameMetal(
+  a: Pick<VariantLike, 'metalType' | 'metalColor'>,
+  b: Pick<VariantLike, 'metalType' | 'metalColor'>,
+): boolean {
+  return metalKey(a) === metalKey(b)
+}
 
 type PieceLike = {
   id: string
@@ -110,17 +122,17 @@ export function computeCatalogueFromPrice(
     }
   }
 
-  // Multi-piece = one sellable product. Prefer metals that exist on every piece.
-  const metals = [...new Set(variants.map((v) => v.metalType))]
+  // Multi-piece = one sellable product. Prefer purity+color that exist on every piece.
+  const metalOpts = [...new Set(variants.map((v) => metalKey(v)))]
   let best: { price: number; variantId: string } | null = null
-  for (const metal of metals) {
+  for (const opt of metalOpts) {
     let sum = 0
     let primaryId: string | null = null
     let ok = true
     for (const key of pieceKeys) {
       const group = variants.filter((v) => (v.pieceId || '_default') === key)
       const piece = key !== '_default' ? pieceById.get(key) : null
-      const v = group.find((x) => x.metalType === metal)
+      const v = group.find((x) => metalKey(x) === opt)
       if (!v) {
         ok = false
         break
@@ -145,7 +157,7 @@ export function computeCatalogueFromPrice(
     if (!best || sum < best.price) best = { price: sum, variantId: primaryId }
   }
   if (!best) return null
-  return { price: best.price, variantId: best.variantId, hasMultiplePrices: metals.length > 1 }
+  return { price: best.price, variantId: best.variantId, hasMultiplePrices: metalOpts.length > 1 }
 }
 
 /**
@@ -188,7 +200,13 @@ export function buildSetPriceBreakdown(
   productOverride?: PricingOverride | null,
   pieces?: PieceLike[] | null,
   withExchange = false,
-): { breakdown: PriceBreakdown; weightGrams: number; goldRatePerGram: number; metalType: string } | null {
+): {
+  breakdown: PriceBreakdown
+  weightGrams: number
+  goldRatePerGram: number
+  metalType: string
+  metalColor: string
+} | null {
   const pieceKeys = [...new Set(allVariants.map((v) => v.pieceId || '_default'))]
   const multiPiece = pieceKeys.length > 1 && pieceKeys.some((k) => k !== '_default')
   const pieceById = new Map((pieces ?? []).map((p) => [p.id, p]))
@@ -196,11 +214,11 @@ export function buildSetPriceBreakdown(
   const variantsToPrice: VariantLike[] = multiPiece
     ? pieceKeys.map((key) => {
         const group = allVariants.filter((v) => (v.pieceId || '_default') === key)
-        return group.find((x) => x.metalType === selected.metalType) ?? null
+        return group.find((x) => sameMetal(x, selected)) ?? null
       }).filter((v): v is VariantLike => Boolean(v))
     : [selected]
 
-  // Multi-piece: every piece must have the selected metal (no cross-metal mix).
+  // Multi-piece: every piece must have the selected purity+color (no cross-metal mix).
   if (multiPiece && variantsToPrice.length !== pieceKeys.length) return null
 
   const parts: PriceBreakdown[] = []
@@ -237,6 +255,7 @@ export function buildSetPriceBreakdown(
     weightGrams,
     goldRatePerGram,
     metalType: selected.metalType,
+    metalColor: selected.metalColor ?? 'YELLOW',
   }
 }
 
@@ -265,6 +284,7 @@ export function toSetOrderItemSnapshot(
     goldRatePerGram: built.goldRatePerGram,
     weightGrams: built.weightGrams,
     metalType: built.metalType,
+    metalColor: built.metalColor,
   })
 }
 

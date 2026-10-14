@@ -1,0 +1,789 @@
+'use client'
+
+import { useMemo, useState, type CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
+import type { Category } from '@prisma/client'
+import { CATEGORY_OPTIONS, type ScopeOption } from '@/lib/discount-scope'
+import { EMPTY_SCOPE, type ScopeFormValue } from '@/components/admin/DiscountScopeFields'
+
+type DiscountRow = {
+  id: string
+  name: string
+  displayName: string | null
+  percent: number
+  maxDiscount: number | null
+  startsAt: string | null
+  endsAt: string | null
+  priority: number
+  active: boolean
+  productIds: string[]
+  collectionIds: string[]
+  storeCategoryIds: string[]
+  categories: Category[]
+}
+
+type Props = {
+  initial: DiscountRow[]
+  products: ScopeOption[]
+  collections: ScopeOption[]
+  storeCategories: ScopeOption[]
+}
+
+const EMPTY = {
+  name: '',
+  displayName: '',
+  percent: '',
+  maxDiscount: '',
+  priority: '0',
+  startsAt: '',
+  endsAt: '',
+  scopeMode: 'everyone' as 'everyone' | 'specific',
+  scope: EMPTY_SCOPE as ScopeFormValue,
+  scopeSearch: '',
+}
+
+const olive = '#5e684e'
+const border = '#e8e8e6'
+const muted = '#6b7280'
+
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fromLocalInput(local: string): string | null {
+  if (!local.trim()) return null
+  const d = new Date(local)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
+function isScopeEmpty(s: ScopeFormValue) {
+  return (
+    s.productIds.length === 0 &&
+    s.collectionIds.length === 0 &&
+    s.storeCategoryIds.length === 0 &&
+    s.categories.length === 0
+  )
+}
+
+function scopeLabel(row: DiscountRow) {
+  if (
+    !row.productIds.length &&
+    !row.collectionIds.length &&
+    !row.storeCategoryIds.length &&
+    !row.categories.length
+  ) {
+    return 'Everyone'
+  }
+  const bits = [
+    row.categories.length ? `${row.categories.length} categories` : null,
+    row.collectionIds.length ? `${row.collectionIds.length} collections` : null,
+    row.storeCategoryIds.length ? `${row.storeCategoryIds.length} store cats` : null,
+    row.productIds.length ? `${row.productIds.length} products` : null,
+  ].filter(Boolean)
+  return bits.join(' · ')
+}
+
+function scheduleLabel(row: DiscountRow) {
+  if (!row.startsAt && !row.endsAt) return 'Always on'
+  const fmt = (iso: string | null) => {
+    if (!iso) return '…'
+    return new Date(iso).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    })
+  }
+  return `${fmt(row.startsAt)} → ${fmt(row.endsAt)}`
+}
+
+function rowToForm(row: DiscountRow): typeof EMPTY {
+  const scoped = !isScopeEmpty({
+    productIds: row.productIds,
+    collectionIds: row.collectionIds,
+    storeCategoryIds: row.storeCategoryIds,
+    categories: row.categories,
+  })
+  return {
+    name: row.name,
+    displayName: row.displayName ?? '',
+    percent: String(row.percent),
+    maxDiscount: row.maxDiscount != null ? String(row.maxDiscount) : '',
+    priority: String(row.priority),
+    startsAt: toLocalInput(row.startsAt),
+    endsAt: toLocalInput(row.endsAt),
+    scopeMode: scoped ? 'specific' : 'everyone',
+    scope: {
+      productIds: [...row.productIds],
+      collectionIds: [...row.collectionIds],
+      storeCategoryIds: [...row.storeCategoryIds],
+      categories: [...row.categories],
+    },
+    scopeSearch: '',
+  }
+}
+
+export function DiscountsManager({ initial, products, collections, storeCategories }: Props) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState(EMPTY)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const searchHits = useMemo(() => {
+    const q = form.scopeSearch.trim().toLowerCase()
+    if (!q || form.scopeMode !== 'specific') return { products: [] as ScopeOption[], collections: [] as ScopeOption[], storeCategories: [] as ScopeOption[] }
+    return {
+      products: products
+        .filter((p) => !form.scope.productIds.includes(p.id) && p.label.toLowerCase().includes(q))
+        .slice(0, 8),
+      collections: collections
+        .filter((c) => !form.scope.collectionIds.includes(c.id) && c.label.toLowerCase().includes(q))
+        .slice(0, 5),
+      storeCategories: storeCategories
+        .filter((c) => !form.scope.storeCategoryIds.includes(c.id) && c.label.toLowerCase().includes(q))
+        .slice(0, 5),
+    }
+  }, [form.scopeSearch, form.scopeMode, form.scope, products, collections, storeCategories])
+
+  function closeForm() {
+    setOpen(false)
+    setEditingId(null)
+    setForm(EMPTY)
+    setError('')
+  }
+
+  function openCreate() {
+    setEditingId(null)
+    setForm(EMPTY)
+    setError('')
+    setOpen(true)
+  }
+
+  function openEdit(row: DiscountRow) {
+    setEditingId(row.id)
+    setForm(rowToForm(row))
+    setError('')
+    setOpen(true)
+  }
+
+  async function saveDiscount(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    const scope = form.scopeMode === 'everyone' ? EMPTY_SCOPE : form.scope
+    if (form.scopeMode === 'specific' && isScopeEmpty(scope)) {
+      setBusy(false)
+      setError('Add at least one category, collection, or product — or choose Everyone.')
+      return
+    }
+    const body = {
+      name: form.name,
+      displayName: form.displayName.trim() || null,
+      percent: form.percent,
+      maxDiscount: form.maxDiscount || null,
+      priority: form.priority || 0,
+      startsAt: fromLocalInput(form.startsAt),
+      endsAt: fromLocalInput(form.endsAt),
+      ...scope,
+      ...(editingId ? {} : { active: true }),
+    }
+    const res = await fetch(
+      editingId ? `/api/admin/discounts/${editingId}` : '/api/admin/discounts',
+      {
+        method: editingId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    )
+    setBusy(false)
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setError(j.error ?? (editingId ? 'Update failed' : 'Create failed'))
+      return
+    }
+    closeForm()
+    router.refresh()
+  }
+
+  async function toggleActive(row: DiscountRow) {
+    await fetch(`/api/admin/discounts/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !row.active }),
+    })
+    router.refresh()
+  }
+
+  async function remove(row: DiscountRow) {
+    if (!window.confirm(`Delete “${row.name}”?`)) return
+    await fetch(`/api/admin/discounts/${row.id}`, { method: 'DELETE' })
+    router.refresh()
+  }
+
+  const field: CSSProperties = {
+    display: 'grid',
+    gap: 6,
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: '#111827',
+  }
+  const control: CSSProperties = {
+    padding: '10px 12px',
+    border: `1px solid ${border}`,
+    borderRadius: 8,
+    fontSize: '0.875rem',
+    fontWeight: 400,
+    width: '100%',
+    background: '#fff',
+  }
+  const sectionTitle: CSSProperties = {
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: muted,
+    margin: '0 0 12px',
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 400, color: '#111827', margin: 0 }}>
+            Discounts
+          </h1>
+          <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: muted }}>
+            Automatic % off after GST.
+          </p>
+        </div>
+        {!open && (
+          <button
+            type="button"
+            onClick={openCreate}
+            style={{
+              background: olive,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '10px 16px',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            data-testid="discount-open-create"
+          >
+            + New discount
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form
+          onSubmit={saveDiscount}
+          data-testid={editingId ? 'discount-edit' : 'discount-create'}
+          style={{
+            border: `1px solid ${border}`,
+            borderRadius: 12,
+            padding: '24px 28px',
+            background: '#fff',
+            width: '100%',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              marginBottom: 24,
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 500 }}>
+              {editingId ? 'Edit discount' : 'New discount'}
+            </h2>
+            <button
+              type="button"
+              onClick={closeForm}
+              style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '0.8125rem' }}
+            >
+              Collapse
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              gap: 32,
+              alignItems: 'start',
+            }}
+            className="discount-create-grid"
+          >
+            <div style={{ display: 'grid', gap: 28 }}>
+              <div>
+                <p style={sectionTitle}>Basics</p>
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <label style={field}>
+                    Internal name
+                    <input
+                      style={control}
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                      placeholder="e.g. Bridal campaign"
+                      required
+                    />
+                  </label>
+                  <label style={field}>
+                    Display name
+                    <input
+                      style={control}
+                      value={form.displayName}
+                      onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
+                      placeholder="e.g. Festive edit"
+                    />
+                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: muted }}>
+                      Shown on the product page
+                    </span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={field}>
+                      Percent off
+                      <input
+                        style={control}
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={form.percent}
+                        onChange={(e) => setForm((f) => ({ ...f, percent: e.target.value }))}
+                        placeholder="10"
+                        required
+                      />
+                    </label>
+                    <label style={field}>
+                      Max ₹ <span style={{ fontWeight: 400, color: muted }}>(optional)</span>
+                      <input
+                        style={control}
+                        type="number"
+                        min="0"
+                        value={form.maxDiscount}
+                        onChange={(e) => setForm((f) => ({ ...f, maxDiscount: e.target.value }))}
+                        placeholder="—"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p style={sectionTitle}>Schedule</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label style={field}>
+                    Starts
+                    <input
+                      style={control}
+                      type="datetime-local"
+                      value={form.startsAt}
+                      onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
+                    />
+                  </label>
+                  <label style={field}>
+                    Ends
+                    <input
+                      style={control}
+                      type="datetime-local"
+                      value={form.endsAt}
+                      onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: muted }}>
+                  Leave blank to keep it always on.
+                </p>
+              </div>
+
+              <p style={{ margin: 0, fontSize: '0.75rem', color: muted }}>
+                Applies after GST, before coupons.
+              </p>
+
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  style={{
+                    background: olive,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 18px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    cursor: busy ? 'wait' : 'pointer',
+                  }}
+                >
+                  {busy ? 'Saving…' : editingId ? 'Update discount' : 'Save discount'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeForm}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: muted,
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {error && <p style={{ margin: 0, color: '#dc2626', fontSize: '0.8125rem' }}>{error}</p>}
+            </div>
+
+            <div
+              style={{
+                borderLeft: `1px solid ${border}`,
+                paddingLeft: 32,
+                minHeight: 280,
+              }}
+            >
+              <p style={sectionTitle}>Who gets this</p>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(
+                  [
+                    {
+                      id: 'everyone' as const,
+                      title: 'Everyone',
+                      body: 'All products in the store',
+                    },
+                    {
+                      id: 'specific' as const,
+                      title: 'Specific products',
+                      body: 'Choose categories or items',
+                    },
+                  ] as const
+                ).map((opt) => {
+                  const selected = form.scopeMode === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          scopeMode: opt.id,
+                          scope: opt.id === 'everyone' ? EMPTY_SCOPE : f.scope,
+                          scopeSearch: '',
+                        }))
+                      }
+                      style={{
+                        textAlign: 'left',
+                        padding: '14px 16px',
+                        borderRadius: 10,
+                        border: `1.5px solid ${selected ? olive : border}`,
+                        background: selected ? 'rgba(94, 104, 78, 0.06)' : '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827' }}>
+                        {opt.title}
+                      </div>
+                      <div style={{ fontSize: '0.8125rem', color: muted, marginTop: 2 }}>{opt.body}</div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {form.scopeMode === 'specific' && (
+                <div style={{ marginTop: 16, display: 'grid', gap: 14 }}>
+                  <div>
+                    <p style={{ ...sectionTitle, marginBottom: 8 }}>Categories</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {CATEGORY_OPTIONS.map((c) => {
+                        const on = form.scope.categories.includes(c.value)
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => ({
+                                ...f,
+                                scope: {
+                                  ...f.scope,
+                                  categories: on
+                                    ? f.scope.categories.filter((x) => x !== c.value)
+                                    : [...f.scope.categories, c.value],
+                                },
+                              }))
+                            }
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: 999,
+                              border: `1px solid ${on ? olive : border}`,
+                              background: on ? olive : '#fff',
+                              color: on ? '#fff' : '#374151',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {c.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <label style={field}>
+                    Search products or collections
+                    <input
+                      style={control}
+                      value={form.scopeSearch}
+                      onChange={(e) => setForm((f) => ({ ...f, scopeSearch: e.target.value }))}
+                      placeholder="Name or item code…"
+                    />
+                  </label>
+
+                  {form.scopeSearch.trim() && (
+                    <div
+                      style={{
+                        border: `1px solid ${border}`,
+                        borderRadius: 8,
+                        maxHeight: 220,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {searchHits.collections.map((c) => (
+                        <button
+                          key={`c-${c.id}`}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: {
+                                ...f.scope,
+                                collectionIds: [...f.scope.collectionIds, c.id],
+                              },
+                              scopeSearch: '',
+                            }))
+                          }
+                          style={hitRow}
+                        >
+                          <span>Collection · {c.label}</span>
+                          <span style={{ color: olive, fontWeight: 600 }}>+ Add</span>
+                        </button>
+                      ))}
+                      {searchHits.storeCategories.map((c) => (
+                        <button
+                          key={`s-${c.id}`}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: {
+                                ...f.scope,
+                                storeCategoryIds: [...f.scope.storeCategoryIds, c.id],
+                              },
+                              scopeSearch: '',
+                            }))
+                          }
+                          style={hitRow}
+                        >
+                          <span>Store · {c.label}</span>
+                          <span style={{ color: olive, fontWeight: 600 }}>+ Add</span>
+                        </button>
+                      ))}
+                      {searchHits.products.map((p) => (
+                        <button
+                          key={`p-${p.id}`}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: { ...f.scope, productIds: [...f.scope.productIds, p.id] },
+                              scopeSearch: '',
+                            }))
+                          }
+                          style={hitRow}
+                        >
+                          <span>{p.label}</span>
+                          <span style={{ color: olive, fontWeight: 600 }}>+ Add</span>
+                        </button>
+                      ))}
+                      {!searchHits.products.length &&
+                        !searchHits.collections.length &&
+                        !searchHits.storeCategories.length && (
+                          <div style={{ padding: 12, fontSize: '0.75rem', color: muted }}>No matches</div>
+                        )}
+                    </div>
+                  )}
+
+                  {(form.scope.productIds.length > 0 ||
+                    form.scope.collectionIds.length > 0 ||
+                    form.scope.storeCategoryIds.length > 0) && (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {form.scope.collectionIds.map((id) => (
+                        <SelectedRow
+                          key={`sc-${id}`}
+                          label={`Collection · ${collections.find((c) => c.id === id)?.label ?? id}`}
+                          onRemove={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: {
+                                ...f.scope,
+                                collectionIds: f.scope.collectionIds.filter((x) => x !== id),
+                              },
+                            }))
+                          }
+                        />
+                      ))}
+                      {form.scope.storeCategoryIds.map((id) => (
+                        <SelectedRow
+                          key={`ss-${id}`}
+                          label={`Store · ${storeCategories.find((c) => c.id === id)?.label ?? id}`}
+                          onRemove={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: {
+                                ...f.scope,
+                                storeCategoryIds: f.scope.storeCategoryIds.filter((x) => x !== id),
+                              },
+                            }))
+                          }
+                        />
+                      ))}
+                      {form.scope.productIds.map((id) => (
+                        <SelectedRow
+                          key={`sp-${id}`}
+                          label={products.find((p) => p.id === id)?.label ?? id}
+                          onRemove={() =>
+                            setForm((f) => ({
+                              ...f,
+                              scope: {
+                                ...f.scope,
+                                productIds: f.scope.productIds.filter((x) => x !== id),
+                              },
+                            }))
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </form>
+      )}
+
+      <div style={{ display: 'grid', gap: 0 }}>
+        {initial.length === 0 && !open && (
+          <p style={{ color: muted, fontSize: '0.875rem', padding: '24px 0' }}>
+            No automatic discounts yet.
+          </p>
+        )}
+        {initial.map((row) => (
+          <div
+            key={row.id}
+            data-testid="discount-row"
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 16,
+              padding: '18px 0',
+              borderBottom: `1px solid ${border}`,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>{row.name}</div>
+              <div style={{ fontSize: '0.8125rem', color: muted, marginTop: 2 }}>
+                {row.displayName ? `${row.displayName} · ` : ''}
+                {scopeLabel(row)} · {scheduleLabel(row)}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 500, color: olive }}>{row.percent}%</span>
+              <span
+                style={{
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  background: row.active ? 'rgba(94, 104, 78, 0.12)' : '#f3f4f6',
+                  color: row.active ? olive : muted,
+                }}
+              >
+                {row.active ? 'Active' : 'Off'}
+              </span>
+              <button
+                type="button"
+                onClick={() => openEdit(row)}
+                style={{ background: 'none', border: 'none', color: olive, cursor: 'pointer', fontSize: '0.75rem' }}
+                data-testid="discount-edit-btn"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleActive(row)}
+                style={{ background: 'none', border: 'none', color: olive, cursor: 'pointer', fontSize: '0.75rem' }}
+              >
+                {row.active ? 'Deactivate' : 'Activate'}
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(row)}
+                style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem' }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const hitRow: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  width: '100%',
+  padding: '10px 12px',
+  border: 'none',
+  borderBottom: `1px solid ${border}`,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: '0.8125rem',
+  textAlign: 'left',
+}
+
+function SelectedRow({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '8px 12px',
+        border: `1px solid ${border}`,
+        borderRadius: 8,
+        fontSize: '0.8125rem',
+      }}
+    >
+      <span>{label}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '0.75rem' }}
+      >
+        Remove
+      </button>
+    </div>
+  )
+}

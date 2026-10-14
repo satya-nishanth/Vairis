@@ -119,7 +119,7 @@ Do not change this formula without explicit instruction.
 
 - **No Silver 925** — not part of Vairis offering. Remove from any enum/dropdown/label.
 - **Image order**: Front → Left → Right → Back. Enforce in upload UI and MediaGallery. Index 0 = front, always shown first.
-- **Gold color** (future): Split `metalPurity` (18K/22K) and `metalColor` (yellow/white/rose) on `ProductVariant`. Not urgent — design when checkout is close.
+- **Gold purity + color**: `ProductVariant.metalType` is purity only (`GOLD_9K` / `GOLD_14K` / `GOLD_18K` / `GOLD_22K`). `metalColor` is `YELLOW` / `WHITE` / `ROSE`. Gold rates key off purity; labels/SKU use both (`lib/metal.ts`).
 
 ---
 

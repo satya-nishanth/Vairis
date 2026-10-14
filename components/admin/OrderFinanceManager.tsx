@@ -46,6 +46,10 @@ type Editor = {
     status?: string
     itemsLabel?: string
     createdAt?: string
+    autoDiscount?: number
+    autoDiscountLabel?: string
+    couponDiscount?: number
+    couponDiscountLabel?: string
   }
   amounts: Amounts
   paidToAccountId: string
@@ -68,6 +72,10 @@ export type OrderSheetBoot = {
     status?: string
     itemsLabel?: string
     createdAt?: string
+    autoDiscount?: number
+    autoDiscountLabel?: string
+    couponDiscount?: number
+    couponDiscountLabel?: string
   }
   paidToAccountId: string
   purchaseFromAccountId: string | null
@@ -1314,7 +1322,23 @@ export function OrderFinanceManager({
               </strong>
               {editor.orderMeta.total != null ? (
                 <span className="order-sheet-detail__field-sub">
-                  Goods {inr(editor.orderMeta.total)}
+                  Cash {inr(editor.orderMeta.total)}
+                </span>
+              ) : null}
+              {editor.orderMeta.autoDiscount != null && editor.orderMeta.autoDiscount > 0 ? (
+                <span className="order-sheet-detail__field-sub">
+                  Discount {inr(editor.orderMeta.autoDiscount)}
+                  {editor.orderMeta.autoDiscountLabel
+                    ? ` (${editor.orderMeta.autoDiscountLabel})`
+                    : ''}
+                </span>
+              ) : null}
+              {editor.orderMeta.couponDiscount != null && editor.orderMeta.couponDiscount > 0 ? (
+                <span className="order-sheet-detail__field-sub">
+                  Coupon {inr(editor.orderMeta.couponDiscount)}
+                  {editor.orderMeta.couponDiscountLabel
+                    ? ` (${editor.orderMeta.couponDiscountLabel})`
+                    : ''}
                 </span>
               ) : null}
             </div>

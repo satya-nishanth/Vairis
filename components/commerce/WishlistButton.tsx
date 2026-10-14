@@ -11,9 +11,15 @@ type WishlistButtonProps = {
    * a positioned image-wrapper ancestor. "inline": a normal in-flow circular
    * button for contexts without one, e.g. the PDP actions row. */
   variant?: "card" | "inline";
+  className?: string;
 };
 
-export function WishlistButton({ productId, productName, variant = "card" }: WishlistButtonProps) {
+export function WishlistButton({
+  productId,
+  productName,
+  variant = "card",
+  className,
+}: WishlistButtonProps) {
   const { has, toggle } = useWishlist();
   const active = has(productId);
   const [burst, setBurst] = useState(false);
@@ -34,7 +40,7 @@ export function WishlistButton({ productId, productName, variant = "card" }: Wis
   return (
     <button
       type="button"
-      className={`product-card__wish${variant === "inline" ? " product-card__wish--inline" : ""}${active ? " is-active" : ""}`}
+      className={`product-card__wish${variant === "inline" ? " product-card__wish--inline" : ""}${active ? " is-active" : ""}${className ? ` ${className}` : ""}`}
       aria-label={active ? `Remove ${productName} from wishlist` : `Add ${productName} to wishlist`}
       aria-pressed={active}
       onClick={handleClick}
