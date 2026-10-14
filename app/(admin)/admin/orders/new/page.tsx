@@ -24,7 +24,7 @@ export default async function NewManualOrderPage({
   const isFinance = isFinanceEmail(session.user.email)
   const { quotationId } = await searchParams
 
-  const [products, goldRates, pricingConfig, quotation, holders] = await Promise.all([
+  const [products, goldRates, pricingConfig, quotation, holders, diamondRates] = await Promise.all([
     prisma.product.findMany({
       where: { isActive: true },
       include: {
@@ -40,6 +40,11 @@ export default async function NewManualOrderPage({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true },
+    }),
+    prisma.diamondRate.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, label: true, ratePerCarat: true },
     }),
   ])
 
@@ -89,6 +94,11 @@ export default async function NewManualOrderPage({
       <ManualOrderForm
         variantOptions={variantOptions}
         holders={holders}
+        diamondRates={diamondRates.map((r) => ({
+          id: r.id,
+          label: r.label,
+          ratePerCarat: Number(r.ratePerCarat),
+        }))}
         quotation={quotation}
         isFinance={isFinance}
       />

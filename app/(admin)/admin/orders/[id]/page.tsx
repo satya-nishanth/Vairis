@@ -14,6 +14,8 @@ import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
 import { MarkPaidOffline } from './MarkPaidOffline'
 import { inventoryDisplayName } from '@/lib/inventory'
+import { parseInternalBuild } from '@/lib/order-internal-build'
+import { OrderLineBuildSummary } from '@/components/admin/OrderLineBuildEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +30,7 @@ export default async function AdminOrderDetailPage({
     where: { id },
     include: {
       items: { include: { variant: true } },
+      attachments: { orderBy: { createdAt: 'asc' } },
       promoCode: { select: { code: true } },
       payment: true,
       shipments: { orderBy: { dispatchedAt: 'desc' } },
@@ -216,13 +219,44 @@ export default async function AdminOrderDetailPage({
       <div className="admin-grid-2">
         <div style={card}>
           <h3 style={heading}>Items</h3>
-          {order.items.map((item) => (
-            <p key={item.id} style={{ fontSize: '0.875rem', marginBottom: 6 }}>
-              {item.productName} × {item.quantity} — {inr(Number(item.price) * item.quantity)}
-              {item.withExchange && <span style={{ color: '#b45309' }}> · with exchange</span>}
-              <span style={{ color: '#9ca3af' }}> · SKU {item.variant.sku}</span>
-            </p>
-          ))}
+          {order.items.map((item) => {
+            const build = parseInternalBuild(item.internalBuild)
+            return (
+              <div key={item.id} style={{ fontSize: '0.875rem', marginBottom: 10 }}>
+                <p style={{ marginBottom: 4 }}>
+                  {item.productName} × {item.quantity} — {inr(Number(item.price) * item.quantity)}
+                  {item.withExchange && <span style={{ color: '#b45309' }}> · with exchange</span>}
+                  <span style={{ color: '#9ca3af' }}> · SKU {item.variant.sku}</span>
+                </p>
+                {build && (
+                  <div style={{ paddingLeft: 8, borderLeft: '2px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '0.6875rem', color: '#9ca3af', marginBottom: 2 }}>
+                      Internal build
+                    </div>
+                    <OrderLineBuildSummary build={build} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {order.attachments.length > 0 && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
+              <h3 style={{ ...heading, marginBottom: 8 }}>Internal attachments</h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {order.attachments.map((a) => (
+                  <li key={a.id} style={{ fontSize: '0.8125rem', marginBottom: 4 }}>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#032b24' }}>
+                      {a.fileName}
+                    </a>
+                    <span style={{ color: '#9ca3af', marginLeft: 6 }}>
+                      {a.contentType.includes('pdf') ? 'PDF' : 'Image'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
           <p style={{ fontSize: '0.875rem' }}>Goods total: {inr(order.totalAmount)}</p>
           {Number(order.depositAmount) > 0 && (
