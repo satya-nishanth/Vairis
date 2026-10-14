@@ -186,7 +186,10 @@ export async function POST(req: NextRequest) {
   // non-blocking) — reject server-side too, since priceBreakdown feeds
   // invoices and finance quotes and must not silently disagree with the
   // amount actually charged (order.price / totalAmount / grandTotal).
-  if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
+  if (
+    d.sellingBreakdown &&
+    !sellingBreakdownMatchesGoods(d.sellingBreakdown, total, { requireNetIfDiscounted: true })
+  ) {
     const gross =
       d.sellingBreakdown.gold +
       d.sellingBreakdown.diamonds +
