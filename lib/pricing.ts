@@ -203,6 +203,8 @@ export function sellingComponentsToUnitSnapshot(
     wastage: number
     delivery: number
     gst: number
+    /** Order-level discount (₹) subtracted after GST — maps to autoDiscount on the unit. */
+    discount?: number
   },
   meta: {
     quantity: number
@@ -223,7 +225,8 @@ export function sellingComponentsToUnitSnapshot(
   const gst = selling.gst / q
   const taxable = goldValue + goldVA + making + stoneValue + miscCharges
   const total = taxable + gst
-  return toOrderItemPriceSnapshot(
+  const autoDiscount = Math.max(0, (selling.discount ?? 0) / q)
+  const snap = toOrderItemPriceSnapshot(
     {
       goldValue,
       goldVA,
@@ -247,6 +250,13 @@ export function sellingComponentsToUnitSnapshot(
       metalType: meta.metalType,
     },
   )
+  if (autoDiscount <= 0) return snap
+  return {
+    ...snap,
+    autoDiscount,
+    autoDiscountLabel: 'Discount',
+    payable: Math.max(0, snap.total - autoDiscount),
+  }
 }
 
 /** True when a JSON column looks like a usable price snapshot. */
@@ -277,6 +287,7 @@ export function unitSnapshotToSellingComponents(
     diamondValue?: number
     otherStoneValue?: number
     stoneLines?: { typeLabel: string; value: number }[]
+    autoDiscount?: number
   },
   quantity: number,
 ): {
@@ -287,10 +298,12 @@ export function unitSnapshotToSellingComponents(
   wastage: number
   delivery: number
   gst: number
+  discount: number
 } {
   const q = Math.max(1, quantity)
   const round = (n: number) => Math.round(n)
   const gems = splitGemValues(snapshot)
+  // Only autoDiscount — coupon stays on Order.discountBreakdown / snapshot.coupon*.
   return {
     gold: round(snapshot.goldValue * q),
     diamonds: round(gems.diamonds * q),
@@ -299,7 +312,35 @@ export function unitSnapshotToSellingComponents(
     wastage: round((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
     delivery: round(snapshot.miscCharges * q),
     gst: round(snapshot.gst * q),
+    discount: round((snapshot.autoDiscount ?? 0) * q),
   }
+}
+
+/** Selling breakdown matches goods when net equals (manual) or gross equals (checkout pre-discount prices). */
+export function sellingBreakdownMatchesGoods(
+  selling: {
+    gold: number
+    diamonds: number
+    stones: number
+    making: number
+    wastage: number
+    delivery: number
+    gst: number
+    discount?: number
+  },
+  goodsTotal: number,
+): boolean {
+  const gross =
+    selling.gold +
+    selling.diamonds +
+    selling.stones +
+    selling.making +
+    selling.wastage +
+    selling.delivery +
+    selling.gst
+  const discount = selling.discount ?? 0
+  const rounded = Math.round(goodsTotal)
+  return Math.round(gross - discount) === rounded || Math.round(gross) === rounded
 }
 
 export interface VariantPriceInput {

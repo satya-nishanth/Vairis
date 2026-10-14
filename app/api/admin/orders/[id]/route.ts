@@ -12,7 +12,11 @@ import {
 } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
-import { sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import {
+  sellingBreakdownMatchesGoods,
+  sellingComponentsToUnitSnapshot,
+  toOrderItemPriceSnapshot,
+} from '@/lib/pricing'
 import { getPricingConfig, resolvePricingConfig } from '@/lib/pricing-data'
 import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import {
@@ -290,6 +294,8 @@ const editOrderSchema = z.object({
       wastage: z.number().min(0).max(100000000),
       delivery: z.number().min(0).max(100000000),
       gst: z.number().min(0).max(100000000),
+      /** Subtracted after GST; net must match goods total. */
+      discount: z.number().min(0).max(100000000).optional().default(0),
     })
     .optional(),
   /** Replace-all admin attachments. Omit to leave unchanged; pass [] to clear. */
@@ -411,8 +417,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
-  if (d.sellingBreakdown) {
-    const sellingTotal =
+  if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
+    const gross =
       d.sellingBreakdown.gold +
       d.sellingBreakdown.diamonds +
       d.sellingBreakdown.stones +
@@ -420,15 +426,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       d.sellingBreakdown.wastage +
       d.sellingBreakdown.delivery +
       d.sellingBreakdown.gst
-    if (Math.round(sellingTotal) !== total) {
-      return NextResponse.json(
-        { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
-        { status: 400 },
-      )
-    }
+    const sellingTotal = gross - (d.sellingBreakdown.discount ?? 0)
+    return NextResponse.json(
+      { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
+      { status: 400 },
+    )
   }
 
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+  // Checkout/promo orders keep Order.discountAmount from the engine; only sync for flat manual discounts.
+  const hasStructuredPromo =
+    existing.promoCodeId != null || existing.discountBreakdown != null
+  const orderDiscountAmount = hasStructuredPromo
+    ? undefined
+    : d.sellingBreakdown != null
+      ? Math.round(d.sellingBreakdown.discount ?? 0)
+      : 0
 
   const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
@@ -436,7 +449,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
 
     const manual = d.sellingBreakdown
-    const manualTotal =
+    const manualGross =
       manual != null
         ? manual.gold +
           manual.diamonds +
@@ -444,10 +457,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           manual.making +
           manual.wastage +
           manual.delivery +
-          manual.gst
+          manual.gst +
+          (manual.discount ?? 0)
         : 0
 
-    if (index === 0 && manual != null && manualTotal > 0) {
+    if (index === 0 && manual != null && manualGross > 0) {
       priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
         quantity: i.quantity,
         goldRatePerGram: rate ?? 0,
@@ -516,6 +530,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           totalAmount,
           depositAmount,
           grandTotal,
+          ...(orderDiscountAmount !== undefined
+            ? { discountAmount: orderDiscountAmount }
+            : {}),
           contactName: d.contactName,
           contactPhone: d.contactPhone,
           addressLine1: d.addressLine1,
