@@ -628,9 +628,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                               {s.typeLabel}
                               {s.count ? ` × ${s.count}` : ""}
                             </span>
-                            <span className="pdp-info__stone-carat">
-                              {s.caratWeight.toFixed(2)} ct
-                            </span>
+                            <div className="pdp-info__stone-total">
+                              <span className="pdp-info__stone-total-label">Total weight</span>
+                              <span className="pdp-info__stone-carat">
+                                {s.caratWeight.toFixed(2)} ct
+                              </span>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -651,9 +654,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                           />
                           {product.stoneType || "Natural Diamond"}
                         </span>
-                        <span className="pdp-info__stone-carat">
-                          {Number(product.caratWeight).toFixed(2)} ct
-                        </span>
+                        <div className="pdp-info__stone-total">
+                          <span className="pdp-info__stone-total-label">Total weight</span>
+                          <span className="pdp-info__stone-carat">
+                            {Number(product.caratWeight).toFixed(2)} ct
+                          </span>
+                        </div>
                       </li>
                     </ul>
                   </div>

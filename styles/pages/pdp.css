@@ -801,9 +801,8 @@
 
 .pdp-info__stone {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px 14px;
   font-size: 0.875rem;
   color: var(--color-text);
@@ -825,6 +824,19 @@
      literal box top — wrapped labels (mobile) would otherwise show the
      icon floating centered against the whole multi-line block. */
   margin-top: 2px;
+}
+
+.pdp-info__stone-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-left: 22px; /* align under label text past the 16px icon + gap */
+}
+
+.pdp-info__stone-total-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #6b7280);
 }
 
 .pdp-info__stone-carat {
