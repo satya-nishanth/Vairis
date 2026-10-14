@@ -12,7 +12,12 @@ import {
 } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
-import { sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import {
+  roundMoney,
+  sellingBreakdownMatchesGoods,
+  sellingComponentsToUnitSnapshot,
+  toOrderItemPriceSnapshot,
+} from '@/lib/pricing'
 import { getPricingConfig, resolvePricingConfig } from '@/lib/pricing-data'
 import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import {
@@ -21,6 +26,10 @@ import {
   releaseInventoryAllocationsForOrder,
 } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
+import {
+  internalBuildSchema,
+  orderAttachmentInputSchema,
+} from '@/lib/order-internal-build'
 
 export const dynamic = 'force-dynamic'
 
@@ -273,6 +282,7 @@ const editOrderSchema = z.object({
         quantity: z.number().int().min(1).max(20),
         unitPrice: z.number().positive().max(10000000),
         inventoryItemId: z.string().min(1).optional(),
+        internalBuild: internalBuildSchema.optional(),
       }),
     )
     .min(1),
@@ -285,8 +295,12 @@ const editOrderSchema = z.object({
       wastage: z.number().min(0).max(100000000),
       delivery: z.number().min(0).max(100000000),
       gst: z.number().min(0).max(100000000),
+      /** Subtracted after GST; net must match goods total. */
+      discount: z.number().min(0).max(100000000).optional().default(0),
     })
     .optional(),
+  /** Replace-all admin attachments. Omit to leave unchanged; pass [] to clear. */
+  attachments: z.array(orderAttachmentInputSchema).max(30).optional(),
 })
 
 /**
@@ -402,10 +416,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   ])
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
-  if (d.sellingBreakdown) {
-    const sellingTotal =
+  if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
+    const gross =
       d.sellingBreakdown.gold +
       d.sellingBreakdown.diamonds +
       d.sellingBreakdown.stones +
@@ -413,15 +427,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       d.sellingBreakdown.wastage +
       d.sellingBreakdown.delivery +
       d.sellingBreakdown.gst
-    if (Math.round(sellingTotal) !== total) {
-      return NextResponse.json(
-        { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
-        { status: 400 },
-      )
-    }
+    const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
+    return NextResponse.json(
+      { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
+      { status: 400 },
+    )
   }
 
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+  // Checkout/promo orders keep Order.discountAmount from the engine; only sync for flat manual discounts.
+  const hasStructuredPromo =
+    existing.promoCodeId != null || existing.discountBreakdown != null
+  const orderDiscountAmount = hasStructuredPromo
+    ? undefined
+    : d.sellingBreakdown != null
+      ? roundMoney(d.sellingBreakdown.discount ?? 0)
+      : 0
 
   const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
@@ -429,7 +450,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
 
     const manual = d.sellingBreakdown
-    const manualTotal =
+    const manualGross =
       manual != null
         ? manual.gold +
           manual.diamonds +
@@ -437,10 +458,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           manual.making +
           manual.wastage +
           manual.delivery +
-          manual.gst
+          manual.gst +
+          (manual.discount ?? 0)
         : 0
 
-    if (index === 0 && manual != null && manualTotal > 0) {
+    if (index === 0 && manual != null && manualGross > 0) {
       priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
         quantity: i.quantity,
         goldRatePerGram: rate ?? 0,
@@ -471,11 +493,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
       quantity: i.quantity,
-      price: Math.round(i.unitPrice),
+      price: roundMoney(i.unitPrice),
       productName: v.product.name,
     }
     if (priceBreakdown) {
       row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
+    }
+    if (i.internalBuild) {
+      row.internalBuild = i.internalBuild as unknown as Prisma.InputJsonValue
     }
     return row
   })
@@ -485,6 +510,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await releaseInventoryAllocationsForOrder(tx, { orderId: id, actor: inventoryActor })
       await tx.orderItem.deleteMany({ where: { orderId: id } })
 
+      if (d.attachments !== undefined) {
+        await tx.orderAttachment.deleteMany({ where: { orderId: id } })
+        if (d.attachments.length > 0) {
+          await tx.orderAttachment.createMany({
+            data: d.attachments.map((a) => ({
+              orderId: id,
+              url: a.url,
+              fileName: a.fileName,
+              contentType: a.contentType ?? '',
+            })),
+          })
+        }
+      }
+
       await tx.order.update({
         where: { id },
         data: {
@@ -492,6 +531,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           totalAmount,
           depositAmount,
           grandTotal,
+          ...(orderDiscountAmount !== undefined
+            ? { discountAmount: orderDiscountAmount }
+            : {}),
           contactName: d.contactName,
           contactPhone: d.contactPhone,
           addressLine1: d.addressLine1,

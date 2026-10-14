@@ -6,6 +6,7 @@ import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
 import {
   isOrderItemPriceSnapshot,
+  roundMoney,
   splitGemValues,
 } from '@/lib/pricing'
 import { isOrderDiscountBreakdown } from '@/lib/discounts'
@@ -14,6 +15,8 @@ import { OrderJourney } from './OrderJourney'
 import { OrderNotes } from './OrderNotes'
 import { MarkPaidOffline } from './MarkPaidOffline'
 import { inventoryDisplayName } from '@/lib/inventory'
+import { parseInternalBuild } from '@/lib/order-internal-build'
+import { OrderLineBuildSummary } from '@/components/admin/OrderLineBuildEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +31,7 @@ export default async function AdminOrderDetailPage({
     where: { id },
     include: {
       items: { include: { variant: true } },
+      attachments: { orderBy: { createdAt: 'asc' } },
       promoCode: { select: { code: true } },
       payment: true,
       shipments: { orderBy: { dispatchedAt: 'desc' } },
@@ -70,7 +74,7 @@ export default async function AdminOrderDetailPage({
   const isSplitParent = order.status === 'SPLIT_INTO_DELIVERIES' && order.children.length > 0
 
   const inr = (n: unknown) =>
-    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+    `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
   const inrRate = (n: unknown) =>
     `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 0 })}`
   const provider = getShippingProvider(order.country)
@@ -216,13 +220,44 @@ export default async function AdminOrderDetailPage({
       <div className="admin-grid-2">
         <div style={card}>
           <h3 style={heading}>Items</h3>
-          {order.items.map((item) => (
-            <p key={item.id} style={{ fontSize: '0.875rem', marginBottom: 6 }}>
-              {item.productName} × {item.quantity} — {inr(Number(item.price) * item.quantity)}
-              {item.withExchange && <span style={{ color: '#b45309' }}> · with exchange</span>}
-              <span style={{ color: '#9ca3af' }}> · SKU {item.variant.sku}</span>
-            </p>
-          ))}
+          {order.items.map((item) => {
+            const build = parseInternalBuild(item.internalBuild)
+            return (
+              <div key={item.id} style={{ fontSize: '0.875rem', marginBottom: 10 }}>
+                <p style={{ marginBottom: 4 }}>
+                  {item.productName} × {item.quantity} — {inr(Number(item.price) * item.quantity)}
+                  {item.withExchange && <span style={{ color: '#b45309' }}> · with exchange</span>}
+                  <span style={{ color: '#9ca3af' }}> · SKU {item.variant.sku}</span>
+                </p>
+                {build && (
+                  <div style={{ paddingLeft: 8, borderLeft: '2px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '0.6875rem', color: '#9ca3af', marginBottom: 2 }}>
+                      Internal build
+                    </div>
+                    <OrderLineBuildSummary build={build} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {order.attachments.length > 0 && (
+            <>
+              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
+              <h3 style={{ ...heading, marginBottom: 8 }}>Internal attachments</h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {order.attachments.map((a) => (
+                  <li key={a.id} style={{ fontSize: '0.8125rem', marginBottom: 4 }}>
+                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#032b24' }}>
+                      {a.fileName}
+                    </a>
+                    <span style={{ color: '#9ca3af', marginLeft: 6 }}>
+                      {a.contentType.includes('pdf') ? 'PDF' : 'Image'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
           <p style={{ fontSize: '0.875rem' }}>Goods total: {inr(order.totalAmount)}</p>
           {Number(order.depositAmount) > 0 && (
@@ -554,8 +589,18 @@ export default async function AdminOrderDetailPage({
                   </p>
                 )
               }
+              // Order matches admin edit selling breakdown:
+              // Gold → Diamonds → Stones → Making → Wastage → Delivery → GST → Discount
               const vaLabel = b.vaLabel || 'Value Addition'
               const gems = splitGemValues(b)
+              const money = (n: number) => inr(roundMoney(n))
+              // Checkout freezes OrderItem.price as Math.round(snapshot.total); prefer
+              // the charged unit when it matches so Line total agrees with Items.
+              const chargedUnit = Number(item.price)
+              const lineTotalAmt =
+                Math.round(Number(b.total)) === Math.round(chargedUnit)
+                  ? chargedUnit
+                  : roundMoney(Number(b.total))
               const rows: { label: string; value: string }[] = [
                 ...(b.weightGrams != null
                   ? [{ label: 'Weight', value: `${Number(b.weightGrams)} g` }]
@@ -568,21 +613,19 @@ export default async function AdminOrderDetailPage({
                       },
                     ]
                   : []),
-                { label: 'Gold', value: inr(Math.round(b.goldValue)) },
-                { label: vaLabel, value: inr(Math.round(b.goldVA)) },
-                { label: 'Making', value: inr(Math.round(b.making)) },
-                { label: 'Diamonds', value: inr(Math.round(gems.diamonds)) },
-                { label: 'Stones', value: inr(Math.round(gems.stones)) },
+                { label: 'Gold', value: money(b.goldValue) },
+                { label: 'Diamonds', value: money(gems.diamonds) },
+                { label: 'Stones', value: money(gems.stones) },
                 ...(b.stoneLines ?? []).map((line) => ({
                   label: `  ${line.typeLabel} (${line.caratWeight} ct)`,
-                  value: inr(Math.round(line.value)),
+                  value: money(line.value),
                 })),
-                ...(b.miscCharges
-                  ? [{ label: 'Delivery', value: inr(Math.round(b.miscCharges)) }]
-                  : []),
-                { label: 'Taxable', value: inr(Math.round(b.taxable)) },
-                { label: 'GST', value: inr(Math.round(b.gst)) },
-                { label: 'Line total', value: inr(Math.round(b.total)) },
+                { label: 'Making', value: money(b.making) },
+                { label: vaLabel, value: money(b.goldVA) },
+                { label: 'Delivery', value: money(b.miscCharges) },
+                { label: 'Taxable', value: money(b.taxable) },
+                { label: 'GST', value: money(b.gst) },
+                { label: 'Line total', value: money(lineTotalAmt) },
               ]
               const autoAmt = Number(b.autoDiscount ?? 0)
               const couponAmt = Number(b.couponDiscount ?? 0)
@@ -592,7 +635,7 @@ export default async function AdminOrderDetailPage({
                 const name = b.autoDiscountLabel ? ` (${b.autoDiscountLabel}${pct})` : pct ? ` (${pct.replace(' · ', '')})` : ''
                 rows.push({
                   label: `Discount${name}`,
-                  value: `−${inr(Math.round(autoAmt))}`,
+                  value: `−${money(autoAmt)}`,
                 })
               }
               if (couponAmt > 0) {
@@ -600,7 +643,7 @@ export default async function AdminOrderDetailPage({
                 const detail = couponKindSuffix(b.couponKind, b.couponDiscountPercent)
                 rows.push({
                   label: `Coupon (${code}${detail})`,
-                  value: `−${inr(Math.round(couponAmt))}`,
+                  value: `−${money(couponAmt)}`,
                 })
               }
               const payableUnit =
@@ -608,12 +651,12 @@ export default async function AdminOrderDetailPage({
                   ? Number(b.payable)
                   : Math.max(0, Number(b.total) - autoAmt - couponAmt)
               if (autoAmt > 0 || couponAmt > 0) {
-                rows.push({ label: 'Payable', value: inr(Math.round(payableUnit)) })
+                rows.push({ label: 'Payable', value: money(payableUnit) })
               }
               if (item.quantity > 1) {
                 rows.push({
                   label: `× ${item.quantity}`,
-                  value: inr(Math.round(payableUnit * item.quantity)),
+                  value: money(payableUnit * item.quantity),
                 })
               }
               return (

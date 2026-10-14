@@ -328,6 +328,7 @@ model Order {
   invoices             Invoice[]
   inventoryAllocations InventoryAllocation[]
   inventorySales       InventorySale[]
+  attachments          OrderAttachment[]
   // Offline/manual settlement date — preferred invoice Received On when set.
   paymentReceivedAt    DateTime?
   createdAt            DateTime                  @default(now())
@@ -356,9 +357,24 @@ model OrderItem {
   price        Decimal
   /// Full pricing snapshot at create time (gold rate, gold/wastage/making/stones/GST). Null on legacy rows. Shape: OrderItemPriceSnapshot in lib/pricing.ts
   priceBreakdown Json?
+  /// Admin-only physical build (metal, weight, stones). Not customer-visible. Shape: OrderItemInternalBuild in lib/order-internal-build.ts
+  internalBuild Json?
   productName  String
   withExchange Boolean        @default(false)
   inventoryAllocations InventoryAllocation[]
+}
+
+/// Admin-only files on a manual/store order (images + PDF). Never exposed to customers.
+model OrderAttachment {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  url         String
+  fileName    String
+  contentType String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model Payment {

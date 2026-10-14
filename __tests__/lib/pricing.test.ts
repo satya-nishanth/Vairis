@@ -1,4 +1,4 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot, sellingComponentsToUnitSnapshot } from '@/lib/pricing'
+import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot, sellingComponentsToUnitSnapshot, unitSnapshotToSellingComponents, sellingBreakdownMatchesGoods } from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
 describe('calculatePrice (estimator formula)', () => {
@@ -132,6 +132,77 @@ describe('calculatePrice (estimator formula)', () => {
     expect(snap.diamondValue).toBe(8_000)
     expect(snap.otherStoneValue).toBe(2_000)
     expect(snap.stoneValue).toBe(10_000)
+  })
+
+  it('maps discount into autoDiscount / payable and round-trips', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 0,
+        stones: 0,
+        making: 1_000,
+        wastage: 500,
+        delivery: 0,
+        gst: 345,
+        discount: 200,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.total).toBe(11_845)
+    expect(snap.autoDiscount).toBe(200)
+    expect(snap.autoDiscountLabel).toBe('Discount')
+    expect(snap.payable).toBe(11_645)
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.discount).toBe(200)
+    expect(selling.gold + selling.making + selling.wastage + selling.gst - selling.discount).toBe(11_645)
+  })
+
+  it('sellingBreakdownMatchesGoods accepts net or gross equality', () => {
+    const components = {
+      gold: 30_000,
+      diamonds: 0,
+      stones: 0,
+      making: 5_000,
+      wastage: 5_000,
+      delivery: 0,
+      gst: 5_000,
+      discount: 1_000,
+    }
+    expect(sellingBreakdownMatchesGoods(components, 44_000)).toBe(true) // net
+    expect(sellingBreakdownMatchesGoods(components, 45_000)).toBe(true) // gross (edit)
+    expect(sellingBreakdownMatchesGoods(components, 40_000)).toBe(false)
+    expect(
+      sellingBreakdownMatchesGoods(components, 45_000, { requireNetIfDiscounted: true }),
+    ).toBe(false)
+    expect(
+      sellingBreakdownMatchesGoods(components, 44_000, { requireNetIfDiscounted: true }),
+    ).toBe(true)
+  })
+
+  it('round-trips selling components to 2 decimal places', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_978.25,
+        diamonds: 21_420.5,
+        stones: 0,
+        making: 1_105.1,
+        wastage: 548.91,
+        delivery: 45,
+        gst: 1_022.99,
+        discount: 10.5,
+      },
+      { quantity: 1, goldRatePerGram: 7452.78, weightGrams: 1.473 },
+    )
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.gold).toBe(10_978.25)
+    expect(selling.diamonds).toBe(21_420.5)
+    expect(selling.making).toBe(1_105.1)
+    expect(selling.wastage).toBe(548.91)
+    expect(selling.gst).toBe(1_022.99)
+    expect(selling.discount).toBe(10.5)
+    expect(
+      sellingBreakdownMatchesGoods(selling, 10_978.25 + 21_420.5 + 1_105.1 + 548.91 + 45 + 1_022.99 - 10.5),
+    ).toBe(true)
   })
 
   it('does not apply stone VA even when vaStonePct is set', () => {

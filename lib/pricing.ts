@@ -22,6 +22,11 @@ import type { PromoKind } from '@prisma/client'
 
 export const GST_RATE = 0.03
 
+/** Round INR to paise (2 decimal places). */
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 export interface PricingConfig {
   vaGoldPct: number
   vaStonePct: number
@@ -203,6 +208,8 @@ export function sellingComponentsToUnitSnapshot(
     wastage: number
     delivery: number
     gst: number
+    /** Order-level discount (₹) subtracted after GST — maps to autoDiscount on the unit. */
+    discount?: number
   },
   meta: {
     quantity: number
@@ -223,7 +230,8 @@ export function sellingComponentsToUnitSnapshot(
   const gst = selling.gst / q
   const taxable = goldValue + goldVA + making + stoneValue + miscCharges
   const total = taxable + gst
-  return toOrderItemPriceSnapshot(
+  const autoDiscount = Math.max(0, (selling.discount ?? 0) / q)
+  const snap = toOrderItemPriceSnapshot(
     {
       goldValue,
       goldVA,
@@ -247,6 +255,13 @@ export function sellingComponentsToUnitSnapshot(
       metalType: meta.metalType,
     },
   )
+  if (autoDiscount <= 0) return snap
+  return {
+    ...snap,
+    autoDiscount,
+    autoDiscountLabel: 'Discount',
+    payable: Math.max(0, snap.total - autoDiscount),
+  }
 }
 
 /** True when a JSON column looks like a usable price snapshot. */
@@ -277,6 +292,7 @@ export function unitSnapshotToSellingComponents(
     diamondValue?: number
     otherStoneValue?: number
     stoneLines?: { typeLabel: string; value: number }[]
+    autoDiscount?: number
   },
   quantity: number,
 ): {
@@ -287,19 +303,59 @@ export function unitSnapshotToSellingComponents(
   wastage: number
   delivery: number
   gst: number
+  discount: number
 } {
   const q = Math.max(1, quantity)
-  const round = (n: number) => Math.round(n)
   const gems = splitGemValues(snapshot)
+  // Only autoDiscount — coupon stays on Order.discountBreakdown / snapshot.coupon*.
   return {
-    gold: round(snapshot.goldValue * q),
-    diamonds: round(gems.diamonds * q),
-    stones: round(gems.stones * q),
-    making: round(snapshot.making * q),
-    wastage: round((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
-    delivery: round(snapshot.miscCharges * q),
-    gst: round(snapshot.gst * q),
+    gold: roundMoney(snapshot.goldValue * q),
+    diamonds: roundMoney(gems.diamonds * q),
+    stones: roundMoney(gems.stones * q),
+    making: roundMoney(snapshot.making * q),
+    wastage: roundMoney((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
+    delivery: roundMoney(snapshot.miscCharges * q),
+    gst: roundMoney(snapshot.gst * q),
+    discount: roundMoney((snapshot.autoDiscount ?? 0) * q),
   }
+}
+
+/**
+ * Selling breakdown matches goods when net equals (manual: unit prices are
+ * post-discount) or gross equals (checkout: unit prices are pre-discount).
+ *
+ * On create (`requireNetIfDiscounted`), a positive discount may only match
+ * net — otherwise grandTotal would capture gross while discountAmount is also
+ * stored (overcharge). Edits keep the gross option so checkout orders still save.
+ */
+export function sellingBreakdownMatchesGoods(
+  selling: {
+    gold: number
+    diamonds: number
+    stones: number
+    making: number
+    wastage: number
+    delivery: number
+    gst: number
+    discount?: number
+  },
+  goodsTotal: number,
+  opts?: { requireNetIfDiscounted?: boolean },
+): boolean {
+  const gross =
+    selling.gold +
+    selling.diamonds +
+    selling.stones +
+    selling.making +
+    selling.wastage +
+    selling.delivery +
+    selling.gst
+  const discount = selling.discount ?? 0
+  const paise = (n: number) => Math.round(n * 100)
+  const goods = paise(goodsTotal)
+  const netOk = paise(gross - discount) === goods
+  if (opts?.requireNetIfDiscounted && discount > 0) return netOk
+  return netOk || paise(gross) === goods
 }
 
 export interface VariantPriceInput {

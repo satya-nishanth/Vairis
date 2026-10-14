@@ -6,11 +6,20 @@ import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
 import { closeThread } from '@/lib/quotations'
-import { sellingComponentsToUnitSnapshot, toOrderItemPriceSnapshot } from '@/lib/pricing'
+import {
+  roundMoney,
+  sellingBreakdownMatchesGoods,
+  sellingComponentsToUnitSnapshot,
+  toOrderItemPriceSnapshot,
+} from '@/lib/pricing'
 import { getPricingConfig, resolvePricingConfig } from '@/lib/pricing-data'
 import { toSetOrderItemSnapshot } from '@/lib/product-piece-pricing'
 import { allocateInventoryForOrderItem, InventoryError } from '@/lib/inventory'
 import { inventoryActorFromSession } from '@/lib/inventory-audit'
+import {
+  internalBuildSchema,
+  orderAttachmentInputSchema,
+} from '@/lib/order-internal-build'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +77,8 @@ const manualOrderSchema = z.object({
         unitPrice: z.number().positive().max(10000000),
         /** When set, decrements this inventory line inside the same transaction. */
         inventoryItemId: z.string().min(1).optional(),
+        /** Admin-only physical build — not customer-visible. */
+        internalBuild: internalBuildSchema.optional(),
       }),
     )
     .min(1),
@@ -84,8 +95,12 @@ const manualOrderSchema = z.object({
       wastage: z.number().min(0).max(100000000),
       delivery: z.number().min(0).max(100000000),
       gst: z.number().min(0).max(100000000),
+      /** Subtracted after GST; net must match goods total. */
+      discount: z.number().min(0).max(100000000).optional().default(0),
     })
     .optional(),
+  /** Admin-only attachments (images + PDF). */
+  attachments: z.array(orderAttachmentInputSchema).max(30).optional(),
 })
 
 /**
@@ -165,14 +180,17 @@ export async function POST(req: NextRequest) {
   ])
   const rateMap = Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))
 
-  const total = Math.round(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
+  const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
   // Mirrors ManualOrderForm's own `sellingMismatch` warning (client-side only,
   // non-blocking) — reject server-side too, since priceBreakdown feeds
   // invoices and finance quotes and must not silently disagree with the
   // amount actually charged (order.price / totalAmount / grandTotal).
-  if (d.sellingBreakdown) {
-    const sellingTotal =
+  if (
+    d.sellingBreakdown &&
+    !sellingBreakdownMatchesGoods(d.sellingBreakdown, total, { requireNetIfDiscounted: true })
+  ) {
+    const gross =
       d.sellingBreakdown.gold +
       d.sellingBreakdown.diamonds +
       d.sellingBreakdown.stones +
@@ -180,15 +198,15 @@ export async function POST(req: NextRequest) {
       d.sellingBreakdown.wastage +
       d.sellingBreakdown.delivery +
       d.sellingBreakdown.gst
-    if (Math.round(sellingTotal) !== total) {
-      return NextResponse.json(
-        { error: `Selling breakdown (₹${Math.round(sellingTotal)}) doesn't match goods total (₹${total})` },
-        { status: 400 },
-      )
-    }
+    const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
+    return NextResponse.json(
+      { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
+      { status: 400 },
+    )
   }
 
   const { totalAmount, grandTotal, depositAmount } = computeOrderAmounts(total)
+  const orderDiscountAmount = roundMoney(d.sellingBreakdown?.discount ?? 0)
 
   const itemRows = d.items.map((i, index) => {
     const v = variantMap.get(i.variantId)!
@@ -196,7 +214,7 @@ export async function POST(req: NextRequest) {
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
 
     const manual = d.sellingBreakdown
-    const manualTotal =
+    const manualGross =
       manual != null
         ? manual.gold +
           manual.diamonds +
@@ -204,10 +222,11 @@ export async function POST(req: NextRequest) {
           manual.making +
           manual.wastage +
           manual.delivery +
-          manual.gst
+          manual.gst +
+          (manual.discount ?? 0)
         : 0
 
-    if (index === 0 && manual != null && manualTotal > 0) {
+    if (index === 0 && manual != null && manualGross > 0) {
       priceBreakdown = sellingComponentsToUnitSnapshot(manual, {
         quantity: i.quantity,
         goldRatePerGram: rate ?? 0,
@@ -238,11 +257,14 @@ export async function POST(req: NextRequest) {
     const row: Prisma.OrderItemUncheckedCreateWithoutOrderInput = {
       variantId: i.variantId,
       quantity: i.quantity,
-      price: Math.round(i.unitPrice),
+      price: roundMoney(i.unitPrice),
       productName: v.product.name,
     }
     if (priceBreakdown) {
       row.priceBreakdown = priceBreakdown as unknown as Prisma.InputJsonValue
+    }
+    if (i.internalBuild) {
+      row.internalBuild = i.internalBuild as unknown as Prisma.InputJsonValue
     }
     return row
   })
@@ -277,6 +299,7 @@ export async function POST(req: NextRequest) {
           totalAmount,
           depositAmount,
           grandTotal,
+          discountAmount: orderDiscountAmount,
           contactName: d.contactName,
           contactPhone: d.contactPhone,
           addressLine1: d.addressLine1,
@@ -292,6 +315,16 @@ export async function POST(req: NextRequest) {
           items: {
             create: itemRows,
           },
+          attachments:
+            d.attachments && d.attachments.length > 0
+              ? {
+                  create: d.attachments.map((a) => ({
+                    url: a.url,
+                    fileName: a.fileName,
+                    contentType: a.contentType ?? '',
+                  })),
+                }
+              : undefined,
           events: {
             create: [
               { status: 'PAYMENT_PENDING' as const, note: 'Manual order created by admin (offline sale)' },

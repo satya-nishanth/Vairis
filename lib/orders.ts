@@ -20,7 +20,7 @@ export function computeOrderAmounts(totalAmount: number): {
   grandTotal: number;
   depositAmount: number;
 } {
-  const grandTotal = Math.round(totalAmount);
+  const grandTotal = Math.round(totalAmount * 100) / 100;
   return { totalAmount: grandTotal, grandTotal, depositAmount: 0 };
 }
 

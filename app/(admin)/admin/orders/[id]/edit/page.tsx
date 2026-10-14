@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
 import { calculatePrice, isOrderItemPriceSnapshot, unitSnapshotToSellingComponents } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
+import { parseInternalBuild } from '@/lib/order-internal-build'
 import { ManualOrderForm, type ManualOrderEditPrefill } from '../../new/ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
     where: { id },
     include: {
       items: true,
+      attachments: { orderBy: { createdAt: 'asc' } },
       user: { select: { id: true, email: true, name: true, mobile: true } },
       children: { select: { id: true }, take: 1 },
       inventoryAllocations: {
@@ -47,7 +49,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
   }
 
   const orderVariantIds = order.items.map((i) => i.variantId)
-  const [products, goldRates, pricingConfig, holders] = await Promise.all([
+  const [products, goldRates, pricingConfig, holders, diamondRates] = await Promise.all([
     prisma.product.findMany({
       where: {
         OR: [{ isActive: true }, { variants: { some: { id: { in: orderVariantIds } } } }],
@@ -64,6 +66,11 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true },
+    }),
+    prisma.diamondRate.findMany({
+      where: { active: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, label: true, ratePerCarat: true },
     }),
   ])
 
@@ -108,6 +115,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
 
   const lines: ManualOrderEditPrefill['lines'] = order.items.map((item) => {
     const alloc = allocByItemId.get(item.id)
+    const internalBuild = parseInternalBuild(item.internalBuild) ?? undefined
     if (alloc) {
       return {
         variantId: item.variantId,
@@ -116,12 +124,14 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
         inventoryItemId: alloc.inventoryItemId,
         fromInventory: true,
         maxQty: alloc.inventoryItem.qtyOnHand + alloc.qty,
+        internalBuild,
       }
     }
     return {
       variantId: item.variantId,
       quantity: item.quantity,
       unitPrice: Number(item.price),
+      internalBuild,
     }
   })
 
@@ -129,6 +139,17 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
   const first = order.items[0]
   if (first && isOrderItemPriceSnapshot(first.priceBreakdown)) {
     selling = unitSnapshotToSellingComponents(first.priceBreakdown, first.quantity)
+  }
+  // Flat manual discountAmount only — leave checkout promo/coupon on the order record.
+  const hasStructuredPromo =
+    order.promoCodeId != null || order.discountBreakdown != null
+  const orderDiscount = Number(order.discountAmount ?? 0)
+  if (
+    !hasStructuredPromo &&
+    orderDiscount > 0 &&
+    (selling?.discount == null || selling.discount === 0)
+  ) {
+    selling = { ...(selling ?? {}), discount: Math.round(orderDiscount) }
   }
 
   const editOrder: ManualOrderEditPrefill = {
@@ -150,6 +171,11 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
     },
     lines,
     selling,
+    attachments: order.attachments.map((a) => ({
+      url: a.url,
+      fileName: a.fileName,
+      contentType: a.contentType,
+    })),
   }
 
   return (
@@ -169,6 +195,11 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
       <ManualOrderForm
         variantOptions={variantOptions}
         holders={holders}
+        diamondRates={diamondRates.map((r) => ({
+          id: r.id,
+          label: r.label,
+          ratePerCarat: Number(r.ratePerCarat),
+        }))}
         isFinance={isFinance}
         editOrder={editOrder}
       />

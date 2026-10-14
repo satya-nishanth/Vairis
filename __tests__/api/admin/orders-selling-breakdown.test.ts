@@ -53,7 +53,7 @@ describe('POST /api/admin/orders — sellingBreakdown validation', () => {
     ;(prisma.productVariant.findMany as jest.Mock).mockResolvedValue([
       {
         id: 'v1',
-        product: { name: 'Bracelet', stones: [] },
+        product: { name: 'Bracelet', stones: [], pieces: [], variants: [{ id: 'v1' }] },
         metalType: 'GOLD_22K',
         weightGrams: 5,
         makingChargePerGram: 500,
@@ -109,6 +109,52 @@ describe('POST /api/admin/orders — sellingBreakdown validation', () => {
     )
     expect(res.status).toBe(201)
     expect(prisma.order.create).toHaveBeenCalled()
+  })
+
+  it('accepts when gross minus discount matches goods total', async () => {
+    const res = await POST(
+      req(
+        baseBody({
+          items: [{ variantId: 'v1', quantity: 1, unitPrice: 44000 }],
+          sellingBreakdown: {
+            gold: 30000,
+            diamonds: 0,
+            stones: 0,
+            making: 5000,
+            wastage: 5000,
+            delivery: 0,
+            gst: 5000,
+            discount: 1000,
+          }, // 45000 − 1000 = 44000
+        }),
+      ),
+    )
+    expect(res.status).toBe(201)
+    expect(prisma.order.create).toHaveBeenCalled()
+    const createArg = (prisma.order.create as jest.Mock).mock.calls[0][0]
+    expect(createArg.data.discountAmount).toBe(1000)
+  })
+
+  it('rejects create when discount is set but unit prices are still pre-discount (gross)', async () => {
+    const res = await POST(
+      req(
+        baseBody({
+          items: [{ variantId: 'v1', quantity: 1, unitPrice: 45000 }],
+          sellingBreakdown: {
+            gold: 30000,
+            diamonds: 0,
+            stones: 0,
+            making: 5000,
+            wastage: 5000,
+            delivery: 0,
+            gst: 5000,
+            discount: 1000,
+          }, // gross === goods; would overcharge if accepted
+        }),
+      ),
+    )
+    expect(res.status).toBe(400)
+    expect(prisma.order.create).not.toHaveBeenCalled()
   })
 
   it('allows omitting sellingBreakdown entirely', async () => {
