@@ -184,7 +184,8 @@ export function OrderAttachmentsGallery({
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 80,
+            // Above admin mobile top bar (z-index 100 in admin-shell.css).
+            zIndex: 200,
             background: 'rgba(17, 24, 39, 0.72)',
             display: 'flex',
             alignItems: 'center',
