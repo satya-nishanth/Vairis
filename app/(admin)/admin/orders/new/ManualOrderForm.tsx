@@ -200,7 +200,8 @@ export function ManualOrderForm({
   const [attachments, setAttachments] = useState<OrderAttachmentDraft[]>(
     () => editOrder?.attachments ?? [],
   )
-  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const uploadingAttachment = uploadingCount > 0
   const [paid, setPaid] = useState(true)
   const [paymentNote, setPaymentNote] = useState('')
   const [paymentReceivedAt, setPaymentReceivedAt] = useState(() => new Date().toISOString().slice(0, 10))
@@ -222,7 +223,7 @@ export function ManualOrderForm({
   }
 
   async function uploadOrderAttachment(file: File) {
-    setUploadingAttachment(true)
+    setUploadingCount((n) => n + 1)
     setError(null)
     try {
       const fd = new FormData()
@@ -242,7 +243,7 @@ export function ManualOrderForm({
         },
       ])
     } finally {
-      setUploadingAttachment(false)
+      setUploadingCount((n) => Math.max(0, n - 1))
     }
   }
 
@@ -553,6 +554,10 @@ export function ManualOrderForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (uploadingAttachment) {
+      setError('Wait for attachments to finish uploading')
+      return
+    }
     if (!customer) {
       setError('Select a customer first')
       return
@@ -1567,7 +1572,7 @@ export function ManualOrderForm({
 
       <button
         type="submit"
-        disabled={saving}
+        disabled={saving || uploadingAttachment}
         style={{
           padding: '10px 28px',
           fontSize: '0.75rem',
@@ -1576,10 +1581,19 @@ export function ManualOrderForm({
           background: '#032b24',
           color: '#fff',
           border: 'none',
-          cursor: 'pointer',
+          cursor: saving || uploadingAttachment ? 'not-allowed' : 'pointer',
+          opacity: saving || uploadingAttachment ? 0.7 : 1,
         }}
       >
-        {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save changes' : 'Create Order'}
+        {saving
+          ? isEdit
+            ? 'Saving…'
+            : 'Creating…'
+          : uploadingAttachment
+            ? 'Uploading…'
+            : isEdit
+              ? 'Save changes'
+              : 'Create Order'}
       </button>
     </form>
   )
