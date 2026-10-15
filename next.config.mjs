@@ -46,7 +46,8 @@ const nextConfig = {
           "font-src 'self' data:",
           "media-src 'self' data: blob: https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.google-analytics.com https://www.google-analytics.com https://*.ingest.sentry.io https://*.sentry.io https://api.razorpay.com https://lumberjack.razorpay.com",
-          "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com https://www.instagram.com",
+          // Blob/Supabase allowed so admin order PDF attachments can preview in-lightbox.
+          "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://*.razorpay.com https://www.instagram.com https://*.blob.core.windows.net https://vairisprodmedia.blob.core.windows.net https://*.supabase.co",
           "frame-ancestors 'none'",
           "base-uri 'self'",
           "form-action 'self'",

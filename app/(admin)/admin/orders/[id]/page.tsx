@@ -17,6 +17,7 @@ import { MarkPaidOffline } from './MarkPaidOffline'
 import { inventoryDisplayName } from '@/lib/inventory'
 import { parseInternalBuild } from '@/lib/order-internal-build'
 import { OrderLineBuildSummary } from '@/components/admin/OrderLineBuildEditor'
+import { OrderAttachmentsGallery } from '@/components/admin/OrderAttachmentsGallery'
 
 export const dynamic = 'force-dynamic'
 
@@ -240,24 +241,6 @@ export default async function AdminOrderDetailPage({
               </div>
             )
           })}
-          {order.attachments.length > 0 && (
-            <>
-              <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
-              <h3 style={{ ...heading, marginBottom: 8 }}>Internal attachments</h3>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {order.attachments.map((a) => (
-                  <li key={a.id} style={{ fontSize: '0.8125rem', marginBottom: 4 }}>
-                    <a href={a.url} target="_blank" rel="noreferrer" style={{ color: '#032b24' }}>
-                      {a.fileName}
-                    </a>
-                    <span style={{ color: '#9ca3af', marginLeft: 6 }}>
-                      {a.contentType.includes('pdf') ? 'PDF' : 'Image'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
           <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '10px 0' }} />
           <p style={{ fontSize: '0.875rem' }}>Goods total: {inr(order.totalAmount)}</p>
           {Number(order.depositAmount) > 0 && (
@@ -681,6 +664,21 @@ export default async function AdminOrderDetailPage({
             })
           )}
         </div>
+
+        {order.attachments.length > 0 && (
+          <div style={{ ...card, gridColumn: '1 / -1' }}>
+            <h3 style={heading}>Internal attachments</h3>
+            <OrderAttachmentsGallery
+              attachments={order.attachments.map((a) => ({
+                id: a.id,
+                url: a.url,
+                fileName: a.fileName,
+                contentType: a.contentType,
+                createdAt: a.createdAt.toISOString(),
+              }))}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
