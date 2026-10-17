@@ -718,6 +718,15 @@ function LineEditor({
         }
       />
 
+      <div className="inv-composer__grid" style={{ marginTop: 8 }}>
+        <Field
+          label="Certification (₹)"
+          type="number"
+          value={line.certificationCharges ?? 0}
+          onChange={(v) => patch({ certificationCharges: Number(v) || 0 })}
+        />
+      </div>
+
       {!line.lockedPricing ? (
         <>
           <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Diamonds (from product)</p>
@@ -775,6 +784,9 @@ function LineEditor({
         {formatINRGrouped(gems.stones, 0)}
         {computed.miscCharges > 0
           ? ` · misc ₹${formatINRGrouped(computed.miscCharges, 0)}`
+          : ''}
+        {computed.certificationCharges > 0
+          ? ` · certification ₹${formatINRGrouped(computed.certificationCharges, 0)}`
           : ''}{' '}
         · taxable ₹{formatINRGrouped(computed.taxable)}
       </p>

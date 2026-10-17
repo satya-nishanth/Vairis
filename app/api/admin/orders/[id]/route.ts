@@ -303,6 +303,8 @@ const editOrderSchema = z.object({
           }),
         )
         .optional(),
+      /** Fixed certification fee (order-level ₹). */
+      certification: z.number().min(0).max(100000000).optional().default(0),
       gst: z.number().min(0).max(100000000),
       /** Subtracted after GST; net must match goods total. */
       discount: z.number().min(0).max(100000000).optional().default(0),
@@ -439,6 +441,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       d.sellingBreakdown.making +
       d.sellingBreakdown.wastage +
       misc +
+      (d.sellingBreakdown.certification ?? 0) +
       d.sellingBreakdown.gst
     const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
@@ -477,6 +480,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           manual.making +
           manual.wastage +
           manualMisc +
+          (manual.certification ?? 0) +
           manual.gst +
           (manual.discount ?? 0)
         : 0

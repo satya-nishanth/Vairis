@@ -257,6 +257,8 @@ model ProductVariant {
   miscCharges         Decimal     @default(0)
   /// Labeled misc rows: [{ label, amount }]. Null = treat miscCharges as single Hallmark.
   miscChargeLines     Json?
+  /// Fixed certification fee (₹) — disclosed like gold / GST.
+  certificationCharges Decimal    @default(0)
   stock               Int         @default(0)
   sku                 String      @unique
   cartItems           CartItem[]

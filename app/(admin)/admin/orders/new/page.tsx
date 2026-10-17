@@ -62,6 +62,7 @@ export default async function NewManualOrderPage({
                 flatMakingCharge: v.flatMakingCharge.toString(),
                 stoneCharges: v.stoneCharges.toString(),
                 miscCharges: v.miscCharges.toString(),
+                certificationCharges: (v.certificationCharges ?? 0).toString(),
               },
               rate,
               { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },

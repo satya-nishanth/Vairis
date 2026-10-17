@@ -35,6 +35,7 @@ type Variant = {
   flatMakingCharge: string;
   stoneCharges: string;
   miscCharges: string;
+  certificationCharges?: string;
   sku: string | null;
   size: string | null;
 };
@@ -107,6 +108,7 @@ function pieceBreakdown(
       flatMakingCharge: Number(variant.flatMakingCharge),
       stoneCharges: Number(variant.stoneCharges),
       miscCharges: Number(variant.miscCharges),
+      certificationCharges: Number(variant.certificationCharges ?? 0),
     },
     rate,
     { stones, withExchange, config },
@@ -766,6 +768,10 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
                   const roundedMisc =
                     breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
+                  const roundedCert =
+                    breakdown.certificationCharges > 0
+                      ? Math.round(breakdown.certificationCharges)
+                      : 0;
                   const roundedGST = Math.round(breakdown.gst);
                   const tableTotal =
                     roundedGold +
@@ -773,6 +779,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     roundedMaking +
                     roundedVA +
                     roundedMisc +
+                    roundedCert +
                     roundedGST;
                   return (
                     <details
@@ -826,8 +833,14 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                           )}
                           {roundedMisc > 0 && (
                             <tr>
-                              <td>Hallmarking &amp; certification</td>
+                              <td>Hallmarking / misc</td>
                               <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedCert > 0 && (
+                            <tr>
+                              <td>Certification</td>
+                              <td>₹{roundedCert.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
                           <tr>

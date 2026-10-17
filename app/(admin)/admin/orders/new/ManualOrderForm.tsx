@@ -38,6 +38,7 @@ const SELLING_FIELDS = [
   { key: 'stones', label: 'Stones' },
   { key: 'making', label: 'Making charges' },
   { key: 'wastage', label: 'Wastage' },
+  { key: 'certification', label: 'Certification' },
   { key: 'gst', label: 'GST' },
   { key: 'discount', label: 'Discount' },
 ] as const
@@ -73,6 +74,7 @@ function emptySelling(): SellingBreakdown {
     stones: '',
     making: '',
     wastage: '',
+    certification: '',
     gst: '',
     discount: '',
   }
@@ -338,6 +340,7 @@ export function ManualOrderForm({
       stones: 0,
       making: 0,
       wastage: 0,
+      certification: 0,
       delivery: sellingMiscTotal,
       gst: 0,
       discount: 0,
@@ -361,6 +364,7 @@ export function ManualOrderForm({
       sellingParsed.making +
       sellingParsed.wastage +
       sellingMiscTotal +
+      sellingParsed.certification +
       sellingParsed.gst,
     [sellingParsed, sellingMiscTotal],
   )
@@ -1356,7 +1360,9 @@ export function ManualOrderForm({
               </tr>
             </thead>
             <tbody>
-              {SELLING_FIELDS.filter((f) => f.key !== 'gst' && f.key !== 'discount').map((f) => (
+              {SELLING_FIELDS.filter(
+                (f) => f.key !== 'gst' && f.key !== 'discount' && f.key !== 'certification',
+              ).map((f) => (
                 <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
                   <td style={{ padding: '6px' }}>
@@ -1446,7 +1452,9 @@ export function ManualOrderForm({
                   </button>
                 </td>
               </tr>
-              {SELLING_FIELDS.filter((f) => f.key === 'gst' || f.key === 'discount').map((f) => (
+              {SELLING_FIELDS.filter(
+                (f) => f.key === 'certification' || f.key === 'gst' || f.key === 'discount',
+              ).map((f) => (
                 <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
                   <td style={{ padding: '6px' }}>

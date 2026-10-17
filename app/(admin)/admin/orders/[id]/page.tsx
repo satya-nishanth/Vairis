@@ -616,6 +616,9 @@ export default async function AdminOrderDetailPage({
                     label: m.label || 'Misc',
                     value: money(m.amount),
                   })),
+                ...(Number(b.certificationCharges ?? 0) > 0
+                  ? [{ label: 'Certification', value: money(b.certificationCharges!) }]
+                  : []),
                 { label: 'Taxable', value: money(b.taxable) },
                 { label: 'GST', value: money(b.gst) },
                 { label: 'Line total', value: money(lineTotalAmt) },

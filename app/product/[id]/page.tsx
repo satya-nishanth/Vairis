@@ -157,6 +157,7 @@ export default async function ProductPage({ params }: Props) {
             flatMakingCharge: v.flatMakingCharge.toString(),
             stoneCharges: v.stoneCharges.toString(),
             miscCharges: v.miscCharges.toString(),
+            certificationCharges: (v.certificationCharges ?? 0).toString(),
           })),
         }))
       : [
@@ -178,6 +179,7 @@ export default async function ProductPage({ params }: Props) {
               flatMakingCharge: v.flatMakingCharge.toString(),
               stoneCharges: v.stoneCharges.toString(),
               miscCharges: v.miscCharges.toString(),
+              certificationCharges: (v.certificationCharges ?? 0).toString(),
             })),
           },
         ];

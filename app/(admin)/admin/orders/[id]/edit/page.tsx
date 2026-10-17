@@ -88,6 +88,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
                 flatMakingCharge: v.flatMakingCharge.toString(),
                 stoneCharges: v.stoneCharges.toString(),
                 miscCharges: v.miscCharges.toString(),
+                certificationCharges: (v.certificationCharges ?? 0).toString(),
               },
               rate,
               { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },

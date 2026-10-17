@@ -25,6 +25,7 @@ type VariantLike = Pick<
   | 'flatMakingCharge'
   | 'stoneCharges'
   | 'miscCharges'
+  | 'certificationCharges'
 >
 
 function metalKey(v: Pick<VariantLike, 'metalType' | 'metalColor'>): string {
@@ -70,6 +71,7 @@ export function priceVariantUnit(
       flatMakingCharge: Number(variant.flatMakingCharge),
       stoneCharges: Number(variant.stoneCharges),
       miscCharges: Number(variant.miscCharges),
+      certificationCharges: Number(variant.certificationCharges ?? 0),
     },
     ratePerGram,
     { stones, withExchange, config },
@@ -239,6 +241,7 @@ export function buildSetPriceBreakdown(
           flatMakingCharge: Number(v.flatMakingCharge),
           stoneCharges: Number(v.stoneCharges),
           miscCharges: Number(v.miscCharges),
+          certificationCharges: Number(v.certificationCharges ?? 0),
         },
         rate,
         { stones, withExchange, config },
@@ -303,6 +306,7 @@ function sumPriceBreakdowns(parts: PriceBreakdown[]): PriceBreakdown {
     vaTotal: sum((b) => b.vaTotal),
     vaLabel: first.vaLabel,
     miscCharges: sum((b) => b.miscCharges),
+    certificationCharges: sum((b) => b.certificationCharges),
     taxable: sum((b) => b.taxable),
     gst: sum((b) => b.gst),
     total: sum((b) => b.total),
