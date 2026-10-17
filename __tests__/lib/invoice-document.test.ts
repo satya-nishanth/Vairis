@@ -126,7 +126,7 @@ describe('order invoice from priceBreakdown', () => {
     expect(line.wastage).toBeCloseTo(1075.82, 2)
     expect(line.making).toBe(1100)
     expect(line.taxable).toBeCloseTo(23737.17, 2)
-    expect(line.miscLines).toEqual([{ label: 'Delivery', amount: 45 }])
+    expect(line.miscLines).toEqual([{ label: 'Misc', amount: 45 }])
 
     // Live recompute would use 99999/g — locked path must not.
     const again = recomputeLine({ ...line, goldRatePerGram: 99999 }, 'Wastage')

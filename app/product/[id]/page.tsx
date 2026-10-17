@@ -158,6 +158,8 @@ export default async function ProductPage({ params }: Props) {
             stoneCharges: v.stoneCharges.toString(),
             miscCharges: v.miscCharges.toString(),
             certificationCharges: (v.certificationCharges ?? 0).toString(),
+            packagingCharges: (v.packagingCharges ?? 0).toString(),
+            deliveryCharges: (v.deliveryCharges ?? 0).toString(),
           })),
         }))
       : [
@@ -180,6 +182,8 @@ export default async function ProductPage({ params }: Props) {
               stoneCharges: v.stoneCharges.toString(),
               miscCharges: v.miscCharges.toString(),
               certificationCharges: (v.certificationCharges ?? 0).toString(),
+              packagingCharges: (v.packagingCharges ?? 0).toString(),
+              deliveryCharges: (v.deliveryCharges ?? 0).toString(),
             })),
           },
         ];

@@ -1,6 +1,7 @@
 /**
- * Labeled misc / hallmark / delivery-style charge lines.
+ * Optional labeled misc charge lines (admin-entered text + amount).
  * Sum feeds pricing as miscCharges; labels show on invoices.
+ * First-class Certification / Packaging / Delivery are separate fields — not misc.
  */
 
 export type MiscChargeLine = {
@@ -8,7 +9,8 @@ export type MiscChargeLine = {
   amount: number
 }
 
-export const DEFAULT_MISC_LABEL = 'Hallmark'
+/** Fallback label only when converting a legacy flat miscCharges amount. */
+export const DEFAULT_MISC_LABEL = 'Misc'
 
 export function sumMiscChargeLines(lines: MiscChargeLine[] | undefined | null): number {
   if (!lines?.length) return 0
@@ -50,7 +52,7 @@ export function parseMiscChargeLines(raw: unknown): MiscChargeLine[] {
   return out
 }
 
-/** Prefer JSON lines; fall back to flat miscCharges as a single Hallmark row. */
+/** Prefer JSON lines; fall back to flat miscCharges as a single Misc row. */
 export function resolveMiscChargeLines(
   linesRaw: unknown,
   flatAmount: number,

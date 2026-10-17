@@ -77,6 +77,8 @@ export default async function EditProductPage({
       miscCharges: v.miscCharges.toString(),
       miscLines: lines.map((l) => ({ label: l.label, amount: String(l.amount) })),
       certificationCharges: (v.certificationCharges ?? 0).toString(),
+      packagingCharges: (v.packagingCharges ?? 0).toString(),
+      deliveryCharges: (v.deliveryCharges ?? 0).toString(),
       stock: v.stock.toString(),
       sku: v.sku,
     }

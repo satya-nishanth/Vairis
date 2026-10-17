@@ -33,7 +33,7 @@ const patchVariantSchema = z.object({
     .refine((n) => !Number.isNaN(n) && n >= 0, 'Making charge cannot be negative'),
   flatMakingCharge: z.union([z.string(), z.number()]).transform(Number).default(0),
   stoneCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
-  miscCharges: z.union([z.string(), z.number()]).transform(Number).default(45),
+  miscCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
   miscChargeLines: z
     .array(
       z.object({
@@ -44,6 +44,8 @@ const patchVariantSchema = z.object({
     .optional()
     .nullable(),
   certificationCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
+  packagingCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
+  deliveryCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
   stock: z.union([z.string(), z.number()]).transform(Number).default(0),
   sku: z.string().min(1, 'SKU is required'),
   size: z.string().optional(),

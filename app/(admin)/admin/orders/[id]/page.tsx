@@ -608,7 +608,7 @@ export default async function AdminOrderDetailPage({
                 ...((b.miscLines?.length
                   ? b.miscLines
                   : b.miscCharges
-                    ? [{ label: 'Delivery', amount: b.miscCharges }]
+                    ? [{ label: 'Misc', amount: b.miscCharges }]
                     : []
                 ) as { label: string; amount: number }[])
                   .filter((m) => Number(m.amount) > 0)
@@ -618,6 +618,12 @@ export default async function AdminOrderDetailPage({
                   })),
                 ...(Number(b.certificationCharges ?? 0) > 0
                   ? [{ label: 'Certification', value: money(b.certificationCharges!) }]
+                  : []),
+                ...(Number(b.packagingCharges ?? 0) > 0
+                  ? [{ label: 'Packaging', value: money(b.packagingCharges!) }]
+                  : []),
+                ...(Number(b.deliveryCharges ?? 0) > 0
+                  ? [{ label: 'Delivery', value: money(b.deliveryCharges!) }]
                   : []),
                 { label: 'Taxable', value: money(b.taxable) },
                 { label: 'GST', value: money(b.gst) },

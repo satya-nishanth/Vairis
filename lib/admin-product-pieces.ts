@@ -11,6 +11,8 @@ export type PieceVariantInput = {
   miscCharges: number
   miscChargeLines?: { label: string; amount: number }[] | null
   certificationCharges?: number
+  packagingCharges?: number
+  deliveryCharges?: number
   stock: number
   sku: string
   size?: string | null
@@ -103,6 +105,8 @@ export async function createProductPieces(
             ? (v.miscChargeLines as Prisma.InputJsonValue)
             : Prisma.JsonNull,
           certificationCharges: v.certificationCharges ?? 0,
+          packagingCharges: v.packagingCharges ?? 0,
+          deliveryCharges: v.deliveryCharges ?? 0,
           stock: v.stock,
           sku: v.sku,
           size: v.size || null,
@@ -248,6 +252,8 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
           ? (v.miscChargeLines as Prisma.InputJsonValue)
           : Prisma.JsonNull,
         certificationCharges: v.certificationCharges ?? 0,
+        packagingCharges: v.packagingCharges ?? 0,
+        deliveryCharges: v.deliveryCharges ?? 0,
         stock: v.stock,
         size: sizeKey,
         pieceId,

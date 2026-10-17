@@ -38,14 +38,20 @@ export type DiscountLineInput = {
 export function discountBasesFromSnapshot(snapshot: {
   making: number
   miscCharges: number
+  deliveryCharges?: number
   taxable: number
   gst: number
   total: number
 }): Pick<DiscountLineInput, 'unitTotal' | 'unitMakingInclGst' | 'unitDeliveryInclGst'> {
+  // Prefer first-class delivery; legacy snapshots used miscCharges as delivery/hallmark.
+  const deliveryBase =
+    snapshot.deliveryCharges != null && snapshot.deliveryCharges > 0
+      ? snapshot.deliveryCharges
+      : snapshot.miscCharges
   return {
     unitTotal: Math.round(snapshot.total),
     unitMakingInclGst: componentInclGst(snapshot.making, snapshot.taxable, snapshot.gst),
-    unitDeliveryInclGst: componentInclGst(snapshot.miscCharges, snapshot.taxable, snapshot.gst),
+    unitDeliveryInclGst: componentInclGst(deliveryBase, snapshot.taxable, snapshot.gst),
   }
 }
 

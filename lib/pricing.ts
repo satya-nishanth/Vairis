@@ -7,13 +7,16 @@
  *   wastage    = goldValue × vaGoldPct            (gold only; default 10%)
  *   making     = weight × makingChargePerGram + flatMakingCharge
  *   stoneValue = Σ stones(carat × per-carat rate[exchange]) + legacy stoneCharges [+ leadIncentive]
- *   taxable    = goldValue + wastage + making + stoneValue + misc + certification
+ *   taxable    = goldValue + wastage + making + stoneValue
+ *              + misc + certification + packaging + delivery
  *   GST        = taxable × 3%
  *   total      = taxable + GST
  *
  * goldVA on the breakdown IS wastage (same field). stoneVA is always 0.
  * Wastage % + label come from PricingSettings (admin-editable; default label
  * "Value Addition"). Products may override both; null = inherit store defaults.
+ * Certification / packaging / delivery defaults live on PricingSettings and are
+ * seeded onto new variants; each is disclosed as its own line (not misc).
  * Diamond per-carat rates come from DiamondRate (with/without exchange).
  * Weights and carats shown to the customer are always the true values.
  */
@@ -40,12 +43,19 @@ export interface PricingConfig {
   vaGoldPct: number
   vaStonePct: number
   vaLabel: string
+  /** Store defaults for new product variants (₹). */
+  defaultCertificationCharges: number
+  defaultPackagingCharges: number
+  defaultDeliveryCharges: number
 }
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   vaGoldPct: 10,
   vaStonePct: 0,
   vaLabel: 'Value Addition',
+  defaultCertificationCharges: 0,
+  defaultPackagingCharges: 0,
+  defaultDeliveryCharges: 0,
 }
 
 /** Optional per-product override of store wastage % / label (null = inherit). */
@@ -71,6 +81,9 @@ export function resolvePricingConfig(
     vaGoldPct: hasPct ? Number(rawPct) : store.vaGoldPct,
     vaStonePct: store.vaStonePct,
     vaLabel: label || store.vaLabel,
+    defaultCertificationCharges: store.defaultCertificationCharges,
+    defaultPackagingCharges: store.defaultPackagingCharges,
+    defaultDeliveryCharges: store.defaultDeliveryCharges,
   }
 }
 
@@ -155,8 +168,10 @@ export interface PriceBreakdown {
   vaTotal: number
   vaLabel: string
   miscCharges: number
-  /** Fixed certification fee (₹). Always disclosed as its own line. */
+  /** Fixed fees (₹) — each disclosed as its own line. */
   certificationCharges: number
+  packagingCharges: number
+  deliveryCharges: number
   taxable: number
   gst: number
   total: number
@@ -219,12 +234,12 @@ export function sellingComponentsToUnitSnapshot(
     stones: number
     making: number
     wastage: number
-    /** Legacy single misc amount when miscLines omitted. */
-    delivery?: number
     /** Order-level labeled misc rows (text + amount). Sum becomes miscCharges. */
     miscLines?: MiscChargeLine[]
-    /** Order-level certification fee (₹). */
+    /** Order-level first-class fixed fees (₹). */
     certification?: number
+    packaging?: number
+    delivery?: number
     gst: number
     /** Order-level discount (₹) subtracted after GST — maps to autoDiscount on the unit. */
     discount?: number
@@ -244,11 +259,7 @@ export function sellingComponentsToUnitSnapshot(
   const diamondValue = selling.diamonds / q
   const otherStoneValue = selling.stones / q
   const stoneValue = diamondValue + otherStoneValue
-  const orderMiscLines = normalizeMiscChargeLines(
-    selling.miscLines?.length
-      ? selling.miscLines
-      : resolveMiscChargeLines(undefined, selling.delivery ?? 0, DEFAULT_MISC_LABEL),
-  )
+  const orderMiscLines = normalizeMiscChargeLines(selling.miscLines)
   const orderMiscTotal = sumMiscChargeLines(orderMiscLines)
   const miscCharges = orderMiscTotal / q
   const miscLines = orderMiscLines.map((l) => ({
@@ -256,8 +267,18 @@ export function sellingComponentsToUnitSnapshot(
     amount: l.amount / q,
   }))
   const certificationCharges = Math.max(0, selling.certification ?? 0) / q
+  const packagingCharges = Math.max(0, selling.packaging ?? 0) / q
+  const deliveryCharges = Math.max(0, selling.delivery ?? 0) / q
   const gst = selling.gst / q
-  const taxable = goldValue + goldVA + making + stoneValue + miscCharges + certificationCharges
+  const taxable =
+    goldValue +
+    goldVA +
+    making +
+    stoneValue +
+    miscCharges +
+    certificationCharges +
+    packagingCharges +
+    deliveryCharges
   const total = taxable + gst
   const autoDiscount = Math.max(0, (selling.discount ?? 0) / q)
   const snap = toOrderItemPriceSnapshot(
@@ -274,6 +295,8 @@ export function sellingComponentsToUnitSnapshot(
       vaLabel: meta.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
       miscCharges,
       certificationCharges,
+      packagingCharges,
+      deliveryCharges,
       taxable,
       gst,
       total,
@@ -313,7 +336,7 @@ export function isOrderItemPriceSnapshot(v: unknown): v is OrderItemPriceSnapsho
 /**
  * Reverse of sellingComponentsToUnitSnapshot — order-level amounts for the
  * admin edit form. Uses diamondValue / otherStoneValue when present; legacy
- * snapshots with only stoneValue put the lump on Diamonds. Delivery ← miscCharges.
+ * snapshots with only stoneValue put the lump on Diamonds.
  */
 export function unitSnapshotToSellingComponents(
   snapshot: Pick<
@@ -327,6 +350,8 @@ export function unitSnapshotToSellingComponents(
     autoDiscount?: number
     miscLines?: MiscChargeLine[]
     certificationCharges?: number
+    packagingCharges?: number
+    deliveryCharges?: number
   },
   quantity: number,
 ): {
@@ -335,14 +360,16 @@ export function unitSnapshotToSellingComponents(
   stones: number
   making: number
   wastage: number
-  delivery: number
   certification: number
+  packaging: number
+  delivery: number
   gst: number
   discount: number
   miscLines: MiscChargeLine[]
 } {
   const q = Math.max(1, quantity)
   const gems = splitGemValues(snapshot)
+  // Prefer explicit miscLines; legacy flat miscCharges → single "Misc" row (not Hallmark).
   const miscLines = resolveMiscChargeLines(
     snapshot.miscLines,
     Number(snapshot.miscCharges) || 0,
@@ -358,8 +385,9 @@ export function unitSnapshotToSellingComponents(
     stones: roundMoney(gems.stones * q),
     making: roundMoney(snapshot.making * q),
     wastage: roundMoney((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
-    delivery: roundMoney(sumMiscChargeLines(miscLines)),
     certification: roundMoney((snapshot.certificationCharges ?? 0) * q),
+    packaging: roundMoney((snapshot.packagingCharges ?? 0) * q),
+    delivery: roundMoney((snapshot.deliveryCharges ?? 0) * q),
     gst: roundMoney(snapshot.gst * q),
     discount: roundMoney((snapshot.autoDiscount ?? 0) * q),
     miscLines,
@@ -381,19 +409,17 @@ export function sellingBreakdownMatchesGoods(
     stones: number
     making: number
     wastage: number
-    delivery?: number
     miscLines?: MiscChargeLine[]
     certification?: number
+    packaging?: number
+    delivery?: number
     gst: number
     discount?: number
   },
   goodsTotal: number,
   opts?: { requireNetIfDiscounted?: boolean },
 ): boolean {
-  const misc =
-    selling.miscLines && selling.miscLines.length > 0
-      ? sumMiscChargeLines(normalizeMiscChargeLines(selling.miscLines))
-      : selling.delivery ?? 0
+  const misc = sumMiscChargeLines(normalizeMiscChargeLines(selling.miscLines))
   const gross =
     selling.gold +
     selling.diamonds +
@@ -402,6 +428,8 @@ export function sellingBreakdownMatchesGoods(
     selling.wastage +
     misc +
     (selling.certification ?? 0) +
+    (selling.packaging ?? 0) +
+    (selling.delivery ?? 0) +
     selling.gst
   const discount = selling.discount ?? 0
   const paise = (n: number) => Math.round(n * 100)
@@ -411,6 +439,29 @@ export function sellingBreakdownMatchesGoods(
   return netOk || paise(gross) === goods
 }
 
+/** Order-level misc total from labeled rows only (not delivery). */
+export function sellingBreakdownMiscTotal(selling: { miscLines?: MiscChargeLine[] }): number {
+  return sumMiscChargeLines(normalizeMiscChargeLines(selling.miscLines))
+}
+
+/** Pre-discount gross for admin selling breakdown validation / error messages. */
+export function sellingBreakdownGross(
+  selling: Parameters<typeof sellingBreakdownMatchesGoods>[0],
+): number {
+  return (
+    selling.gold +
+    selling.diamonds +
+    selling.stones +
+    selling.making +
+    selling.wastage +
+    sellingBreakdownMiscTotal(selling) +
+    (selling.certification ?? 0) +
+    (selling.packaging ?? 0) +
+    (selling.delivery ?? 0) +
+    selling.gst
+  )
+}
+
 export interface VariantPriceInput {
   weightGrams: number | string
   makingChargePerGram: number | string
@@ -418,8 +469,10 @@ export interface VariantPriceInput {
   /** Legacy flat stone cost — still honoured for products without stone rows. */
   stoneCharges: number | string
   miscCharges: number | string
-  /** Fixed certification fee (₹). Optional — defaults to 0. */
+  /** Fixed fees (₹). Optional — defaults to 0. */
   certificationCharges?: number | string
+  packagingCharges?: number | string
+  deliveryCharges?: number | string
 }
 
 export function calculatePrice(
@@ -464,8 +517,18 @@ export function calculatePrice(
 
   const misc = Number(variant.miscCharges) || 0
   const certificationCharges = Number(variant.certificationCharges ?? 0) || 0
+  const packagingCharges = Number(variant.packagingCharges ?? 0) || 0
+  const deliveryCharges = Number(variant.deliveryCharges ?? 0) || 0
   const stoneVA = 0
-  const taxable = goldValue + goldVA + making + stoneValue + misc + certificationCharges
+  const taxable =
+    goldValue +
+    goldVA +
+    making +
+    stoneValue +
+    misc +
+    certificationCharges +
+    packagingCharges +
+    deliveryCharges
   const gst = taxable * GST_RATE
 
   return {
@@ -481,6 +544,8 @@ export function calculatePrice(
     vaLabel: config.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
     miscCharges: misc,
     certificationCharges,
+    packagingCharges,
+    deliveryCharges,
     taxable,
     gst,
     total: taxable + gst,

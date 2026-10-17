@@ -7,7 +7,13 @@ import ImageUploader from './ImageUploader'
 import { AdminProductGalleryPreview } from './AdminProductGalleryPreview'
 import { ProductFilterLabelsEditor } from './ProductFilterLabelsEditor'
 import AdminProductBuildPrice from './AdminProductBuildPrice'
-import { calculatePrice, resolvePricingConfig, type PricingConfig, type StoneInput } from '@/lib/pricing'
+import {
+  calculatePrice,
+  DEFAULT_PRICING_CONFIG,
+  resolvePricingConfig,
+  type PricingConfig,
+  type StoneInput,
+} from '@/lib/pricing'
 import { parseInvoiceReturnTo, invoiceReturnWithVariant } from '@/lib/invoice-return'
 import { padProductImagesForSave } from '@/lib/product-media'
 import {
@@ -69,6 +75,8 @@ type Variant = {
   miscLines: { label: string; amount: string }[]
   /** Fixed certification fee (₹). */
   certificationCharges: string
+  packagingCharges: string
+  deliveryCharges: string
   stock: string
   sku: string
 }
@@ -161,7 +169,7 @@ function formVariantFromLoaded(v: Partial<Variant>): Variant {
     makingChargePerGram: v.makingChargePerGram ?? '',
     flatMakingCharge: v.flatMakingCharge ?? '0',
     stoneCharges: v.stoneCharges ?? '0',
-    miscCharges: v.miscCharges ?? '45',
+    miscCharges: v.miscCharges ?? '0',
     miscLines:
       v.miscLines && v.miscLines.length > 0
         ? v.miscLines.map((l) => ({ label: l.label, amount: l.amount }))
@@ -170,12 +178,14 @@ function formVariantFromLoaded(v: Partial<Variant>): Variant {
             amount: String(l.amount),
           })),
     certificationCharges: v.certificationCharges ?? '0',
+    packagingCharges: v.packagingCharges ?? '0',
+    deliveryCharges: v.deliveryCharges ?? '0',
     stock: v.stock ?? '0',
     sku: v.sku ?? '',
   }
 }
 
-function emptyVariant(): Variant {
+function emptyVariant(store: PricingConfig = DEFAULT_PRICING_CONFIG): Variant {
   return {
     metalType: 'GOLD_18K',
     metalColor: 'YELLOW',
@@ -184,9 +194,11 @@ function emptyVariant(): Variant {
     makingChargePerGram: '',
     flatMakingCharge: '0',
     stoneCharges: '0',
-    miscCharges: '45',
-    miscLines: [{ label: DEFAULT_MISC_LABEL, amount: '45' }],
-    certificationCharges: '0',
+    miscCharges: '0',
+    miscLines: [],
+    certificationCharges: String(store.defaultCertificationCharges ?? 0),
+    packagingCharges: String(store.defaultPackagingCharges ?? 0),
+    deliveryCharges: String(store.defaultDeliveryCharges ?? 0),
     stock: '0',
     sku: '',
   }
@@ -221,7 +233,7 @@ function emptyPiece(
   return {
     key: `piece-${Math.random().toString(36).slice(2, 10)}`,
     name,
-    variants: variants?.length ? variants : [emptyVariant()],
+    variants: variants?.length ? variants : [emptyVariant(store)],
     stones: stones ?? [],
     inheritWastage: va?.inheritWastage ?? true,
     vaGoldPct: va?.vaGoldPct ?? String(store.vaGoldPct),
@@ -233,7 +245,7 @@ function initialForm(
   data?: Props['initialData'],
   storePricing?: PricingConfig,
 ): FormData {
-  const store = storePricing ?? { vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Value Addition' }
+  const store = storePricing ?? DEFAULT_PRICING_CONFIG
 
   let pieces: FormPiece[]
   if (data?.pieces?.length) {
@@ -241,7 +253,7 @@ function initialForm(
       key: p.key || p.id || `piece-${i}`,
       id: p.id,
       name: p.name || (i === 0 ? 'Main' : `Piece ${i + 1}`),
-      variants: p.variants?.length ? p.variants.map(formVariantFromLoaded) : [emptyVariant()],
+      variants: p.variants?.length ? p.variants.map(formVariantFromLoaded) : [emptyVariant(store)],
       stones: p.stones ?? [],
       inheritWastage: p.inheritWastage ?? true,
       vaGoldPct: p.vaGoldPct ?? String(store.vaGoldPct),
@@ -312,7 +324,7 @@ export default function ProductForm({
   returnTo,
 }: Props) {
   const router = useRouter()
-  const storePricing = pricingConfig ?? { vaGoldPct: 10, vaStonePct: 0, vaLabel: 'Value Addition' }
+  const storePricing = pricingConfig ?? DEFAULT_PRICING_CONFIG
   const [form, setForm] = useState<FormData>(() => initialForm(initialData, storePricing))
   const [activePieceIdx, setActivePieceIdx] = useState(0)
   const [activeTab, setActiveTab] = useState<TabKey>('all')
@@ -410,6 +422,8 @@ export default function ProductForm({
         stoneCharges: parseFloat(v.stoneCharges) || 0,
         miscCharges: miscSumFromLines(v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }]),
         certificationCharges: parseFloat(v.certificationCharges) || 0,
+        packagingCharges: parseFloat(v.packagingCharges) || 0,
+        deliveryCharges: parseFloat(v.deliveryCharges) || 0,
       },
       rates[goldRateKey(v.metalType)] ?? 0,
       { stones: stoneInputs, withExchange, config: effectivePricing },
@@ -461,6 +475,8 @@ export default function ProductForm({
                 v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }],
               ),
               certificationCharges: parseFloat(v.certificationCharges) || 0,
+              packagingCharges: parseFloat(v.packagingCharges) || 0,
+              deliveryCharges: parseFloat(v.deliveryCharges) || 0,
             },
             rates[goldRateKey(v.metalType)] ?? 0,
             { stones, withExchange: false, config: cfg },
@@ -588,7 +604,7 @@ export default function ProductForm({
   function addVariant() {
     const pi = Math.min(activePieceIdx, form.pieces.length - 1)
     const piece = form.pieces[pi]
-    const nv = emptyVariant()
+    const nv = emptyVariant(storePricing)
     nv.sku = skuFor(piece, pi, nv.metalType, nv.metalColor)
     setForm((f) => {
       const pieces = [...f.pieces]
@@ -719,6 +735,8 @@ export default function ProductForm({
           miscCharges,
           miscChargeLines: miscLines,
           certificationCharges: parseFloat(v.certificationCharges) || 0,
+          packagingCharges: parseFloat(v.packagingCharges) || 0,
+          deliveryCharges: parseFloat(v.deliveryCharges) || 0,
         }
       }),
       stones: p.stones

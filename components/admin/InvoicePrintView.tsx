@@ -128,7 +128,7 @@ export function InvoicePrintView({
                   {(line.miscLines?.length
                     ? line.miscLines
                     : line.miscCharges > 0
-                      ? [{ label: 'Hallmark', amount: line.miscCharges }]
+                      ? [{ label: 'Misc', amount: line.miscCharges }]
                       : []
                   )
                     .filter((m) => Number(m.amount) > 0)
@@ -143,6 +143,22 @@ export function InvoicePrintView({
                       <span>Certification</span>
                       <span className="inv-doc__amt">
                         {formatINRGrouped(line.certificationCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
+                  {Number(line.packagingCharges) > 0 ? (
+                    <>
+                      <span>Packaging</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.packagingCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
+                  {Number(line.deliveryCharges) > 0 ? (
+                    <>
+                      <span>Delivery</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.deliveryCharges, 0)}
                       </span>
                     </>
                   ) : null}

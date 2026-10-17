@@ -226,6 +226,10 @@ model PricingSettings {
   vaGoldPct  Decimal  @default(10)
   vaStonePct Decimal  @default(0)
   vaLabel    String   @default("Value Addition")
+  /// Store defaults for first-class fixed fees (seeded onto new product variants).
+  defaultCertificationCharges Decimal @default(0)
+  defaultPackagingCharges     Decimal @default(0)
+  defaultDeliveryCharges      Decimal @default(0)
   /// Storefront-wide default for whether prices are shown at all. Many
   /// products (no finalized diamond/gold cost yet) should read
   /// "Price on Request" instead of a computed number — Product.priceVisibility
@@ -255,10 +259,12 @@ model ProductVariant {
   stoneCharges        Decimal     @default(0)
   /// Sum of miscChargeLines (or legacy flat amount). Used by pricing.
   miscCharges         Decimal     @default(0)
-  /// Labeled misc rows: [{ label, amount }]. Null = treat miscCharges as single Hallmark.
+  /// Labeled misc rows: [{ label, amount }]. Null/empty = no misc lines (do not invent Hallmark).
   miscChargeLines     Json?
-  /// Fixed certification fee (₹) — disclosed like gold / GST.
+  /// Fixed fees (₹) — disclosed like gold / GST. Defaults from PricingSettings on new variants.
   certificationCharges Decimal    @default(0)
+  packagingCharges     Decimal    @default(0)
+  deliveryCharges      Decimal    @default(0)
   stock               Int         @default(0)
   sku                 String      @unique
   cartItems           CartItem[]
