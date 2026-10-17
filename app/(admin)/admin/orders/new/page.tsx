@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
 import { calculatePrice } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
+import { feeLabelsFromConfig } from '@/lib/pricing'
 import { ManualOrderForm } from './ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -53,24 +54,23 @@ export default async function NewManualOrderPage({
   const variantOptions = products.flatMap((p) =>
     p.variants.map((v) => {
       const rate = rateMap[v.metalType]
-      const suggested = rate
-        ? Math.round(
-            calculatePrice(
-              {
-                weightGrams: v.weightGrams.toString(),
-                makingChargePerGram: v.makingChargePerGram.toString(),
-                flatMakingCharge: v.flatMakingCharge.toString(),
-                stoneCharges: v.stoneCharges.toString(),
-                miscCharges: v.miscCharges.toString(),
-                certificationCharges: (v.certificationCharges ?? 0).toString(),
-                packagingCharges: (v.packagingCharges ?? 0).toString(),
-                deliveryCharges: (v.deliveryCharges ?? 0).toString(),
-              },
-              rate,
-              { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
-            ).total,
+      const cfg = resolvePricingConfig(pricingConfig, p)
+      const breakdown = rate
+        ? calculatePrice(
+            {
+              weightGrams: v.weightGrams.toString(),
+              makingChargePerGram: v.makingChargePerGram.toString(),
+              flatMakingCharge: v.flatMakingCharge.toString(),
+              stoneCharges: v.stoneCharges.toString(),
+              miscCharges: v.miscCharges.toString(),
+              certificationCharges: v.certificationCharges,
+              packagingCharges: v.packagingCharges,
+              deliveryCharges: v.deliveryCharges,
+            },
+            rate,
+            { stones: toStoneInputs(p.stones), withExchange: false, config: cfg },
           )
-        : 0
+        : null
       return {
         variantId: v.id,
         productId: p.id,
@@ -79,10 +79,10 @@ export default async function NewManualOrderPage({
         itemCode: p.itemCode ?? '',
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-        suggestedPrice: suggested,
-        certificationCharges: Number(v.certificationCharges ?? 0),
-        packagingCharges: Number(v.packagingCharges ?? 0),
-        deliveryCharges: Number(v.deliveryCharges ?? 0),
+        suggestedPrice: breakdown ? Math.round(breakdown.total) : 0,
+        certificationCharges: breakdown?.certificationCharges ?? cfg.defaultCertificationCharges,
+        packagingCharges: breakdown?.packagingCharges ?? cfg.defaultPackagingCharges,
+        deliveryCharges: breakdown?.deliveryCharges ?? cfg.defaultDeliveryCharges,
       }
     }),
   )
@@ -107,6 +107,7 @@ export default async function NewManualOrderPage({
         }))}
         quotation={quotation}
         isFinance={isFinance}
+        feeLabels={feeLabelsFromConfig(pricingConfig)}
       />
     </div>
   )

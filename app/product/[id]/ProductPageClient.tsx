@@ -19,7 +19,13 @@ import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
-import { calculatePrice, type PricingConfig, type PriceBreakdown, type StoneInput } from "@/lib/pricing";
+import {
+  calculatePrice,
+  feeLabelsFromConfig,
+  type PricingConfig,
+  type PriceBreakdown,
+  type StoneInput,
+} from "@/lib/pricing";
 import { resolvePiecePricingConfig, type StoneView } from "@/lib/pricing-data";
 import type { Product } from "@/lib/ui-data";
 import { track } from "@/lib/analytics-client";
@@ -110,9 +116,18 @@ function pieceBreakdown(
       flatMakingCharge: Number(variant.flatMakingCharge),
       stoneCharges: Number(variant.stoneCharges),
       miscCharges: Number(variant.miscCharges),
-      certificationCharges: Number(variant.certificationCharges ?? 0),
-      packagingCharges: Number(variant.packagingCharges ?? 0),
-      deliveryCharges: Number(variant.deliveryCharges ?? 0),
+      certificationCharges:
+        variant.certificationCharges === "" || variant.certificationCharges == null
+          ? null
+          : Number(variant.certificationCharges),
+      packagingCharges:
+        variant.packagingCharges === "" || variant.packagingCharges == null
+          ? null
+          : Number(variant.packagingCharges),
+      deliveryCharges:
+        variant.deliveryCharges === "" || variant.deliveryCharges == null
+          ? null
+          : Number(variant.deliveryCharges),
     },
     rate,
     { stones, withExchange, config },
@@ -120,6 +135,7 @@ function pieceBreakdown(
 }
 
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
+  const feeLabels = feeLabelsFromConfig(pricingConfig);
   const { openCartModal } = useCartModal();
   const { addItem, isLoggedIn, hydrated } = useCart();
   const router = useRouter();
@@ -845,28 +861,28 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                               <td>₹{roundedVA.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
-                          {roundedMisc > 0 && (
-                            <tr>
-                              <td>Misc</td>
-                              <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
                           {roundedCert > 0 && (
                             <tr>
-                              <td>Certification</td>
+                              <td>{feeLabels.certification}</td>
                               <td>₹{roundedCert.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
                           {roundedPack > 0 && (
                             <tr>
-                              <td>Packaging</td>
+                              <td>{feeLabels.packaging}</td>
                               <td>₹{roundedPack.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
                           {roundedDel > 0 && (
                             <tr>
-                              <td>Delivery</td>
+                              <td>{feeLabels.delivery}</td>
                               <td>₹{roundedDel.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedMisc > 0 && (
+                            <tr>
+                              <td>Misc</td>
+                              <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
                           <tr>

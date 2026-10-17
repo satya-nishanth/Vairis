@@ -157,9 +157,10 @@ export default async function ProductPage({ params }: Props) {
             flatMakingCharge: v.flatMakingCharge.toString(),
             stoneCharges: v.stoneCharges.toString(),
             miscCharges: v.miscCharges.toString(),
-            certificationCharges: (v.certificationCharges ?? 0).toString(),
-            packagingCharges: (v.packagingCharges ?? 0).toString(),
-            deliveryCharges: (v.deliveryCharges ?? 0).toString(),
+            certificationCharges:
+              v.certificationCharges != null ? v.certificationCharges.toString() : "",
+            packagingCharges: v.packagingCharges != null ? v.packagingCharges.toString() : "",
+            deliveryCharges: v.deliveryCharges != null ? v.deliveryCharges.toString() : "",
           })),
         }))
       : [
@@ -181,9 +182,10 @@ export default async function ProductPage({ params }: Props) {
               flatMakingCharge: v.flatMakingCharge.toString(),
               stoneCharges: v.stoneCharges.toString(),
               miscCharges: v.miscCharges.toString(),
-              certificationCharges: (v.certificationCharges ?? 0).toString(),
-              packagingCharges: (v.packagingCharges ?? 0).toString(),
-              deliveryCharges: (v.deliveryCharges ?? 0).toString(),
+              certificationCharges:
+                v.certificationCharges != null ? v.certificationCharges.toString() : "",
+              packagingCharges: v.packagingCharges != null ? v.packagingCharges.toString() : "",
+              deliveryCharges: v.deliveryCharges != null ? v.deliveryCharges.toString() : "",
             })),
           },
         ];

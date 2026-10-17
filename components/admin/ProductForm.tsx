@@ -10,6 +10,7 @@ import AdminProductBuildPrice from './AdminProductBuildPrice'
 import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
+  encodeFixedChargeForSave,
   resolvePricingConfig,
   type PricingConfig,
   type StoneInput,
@@ -177,15 +178,21 @@ function formVariantFromLoaded(v: Partial<Variant>): Variant {
             label: l.label,
             amount: String(l.amount),
           })),
-    certificationCharges: v.certificationCharges ?? '0',
-    packagingCharges: v.packagingCharges ?? '0',
-    deliveryCharges: v.deliveryCharges ?? '0',
+    // Null = inherit store default — leave blank so placeholder shows default.
+    certificationCharges:
+      v.certificationCharges != null && v.certificationCharges !== ''
+        ? String(v.certificationCharges)
+        : '',
+    packagingCharges:
+      v.packagingCharges != null && v.packagingCharges !== '' ? String(v.packagingCharges) : '',
+    deliveryCharges:
+      v.deliveryCharges != null && v.deliveryCharges !== '' ? String(v.deliveryCharges) : '',
     stock: v.stock ?? '0',
     sku: v.sku ?? '',
   }
 }
 
-function emptyVariant(store: PricingConfig = DEFAULT_PRICING_CONFIG): Variant {
+function emptyVariant(_store: PricingConfig = DEFAULT_PRICING_CONFIG): Variant {
   return {
     metalType: 'GOLD_18K',
     metalColor: 'YELLOW',
@@ -196,9 +203,9 @@ function emptyVariant(store: PricingConfig = DEFAULT_PRICING_CONFIG): Variant {
     stoneCharges: '0',
     miscCharges: '0',
     miscLines: [],
-    certificationCharges: String(store.defaultCertificationCharges ?? 0),
-    packagingCharges: String(store.defaultPackagingCharges ?? 0),
-    deliveryCharges: String(store.defaultDeliveryCharges ?? 0),
+    certificationCharges: '',
+    packagingCharges: '',
+    deliveryCharges: '',
     stock: '0',
     sku: '',
   }
@@ -411,6 +418,12 @@ export default function ProductForm({
     ]
   })
 
+  function fixedOrNull(raw: string): number | null {
+    if (!raw.trim()) return null
+    const n = parseFloat(raw)
+    return Number.isFinite(n) ? n : null
+  }
+
   function calcEstimatedBreakdown(v: Variant, withExchange: boolean) {
     const weight = parseFloat(v.weightGrams)
     if (!weight || weight <= 0) return null
@@ -421,9 +434,9 @@ export default function ProductForm({
         flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
         stoneCharges: parseFloat(v.stoneCharges) || 0,
         miscCharges: miscSumFromLines(v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }]),
-        certificationCharges: parseFloat(v.certificationCharges) || 0,
-        packagingCharges: parseFloat(v.packagingCharges) || 0,
-        deliveryCharges: parseFloat(v.deliveryCharges) || 0,
+        certificationCharges: fixedOrNull(v.certificationCharges),
+        packagingCharges: fixedOrNull(v.packagingCharges),
+        deliveryCharges: fixedOrNull(v.deliveryCharges),
       },
       rates[goldRateKey(v.metalType)] ?? 0,
       { stones: stoneInputs, withExchange, config: effectivePricing },
@@ -474,9 +487,11 @@ export default function ProductForm({
               miscCharges: miscSumFromLines(
                 v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }],
               ),
-              certificationCharges: parseFloat(v.certificationCharges) || 0,
-              packagingCharges: parseFloat(v.packagingCharges) || 0,
-              deliveryCharges: parseFloat(v.deliveryCharges) || 0,
+              certificationCharges: v.certificationCharges.trim()
+                ? parseFloat(v.certificationCharges)
+                : null,
+              packagingCharges: v.packagingCharges.trim() ? parseFloat(v.packagingCharges) : null,
+              deliveryCharges: v.deliveryCharges.trim() ? parseFloat(v.deliveryCharges) : null,
             },
             rates[goldRateKey(v.metalType)] ?? 0,
             { stones, withExchange: false, config: cfg },
@@ -734,9 +749,18 @@ export default function ProductForm({
           ...v,
           miscCharges,
           miscChargeLines: miscLines,
-          certificationCharges: parseFloat(v.certificationCharges) || 0,
-          packagingCharges: parseFloat(v.packagingCharges) || 0,
-          deliveryCharges: parseFloat(v.deliveryCharges) || 0,
+          certificationCharges: encodeFixedChargeForSave(
+            v.certificationCharges,
+            storePricing.defaultCertificationCharges,
+          ),
+          packagingCharges: encodeFixedChargeForSave(
+            v.packagingCharges,
+            storePricing.defaultPackagingCharges,
+          ),
+          deliveryCharges: encodeFixedChargeForSave(
+            v.deliveryCharges,
+            storePricing.defaultDeliveryCharges,
+          ),
         }
       }),
       stones: p.stones

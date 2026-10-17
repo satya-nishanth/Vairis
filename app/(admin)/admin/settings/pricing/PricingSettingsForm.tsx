@@ -19,6 +19,9 @@ type FormState = {
   defaultCertificationCharges: number | string
   defaultPackagingCharges: number | string
   defaultDeliveryCharges: number | string
+  certificationLabel: string
+  packagingLabel: string
+  deliveryLabel: string
   showPricesGlobal: boolean
   diamondRates: RateRow[]
 }
@@ -131,14 +134,26 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
       </section>
 
       <section className="pform__section">
-        <h2>Default fixed charges (new variants)</h2>
+        <h2>Fixed charges (defaults + labels)</h2>
         <p className="pform__section-note">
-          Seeded onto each new product variant as certification, packaging, and delivery fees.
-          Each is disclosed as its own line on the PDP, orders, and tax invoice (not misc).
+          Amounts apply to every product that has not set a different value on its own page
+          (blank on the product = inherit). Changing a default updates those products live.
+          Labels appear on the storefront breakup, admin orders, and tax invoices.
         </p>
-        <div className="pform__grid pform__grid--3">
+        <div className="pform__grid pform__grid--2">
           <div className="pform__field">
-            <label htmlFor="ps-cert-default">Default certification (₹)</label>
+            <label htmlFor="ps-cert-label">Label</label>
+            <input
+              id="ps-cert-label"
+              value={form.certificationLabel}
+              onChange={(e) => setForm((f) => ({ ...f, certificationLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Certification"
+              data-testid="certification-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-cert-default">Default amount (₹)</label>
             <input
               id="ps-cert-default"
               type="number"
@@ -153,7 +168,18 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
             />
           </div>
           <div className="pform__field">
-            <label htmlFor="ps-pack-default">Default packaging (₹)</label>
+            <label htmlFor="ps-pack-label">Label</label>
+            <input
+              id="ps-pack-label"
+              value={form.packagingLabel}
+              onChange={(e) => setForm((f) => ({ ...f, packagingLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Packaging"
+              data-testid="packaging-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-pack-default">Default amount (₹)</label>
             <input
               id="ps-pack-default"
               type="number"
@@ -168,7 +194,18 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
             />
           </div>
           <div className="pform__field">
-            <label htmlFor="ps-del-default">Default delivery (₹)</label>
+            <label htmlFor="ps-del-label">Label</label>
+            <input
+              id="ps-del-label"
+              value={form.deliveryLabel}
+              onChange={(e) => setForm((f) => ({ ...f, deliveryLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Delivery"
+              data-testid="delivery-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-del-default">Default amount (₹)</label>
             <input
               id="ps-del-default"
               type="number"

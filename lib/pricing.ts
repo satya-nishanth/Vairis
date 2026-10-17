@@ -15,8 +15,10 @@
  * goldVA on the breakdown IS wastage (same field). stoneVA is always 0.
  * Wastage % + label come from PricingSettings (admin-editable; default label
  * "Value Addition"). Products may override both; null = inherit store defaults.
- * Certification / packaging / delivery defaults live on PricingSettings and are
- * seeded onto new variants; each is disclosed as its own line (not misc).
+ * Certification / packaging / delivery: amounts + labels live on PricingSettings.
+ * Null on ProductVariant inherits the store default amount (live — changing the
+ * default updates all non-overridden products). Labels are store-wide and shown
+ * on PDP, orders, and tax invoices. Each fee is its own line (not misc).
  * Diamond per-carat rates come from DiamondRate (with/without exchange).
  * Weights and carats shown to the customer are always the true values.
  */
@@ -43,10 +45,37 @@ export interface PricingConfig {
   vaGoldPct: number
   vaStonePct: number
   vaLabel: string
-  /** Store defaults for new product variants (₹). */
+  /** Store default amounts (₹). Null on a variant inherits these live. */
   defaultCertificationCharges: number
   defaultPackagingCharges: number
   defaultDeliveryCharges: number
+  /** Customer-facing labels for the three fixed fees. */
+  certificationLabel: string
+  packagingLabel: string
+  deliveryLabel: string
+}
+
+export const DEFAULT_FEE_LABELS = {
+  certification: 'Certification',
+  packaging: 'Packaging',
+  delivery: 'Delivery',
+} as const
+
+export type FeeLabels = {
+  certification: string
+  packaging: string
+  delivery: string
+}
+
+export function feeLabelsFromConfig(config: PricingConfig): FeeLabels {
+  const cert = (config.certificationLabel || '').trim()
+  const pack = (config.packagingLabel || '').trim()
+  const del = (config.deliveryLabel || '').trim()
+  return {
+    certification: cert || DEFAULT_FEE_LABELS.certification,
+    packaging: pack || DEFAULT_FEE_LABELS.packaging,
+    delivery: del || DEFAULT_FEE_LABELS.delivery,
+  }
 }
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
@@ -56,6 +85,9 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   defaultCertificationCharges: 0,
   defaultPackagingCharges: 0,
   defaultDeliveryCharges: 0,
+  certificationLabel: DEFAULT_FEE_LABELS.certification,
+  packagingLabel: DEFAULT_FEE_LABELS.packaging,
+  deliveryLabel: DEFAULT_FEE_LABELS.delivery,
 }
 
 /** Optional per-product override of store wastage % / label (null = inherit). */
@@ -84,7 +116,63 @@ export function resolvePricingConfig(
     defaultCertificationCharges: store.defaultCertificationCharges,
     defaultPackagingCharges: store.defaultPackagingCharges,
     defaultDeliveryCharges: store.defaultDeliveryCharges,
+    certificationLabel: store.certificationLabel,
+    packagingLabel: store.packagingLabel,
+    deliveryLabel: store.deliveryLabel,
   }
+}
+
+/**
+ * Null / blank variant fee → PricingSettings default.
+ * Explicit 0 (or any number) is kept as an override.
+ */
+export function resolveFixedCharge(
+  raw: number | string | { toString(): string } | null | undefined,
+  storeDefault: number,
+): number {
+  if (raw == null || raw === '') return Math.max(0, Number(storeDefault) || 0)
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return Math.max(0, Number(storeDefault) || 0)
+  return Math.max(0, n)
+}
+
+export function resolveFixedCharges(
+  variant: {
+    certificationCharges?: number | string | { toString(): string } | null
+    packagingCharges?: number | string | { toString(): string } | null
+    deliveryCharges?: number | string | { toString(): string } | null
+  },
+  store: Pick<
+    PricingConfig,
+    'defaultCertificationCharges' | 'defaultPackagingCharges' | 'defaultDeliveryCharges'
+  >,
+): {
+  certificationCharges: number
+  packagingCharges: number
+  deliveryCharges: number
+} {
+  return {
+    certificationCharges: resolveFixedCharge(
+      variant.certificationCharges,
+      store.defaultCertificationCharges,
+    ),
+    packagingCharges: resolveFixedCharge(variant.packagingCharges, store.defaultPackagingCharges),
+    deliveryCharges: resolveFixedCharge(variant.deliveryCharges, store.defaultDeliveryCharges),
+  }
+}
+
+/** Persist: empty → inherit (null); value equal to store default → null; else explicit. */
+export function encodeFixedChargeForSave(
+  value: string | number | null | undefined,
+  storeDefault: number,
+): number | null {
+  if (value == null) return null
+  const raw = String(value).trim()
+  if (raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return null
+  if (roundMoney(n) === roundMoney(Number(storeDefault) || 0)) return null
+  return n
 }
 
 export interface StoneInput {
@@ -469,10 +557,10 @@ export interface VariantPriceInput {
   /** Legacy flat stone cost — still honoured for products without stone rows. */
   stoneCharges: number | string
   miscCharges: number | string
-  /** Fixed fees (₹). Optional — defaults to 0. */
-  certificationCharges?: number | string
-  packagingCharges?: number | string
-  deliveryCharges?: number | string
+  /** Fixed fees (₹). Null/omit → PricingConfig store defaults; explicit 0 kept. */
+  certificationCharges?: number | string | { toString(): string } | null
+  packagingCharges?: number | string | { toString(): string } | null
+  deliveryCharges?: number | string | { toString(): string } | null
 }
 
 export function calculatePrice(
@@ -516,9 +604,15 @@ export function calculatePrice(
   const stoneValue = diamondValue + otherStoneValue
 
   const misc = Number(variant.miscCharges) || 0
-  const certificationCharges = Number(variant.certificationCharges ?? 0) || 0
-  const packagingCharges = Number(variant.packagingCharges ?? 0) || 0
-  const deliveryCharges = Number(variant.deliveryCharges ?? 0) || 0
+  // Null/blank → store defaults from PricingConfig; explicit 0 is an override.
+  const fixed = resolveFixedCharges(
+    {
+      certificationCharges: variant.certificationCharges,
+      packagingCharges: variant.packagingCharges,
+      deliveryCharges: variant.deliveryCharges,
+    },
+    config,
+  )
   const stoneVA = 0
   const taxable =
     goldValue +
@@ -526,9 +620,9 @@ export function calculatePrice(
     making +
     stoneValue +
     misc +
-    certificationCharges +
-    packagingCharges +
-    deliveryCharges
+    fixed.certificationCharges +
+    fixed.packagingCharges +
+    fixed.deliveryCharges
   const gst = taxable * GST_RATE
 
   return {
@@ -543,9 +637,9 @@ export function calculatePrice(
     vaTotal: goldVA,
     vaLabel: config.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
     miscCharges: misc,
-    certificationCharges,
-    packagingCharges,
-    deliveryCharges,
+    certificationCharges: fixed.certificationCharges,
+    packagingCharges: fixed.packagingCharges,
+    deliveryCharges: fixed.deliveryCharges,
     taxable,
     gst,
     total: taxable + gst,

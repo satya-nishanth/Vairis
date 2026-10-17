@@ -1,7 +1,12 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import type { PricingConfig, PriceBreakdown } from '@/lib/pricing'
+import {
+  feeLabelsFromConfig,
+  type FeeLabels,
+  type PricingConfig,
+  type PriceBreakdown,
+} from '@/lib/pricing'
 import { formatINR } from '@/lib/pricing'
 import {
   METAL_COLORS,
@@ -85,10 +90,12 @@ function StorefrontBreakdown({
   breakdown,
   weightGrams,
   exchangeTotal,
+  feeLabels,
 }: {
   breakdown: PriceBreakdown
   weightGrams: number
   exchangeTotal: number | null
+  feeLabels: FeeLabels
 }) {
   const roundedGold = Math.round(breakdown.goldValue)
   const roundedMaking = Math.round(breakdown.making)
@@ -204,17 +211,9 @@ function StorefrontBreakdown({
               </td>
             </tr>
           )}
-          {roundedMisc > 0 && (
-            <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Misc</td>
-              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
-                {formatINR(roundedMisc)}
-              </td>
-            </tr>
-          )}
           {roundedCert > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Certification</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.certification}</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedCert)}
               </td>
@@ -222,7 +221,7 @@ function StorefrontBreakdown({
           )}
           {roundedPack > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Packaging</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.packaging}</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedPack)}
               </td>
@@ -230,9 +229,17 @@ function StorefrontBreakdown({
           )}
           {roundedDel > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Delivery</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.delivery}</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedDel)}
+              </td>
+            </tr>
+          )}
+          {roundedMisc > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Misc</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedMisc)}
               </td>
             </tr>
           )}
@@ -273,6 +280,7 @@ export default function AdminProductBuildPrice(props: Props) {
     vaLabel,
     calcBreakdown,
   } = props
+  const feeLabels = feeLabelsFromConfig(storePricing)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -641,15 +649,61 @@ export default function AdminProductBuildPrice(props: Props) {
                       />
                       <p className="pform__hint">Legacy flat gem cost</p>
                     </div>
+                    <div className="pform__field">
+                      <label>{feeLabels.certification} (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.certificationCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'certificationCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder={String(storePricing.defaultCertificationCharges ?? 0)}
+                      />
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultCertificationCharges ?? 0})
+                      </p>
+                    </div>
+                    <div className="pform__field">
+                      <label>{feeLabels.packaging} (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.packagingCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'packagingCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder={String(storePricing.defaultPackagingCharges ?? 0)}
+                      />
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultPackagingCharges ?? 0})
+                      </p>
+                    </div>
+                    <div className="pform__field">
+                      <label>{feeLabels.delivery} (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.deliveryCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'deliveryCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder={String(storePricing.defaultDeliveryCharges ?? 0)}
+                      />
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultDeliveryCharges ?? 0})
+                      </p>
+                    </div>
                     <div className="pform__field" style={{ gridColumn: '1 / -1' }}>
                       <label>Misc (text + amount, optional)</label>
-                      {(v.miscLines?.length
-                        ? v.miscLines
-                        : []
-                      ).map((row, ri) => {
-                        const rows = v.miscLines?.length
-                          ? v.miscLines
-                          : []
+                      {(v.miscLines?.length ? v.miscLines : []).map((row, ri) => {
+                        const rows = v.miscLines?.length ? v.miscLines : []
                         return (
                           <div
                             key={ri}
@@ -705,9 +759,7 @@ export default function AdminProductBuildPrice(props: Props) {
                         className="admin-btn"
                         style={{ marginTop: 8 }}
                         onClick={() => {
-                          const rows = v.miscLines?.length
-                            ? v.miscLines
-                            : []
+                          const rows = v.miscLines?.length ? v.miscLines : []
                           props.onSetVariantMiscLines?.(idx, [
                             ...rows,
                             { label: '', amount: '0' },
@@ -717,49 +769,6 @@ export default function AdminProductBuildPrice(props: Props) {
                         Add misc line
                       </button>
                       <p className="pform__hint">Shown with labels on the tax invoice</p>
-                    </div>
-                    <div className="pform__field">
-                      <label>Certification (₹)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={v.certificationCharges}
-                        onChange={(e) =>
-                          props.onSetVariant(idx, 'certificationCharges', e.target.value)
-                        }
-                        className="pform__input"
-                        placeholder="0"
-                      />
-                      <p className="pform__hint">Fixed fee — own line on PDP, order, invoice</p>
-                    </div>
-                    <div className="pform__field">
-                      <label>Packaging (₹)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={v.packagingCharges}
-                        onChange={(e) =>
-                          props.onSetVariant(idx, 'packagingCharges', e.target.value)
-                        }
-                        className="pform__input"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div className="pform__field">
-                      <label>Delivery (₹)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={v.deliveryCharges}
-                        onChange={(e) =>
-                          props.onSetVariant(idx, 'deliveryCharges', e.target.value)
-                        }
-                        className="pform__input"
-                        placeholder="0"
-                      />
                     </div>
                   </div>
                   <p
@@ -774,7 +783,8 @@ export default function AdminProductBuildPrice(props: Props) {
                     }}
                   >
                     Taxable = gold + {effectivePricing.vaLabel} ({effectivePricing.vaGoldPct}%) + making +
-                    diamonds + misc + certification + packaging + delivery · then GST 3%
+                    diamonds + {feeLabels.certification} + {feeLabels.packaging} + {feeLabels.delivery} +
+                    misc · then GST 3%
                   </p>
                 </div>
 
@@ -783,6 +793,7 @@ export default function AdminProductBuildPrice(props: Props) {
                     breakdown={breakdown}
                     weightGrams={weight}
                     exchangeTotal={exchBreakdown ? Math.round(exchBreakdown.total) : null}
+                    feeLabels={feeLabels}
                   />
                 )}
               </div>

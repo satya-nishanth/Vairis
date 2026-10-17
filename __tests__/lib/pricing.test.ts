@@ -1,4 +1,14 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot, sellingComponentsToUnitSnapshot, unitSnapshotToSellingComponents, sellingBreakdownMatchesGoods } from '@/lib/pricing'
+import {
+  calculatePrice,
+  DEFAULT_PRICING_CONFIG,
+  encodeFixedChargeForSave,
+  feeLabelsFromConfig,
+  toOrderItemPriceSnapshot,
+  isOrderItemPriceSnapshot,
+  sellingComponentsToUnitSnapshot,
+  unitSnapshotToSellingComponents,
+  sellingBreakdownMatchesGoods,
+} from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
 describe('calculatePrice (estimator formula)', () => {
@@ -185,6 +195,79 @@ describe('calculatePrice (estimator formula)', () => {
       { label: 'Certificate', amount: 200 },
     ])
     expect(selling.delivery).toBe(0)
+  })
+
+  it('inherits store defaults when certification/packaging/delivery are null', () => {
+    const config = {
+      ...DEFAULT_PRICING_CONFIG,
+      defaultCertificationCharges: 500,
+      defaultPackagingCharges: 120,
+      defaultDeliveryCharges: 80,
+    }
+    const inherited = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: null,
+        packagingCharges: null,
+        deliveryCharges: null,
+      },
+      1000,
+      { config },
+    )
+    expect(inherited.certificationCharges).toBe(500)
+    expect(inherited.packagingCharges).toBe(120)
+    expect(inherited.deliveryCharges).toBe(80)
+    expect(inherited.taxable).toBe(1800) // gold 1000 + VA 100 + fees 700
+
+    const overridden = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: 0,
+        packagingCharges: 50,
+        deliveryCharges: null,
+      },
+      1000,
+      { config },
+    )
+    expect(overridden.certificationCharges).toBe(0)
+    expect(overridden.packagingCharges).toBe(50)
+    expect(overridden.deliveryCharges).toBe(80)
+  })
+
+  it('encodeFixedChargeForSave stores null when blank or equal to store default', () => {
+    expect(encodeFixedChargeForSave('', 500)).toBeNull()
+    expect(encodeFixedChargeForSave(500, 500)).toBeNull()
+    expect(encodeFixedChargeForSave('500.00', 500)).toBeNull()
+    expect(encodeFixedChargeForSave(0, 500)).toBe(0)
+    expect(encodeFixedChargeForSave(750, 500)).toBe(750)
+  })
+
+  it('feeLabelsFromConfig uses store labels with safe fallbacks', () => {
+    expect(feeLabelsFromConfig(DEFAULT_PRICING_CONFIG)).toEqual({
+      certification: 'Certification',
+      packaging: 'Packaging',
+      delivery: 'Delivery',
+    })
+    expect(
+      feeLabelsFromConfig({
+        ...DEFAULT_PRICING_CONFIG,
+        certificationLabel: 'Hallmark fee',
+        packagingLabel: '  ',
+        deliveryLabel: 'Courier',
+      }),
+    ).toEqual({
+      certification: 'Hallmark fee',
+      packaging: 'Packaging',
+      delivery: 'Courier',
+    })
   })
 
   it('adds certification, packaging, and delivery as own taxable lines (not misc)', () => {

@@ -7,6 +7,7 @@ import {
   type DiamondRateOption,
 } from '@/components/admin/OrderLineBuildEditor'
 import type { OrderItemInternalBuild } from '@/lib/order-internal-build'
+import { DEFAULT_FEE_LABELS, type FeeLabels } from '@/lib/pricing'
 
 type VariantOption = {
   variantId: string
@@ -35,20 +36,33 @@ type Line = {
 }
 
 /** Fixed selling components (misc uses miscLines below). */
-const SELLING_FIELDS = [
-  { key: 'gold', label: 'Gold' },
-  { key: 'diamonds', label: 'Diamonds' },
-  { key: 'stones', label: 'Stones' },
-  { key: 'making', label: 'Making charges' },
-  { key: 'wastage', label: 'Wastage' },
-  { key: 'certification', label: 'Certification' },
-  { key: 'packaging', label: 'Packaging' },
-  { key: 'delivery', label: 'Delivery' },
-  { key: 'gst', label: 'GST' },
-  { key: 'discount', label: 'Discount' },
+const SELLING_FIELD_KEYS = [
+  'gold',
+  'diamonds',
+  'stones',
+  'making',
+  'wastage',
+  'certification',
+  'packaging',
+  'delivery',
+  'gst',
+  'discount',
 ] as const
 
-type SellingKey = (typeof SELLING_FIELDS)[number]['key']
+type SellingKey = (typeof SELLING_FIELD_KEYS)[number]
+
+const SELLING_DEFAULT_LABELS: Record<SellingKey, string> = {
+  gold: 'Gold',
+  diamonds: 'Diamonds',
+  stones: 'Stones',
+  making: 'Making charges',
+  wastage: 'Wastage',
+  certification: 'Certification',
+  packaging: 'Packaging',
+  delivery: 'Delivery',
+  gst: 'GST',
+  discount: 'Discount',
+}
 type SellingBreakdown = Record<SellingKey, string>
 type SellingMiscLine = { label: string; amount: string }
 
@@ -116,9 +130,9 @@ function bumpSellingFromVariant(
 function sellingFromPrefill(prefill?: ManualOrderEditPrefill['selling']): SellingBreakdown {
   const base = emptySelling()
   if (!prefill) return base
-  for (const f of SELLING_FIELDS) {
-    const n = prefill[f.key]
-    if (n != null && Number.isFinite(n)) base[f.key] = String(n)
+  for (const key of SELLING_FIELD_KEYS) {
+    const n = prefill[key]
+    if (n != null && Number.isFinite(n)) base[key] = String(n)
   }
   return base
 }
@@ -191,6 +205,7 @@ export function ManualOrderForm({
   quotation = null,
   isFinance = false,
   editOrder = null,
+  feeLabels = DEFAULT_FEE_LABELS,
 }: {
   variantOptions: VariantOption[]
   holders: HolderOption[]
@@ -198,7 +213,23 @@ export function ManualOrderForm({
   quotation?: Quotation
   isFinance?: boolean
   editOrder?: ManualOrderEditPrefill | null
+  feeLabels?: FeeLabels
 }) {
+  const sellingFields = useMemo(
+    () =>
+      SELLING_FIELD_KEYS.map((key) => ({
+        key,
+        label:
+          key === 'certification'
+            ? feeLabels.certification
+            : key === 'packaging'
+              ? feeLabels.packaging
+              : key === 'delivery'
+                ? feeLabels.delivery
+                : SELLING_DEFAULT_LABELS[key],
+      })),
+    [feeLabels],
+  )
   const router = useRouter()
   const isEdit = Boolean(editOrder)
 
@@ -376,10 +407,10 @@ export function ManualOrderForm({
       discount: 0,
       miscLines: sellingMiscParsed,
     }
-    for (const f of SELLING_FIELDS) {
-      const raw = selling[f.key].trim()
+    for (const key of SELLING_FIELD_KEYS) {
+      const raw = selling[key].trim()
       const n = raw === '' ? 0 : Number(raw)
-      out[f.key] = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
+      out[key] = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
     }
     out.miscLines = sellingMiscParsed
     return out
@@ -658,7 +689,7 @@ export function ManualOrderForm({
       return
     }
     if (hasSellingBreakdown) {
-      for (const f of SELLING_FIELDS) {
+      for (const f of sellingFields) {
         const raw = selling[f.key].trim()
         if (raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
           setError(`Invalid amount for ${f.label}`)
@@ -1413,14 +1444,43 @@ export function ManualOrderForm({
               </tr>
             </thead>
             <tbody>
-              {SELLING_FIELDS.filter(
-                (f) =>
-                  f.key !== 'gst' &&
-                  f.key !== 'discount' &&
-                  f.key !== 'certification' &&
-                  f.key !== 'packaging' &&
-                  f.key !== 'delivery',
-              ).map((f) => (
+              {sellingFields
+                .filter(
+                  (f) =>
+                    f.key !== 'gst' &&
+                    f.key !== 'discount' &&
+                    f.key !== 'certification' &&
+                    f.key !== 'packaging' &&
+                    f.key !== 'delivery',
+                )
+                .map((f) => (
+                <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
+                  <td style={{ padding: '6px' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      value={selling[f.key]}
+                      onChange={(e) => setSelling((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      style={{ ...input, margin: 0 }}
+                      placeholder="0"
+                      aria-label={`${f.label} selling`}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {sellingFields
+                .filter(
+                  (f) =>
+                    f.key === 'certification' ||
+                    f.key === 'packaging' ||
+                    f.key === 'delivery' ||
+                    f.key === 'gst' ||
+                    f.key === 'discount',
+                )
+                .map((f) => (
                 <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
                   <td style={{ padding: '6px' }}>
@@ -1510,31 +1570,6 @@ export function ManualOrderForm({
                   </button>
                 </td>
               </tr>
-              {SELLING_FIELDS.filter(
-                (f) =>
-                  f.key === 'certification' ||
-                  f.key === 'packaging' ||
-                  f.key === 'delivery' ||
-                  f.key === 'gst' ||
-                  f.key === 'discount',
-              ).map((f) => (
-                <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
-                  <td style={{ padding: '6px' }}>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      value={selling[f.key]}
-                      onChange={(e) => setSelling((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                      style={{ ...input, margin: 0 }}
-                      placeholder="0"
-                      aria-label={`${f.label} selling`}
-                    />
-                  </td>
-                </tr>
-              ))}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: '1px solid #e5e7eb' }}>
