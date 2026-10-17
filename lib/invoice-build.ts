@@ -54,6 +54,8 @@ export async function loadInvoiceCatalogue(): Promise<InvoiceCatalogue> {
       miscCharges: Number(v.miscCharges),
       miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
       certificationCharges: Number(v.certificationCharges ?? 0),
+      packagingCharges: Number(v.packagingCharges ?? 0),
+      deliveryCharges: Number(v.deliveryCharges ?? 0),
       stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(p.stones).map((s) => ({
         typeLabel: s.typeLabel ?? 'Diamond',
@@ -185,6 +187,8 @@ export async function invoiceFromVariants(
       miscCharges: Number(v.miscCharges),
       miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
       certificationCharges: Number(v.certificationCharges ?? 0),
+      packagingCharges: Number(v.packagingCharges ?? 0),
+      deliveryCharges: Number(v.deliveryCharges ?? 0),
       stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(v.product.stones),
     }

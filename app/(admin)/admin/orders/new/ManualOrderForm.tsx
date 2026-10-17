@@ -17,6 +17,9 @@ type VariantOption = {
   sku: string
   label: string
   suggestedPrice: number
+  certificationCharges: number
+  packagingCharges: number
+  deliveryCharges: number
 }
 type Customer = { id: string; email: string; name: string; mobile: string | null }
 type OrderAttachmentDraft = { url: string; fileName: string; contentType: string }
@@ -31,7 +34,7 @@ type Line = {
   buildOpen?: boolean
 }
 
-/** Fixed selling components (misc / hallmark / delivery use miscLines below). */
+/** Fixed selling components (misc uses miscLines below). */
 const SELLING_FIELDS = [
   { key: 'gold', label: 'Gold' },
   { key: 'diamonds', label: 'Diamonds' },
@@ -39,6 +42,8 @@ const SELLING_FIELDS = [
   { key: 'making', label: 'Making charges' },
   { key: 'wastage', label: 'Wastage' },
   { key: 'certification', label: 'Certification' },
+  { key: 'packaging', label: 'Packaging' },
+  { key: 'delivery', label: 'Delivery' },
   { key: 'gst', label: 'GST' },
   { key: 'discount', label: 'Discount' },
 ] as const
@@ -61,7 +66,7 @@ export type ManualOrderEditPrefill = {
   }
   lines: Line[]
   /** Order-level selling components (numbers → form strings). */
-  selling?: Partial<Record<SellingKey | 'delivery', number>> & {
+  selling?: Partial<Record<SellingKey, number>> & {
     miscLines?: { label: string; amount: number }[]
   }
   attachments?: OrderAttachmentDraft[]
@@ -75,9 +80,37 @@ function emptySelling(): SellingBreakdown {
     making: '',
     wastage: '',
     certification: '',
+    packaging: '',
+    delivery: '',
     gst: '',
     discount: '',
   }
+}
+
+function addSellingAmount(
+  prev: SellingBreakdown,
+  key: 'certification' | 'packaging' | 'delivery',
+  amount: number,
+): SellingBreakdown {
+  if (!amount) return prev
+  const raw = prev[key].trim()
+  const cur = raw === '' ? 0 : Number(raw)
+  const next = Math.max(0, (Number.isFinite(cur) ? cur : 0) + amount)
+  const rounded = Math.round(next * 100) / 100
+  return { ...prev, [key]: rounded === 0 ? '' : String(rounded) }
+}
+
+/** ±quantity: add on line add, subtract on remove / qty down. */
+function bumpSellingFromVariant(
+  prev: SellingBreakdown,
+  opt: VariantOption,
+  quantity = 1,
+): SellingBreakdown {
+  let s = prev
+  s = addSellingAmount(s, 'certification', opt.certificationCharges * quantity)
+  s = addSellingAmount(s, 'packaging', opt.packagingCharges * quantity)
+  s = addSellingAmount(s, 'delivery', opt.deliveryCharges * quantity)
+  return s
 }
 
 function sellingFromPrefill(prefill?: ManualOrderEditPrefill['selling']): SellingBreakdown {
@@ -96,10 +129,6 @@ function miscLinesFromPrefill(prefill?: ManualOrderEditPrefill['selling']): Sell
       label: l.label,
       amount: String(l.amount),
     }))
-  }
-  const delivery = prefill?.delivery
-  if (delivery != null && Number.isFinite(delivery) && delivery > 0) {
-    return [{ label: 'Delivery', amount: String(delivery) }]
   }
   return []
 }
@@ -341,7 +370,8 @@ export function ManualOrderForm({
       making: 0,
       wastage: 0,
       certification: 0,
-      delivery: sellingMiscTotal,
+      packaging: 0,
+      delivery: 0,
       gst: 0,
       discount: 0,
       miscLines: sellingMiscParsed,
@@ -351,10 +381,9 @@ export function ManualOrderForm({
       const n = raw === '' ? 0 : Number(raw)
       out[f.key] = Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
     }
-    out.delivery = sellingMiscTotal
     out.miscLines = sellingMiscParsed
     return out
-  }, [selling, sellingMiscTotal, sellingMiscParsed])
+  }, [selling, sellingMiscParsed])
 
   const sellingGross = useMemo(
     () =>
@@ -365,6 +394,8 @@ export function ManualOrderForm({
       sellingParsed.wastage +
       sellingMiscTotal +
       sellingParsed.certification +
+      sellingParsed.packaging +
+      sellingParsed.delivery +
       sellingParsed.gst,
     [sellingParsed, sellingMiscTotal],
   )
@@ -373,8 +404,21 @@ export function ManualOrderForm({
     () => sellingGross - sellingParsed.discount,
     [sellingGross, sellingParsed.discount],
   )
+  /**
+   * Prefilling cert/packaging/delivery from the product must not alone mark the
+   * selling section as "in use" — that would POST a partial breakdown and fail
+   * server-side match against goods total. Require a core component (or misc).
+   */
   const hasSellingBreakdown =
-    sellingGross + sellingParsed.discount + sellingMiscTotal > 0
+    sellingParsed.gold +
+      sellingParsed.diamonds +
+      sellingParsed.stones +
+      sellingParsed.making +
+      sellingParsed.wastage +
+      sellingParsed.gst +
+      sellingParsed.discount +
+      sellingMiscTotal >
+    0
 
   async function search(q: string) {
     setQuery(q)
@@ -455,6 +499,7 @@ export function ManualOrderForm({
         buildOpen: true,
       },
     ])
+    setSelling((s) => bumpSellingFromVariant(s, opt, 1))
     setItemSearch('')
   }
 
@@ -476,6 +521,7 @@ export function ManualOrderForm({
 
   async function addInventoryLine(row: InventoryOption) {
     const internalBuild = await fetchBuildPrefill(row.variantId, row.inventoryItemId)
+    const opt = variantOptions.find((v) => v.variantId === row.variantId)
     setLines((ls) => [
       ...ls,
       {
@@ -489,6 +535,7 @@ export function ManualOrderForm({
         buildOpen: true,
       },
     ])
+    if (opt) setSelling((s) => bumpSellingFromVariant(s, opt, 1))
     setItemSearch('')
     setShowNewInventory(false)
   }
@@ -1284,15 +1331,17 @@ export function ManualOrderForm({
                   min={1}
                   max={maxQ}
                   value={line.quantity}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextQty = Math.min(maxQ, Math.max(1, Number(e.target.value) || 1))
+                    const delta = nextQty - line.quantity
+                    if (delta !== 0) {
+                      const vOpt = variantOptions.find((v) => v.variantId === line.variantId)
+                      if (vOpt) setSelling((s) => bumpSellingFromVariant(s, vOpt, delta))
+                    }
                     setLines((ls) =>
-                      ls.map((l, i) =>
-                        i === idx
-                          ? { ...l, quantity: Math.min(maxQ, Math.max(1, Number(e.target.value))) }
-                          : l,
-                      ),
+                      ls.map((l, i) => (i === idx ? { ...l, quantity: nextQty } : l)),
                     )
-                  }
+                  }}
                   style={{ ...input, width: 64 }}
                   aria-label="Quantity"
                 />
@@ -1312,7 +1361,11 @@ export function ManualOrderForm({
                 />
                 <button
                   type="button"
-                  onClick={() => setLines((ls) => ls.filter((_, i) => i !== idx))}
+                  onClick={() => {
+                    const opt = variantOptions.find((v) => v.variantId === line.variantId)
+                    if (opt) setSelling((s) => bumpSellingFromVariant(s, opt, -line.quantity))
+                    setLines((ls) => ls.filter((_, i) => i !== idx))
+                  }}
                   style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer' }}
                   aria-label="Remove line"
                 >
@@ -1361,7 +1414,12 @@ export function ManualOrderForm({
             </thead>
             <tbody>
               {SELLING_FIELDS.filter(
-                (f) => f.key !== 'gst' && f.key !== 'discount' && f.key !== 'certification',
+                (f) =>
+                  f.key !== 'gst' &&
+                  f.key !== 'discount' &&
+                  f.key !== 'certification' &&
+                  f.key !== 'packaging' &&
+                  f.key !== 'delivery',
               ).map((f) => (
                 <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>
@@ -1392,7 +1450,7 @@ export function ManualOrderForm({
                         )
                       }
                       style={{ ...input, margin: 0 }}
-                      placeholder={`Text ${i + 1} (e.g. Hallmark)`}
+                      placeholder={`Text ${i + 1} (optional misc)`}
                       aria-label={`Misc text ${i + 1}`}
                     />
                   </td>
@@ -1436,7 +1494,7 @@ export function ManualOrderForm({
                     onClick={() =>
                       setSellingMiscLines((prev) => [
                         ...prev,
-                        { label: prev.length === 0 ? 'Hallmark' : '', amount: '' },
+                        { label: '', amount: '' },
                       ])
                     }
                     style={{
@@ -1453,7 +1511,12 @@ export function ManualOrderForm({
                 </td>
               </tr>
               {SELLING_FIELDS.filter(
-                (f) => f.key === 'certification' || f.key === 'gst' || f.key === 'discount',
+                (f) =>
+                  f.key === 'certification' ||
+                  f.key === 'packaging' ||
+                  f.key === 'delivery' ||
+                  f.key === 'gst' ||
+                  f.key === 'discount',
               ).map((f) => (
                 <tr key={f.key} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '8px 6px', fontWeight: 500 }}>{f.label}</td>

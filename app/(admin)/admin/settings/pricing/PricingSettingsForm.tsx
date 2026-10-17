@@ -16,6 +16,9 @@ type FormState = {
   vaGoldPct: number | string
   vaStonePct: number | string
   vaLabel: string
+  defaultCertificationCharges: number | string
+  defaultPackagingCharges: number | string
+  defaultDeliveryCharges: number | string
   showPricesGlobal: boolean
   diamondRates: RateRow[]
 }
@@ -123,6 +126,61 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               placeholder="Value Addition"
             />
             <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Value Addition&rdquo;.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="pform__section">
+        <h2>Default fixed charges (new variants)</h2>
+        <p className="pform__section-note">
+          Seeded onto each new product variant as certification, packaging, and delivery fees.
+          Each is disclosed as its own line on the PDP, orders, and tax invoice (not misc).
+        </p>
+        <div className="pform__grid pform__grid--3">
+          <div className="pform__field">
+            <label htmlFor="ps-cert-default">Default certification (₹)</label>
+            <input
+              id="ps-cert-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultCertificationCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultCertificationCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-certification-charges"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-pack-default">Default packaging (₹)</label>
+            <input
+              id="ps-pack-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultPackagingCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultPackagingCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-packaging-charges"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-del-default">Default delivery (₹)</label>
+            <input
+              id="ps-del-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultDeliveryCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultDeliveryCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-delivery-charges"
+            />
           </div>
         </div>
       </section>

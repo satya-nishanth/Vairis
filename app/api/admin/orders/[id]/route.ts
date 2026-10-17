@@ -14,6 +14,7 @@ import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
 import {
   roundMoney,
+  sellingBreakdownGross,
   sellingBreakdownMatchesGoods,
   sellingComponentsToUnitSnapshot,
   toOrderItemPriceSnapshot,
@@ -293,8 +294,10 @@ const editOrderSchema = z.object({
       stones: z.number().min(0).max(100000000),
       making: z.number().min(0).max(100000000),
       wastage: z.number().min(0).max(100000000),
-      /** Legacy flat misc; prefer miscLines when present. */
+      /** Order-level delivery fee (₹). */
       delivery: z.number().min(0).max(100000000).optional().default(0),
+      /** Order-level packaging fee (₹). */
+      packaging: z.number().min(0).max(100000000).optional().default(0),
       miscLines: z
         .array(
           z.object({
@@ -430,19 +433,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
   if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
-    const misc =
-      d.sellingBreakdown.miscLines && d.sellingBreakdown.miscLines.length > 0
-        ? d.sellingBreakdown.miscLines.reduce((s, l) => s + l.amount, 0)
-        : d.sellingBreakdown.delivery ?? 0
-    const gross =
-      d.sellingBreakdown.gold +
-      d.sellingBreakdown.diamonds +
-      d.sellingBreakdown.stones +
-      d.sellingBreakdown.making +
-      d.sellingBreakdown.wastage +
-      misc +
-      (d.sellingBreakdown.certification ?? 0) +
-      d.sellingBreakdown.gst
+    const gross = sellingBreakdownGross(d.sellingBreakdown)
     const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
       { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
@@ -466,23 +457,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
 
     const manual = d.sellingBreakdown
-    const manualMisc =
-      manual != null
-        ? manual.miscLines && manual.miscLines.length > 0
-          ? manual.miscLines.reduce((s, l) => s + l.amount, 0)
-          : manual.delivery ?? 0
-        : 0
     const manualGross =
       manual != null
-        ? manual.gold +
-          manual.diamonds +
-          manual.stones +
-          manual.making +
-          manual.wastage +
-          manualMisc +
-          (manual.certification ?? 0) +
-          manual.gst +
-          (manual.discount ?? 0)
+        ? sellingBreakdownGross(manual) + (manual.discount ?? 0)
         : 0
 
     if (index === 0 && manual != null && manualGross > 0) {

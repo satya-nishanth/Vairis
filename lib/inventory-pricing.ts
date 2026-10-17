@@ -13,6 +13,8 @@ export type VariantForPricing = {
   stoneCharges: { toString(): string } | number | string
   miscCharges: { toString(): string } | number | string
   certificationCharges?: { toString(): string } | number | string
+  packagingCharges?: { toString(): string } | number | string
+  deliveryCharges?: { toString(): string } | number | string
   metalType: MetalType
   metalColor?: MetalColor | null
   product: {
@@ -46,6 +48,8 @@ export function computeVariantLiveUnitPrice(
       stoneCharges: variant.stoneCharges as never,
       miscCharges: variant.miscCharges as never,
       certificationCharges: (variant.certificationCharges ?? 0) as never,
+      packagingCharges: (variant.packagingCharges ?? 0) as never,
+      deliveryCharges: (variant.deliveryCharges ?? 0) as never,
     },
     ratePerGram,
     pricingConfig,

@@ -89,6 +89,8 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
                 stoneCharges: v.stoneCharges.toString(),
                 miscCharges: v.miscCharges.toString(),
                 certificationCharges: (v.certificationCharges ?? 0).toString(),
+                packagingCharges: (v.packagingCharges ?? 0).toString(),
+                deliveryCharges: (v.deliveryCharges ?? 0).toString(),
               },
               rate,
               { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
@@ -104,6 +106,9 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
         suggestedPrice: suggested,
+        certificationCharges: Number(v.certificationCharges ?? 0),
+        packagingCharges: Number(v.packagingCharges ?? 0),
+        deliveryCharges: Number(v.deliveryCharges ?? 0),
       }
     }),
   )

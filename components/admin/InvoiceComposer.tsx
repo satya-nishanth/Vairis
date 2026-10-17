@@ -24,7 +24,6 @@ import { formatINRGrouped, INVOICE_GST_SCHEMES, normalizeInvoiceGstScheme } from
 import { splitGemValues } from '@/lib/pricing'
 import type { PricingConfig } from '@/lib/pricing'
 import {
-  DEFAULT_MISC_LABEL,
   normalizeMiscChargeLines,
   sumMiscChargeLines,
   type MiscChargeLine,
@@ -517,7 +516,7 @@ function MiscLinesEditor({
         onClick={() =>
           onChange([
             ...rows,
-            { label: rows.length === 0 ? DEFAULT_MISC_LABEL : '', amount: 0 },
+            { label: '', amount: 0 },
           ])
         }
       >
@@ -725,6 +724,18 @@ function LineEditor({
           value={line.certificationCharges ?? 0}
           onChange={(v) => patch({ certificationCharges: Number(v) || 0 })}
         />
+        <Field
+          label="Packaging (₹)"
+          type="number"
+          value={line.packagingCharges ?? 0}
+          onChange={(v) => patch({ packagingCharges: Number(v) || 0 })}
+        />
+        <Field
+          label="Delivery (₹)"
+          type="number"
+          value={line.deliveryCharges ?? 0}
+          onChange={(v) => patch({ deliveryCharges: Number(v) || 0 })}
+        />
       </div>
 
       {!line.lockedPricing ? (
@@ -787,6 +798,12 @@ function LineEditor({
           : ''}
         {computed.certificationCharges > 0
           ? ` · certification ₹${formatINRGrouped(computed.certificationCharges, 0)}`
+          : ''}
+        {computed.packagingCharges > 0
+          ? ` · packaging ₹${formatINRGrouped(computed.packagingCharges, 0)}`
+          : ''}
+        {computed.deliveryCharges > 0
+          ? ` · delivery ₹${formatINRGrouped(computed.deliveryCharges, 0)}`
           : ''}{' '}
         · taxable ₹{formatINRGrouped(computed.taxable)}
       </p>

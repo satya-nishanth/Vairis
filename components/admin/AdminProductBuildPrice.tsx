@@ -22,6 +22,8 @@ export type BuildPriceVariant = {
   miscCharges: string
   miscLines: { label: string; amount: string }[]
   certificationCharges: string
+  packagingCharges: string
+  deliveryCharges: string
   stock: string
   sku: string
 }
@@ -94,6 +96,10 @@ function StorefrontBreakdown({
   const roundedMisc = breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0
   const roundedCert =
     breakdown.certificationCharges > 0 ? Math.round(breakdown.certificationCharges) : 0
+  const roundedPack =
+    breakdown.packagingCharges > 0 ? Math.round(breakdown.packagingCharges) : 0
+  const roundedDel =
+    breakdown.deliveryCharges > 0 ? Math.round(breakdown.deliveryCharges) : 0
   const roundedGST = Math.round(breakdown.gst)
   const roundedStones =
     breakdown.stoneLines.length > 0
@@ -106,6 +112,8 @@ function StorefrontBreakdown({
     roundedVA +
     roundedMisc +
     roundedCert +
+    roundedPack +
+    roundedDel +
     roundedGST
 
   return (
@@ -198,7 +206,7 @@ function StorefrontBreakdown({
           )}
           {roundedMisc > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Hallmarking / misc</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Misc</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedMisc)}
               </td>
@@ -209,6 +217,22 @@ function StorefrontBreakdown({
               <td style={{ padding: '8px 14px', color: '#166534' }}>Certification</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedCert)}
+              </td>
+            </tr>
+          )}
+          {roundedPack > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Packaging</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedPack)}
+              </td>
+            </tr>
+          )}
+          {roundedDel > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Delivery</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedDel)}
               </td>
             </tr>
           )}
@@ -618,14 +642,14 @@ export default function AdminProductBuildPrice(props: Props) {
                       <p className="pform__hint">Legacy flat gem cost</p>
                     </div>
                     <div className="pform__field" style={{ gridColumn: '1 / -1' }}>
-                      <label>Misc / hallmark (text + amount)</label>
+                      <label>Misc (text + amount, optional)</label>
                       {(v.miscLines?.length
                         ? v.miscLines
-                        : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                        : []
                       ).map((row, ri) => {
                         const rows = v.miscLines?.length
                           ? v.miscLines
-                          : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                          : []
                         return (
                           <div
                             key={ri}
@@ -683,7 +707,7 @@ export default function AdminProductBuildPrice(props: Props) {
                         onClick={() => {
                           const rows = v.miscLines?.length
                             ? v.miscLines
-                            : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                            : []
                           props.onSetVariantMiscLines?.(idx, [
                             ...rows,
                             { label: '', amount: '0' },
@@ -709,6 +733,34 @@ export default function AdminProductBuildPrice(props: Props) {
                       />
                       <p className="pform__hint">Fixed fee — own line on PDP, order, invoice</p>
                     </div>
+                    <div className="pform__field">
+                      <label>Packaging (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.packagingCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'packagingCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="pform__field">
+                      <label>Delivery (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.deliveryCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'deliveryCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
                   <p
                     style={{
@@ -722,7 +774,7 @@ export default function AdminProductBuildPrice(props: Props) {
                     }}
                   >
                     Taxable = gold + {effectivePricing.vaLabel} ({effectivePricing.vaGoldPct}%) + making +
-                    diamonds + misc + certification · then GST 3%
+                    diamonds + misc + certification + packaging + delivery · then GST 3%
                   </p>
                 </div>
 

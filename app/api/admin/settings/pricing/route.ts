@@ -15,10 +15,18 @@ const rateValue = z
   .transform(Number)
   .refine((n) => !Number.isNaN(n) && n >= 0, 'Rate cannot be negative')
 
+const inrFixed = z
+  .union([z.string(), z.number()])
+  .transform(Number)
+  .refine((n) => !Number.isNaN(n) && n >= 0, 'Amount cannot be negative')
+
 const putSchema = z.object({
   vaGoldPct: pct,
   vaStonePct: pct,
   vaLabel: z.string().trim().min(1, 'Label is required').max(40),
+  defaultCertificationCharges: inrFixed.optional(),
+  defaultPackagingCharges: inrFixed.optional(),
+  defaultDeliveryCharges: inrFixed.optional(),
   showPricesGlobal: z.boolean(),
   diamondRates: z.array(
     z.object({
@@ -47,6 +55,9 @@ export async function GET() {
     vaGoldPct: Number(settings?.vaGoldPct ?? 10),
     vaStonePct: Number(settings?.vaStonePct ?? 0),
     vaLabel: settings?.vaLabel ?? 'Value Addition',
+    defaultCertificationCharges: Number(settings?.defaultCertificationCharges ?? 0),
+    defaultPackagingCharges: Number(settings?.defaultPackagingCharges ?? 0),
+    defaultDeliveryCharges: Number(settings?.defaultDeliveryCharges ?? 0),
     showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,
@@ -76,6 +87,9 @@ export async function PUT(req: NextRequest) {
         vaGoldPct: data.vaGoldPct,
         vaStonePct: data.vaStonePct,
         vaLabel: data.vaLabel,
+        defaultCertificationCharges: data.defaultCertificationCharges ?? 0,
+        defaultPackagingCharges: data.defaultPackagingCharges ?? 0,
+        defaultDeliveryCharges: data.defaultDeliveryCharges ?? 0,
         showPricesGlobal: data.showPricesGlobal,
       }
       await tx.pricingSettings.upsert({

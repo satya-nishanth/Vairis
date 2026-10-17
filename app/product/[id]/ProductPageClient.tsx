@@ -36,6 +36,8 @@ type Variant = {
   stoneCharges: string;
   miscCharges: string;
   certificationCharges?: string;
+  packagingCharges?: string;
+  deliveryCharges?: string;
   sku: string | null;
   size: string | null;
 };
@@ -109,6 +111,8 @@ function pieceBreakdown(
       stoneCharges: Number(variant.stoneCharges),
       miscCharges: Number(variant.miscCharges),
       certificationCharges: Number(variant.certificationCharges ?? 0),
+      packagingCharges: Number(variant.packagingCharges ?? 0),
+      deliveryCharges: Number(variant.deliveryCharges ?? 0),
     },
     rate,
     { stones, withExchange, config },
@@ -772,6 +776,14 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     breakdown.certificationCharges > 0
                       ? Math.round(breakdown.certificationCharges)
                       : 0;
+                  const roundedPack =
+                    breakdown.packagingCharges > 0
+                      ? Math.round(breakdown.packagingCharges)
+                      : 0;
+                  const roundedDel =
+                    breakdown.deliveryCharges > 0
+                      ? Math.round(breakdown.deliveryCharges)
+                      : 0;
                   const roundedGST = Math.round(breakdown.gst);
                   const tableTotal =
                     roundedGold +
@@ -780,6 +792,8 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     roundedVA +
                     roundedMisc +
                     roundedCert +
+                    roundedPack +
+                    roundedDel +
                     roundedGST;
                   return (
                     <details
@@ -833,7 +847,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                           )}
                           {roundedMisc > 0 && (
                             <tr>
-                              <td>Hallmarking / misc</td>
+                              <td>Misc</td>
                               <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
@@ -841,6 +855,18 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                             <tr>
                               <td>Certification</td>
                               <td>₹{roundedCert.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedPack > 0 && (
+                            <tr>
+                              <td>Packaging</td>
+                              <td>₹{roundedPack.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedDel > 0 && (
+                            <tr>
+                              <td>Delivery</td>
+                              <td>₹{roundedDel.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
                           <tr>
