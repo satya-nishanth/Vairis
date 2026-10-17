@@ -12,6 +12,7 @@ export type VariantForPricing = {
   flatMakingCharge: { toString(): string } | number | string
   stoneCharges: { toString(): string } | number | string
   miscCharges: { toString(): string } | number | string
+  certificationCharges?: { toString(): string } | number | string
   metalType: MetalType
   metalColor?: MetalColor | null
   product: {
@@ -44,6 +45,7 @@ export function computeVariantLiveUnitPrice(
       flatMakingCharge: variant.flatMakingCharge as never,
       stoneCharges: variant.stoneCharges as never,
       miscCharges: variant.miscCharges as never,
+      certificationCharges: (variant.certificationCharges ?? 0) as never,
     },
     ratePerGram,
     pricingConfig,

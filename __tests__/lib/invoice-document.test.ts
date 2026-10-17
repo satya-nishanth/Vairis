@@ -90,6 +90,7 @@ describe('order invoice from priceBreakdown', () => {
     vaTotal: 1075.82,
     vaLabel: 'Value Addition',
     miscCharges: 45,
+    certificationCharges: 0,
     taxable: 23737.17,
     gst: 712.11,
     total: 24449.28,
@@ -152,6 +153,28 @@ describe('order invoice from priceBreakdown', () => {
       { label: 'Certificate', amount: 200 },
     ])
     expect(line.taxable).toBeGreaterThan(0)
+  })
+
+  it('discloses certification separately from misc on locked snapshots', () => {
+    const line = lineFromOrderItem(
+      {
+        ...orderItem,
+        priceBreakdown: {
+          ...snap,
+          miscCharges: 45,
+          certificationCharges: 500,
+          taxable: 24237.17,
+          gst: 727.12,
+          total: 24964.29,
+        },
+      },
+      { GOLD_18K: 9780.16 },
+      DEFAULT_PRICING_CONFIG,
+    )
+    expect(line.lockedPricing).toBe(true)
+    expect(line.miscCharges).toBe(45)
+    expect(line.certificationCharges).toBe(500)
+    expect(line.taxable).toBeCloseTo(24237.17, 2)
   })
 
   it('payloadFromOrder keeps snapshot taxable on the invoice', () => {

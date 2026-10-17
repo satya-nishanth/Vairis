@@ -138,6 +138,14 @@ export function InvoicePrintView({
                         <span className="inv-doc__amt">{formatINRGrouped(m.amount, 0)}</span>
                       </Fragment>
                     ))}
+                  {Number(line.certificationCharges) > 0 ? (
+                    <>
+                      <span>Certification</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.certificationCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
               </td>
               <td>

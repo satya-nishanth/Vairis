@@ -186,6 +186,56 @@ describe('calculatePrice (estimator formula)', () => {
     expect(selling.delivery).toBe(1_000)
   })
 
+  it('adds certification as its own taxable line (not misc)', () => {
+    const b = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 45,
+        certificationCharges: 500,
+      },
+      1000,
+      { config: DEFAULT_PRICING_CONFIG },
+    )
+    // gold 1000 + wastage 100 + misc 45 + cert 500 = 1645; GST 3%
+    expect(b.miscCharges).toBe(45)
+    expect(b.certificationCharges).toBe(500)
+    expect(b.taxable).toBe(1645)
+    expect(b.gst).toBeCloseTo(49.35, 2)
+
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 0,
+        stones: 0,
+        making: 1_000,
+        wastage: 500,
+        delivery: 45,
+        certification: 500,
+        gst: 361.35,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.certificationCharges).toBe(500)
+    expect(snap.miscCharges).toBe(45)
+    expect(snap.taxable).toBe(12_045)
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.certification).toBe(500)
+    expect(
+      sellingBreakdownMatchesGoods(
+        { ...selling, certification: selling.certification },
+        selling.gold +
+          selling.making +
+          selling.wastage +
+          selling.delivery +
+          selling.certification +
+          selling.gst,
+      ),
+    ).toBe(true)
+  })
+
   it('sellingBreakdownMatchesGoods accepts net or gross equality', () => {
     const components = {
       gold: 30_000,

@@ -70,6 +70,8 @@ export type InvoiceLine = {
   miscCharges: number
   /** Disclosed misc / hallmark / delivery rows (label + amount). */
   miscLines: MiscChargeLine[]
+  /** Fixed certification fee (₹, unit). */
+  certificationCharges: number
   /** Legacy flat stone cost when the product has no stone rows. */
   legacyStoneCharges: number
   itemValue: number
@@ -96,6 +98,7 @@ export type InvoiceProductInput = {
   miscCharges?: number | string
   /** Optional labeled misc rows; when set, sum overrides miscCharges. */
   miscLines?: MiscChargeLine[]
+  certificationCharges?: number | string
   stoneCharges?: number | string
   stones?: StoneInput[]
   leadIncentive?: number
@@ -127,6 +130,7 @@ export type InvoiceCatalogueVariant = {
   flatMakingCharge: number
   miscCharges: number
   miscLines?: MiscChargeLine[]
+  certificationCharges: number
   stoneCharges: number
   stones: InvoiceCatalogueStone[]
 }
@@ -232,6 +236,7 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       : resolveMiscChargeLines(undefined, Number(line.miscCharges) || 0),
   )
   const miscCharges = sumMiscChargeLines(miscLines)
+  const certificationCharges = Math.max(0, Number(line.certificationCharges) || 0)
 
   // Order-creation snapshot — keep frozen component amounts; only scale by qty.
   if (line.lockedPricing) {
@@ -240,11 +245,13 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       Number(line.wastage) +
       Number(line.making) +
       Number(line.stoneValue) +
-      miscCharges
+      miscCharges +
+      certificationCharges
     return {
       ...line,
       miscLines,
       miscCharges,
+      certificationCharges,
       quantity: qty,
       itemValue: Number(line.goldValue) + Number(line.stoneValue),
       makingPlusWastage: Number(line.making) + Number(line.wastage),
@@ -259,6 +266,7 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       flatMakingCharge: line.flatMaking,
       stoneCharges: Number(line.legacyStoneCharges) || 0,
       miscCharges,
+      certificationCharges,
     },
     Number(line.goldRatePerGram) || 0,
     {
@@ -286,6 +294,7 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
     ...line,
     miscLines,
     miscCharges,
+    certificationCharges: unit.certificationCharges,
     quantity: qty,
     goldValue: unit.goldValue,
     wastage: unit.goldVA,
@@ -363,6 +372,7 @@ export function blankLine(): InvoiceLine {
     leadIncentive: 0,
     miscCharges: 0,
     miscLines: [],
+    certificationCharges: 0,
     legacyStoneCharges: 0,
     itemValue: 0,
     makingPlusWastage: 0,
@@ -450,6 +460,7 @@ export function lineFromProduct(
       flatMaking: Number(product.flatMakingCharge) || 0,
       miscLines,
       miscCharges: sumMiscChargeLines(miscLines),
+      certificationCharges: Number(product.certificationCharges) || 0,
       legacyStoneCharges: Number(product.stoneCharges) || 0,
       leadIncentive: Number(product.leadIncentive) || 0,
       stones: stoneRowsFromInputs(product.stones ?? [], withExchange),
@@ -475,6 +486,7 @@ export function lineFromCatalogueVariant(
       flatMakingCharge: variant.flatMakingCharge,
       miscCharges: variant.miscCharges,
       miscLines: variant.miscLines,
+      certificationCharges: variant.certificationCharges,
       stoneCharges: variant.stoneCharges,
       stones: variant.stones,
       huid: extras?.huid,
@@ -502,6 +514,7 @@ type CreatedInvoiceProduct = {
     flatMakingCharge: unknown
     miscCharges: unknown
     miscChargeLines?: unknown
+    certificationCharges?: unknown
     stoneCharges: unknown
   }>
   stones?: Array<{
@@ -528,6 +541,7 @@ export function catalogueVariantFromCreatedProduct(product: CreatedInvoiceProduc
     flatMakingCharge: Number(v.flatMakingCharge),
     miscCharges: Number(v.miscCharges),
     miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
+    certificationCharges: Number(v.certificationCharges ?? 0),
     stoneCharges: Number(v.stoneCharges),
     stones: (product.stones ?? [])
       .filter((s) => s.diamondRate)
@@ -734,6 +748,9 @@ export function lineFromOrderItem(
           Number(snap.miscCharges),
           'Delivery',
         ),
+        certificationCharges: Number(
+          (snap as { certificationCharges?: number }).certificationCharges ?? 0,
+        ),
         legacyStoneCharges: gems.stones,
         leadIncentive: 0,
         itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
@@ -760,6 +777,9 @@ export function lineFromOrderItem(
       miscLines: resolveMiscChargeLines(
         (v as { miscChargeLines?: unknown }).miscChargeLines,
         Number(v.miscCharges),
+      ),
+      certificationCharges: Number(
+        (v as { certificationCharges?: { toString(): string } | number }).certificationCharges ?? 0,
       ),
       stoneCharges: Number(v.stoneCharges ?? 0),
       stones: toStoneInputs(v.product.stones),

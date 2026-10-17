@@ -67,6 +67,8 @@ type Variant = {
   miscCharges: string
   /** Labeled misc rows (text + amount). */
   miscLines: { label: string; amount: string }[]
+  /** Fixed certification fee (₹). */
+  certificationCharges: string
   stock: string
   sku: string
 }
@@ -167,6 +169,7 @@ function formVariantFromLoaded(v: Partial<Variant>): Variant {
             label: l.label,
             amount: String(l.amount),
           })),
+    certificationCharges: v.certificationCharges ?? '0',
     stock: v.stock ?? '0',
     sku: v.sku ?? '',
   }
@@ -183,6 +186,7 @@ function emptyVariant(): Variant {
     stoneCharges: '0',
     miscCharges: '45',
     miscLines: [{ label: DEFAULT_MISC_LABEL, amount: '45' }],
+    certificationCharges: '0',
     stock: '0',
     sku: '',
   }
@@ -405,6 +409,7 @@ export default function ProductForm({
         flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
         stoneCharges: parseFloat(v.stoneCharges) || 0,
         miscCharges: miscSumFromLines(v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }]),
+        certificationCharges: parseFloat(v.certificationCharges) || 0,
       },
       rates[goldRateKey(v.metalType)] ?? 0,
       { stones: stoneInputs, withExchange, config: effectivePricing },
@@ -455,6 +460,7 @@ export default function ProductForm({
               miscCharges: miscSumFromLines(
                 v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }],
               ),
+              certificationCharges: parseFloat(v.certificationCharges) || 0,
             },
             rates[goldRateKey(v.metalType)] ?? 0,
             { stones, withExchange: false, config: cfg },
@@ -712,6 +718,7 @@ export default function ProductForm({
           ...v,
           miscCharges,
           miscChargeLines: miscLines,
+          certificationCharges: parseFloat(v.certificationCharges) || 0,
         }
       }),
       stones: p.stones

@@ -1,4 +1,4 @@
-import type { MetalColor, MetalType, Prisma } from '@prisma/client'
+import { Prisma, type MetalColor, type MetalType } from '@prisma/client'
 import { buildMetalSku, normalizeMetalColor } from '@/lib/metal'
 
 export type PieceVariantInput = {
@@ -10,6 +10,7 @@ export type PieceVariantInput = {
   stoneCharges: number
   miscCharges: number
   miscChargeLines?: { label: string; amount: number }[] | null
+  certificationCharges?: number
   stock: number
   sku: string
   size?: string | null
@@ -101,6 +102,7 @@ export async function createProductPieces(
           miscChargeLines: v.miscChargeLines?.length
             ? (v.miscChargeLines as Prisma.InputJsonValue)
             : Prisma.JsonNull,
+          certificationCharges: v.certificationCharges ?? 0,
           stock: v.stock,
           sku: v.sku,
           size: v.size || null,
@@ -245,6 +247,7 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
         miscChargeLines: v.miscChargeLines?.length
           ? (v.miscChargeLines as Prisma.InputJsonValue)
           : Prisma.JsonNull,
+        certificationCharges: v.certificationCharges ?? 0,
         stock: v.stock,
         size: sizeKey,
         pieceId,

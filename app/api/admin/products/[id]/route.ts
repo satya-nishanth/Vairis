@@ -43,6 +43,7 @@ const patchVariantSchema = z.object({
     )
     .optional()
     .nullable(),
+  certificationCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
   stock: z.union([z.string(), z.number()]).transform(Number).default(0),
   sku: z.string().min(1, 'SKU is required'),
   size: z.string().optional(),

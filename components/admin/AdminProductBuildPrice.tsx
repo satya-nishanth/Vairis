@@ -20,7 +20,8 @@ export type BuildPriceVariant = {
   flatMakingCharge: string
   stoneCharges: string
   miscCharges: string
-  miscLines?: { label: string; amount: string }[]
+  miscLines: { label: string; amount: string }[]
+  certificationCharges: string
   stock: string
   sku: string
 }
@@ -91,13 +92,21 @@ function StorefrontBreakdown({
   const roundedMaking = Math.round(breakdown.making)
   const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0
   const roundedMisc = breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0
+  const roundedCert =
+    breakdown.certificationCharges > 0 ? Math.round(breakdown.certificationCharges) : 0
   const roundedGST = Math.round(breakdown.gst)
   const roundedStones =
     breakdown.stoneLines.length > 0
       ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
       : Math.round(breakdown.stoneValue)
   const tableTotal =
-    roundedGold + roundedStones + roundedMaking + roundedVA + roundedMisc + roundedGST
+    roundedGold +
+    roundedStones +
+    roundedMaking +
+    roundedVA +
+    roundedMisc +
+    roundedCert +
+    roundedGST
 
   return (
     <div
@@ -189,9 +198,17 @@ function StorefrontBreakdown({
           )}
           {roundedMisc > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Hallmarking &amp; certification</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Hallmarking / misc</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedMisc)}
+              </td>
+            </tr>
+          )}
+          {roundedCert > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Certification</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedCert)}
               </td>
             </tr>
           )}
@@ -677,6 +694,21 @@ export default function AdminProductBuildPrice(props: Props) {
                       </button>
                       <p className="pform__hint">Shown with labels on the tax invoice</p>
                     </div>
+                    <div className="pform__field">
+                      <label>Certification (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.certificationCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'certificationCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder="0"
+                      />
+                      <p className="pform__hint">Fixed fee — own line on PDP, order, invoice</p>
+                    </div>
                   </div>
                   <p
                     style={{
@@ -690,7 +722,7 @@ export default function AdminProductBuildPrice(props: Props) {
                     }}
                   >
                     Taxable = gold + {effectivePricing.vaLabel} ({effectivePricing.vaGoldPct}%) + making +
-                    diamonds + misc · then GST 3%
+                    diamonds + misc + certification · then GST 3%
                   </p>
                 </div>
 

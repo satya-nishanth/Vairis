@@ -7,7 +7,7 @@
  *   wastage    = goldValue × vaGoldPct            (gold only; default 10%)
  *   making     = weight × makingChargePerGram + flatMakingCharge
  *   stoneValue = Σ stones(carat × per-carat rate[exchange]) + legacy stoneCharges [+ leadIncentive]
- *   taxable    = goldValue + wastage + making + stoneValue + misc
+ *   taxable    = goldValue + wastage + making + stoneValue + misc + certification
  *   GST        = taxable × 3%
  *   total      = taxable + GST
  *
@@ -155,6 +155,8 @@ export interface PriceBreakdown {
   vaTotal: number
   vaLabel: string
   miscCharges: number
+  /** Fixed certification fee (₹). Always disclosed as its own line. */
+  certificationCharges: number
   taxable: number
   gst: number
   total: number
@@ -221,6 +223,8 @@ export function sellingComponentsToUnitSnapshot(
     delivery?: number
     /** Order-level labeled misc rows (text + amount). Sum becomes miscCharges. */
     miscLines?: MiscChargeLine[]
+    /** Order-level certification fee (₹). */
+    certification?: number
     gst: number
     /** Order-level discount (₹) subtracted after GST — maps to autoDiscount on the unit. */
     discount?: number
@@ -251,8 +255,9 @@ export function sellingComponentsToUnitSnapshot(
     label: l.label,
     amount: l.amount / q,
   }))
+  const certificationCharges = Math.max(0, selling.certification ?? 0) / q
   const gst = selling.gst / q
-  const taxable = goldValue + goldVA + making + stoneValue + miscCharges
+  const taxable = goldValue + goldVA + making + stoneValue + miscCharges + certificationCharges
   const total = taxable + gst
   const autoDiscount = Math.max(0, (selling.discount ?? 0) / q)
   const snap = toOrderItemPriceSnapshot(
@@ -268,6 +273,7 @@ export function sellingComponentsToUnitSnapshot(
       vaTotal: goldVA,
       vaLabel: meta.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
       miscCharges,
+      certificationCharges,
       taxable,
       gst,
       total,
@@ -320,6 +326,7 @@ export function unitSnapshotToSellingComponents(
     stoneLines?: { typeLabel: string; value: number }[]
     autoDiscount?: number
     miscLines?: MiscChargeLine[]
+    certificationCharges?: number
   },
   quantity: number,
 ): {
@@ -329,6 +336,7 @@ export function unitSnapshotToSellingComponents(
   making: number
   wastage: number
   delivery: number
+  certification: number
   gst: number
   discount: number
   miscLines: MiscChargeLine[]
@@ -351,6 +359,7 @@ export function unitSnapshotToSellingComponents(
     making: roundMoney(snapshot.making * q),
     wastage: roundMoney((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
     delivery: roundMoney(sumMiscChargeLines(miscLines)),
+    certification: roundMoney((snapshot.certificationCharges ?? 0) * q),
     gst: roundMoney(snapshot.gst * q),
     discount: roundMoney((snapshot.autoDiscount ?? 0) * q),
     miscLines,
@@ -374,6 +383,7 @@ export function sellingBreakdownMatchesGoods(
     wastage: number
     delivery?: number
     miscLines?: MiscChargeLine[]
+    certification?: number
     gst: number
     discount?: number
   },
@@ -391,6 +401,7 @@ export function sellingBreakdownMatchesGoods(
     selling.making +
     selling.wastage +
     misc +
+    (selling.certification ?? 0) +
     selling.gst
   const discount = selling.discount ?? 0
   const paise = (n: number) => Math.round(n * 100)
@@ -407,6 +418,8 @@ export interface VariantPriceInput {
   /** Legacy flat stone cost — still honoured for products without stone rows. */
   stoneCharges: number | string
   miscCharges: number | string
+  /** Fixed certification fee (₹). Optional — defaults to 0. */
+  certificationCharges?: number | string
 }
 
 export function calculatePrice(
@@ -449,9 +462,10 @@ export function calculatePrice(
   otherStoneValue += legacyStones + leadIncentive
   const stoneValue = diamondValue + otherStoneValue
 
-  const misc = Number(variant.miscCharges)
+  const misc = Number(variant.miscCharges) || 0
+  const certificationCharges = Number(variant.certificationCharges ?? 0) || 0
   const stoneVA = 0
-  const taxable = goldValue + goldVA + making + stoneValue + misc
+  const taxable = goldValue + goldVA + making + stoneValue + misc + certificationCharges
   const gst = taxable * GST_RATE
 
   return {
@@ -466,6 +480,7 @@ export function calculatePrice(
     vaTotal: goldVA,
     vaLabel: config.vaLabel || DEFAULT_PRICING_CONFIG.vaLabel,
     miscCharges: misc,
+    certificationCharges,
     taxable,
     gst,
     total: taxable + gst,
