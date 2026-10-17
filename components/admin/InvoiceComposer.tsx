@@ -11,8 +11,10 @@ import {
   lineFromCatalogueVariant,
   recomputeLine,
   applyInvoiceExchangeFlag,
+  resolveInvoiceFeeLabels,
   sellerDefaults,
   totalsFromPayload,
+  type FeeLabels,
   type InvoiceCatalogueVariant,
   type InvoiceDiamondRateOption,
   type InvoiceLine,
@@ -21,7 +23,7 @@ import {
   type InvoiceStoneRow,
 } from '@/lib/invoice-document'
 import { formatINRGrouped, INVOICE_GST_SCHEMES, normalizeInvoiceGstScheme } from '@/lib/invoice-tax'
-import { splitGemValues } from '@/lib/pricing'
+import { feeLabelsFromConfig, splitGemValues } from '@/lib/pricing'
 import type { PricingConfig } from '@/lib/pricing'
 import {
   normalizeMiscChargeLines,
@@ -61,7 +63,13 @@ export function InvoiceComposer({
   addVariantId,
 }: Props) {
   const router = useRouter()
-  const [payload, setPayload] = useState<InvoicePayload>(() => applyInvoiceSeller(initial))
+  const [payload, setPayload] = useState<InvoicePayload>(() => {
+    const base = applyInvoiceSeller(initial)
+    return {
+      ...base,
+      feeLabels: base.feeLabels ?? feeLabelsFromConfig(catalogue.config),
+    }
+  })
   const [shipSameAsBill, setShipSameAsBill] = useState(() => sameParty(initial.billedTo, initial.shippedTo))
   const [variants, setVariants] = useState(catalogue.variants)
   const [saving, setSaving] = useState(false)
@@ -74,6 +82,10 @@ export function InvoiceComposer({
 
   const seller = sellerDefaults()
   const totals = useMemo(() => totalsFromPayload(payload), [payload])
+  const feeLabels = useMemo(
+    () => resolveInvoiceFeeLabels(payload, catalogue.config),
+    [payload, catalogue.config],
+  )
 
   function setBilled<K extends keyof InvoiceParty>(key: K, value: string) {
     setPayload((p) => {
@@ -148,7 +160,11 @@ export function InvoiceComposer({
     setError('')
     try {
       const body = {
-        payload: applyInvoiceSeller({ ...payload, lines: totals.lines }),
+        payload: applyInvoiceSeller({
+          ...payload,
+          lines: totals.lines,
+          feeLabels: feeLabelsFromConfig(catalogue.config),
+        }),
         orderId: orderId || undefined,
       }
       const res = await fetch(savedId ? `/api/admin/invoices/${savedId}` : '/api/admin/invoices', {
@@ -287,6 +303,7 @@ export function InvoiceComposer({
           <LineEditor
             key={i}
             line={line}
+            feeLabels={feeLabels}
             onChange={(next) =>
               setPayload((p) => {
                 const lines = [...p.lines]
@@ -533,10 +550,12 @@ function MiscLinesEditor({
 
 function LineEditor({
   line,
+  feeLabels,
   onChange,
   onRemove,
 }: {
   line: InvoiceLine
+  feeLabels: FeeLabels
   onChange: (line: InvoiceLine) => void
   onRemove: () => void
 }) {
@@ -701,37 +720,21 @@ function LineEditor({
         )}
       </div>
 
-      <MiscLinesEditor
-        lines={
-          line.miscLines?.length
-            ? line.miscLines
-            : computed.miscLines?.length
-              ? computed.miscLines
-              : []
-        }
-        onChange={(miscLines) =>
-          patch({
-            miscLines,
-            miscCharges: sumMiscChargeLines(miscLines),
-          })
-        }
-      />
-
       <div className="inv-composer__grid" style={{ marginTop: 8 }}>
         <Field
-          label="Certification (₹)"
+          label={`${feeLabels.certification} (₹)`}
           type="number"
           value={line.certificationCharges ?? 0}
           onChange={(v) => patch({ certificationCharges: Number(v) || 0 })}
         />
         <Field
-          label="Packaging (₹)"
+          label={`${feeLabels.packaging} (₹)`}
           type="number"
           value={line.packagingCharges ?? 0}
           onChange={(v) => patch({ packagingCharges: Number(v) || 0 })}
         />
         <Field
-          label="Delivery (₹)"
+          label={`${feeLabels.delivery} (₹)`}
           type="number"
           value={line.deliveryCharges ?? 0}
           onChange={(v) => patch({ deliveryCharges: Number(v) || 0 })}
@@ -789,21 +792,38 @@ function LineEditor({
             .join(' · ')}
         </p>
       ) : null}
+
+      <MiscLinesEditor
+        lines={
+          line.miscLines?.length
+            ? line.miscLines
+            : computed.miscLines?.length
+              ? computed.miscLines
+              : []
+        }
+        onChange={(miscLines) =>
+          patch({
+            miscLines,
+            miscCharges: sumMiscChargeLines(miscLines),
+          })
+        }
+      />
+
       <p style={{ fontSize: '0.8rem', marginTop: 8 }}>
         Gold ₹{formatINRGrouped(computed.goldValue, 0)} · wastage ₹{formatINRGrouped(computed.wastage, 0)} · making ₹
         {formatINRGrouped(computed.making, 0)} · diamonds ₹{formatINRGrouped(gems.diamonds, 0)} · stones ₹
         {formatINRGrouped(gems.stones, 0)}
-        {computed.miscCharges > 0
-          ? ` · misc ₹${formatINRGrouped(computed.miscCharges, 0)}`
-          : ''}
         {computed.certificationCharges > 0
-          ? ` · certification ₹${formatINRGrouped(computed.certificationCharges, 0)}`
+          ? ` · ${feeLabels.certification} ₹${formatINRGrouped(computed.certificationCharges, 0)}`
           : ''}
         {computed.packagingCharges > 0
-          ? ` · packaging ₹${formatINRGrouped(computed.packagingCharges, 0)}`
+          ? ` · ${feeLabels.packaging} ₹${formatINRGrouped(computed.packagingCharges, 0)}`
           : ''}
         {computed.deliveryCharges > 0
-          ? ` · delivery ₹${formatINRGrouped(computed.deliveryCharges, 0)}`
+          ? ` · ${feeLabels.delivery} ₹${formatINRGrouped(computed.deliveryCharges, 0)}`
+          : ''}
+        {computed.miscCharges > 0
+          ? ` · misc ₹${formatINRGrouped(computed.miscCharges, 0)}`
           : ''}{' '}
         · taxable ₹{formatINRGrouped(computed.taxable)}
       </p>

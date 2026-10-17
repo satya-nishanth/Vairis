@@ -76,9 +76,10 @@ export default async function EditProductPage({
       stoneCharges: v.stoneCharges.toString(),
       miscCharges: v.miscCharges.toString(),
       miscLines: lines.map((l) => ({ label: l.label, amount: String(l.amount) })),
-      certificationCharges: (v.certificationCharges ?? 0).toString(),
-      packagingCharges: (v.packagingCharges ?? 0).toString(),
-      deliveryCharges: (v.deliveryCharges ?? 0).toString(),
+      certificationCharges:
+        v.certificationCharges != null ? v.certificationCharges.toString() : '',
+      packagingCharges: v.packagingCharges != null ? v.packagingCharges.toString() : '',
+      deliveryCharges: v.deliveryCharges != null ? v.deliveryCharges.toString() : '',
       stock: v.stock.toString(),
       sku: v.sku,
     }

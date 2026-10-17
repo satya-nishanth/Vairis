@@ -5,10 +5,12 @@ import { ORDER_STATUS_META } from '@/lib/orders'
 import { getShippingProvider } from '@/lib/shipping'
 import { resolvePayment } from '@/lib/refunds'
 import {
+  feeLabelsFromConfig,
   isOrderItemPriceSnapshot,
   roundMoney,
   splitGemValues,
 } from '@/lib/pricing'
+import { getPricingConfig } from '@/lib/pricing-data'
 import { isOrderDiscountBreakdown } from '@/lib/discounts'
 import { couponKindSuffix } from '@/lib/promo-labels'
 import { OrderJourney } from './OrderJourney'
@@ -28,25 +30,29 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      items: { include: { variant: true } },
-      attachments: { orderBy: { createdAt: 'asc' } },
-      promoCode: { select: { code: true } },
-      payment: true,
-      shipments: { orderBy: { dispatchedAt: 'desc' } },
-      events: { orderBy: { createdAt: 'asc' } },
-      refunds: { orderBy: { createdAt: 'desc' } },
-      notes: { orderBy: { createdAt: 'desc' } },
-      user: { select: { email: true, name: true } },
-      children: {
-        include: { refunds: true },
-        orderBy: { createdAt: 'asc' },
+  const [order, pricingConfig] = await Promise.all([
+    prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: { include: { variant: true } },
+        attachments: { orderBy: { createdAt: 'asc' } },
+        promoCode: { select: { code: true } },
+        payment: true,
+        shipments: { orderBy: { dispatchedAt: 'desc' } },
+        events: { orderBy: { createdAt: 'asc' } },
+        refunds: { orderBy: { createdAt: 'desc' } },
+        notes: { orderBy: { createdAt: 'desc' } },
+        user: { select: { email: true, name: true } },
+        children: {
+          include: { refunds: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
-    },
-  })
+    }),
+    getPricingConfig(),
+  ])
   if (!order) notFound()
+  const feeLabels = feeLabelsFromConfig(pricingConfig)
 
   const inventoryAllocations = await prisma.inventoryAllocation.findMany({
     where: { orderId: order.id },
@@ -605,6 +611,15 @@ export default async function AdminOrderDetailPage({
                 })),
                 { label: 'Making', value: money(b.making) },
                 { label: vaLabel, value: money(b.goldVA) },
+                ...(Number(b.certificationCharges ?? 0) > 0
+                  ? [{ label: feeLabels.certification, value: money(b.certificationCharges!) }]
+                  : []),
+                ...(Number(b.packagingCharges ?? 0) > 0
+                  ? [{ label: feeLabels.packaging, value: money(b.packagingCharges!) }]
+                  : []),
+                ...(Number(b.deliveryCharges ?? 0) > 0
+                  ? [{ label: feeLabels.delivery, value: money(b.deliveryCharges!) }]
+                  : []),
                 ...((b.miscLines?.length
                   ? b.miscLines
                   : b.miscCharges
@@ -616,15 +631,6 @@ export default async function AdminOrderDetailPage({
                     label: m.label || 'Misc',
                     value: money(m.amount),
                   })),
-                ...(Number(b.certificationCharges ?? 0) > 0
-                  ? [{ label: 'Certification', value: money(b.certificationCharges!) }]
-                  : []),
-                ...(Number(b.packagingCharges ?? 0) > 0
-                  ? [{ label: 'Packaging', value: money(b.packagingCharges!) }]
-                  : []),
-                ...(Number(b.deliveryCharges ?? 0) > 0
-                  ? [{ label: 'Delivery', value: money(b.deliveryCharges!) }]
-                  : []),
                 { label: 'Taxable', value: money(b.taxable) },
                 { label: 'GST', value: money(b.gst) },
                 { label: 'Line total', value: money(lineTotalAmt) },

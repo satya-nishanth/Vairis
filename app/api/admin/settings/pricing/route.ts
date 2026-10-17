@@ -20,6 +20,8 @@ const inrFixed = z
   .transform(Number)
   .refine((n) => !Number.isNaN(n) && n >= 0, 'Amount cannot be negative')
 
+const feeLabel = z.string().trim().min(1, 'Label is required').max(40)
+
 const putSchema = z.object({
   vaGoldPct: pct,
   vaStonePct: pct,
@@ -27,6 +29,9 @@ const putSchema = z.object({
   defaultCertificationCharges: inrFixed.optional(),
   defaultPackagingCharges: inrFixed.optional(),
   defaultDeliveryCharges: inrFixed.optional(),
+  certificationLabel: feeLabel.optional(),
+  packagingLabel: feeLabel.optional(),
+  deliveryLabel: feeLabel.optional(),
   showPricesGlobal: z.boolean(),
   diamondRates: z.array(
     z.object({
@@ -58,6 +63,9 @@ export async function GET() {
     defaultCertificationCharges: Number(settings?.defaultCertificationCharges ?? 0),
     defaultPackagingCharges: Number(settings?.defaultPackagingCharges ?? 0),
     defaultDeliveryCharges: Number(settings?.defaultDeliveryCharges ?? 0),
+    certificationLabel: settings?.certificationLabel ?? 'Certification',
+    packagingLabel: settings?.packagingLabel ?? 'Packaging',
+    deliveryLabel: settings?.deliveryLabel ?? 'Delivery',
     showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,
@@ -90,6 +98,9 @@ export async function PUT(req: NextRequest) {
         defaultCertificationCharges: data.defaultCertificationCharges ?? 0,
         defaultPackagingCharges: data.defaultPackagingCharges ?? 0,
         defaultDeliveryCharges: data.defaultDeliveryCharges ?? 0,
+        certificationLabel: data.certificationLabel ?? 'Certification',
+        packagingLabel: data.packagingLabel ?? 'Packaging',
+        deliveryLabel: data.deliveryLabel ?? 'Delivery',
         showPricesGlobal: data.showPricesGlobal,
       }
       await tx.pricingSettings.upsert({

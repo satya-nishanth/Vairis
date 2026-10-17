@@ -48,7 +48,7 @@ export default async function NewInvoicePage({
     }),
   ])
 
-  const payload = built?.payload ?? blankPayload()
+  const payload = built?.payload ?? blankPayload(catalogue.config)
   const selected = orderId ? recentOrders.find((o) => o.id === orderId) : null
   const orderMissing = Boolean(orderId && !built)
 

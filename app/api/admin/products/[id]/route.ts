@@ -43,9 +43,21 @@ const patchVariantSchema = z.object({
     )
     .optional()
     .nullable(),
-  certificationCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
-  packagingCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
-  deliveryCharges: z.union([z.string(), z.number()]).transform(Number).default(0),
+  certificationCharges: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .nullable()
+    .transform((v) => (v == null || v === '' ? null : Number(v))),
+  packagingCharges: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .nullable()
+    .transform((v) => (v == null || v === '' ? null : Number(v))),
+  deliveryCharges: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .nullable()
+    .transform((v) => (v == null || v === '' ? null : Number(v))),
   stock: z.union([z.string(), z.number()]).transform(Number).default(0),
   sku: z.string().min(1, 'SKU is required'),
   size: z.string().optional(),

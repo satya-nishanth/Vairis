@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { LOGO_SRC } from '@/lib/logo'
 import { formatINRGrouped } from '@/lib/invoice-tax'
 import type { InvoicePayload } from '@/lib/invoice-document'
-import { totalsFromPayload } from '@/lib/invoice-document'
+import { resolveInvoiceFeeLabels, totalsFromPayload } from '@/lib/invoice-document'
 
 export function InvoicePrintView({
   number,
@@ -12,6 +12,7 @@ export function InvoicePrintView({
   payload: InvoicePayload
 }) {
   const totals = totalsFromPayload(payload)
+  const feeLabels = resolveInvoiceFeeLabels(payload)
   const paid = /paid/i.test(payload.payment.status)
 
   return (
@@ -125,6 +126,30 @@ export function InvoicePrintView({
                     Gold · {Number(line.weightGrams).toFixed(3)} g @ ₹{formatINRGrouped(line.goldRatePerGram, 0)}
                   </span>
                   <span className="inv-doc__amt">{formatINRGrouped(line.goldValue, 0)}</span>
+                  {Number(line.certificationCharges) > 0 ? (
+                    <>
+                      <span>{feeLabels.certification}</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.certificationCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
+                  {Number(line.packagingCharges) > 0 ? (
+                    <>
+                      <span>{feeLabels.packaging}</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.packagingCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
+                  {Number(line.deliveryCharges) > 0 ? (
+                    <>
+                      <span>{feeLabels.delivery}</span>
+                      <span className="inv-doc__amt">
+                        {formatINRGrouped(line.deliveryCharges, 0)}
+                      </span>
+                    </>
+                  ) : null}
                   {(line.miscLines?.length
                     ? line.miscLines
                     : line.miscCharges > 0
@@ -138,30 +163,6 @@ export function InvoicePrintView({
                         <span className="inv-doc__amt">{formatINRGrouped(m.amount, 0)}</span>
                       </Fragment>
                     ))}
-                  {Number(line.certificationCharges) > 0 ? (
-                    <>
-                      <span>Certification</span>
-                      <span className="inv-doc__amt">
-                        {formatINRGrouped(line.certificationCharges, 0)}
-                      </span>
-                    </>
-                  ) : null}
-                  {Number(line.packagingCharges) > 0 ? (
-                    <>
-                      <span>Packaging</span>
-                      <span className="inv-doc__amt">
-                        {formatINRGrouped(line.packagingCharges, 0)}
-                      </span>
-                    </>
-                  ) : null}
-                  {Number(line.deliveryCharges) > 0 ? (
-                    <>
-                      <span>Delivery</span>
-                      <span className="inv-doc__amt">
-                        {formatINRGrouped(line.deliveryCharges, 0)}
-                      </span>
-                    </>
-                  ) : null}
                 </div>
               </td>
               <td>

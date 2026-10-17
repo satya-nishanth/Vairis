@@ -1,12 +1,17 @@
 import {
   calculatePrice,
   DEFAULT_PRICING_CONFIG,
+  feeLabelsFromConfig,
   isOrderItemPriceSnapshot,
+  resolveFixedCharges,
   splitGemValues,
+  type FeeLabels,
   type OrderItemPriceSnapshot,
   type PricingConfig,
   type StoneInput,
 } from '@/lib/pricing'
+
+export type { FeeLabels }
 import { amountInWords, normalizeInvoiceGstScheme, splitInvoiceTax, type InvoiceGstScheme } from '@/lib/invoice-tax'
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
 import { couponKindSuffix } from '@/lib/promo-labels'
@@ -100,9 +105,10 @@ export type InvoiceProductInput = {
   miscCharges?: number | string
   /** Optional labeled misc rows; when set, sum overrides miscCharges. */
   miscLines?: MiscChargeLine[]
-  certificationCharges?: number | string
-  packagingCharges?: number | string
-  deliveryCharges?: number | string
+  /** Null/omit → PricingSettings defaults via resolveFixedCharges. */
+  certificationCharges?: number | string | null
+  packagingCharges?: number | string | null
+  deliveryCharges?: number | string | null
   stoneCharges?: number | string
   stones?: StoneInput[]
   leadIncentive?: number
@@ -134,9 +140,10 @@ export type InvoiceCatalogueVariant = {
   flatMakingCharge: number
   miscCharges: number
   miscLines?: MiscChargeLine[]
-  certificationCharges: number
-  packagingCharges: number
-  deliveryCharges: number
+  /** Null = inherit PricingSettings defaults when building a line. */
+  certificationCharges: number | null
+  packagingCharges: number | null
+  deliveryCharges: number | null
   stoneCharges: number
   stones: InvoiceCatalogueStone[]
 }
@@ -195,6 +202,8 @@ export type InvoicePayload = {
     certification: string
     returns: string
   }
+  /** Labels for the three fixed fees — from PricingSettings at build time. */
+  feeLabels?: FeeLabels
   lines: InvoiceLine[]
 }
 
@@ -349,7 +358,7 @@ export function totalsFromPayload(payload: InvoicePayload) {
   }
 }
 
-export function blankPayload(): InvoicePayload {
+export function blankPayload(config: PricingConfig = DEFAULT_PRICING_CONFIG): InvoicePayload {
   return {
     seller: sellerDefaults(),
     billedTo: { name: '', lines: '', phone: '' },
@@ -360,8 +369,30 @@ export function blankPayload(): InvoicePayload {
     gstScheme: 'JEWELLERY',
     discount: 0,
     notes: { ...DEFAULT_INVOICE_NOTES },
+    feeLabels: feeLabelsFromConfig(config),
     lines: [blankLine()],
   }
+}
+
+/**
+ * Resolve fee labels. When live `config` is passed (composer), prefer it so
+ * Pricing Settings renames show immediately. Without config (print / locked),
+ * use labels stamped on the payload, then defaults.
+ */
+export function resolveInvoiceFeeLabels(
+  payload: Pick<InvoicePayload, 'feeLabels'>,
+  config?: PricingConfig,
+): FeeLabels {
+  if (config) return feeLabelsFromConfig(config)
+  const saved = payload.feeLabels
+  if (saved?.certification?.trim() && saved?.packaging?.trim() && saved?.delivery?.trim()) {
+    return {
+      certification: saved.certification.trim(),
+      packaging: saved.packaging.trim(),
+      delivery: saved.delivery.trim(),
+    }
+  }
+  return feeLabelsFromConfig(DEFAULT_PRICING_CONFIG)
 }
 
 export function blankLine(): InvoiceLine {
@@ -461,6 +492,14 @@ export function lineFromProduct(
     Number(product.miscCharges) || 0,
     DEFAULT_MISC_LABEL,
   )
+  const fixed = resolveFixedCharges(
+    {
+      certificationCharges: product.certificationCharges,
+      packagingCharges: product.packagingCharges,
+      deliveryCharges: product.deliveryCharges,
+    },
+    config,
+  )
   return recomputeLine(
     {
       ...blankLine(),
@@ -479,9 +518,9 @@ export function lineFromProduct(
       flatMaking: Number(product.flatMakingCharge) || 0,
       miscLines,
       miscCharges: sumMiscChargeLines(miscLines),
-      certificationCharges: Number(product.certificationCharges) || 0,
-      packagingCharges: Number(product.packagingCharges) || 0,
-      deliveryCharges: Number(product.deliveryCharges) || 0,
+      certificationCharges: fixed.certificationCharges,
+      packagingCharges: fixed.packagingCharges,
+      deliveryCharges: fixed.deliveryCharges,
       legacyStoneCharges: Number(product.stoneCharges) || 0,
       leadIncentive: Number(product.leadIncentive) || 0,
       stones: stoneRowsFromInputs(product.stones ?? [], withExchange),
@@ -566,9 +605,10 @@ export function catalogueVariantFromCreatedProduct(product: CreatedInvoiceProduc
     flatMakingCharge: Number(v.flatMakingCharge),
     miscCharges: Number(v.miscCharges),
     miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
-    certificationCharges: Number(v.certificationCharges ?? 0),
-    packagingCharges: Number(v.packagingCharges ?? 0),
-    deliveryCharges: Number(v.deliveryCharges ?? 0),
+    certificationCharges:
+      v.certificationCharges != null ? Number(v.certificationCharges) : null,
+    packagingCharges: v.packagingCharges != null ? Number(v.packagingCharges) : null,
+    deliveryCharges: v.deliveryCharges != null ? Number(v.deliveryCharges) : null,
     stoneCharges: Number(v.stoneCharges),
     stones: (product.stones ?? [])
       .filter((s) => s.diamondRate)
@@ -610,6 +650,7 @@ export function invoiceFromProducts(
     placeOfSupply: ctx.placeOfSupply || 'Maharashtra (27)',
     gstScheme: 'JEWELLERY',
     notes: ctx.notes ?? { ...DEFAULT_INVOICE_NOTES },
+    feeLabels: feeLabelsFromConfig(config),
     lines,
   }
   const totals = totalsFromPayload(payload)
@@ -810,15 +851,21 @@ export function lineFromOrderItem(
         (v as { miscChargeLines?: unknown }).miscChargeLines,
         Number(v.miscCharges),
       ),
-      certificationCharges: Number(
-        (v as { certificationCharges?: { toString(): string } | number }).certificationCharges ?? 0,
-      ),
-      packagingCharges: Number(
-        (v as { packagingCharges?: { toString(): string } | number }).packagingCharges ?? 0,
-      ),
-      deliveryCharges: Number(
-        (v as { deliveryCharges?: { toString(): string } | number }).deliveryCharges ?? 0,
-      ),
+      certificationCharges:
+        (v as { certificationCharges?: { toString(): string } | number | null }).certificationCharges ==
+        null
+          ? null
+          : Number(
+              (v as { certificationCharges?: { toString(): string } | number }).certificationCharges,
+            ),
+      packagingCharges:
+        (v as { packagingCharges?: { toString(): string } | number | null }).packagingCharges == null
+          ? null
+          : Number((v as { packagingCharges?: { toString(): string } | number }).packagingCharges),
+      deliveryCharges:
+        (v as { deliveryCharges?: { toString(): string } | number | null }).deliveryCharges == null
+          ? null
+          : Number((v as { deliveryCharges?: { toString(): string } | number }).deliveryCharges),
       stoneCharges: Number(v.stoneCharges ?? 0),
       stones: toStoneInputs(v.product.stones),
     },
@@ -896,6 +943,7 @@ export function payloadFromOrder(
           ? discountRaw
           : undefined,
     notes: { ...DEFAULT_INVOICE_NOTES },
+    feeLabels: feeLabelsFromConfig(config),
     lines: lines.length > 0 ? lines : [blankLine()],
   }
   const totals = totalsFromPayload(payload)
