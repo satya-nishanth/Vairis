@@ -125,6 +125,19 @@ export function InvoicePrintView({
                     Gold · {Number(line.weightGrams).toFixed(3)} g @ ₹{formatINRGrouped(line.goldRatePerGram, 0)}
                   </span>
                   <span className="inv-doc__amt">{formatINRGrouped(line.goldValue, 0)}</span>
+                  {(line.miscLines?.length
+                    ? line.miscLines
+                    : line.miscCharges > 0
+                      ? [{ label: 'Hallmark', amount: line.miscCharges }]
+                      : []
+                  )
+                    .filter((m) => Number(m.amount) > 0)
+                    .map((m, mi) => (
+                      <Fragment key={`misc-${mi}`}>
+                        <span>{m.label || 'Misc'}</span>
+                        <span className="inv-doc__amt">{formatINRGrouped(m.amount, 0)}</span>
+                      </Fragment>
+                    ))}
                 </div>
               </td>
               <td>

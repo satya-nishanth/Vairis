@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
 import type { PricingConfig } from '@/lib/pricing'
+import { resolveMiscChargeLines } from '@/lib/misc-charges'
 import {
   blankPayload,
   invoiceFromProducts,
@@ -51,6 +52,7 @@ export async function loadInvoiceCatalogue(): Promise<InvoiceCatalogue> {
       makingChargePerGram: Number(v.makingChargePerGram),
       flatMakingCharge: Number(v.flatMakingCharge),
       miscCharges: Number(v.miscCharges),
+      miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
       stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(p.stones).map((s) => ({
         typeLabel: s.typeLabel ?? 'Diamond',
@@ -180,6 +182,7 @@ export async function invoiceFromVariants(
       makingChargePerGram: Number(v.makingChargePerGram),
       flatMakingCharge: Number(v.flatMakingCharge),
       miscCharges: Number(v.miscCharges),
+      miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
       stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(v.product.stones),
     }

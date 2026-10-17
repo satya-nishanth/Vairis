@@ -125,11 +125,33 @@ describe('order invoice from priceBreakdown', () => {
     expect(line.wastage).toBeCloseTo(1075.82, 2)
     expect(line.making).toBe(1100)
     expect(line.taxable).toBeCloseTo(23737.17, 2)
+    expect(line.miscLines).toEqual([{ label: 'Delivery', amount: 45 }])
 
     // Live recompute would use 99999/g — locked path must not.
     const again = recomputeLine({ ...line, goldRatePerGram: 99999 }, 'Wastage')
     expect(again.goldValue).toBeCloseTo(21516.35, 2)
     expect(again.taxable).toBeCloseTo(23737.17, 2)
+  })
+
+  it('keeps multiple labeled misc lines in taxable and on the line', () => {
+    const line = recomputeLine(
+      {
+        ...lineFromOrderItem(orderItem, { GOLD_18K: 9780.16 }, DEFAULT_PRICING_CONFIG),
+        lockedPricing: false,
+        miscLines: [
+          { label: 'Hallmark', amount: 800 },
+          { label: 'Certificate', amount: 200 },
+        ],
+        miscCharges: 1000,
+      },
+      'Wastage',
+    )
+    expect(line.miscCharges).toBe(1000)
+    expect(line.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    expect(line.taxable).toBeGreaterThan(0)
   })
 
   it('payloadFromOrder keeps snapshot taxable on the invoice', () => {

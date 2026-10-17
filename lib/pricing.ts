@@ -19,6 +19,15 @@
  */
 
 import type { PromoKind } from '@prisma/client'
+import {
+  DEFAULT_MISC_LABEL,
+  normalizeMiscChargeLines,
+  resolveMiscChargeLines,
+  sumMiscChargeLines,
+  type MiscChargeLine,
+} from '@/lib/misc-charges'
+
+export type { MiscChargeLine }
 
 export const GST_RATE = 0.03
 
@@ -173,6 +182,8 @@ export type OrderItemPriceSnapshot = PriceBreakdown & {
   couponKind?: PromoKind
   /** max(0, total − autoDiscount − couponDiscount). Optional on legacy rows. */
   payable?: number
+  /** Labeled misc / hallmark / delivery rows (unit amounts). Sum ≈ miscCharges. */
+  miscLines?: MiscChargeLine[]
 }
 
 export function toOrderItemPriceSnapshot(
@@ -206,7 +217,10 @@ export function sellingComponentsToUnitSnapshot(
     stones: number
     making: number
     wastage: number
-    delivery: number
+    /** Legacy single misc amount when miscLines omitted. */
+    delivery?: number
+    /** Order-level labeled misc rows (text + amount). Sum becomes miscCharges. */
+    miscLines?: MiscChargeLine[]
     gst: number
     /** Order-level discount (₹) subtracted after GST — maps to autoDiscount on the unit. */
     discount?: number
@@ -226,7 +240,17 @@ export function sellingComponentsToUnitSnapshot(
   const diamondValue = selling.diamonds / q
   const otherStoneValue = selling.stones / q
   const stoneValue = diamondValue + otherStoneValue
-  const miscCharges = selling.delivery / q
+  const orderMiscLines = normalizeMiscChargeLines(
+    selling.miscLines?.length
+      ? selling.miscLines
+      : resolveMiscChargeLines(undefined, selling.delivery ?? 0, DEFAULT_MISC_LABEL),
+  )
+  const orderMiscTotal = sumMiscChargeLines(orderMiscLines)
+  const miscCharges = orderMiscTotal / q
+  const miscLines = orderMiscLines.map((l) => ({
+    label: l.label,
+    amount: l.amount / q,
+  }))
   const gst = selling.gst / q
   const taxable = goldValue + goldVA + making + stoneValue + miscCharges
   const total = taxable + gst
@@ -255,12 +279,14 @@ export function sellingComponentsToUnitSnapshot(
       metalType: meta.metalType,
     },
   )
-  if (autoDiscount <= 0) return snap
+  const withMisc: OrderItemPriceSnapshot =
+    miscLines.length > 0 ? { ...snap, miscLines } : snap
+  if (autoDiscount <= 0) return withMisc
   return {
-    ...snap,
+    ...withMisc,
     autoDiscount,
     autoDiscountLabel: 'Discount',
-    payable: Math.max(0, snap.total - autoDiscount),
+    payable: Math.max(0, withMisc.total - autoDiscount),
   }
 }
 
@@ -293,6 +319,7 @@ export function unitSnapshotToSellingComponents(
     otherStoneValue?: number
     stoneLines?: { typeLabel: string; value: number }[]
     autoDiscount?: number
+    miscLines?: MiscChargeLine[]
   },
   quantity: number,
 ): {
@@ -304,9 +331,18 @@ export function unitSnapshotToSellingComponents(
   delivery: number
   gst: number
   discount: number
+  miscLines: MiscChargeLine[]
 } {
   const q = Math.max(1, quantity)
   const gems = splitGemValues(snapshot)
+  const miscLines = resolveMiscChargeLines(
+    snapshot.miscLines,
+    Number(snapshot.miscCharges) || 0,
+    DEFAULT_MISC_LABEL,
+  ).map((l) => ({
+    label: l.label,
+    amount: roundMoney(l.amount * q),
+  }))
   // Only autoDiscount — coupon stays on Order.discountBreakdown / snapshot.coupon*.
   return {
     gold: roundMoney(snapshot.goldValue * q),
@@ -314,9 +350,10 @@ export function unitSnapshotToSellingComponents(
     stones: roundMoney(gems.stones * q),
     making: roundMoney(snapshot.making * q),
     wastage: roundMoney((snapshot.goldVA + (snapshot.stoneVA ?? 0)) * q),
-    delivery: roundMoney(snapshot.miscCharges * q),
+    delivery: roundMoney(sumMiscChargeLines(miscLines)),
     gst: roundMoney(snapshot.gst * q),
     discount: roundMoney((snapshot.autoDiscount ?? 0) * q),
+    miscLines,
   }
 }
 
@@ -335,20 +372,25 @@ export function sellingBreakdownMatchesGoods(
     stones: number
     making: number
     wastage: number
-    delivery: number
+    delivery?: number
+    miscLines?: MiscChargeLine[]
     gst: number
     discount?: number
   },
   goodsTotal: number,
   opts?: { requireNetIfDiscounted?: boolean },
 ): boolean {
+  const misc =
+    selling.miscLines && selling.miscLines.length > 0
+      ? sumMiscChargeLines(normalizeMiscChargeLines(selling.miscLines))
+      : selling.delivery ?? 0
   const gross =
     selling.gold +
     selling.diamonds +
     selling.stones +
     selling.making +
     selling.wastage +
-    selling.delivery +
+    misc +
     selling.gst
   const discount = selling.discount ?? 0
   const paise = (n: number) => Math.round(n * 100)

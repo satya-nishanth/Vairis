@@ -157,6 +157,35 @@ describe('calculatePrice (estimator formula)', () => {
     expect(selling.gold + selling.making + selling.wastage + selling.gst - selling.discount).toBe(11_645)
   })
 
+  it('stores labeled misc lines on the unit snapshot for invoices', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 0,
+        stones: 0,
+        making: 1_000,
+        wastage: 500,
+        miscLines: [
+          { label: 'Hallmark', amount: 800 },
+          { label: 'Certificate', amount: 200 },
+        ],
+        gst: 375,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.miscCharges).toBe(1_000)
+    expect(snap.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    expect(selling.delivery).toBe(1_000)
+  })
+
   it('sellingBreakdownMatchesGoods accepts net or gross equality', () => {
     const components = {
       gold: 30_000,

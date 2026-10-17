@@ -20,6 +20,7 @@ export type BuildPriceVariant = {
   flatMakingCharge: string
   stoneCharges: string
   miscCharges: string
+  miscLines?: { label: string; amount: string }[]
   stock: string
   sku: string
 }
@@ -61,6 +62,7 @@ type Props = {
   onAddVariant: () => void
   onRemoveVariant: (idx: number) => void
   onSetVariant: (idx: number, field: keyof BuildPriceVariant, value: string) => void
+  onSetVariantMiscLines?: (idx: number, lines: { label: string; amount: string }[]) => void
   onAddStone: () => void
   onRemoveStone: (idx: number) => void
   onSetStone: (idx: number, field: keyof BuildPriceStone, value: string | boolean) => void
@@ -598,18 +600,82 @@ export default function AdminProductBuildPrice(props: Props) {
                       />
                       <p className="pform__hint">Legacy flat gem cost</p>
                     </div>
-                    <div className="pform__field">
-                      <label>Misc (₹)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={v.miscCharges}
-                        onChange={(e) => props.onSetVariant(idx, 'miscCharges', e.target.value)}
-                        className="pform__input"
-                        placeholder="e.g. 45"
-                      />
-                      <p className="pform__hint">BIS hallmark</p>
+                    <div className="pform__field" style={{ gridColumn: '1 / -1' }}>
+                      <label>Misc / hallmark (text + amount)</label>
+                      {(v.miscLines?.length
+                        ? v.miscLines
+                        : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                      ).map((row, ri) => {
+                        const rows = v.miscLines?.length
+                          ? v.miscLines
+                          : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                        return (
+                          <div
+                            key={ri}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 120px auto',
+                              gap: 8,
+                              marginTop: 6,
+                            }}
+                          >
+                            <input
+                              className="pform__input"
+                              value={row.label}
+                              placeholder={`Text ${ri + 1}`}
+                              onChange={(e) => {
+                                const next = rows.map((r, j) =>
+                                  j === ri ? { ...r, label: e.target.value } : r,
+                                )
+                                props.onSetVariantMiscLines?.(idx, next)
+                              }}
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="pform__input"
+                              value={row.amount}
+                              placeholder={`Amount ${ri + 1}`}
+                              onChange={(e) => {
+                                const next = rows.map((r, j) =>
+                                  j === ri ? { ...r, amount: e.target.value } : r,
+                                )
+                                props.onSetVariantMiscLines?.(idx, next)
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="admin-btn"
+                              onClick={() =>
+                                props.onSetVariantMiscLines?.(
+                                  idx,
+                                  rows.filter((_, j) => j !== ri),
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        className="admin-btn"
+                        style={{ marginTop: 8 }}
+                        onClick={() => {
+                          const rows = v.miscLines?.length
+                            ? v.miscLines
+                            : [{ label: 'Hallmark', amount: v.miscCharges || '0' }]
+                          props.onSetVariantMiscLines?.(idx, [
+                            ...rows,
+                            { label: '', amount: '0' },
+                          ])
+                        }}
+                      >
+                        Add misc line
+                      </button>
+                      <p className="pform__hint">Shown with labels on the tax invoice</p>
                     </div>
                   </div>
                   <p

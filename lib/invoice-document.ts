@@ -11,7 +11,16 @@ import { amountInWords, normalizeInvoiceGstScheme, splitInvoiceTax, type Invoice
 import { toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
 import { couponKindSuffix } from '@/lib/promo-labels'
 import { formatMetalLabel, goldRateKey as purityRateKey } from '@/lib/metal'
+import {
+  DEFAULT_MISC_LABEL,
+  normalizeMiscChargeLines,
+  resolveMiscChargeLines,
+  sumMiscChargeLines,
+  type MiscChargeLine,
+} from '@/lib/misc-charges'
 import type { InvoiceStatus } from '@prisma/client'
+
+export type { MiscChargeLine as InvoiceMiscLine }
 
 export type InvoiceParty = {
   name: string
@@ -57,7 +66,10 @@ export type InvoiceLine = {
   /** Non-diamond / coloured-stone portion of stoneValue. */
   otherStoneValue: number
   leadIncentive: number
+  /** Sum of miscLines — kept for taxable / locked snapshots. */
   miscCharges: number
+  /** Disclosed misc / hallmark / delivery rows (label + amount). */
+  miscLines: MiscChargeLine[]
   /** Legacy flat stone cost when the product has no stone rows. */
   legacyStoneCharges: number
   itemValue: number
@@ -82,6 +94,8 @@ export type InvoiceProductInput = {
   makingChargePerGram: number | string
   flatMakingCharge?: number | string
   miscCharges?: number | string
+  /** Optional labeled misc rows; when set, sum overrides miscCharges. */
+  miscLines?: MiscChargeLine[]
   stoneCharges?: number | string
   stones?: StoneInput[]
   leadIncentive?: number
@@ -112,6 +126,7 @@ export type InvoiceCatalogueVariant = {
   makingChargePerGram: number
   flatMakingCharge: number
   miscCharges: number
+  miscLines?: MiscChargeLine[]
   stoneCharges: number
   stones: InvoiceCatalogueStone[]
 }
@@ -211,6 +226,12 @@ export function goldRateKey(metalType: string): 'GOLD_9K' | 'GOLD_14K' | 'GOLD_1
 
 export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLine {
   const qty = Math.max(1, Number(line.quantity) || 1)
+  const miscLines = normalizeMiscChargeLines(
+    line.miscLines?.length
+      ? line.miscLines
+      : resolveMiscChargeLines(undefined, Number(line.miscCharges) || 0),
+  )
+  const miscCharges = sumMiscChargeLines(miscLines)
 
   // Order-creation snapshot — keep frozen component amounts; only scale by qty.
   if (line.lockedPricing) {
@@ -219,9 +240,11 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       Number(line.wastage) +
       Number(line.making) +
       Number(line.stoneValue) +
-      Number(line.miscCharges)
+      miscCharges
     return {
       ...line,
+      miscLines,
+      miscCharges,
       quantity: qty,
       itemValue: Number(line.goldValue) + Number(line.stoneValue),
       makingPlusWastage: Number(line.making) + Number(line.wastage),
@@ -235,7 +258,7 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
       makingChargePerGram: line.makingPerGram,
       flatMakingCharge: line.flatMaking,
       stoneCharges: Number(line.legacyStoneCharges) || 0,
-      miscCharges: line.miscCharges,
+      miscCharges,
     },
     Number(line.goldRatePerGram) || 0,
     {
@@ -261,6 +284,8 @@ export function recomputeLine(line: InvoiceLine, configLabel: string): InvoiceLi
   }))
   return {
     ...line,
+    miscLines,
+    miscCharges,
     quantity: qty,
     goldValue: unit.goldValue,
     wastage: unit.goldVA,
@@ -337,6 +362,7 @@ export function blankLine(): InvoiceLine {
     otherStoneValue: 0,
     leadIncentive: 0,
     miscCharges: 0,
+    miscLines: [],
     legacyStoneCharges: 0,
     itemValue: 0,
     makingPlusWastage: 0,
@@ -401,6 +427,11 @@ export function lineFromProduct(
   const withExchange = product.withExchange ?? false
   const goldRate =
     product.goldRatePerGram ?? rates[goldRateKey(metal)] ?? rates[metal] ?? 0
+  const miscLines = resolveMiscChargeLines(
+    product.miscLines,
+    Number(product.miscCharges) || 0,
+    DEFAULT_MISC_LABEL,
+  )
   return recomputeLine(
     {
       ...blankLine(),
@@ -417,7 +448,8 @@ export function lineFromProduct(
       wastagePct: Number(config.vaGoldPct),
       makingPerGram: Number(product.makingChargePerGram),
       flatMaking: Number(product.flatMakingCharge) || 0,
-      miscCharges: Number(product.miscCharges) || 0,
+      miscLines,
+      miscCharges: sumMiscChargeLines(miscLines),
       legacyStoneCharges: Number(product.stoneCharges) || 0,
       leadIncentive: Number(product.leadIncentive) || 0,
       stones: stoneRowsFromInputs(product.stones ?? [], withExchange),
@@ -442,6 +474,7 @@ export function lineFromCatalogueVariant(
       makingChargePerGram: variant.makingChargePerGram,
       flatMakingCharge: variant.flatMakingCharge,
       miscCharges: variant.miscCharges,
+      miscLines: variant.miscLines,
       stoneCharges: variant.stoneCharges,
       stones: variant.stones,
       huid: extras?.huid,
@@ -468,6 +501,7 @@ type CreatedInvoiceProduct = {
     makingChargePerGram: unknown
     flatMakingCharge: unknown
     miscCharges: unknown
+    miscChargeLines?: unknown
     stoneCharges: unknown
   }>
   stones?: Array<{
@@ -493,6 +527,7 @@ export function catalogueVariantFromCreatedProduct(product: CreatedInvoiceProduc
     makingChargePerGram: Number(v.makingChargePerGram),
     flatMakingCharge: Number(v.flatMakingCharge),
     miscCharges: Number(v.miscCharges),
+    miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
     stoneCharges: Number(v.stoneCharges),
     stones: (product.stones ?? [])
       .filter((s) => s.diamondRate)
@@ -694,6 +729,11 @@ export function lineFromOrderItem(
         diamondValue: gems.diamonds,
         otherStoneValue: gems.stones,
         miscCharges: Number(snap.miscCharges),
+        miscLines: resolveMiscChargeLines(
+          (snap as { miscLines?: unknown }).miscLines,
+          Number(snap.miscCharges),
+          'Delivery',
+        ),
         legacyStoneCharges: gems.stones,
         leadIncentive: 0,
         itemValue: Number(snap.goldValue) + Number(snap.stoneValue),
@@ -717,6 +757,10 @@ export function lineFromOrderItem(
       makingChargePerGram: Number(v.makingChargePerGram),
       flatMakingCharge: Number(v.flatMakingCharge),
       miscCharges: Number(v.miscCharges),
+      miscLines: resolveMiscChargeLines(
+        (v as { miscChargeLines?: unknown }).miscChargeLines,
+        Number(v.miscCharges),
+      ),
       stoneCharges: Number(v.stoneCharges ?? 0),
       stones: toStoneInputs(v.product.stones),
     },

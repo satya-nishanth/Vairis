@@ -16,6 +16,11 @@ import {
   goldRateKey,
   normalizeMetalColor,
 } from '@/lib/metal'
+import {
+  DEFAULT_MISC_LABEL,
+  resolveMiscChargeLines,
+  sumMiscChargeLines,
+} from '@/lib/misc-charges'
 
 export type CategoryOption = { slug: string; name: string }
 
@@ -58,7 +63,10 @@ type Variant = {
   makingChargePerGram: string
   flatMakingCharge: string
   stoneCharges: string
+  /** Sum of miscLines — kept for pricing / API compat. */
   miscCharges: string
+  /** Labeled misc rows (text + amount). */
+  miscLines: { label: string; amount: string }[]
   stock: string
   sku: string
 }
@@ -152,6 +160,13 @@ function formVariantFromLoaded(v: Partial<Variant>): Variant {
     flatMakingCharge: v.flatMakingCharge ?? '0',
     stoneCharges: v.stoneCharges ?? '0',
     miscCharges: v.miscCharges ?? '45',
+    miscLines:
+      v.miscLines && v.miscLines.length > 0
+        ? v.miscLines.map((l) => ({ label: l.label, amount: l.amount }))
+        : resolveMiscChargeLines(undefined, parseFloat(v.miscCharges ?? '0') || 0).map((l) => ({
+            label: l.label,
+            amount: String(l.amount),
+          })),
     stock: v.stock ?? '0',
     sku: v.sku ?? '',
   }
@@ -167,9 +182,16 @@ function emptyVariant(): Variant {
     flatMakingCharge: '0',
     stoneCharges: '0',
     miscCharges: '45',
+    miscLines: [{ label: DEFAULT_MISC_LABEL, amount: '45' }],
     stock: '0',
     sku: '',
   }
+}
+
+function miscSumFromLines(lines: { label: string; amount: string }[]): number {
+  return sumMiscChargeLines(
+    lines.map((l) => ({ label: l.label, amount: parseFloat(l.amount) || 0 })),
+  )
 }
 
 function emptyStone(diamondRates: DiamondRateOption[]): FormStone {
@@ -382,7 +404,7 @@ export default function ProductForm({
         makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
         flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
         stoneCharges: parseFloat(v.stoneCharges) || 0,
-        miscCharges: parseFloat(v.miscCharges) || 0,
+        miscCharges: miscSumFromLines(v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }]),
       },
       rates[goldRateKey(v.metalType)] ?? 0,
       { stones: stoneInputs, withExchange, config: effectivePricing },
@@ -430,7 +452,9 @@ export default function ProductForm({
               makingChargePerGram: parseFloat(v.makingChargePerGram) || 0,
               flatMakingCharge: parseFloat(v.flatMakingCharge) || 0,
               stoneCharges: parseFloat(v.stoneCharges) || 0,
-              miscCharges: parseFloat(v.miscCharges) || 0,
+              miscCharges: miscSumFromLines(
+                v.miscLines?.length ? v.miscLines : [{ label: '', amount: v.miscCharges }],
+              ),
             },
             rates[goldRateKey(v.metalType)] ?? 0,
             { stones, withExchange: false, config: cfg },
@@ -496,6 +520,23 @@ export default function ProductForm({
         next.pieces = withAutoSkus(f.pieces, value as string)
       }
       return next
+    })
+  }
+
+  function setVariantMiscLines(idx: number, miscLines: { label: string; amount: string }[]) {
+    setForm((f) => {
+      const pieces = [...f.pieces]
+      const pi = Math.min(activePieceIdx, pieces.length - 1)
+      const piece = pieces[pi]
+      const variants = [...piece.variants]
+      const prev = variants[idx]
+      variants[idx] = {
+        ...prev,
+        miscLines,
+        miscCharges: String(miscSumFromLines(miscLines)),
+      }
+      pieces[pi] = { ...piece, variants }
+      return { ...f, pieces }
     })
   }
 
@@ -655,7 +696,24 @@ export default function ProductForm({
       variants: (isDraft
         ? p.variants.filter((v) => v.sku.trim() || parseFloat(v.weightGrams) > 0)
         : p.variants
-      ).map((v) => ({ ...v })),
+      ).map((v) => {
+        const miscLines = (v.miscLines ?? [])
+          .map((l) => ({
+            label: (l.label || '').trim() || DEFAULT_MISC_LABEL,
+            amount: parseFloat(l.amount) || 0,
+          }))
+          .filter((l) => l.amount > 0 || l.label !== DEFAULT_MISC_LABEL)
+        const miscCharges = miscSumFromLines(
+          miscLines.length
+            ? miscLines.map((l) => ({ label: l.label, amount: String(l.amount) }))
+            : [{ label: '', amount: v.miscCharges }],
+        )
+        return {
+          ...v,
+          miscCharges,
+          miscChargeLines: miscLines,
+        }
+      }),
       stones: p.stones
         .filter((s) => parseFloat(s.caratWeight) > 0 && s.diamondRateId)
         .map((s) => ({
@@ -1375,6 +1433,7 @@ export default function ProductForm({
           onAddVariant={addVariant}
           onRemoveVariant={removeVariant}
           onSetVariant={(idx, field, value) => setVariant(idx, field, value)}
+          onSetVariantMiscLines={setVariantMiscLines}
           onAddStone={addStone}
           onRemoveStone={removeStone}
           onSetStone={(idx, field, value) => setStone(idx, field, value)}

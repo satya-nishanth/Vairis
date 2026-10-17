@@ -605,7 +605,17 @@ export default async function AdminOrderDetailPage({
                 })),
                 { label: 'Making', value: money(b.making) },
                 { label: vaLabel, value: money(b.goldVA) },
-                { label: 'Delivery', value: money(b.miscCharges) },
+                ...((b.miscLines?.length
+                  ? b.miscLines
+                  : b.miscCharges
+                    ? [{ label: 'Delivery', amount: b.miscCharges }]
+                    : []
+                ) as { label: string; amount: number }[])
+                  .filter((m) => Number(m.amount) > 0)
+                  .map((m) => ({
+                    label: m.label || 'Misc',
+                    value: money(m.amount),
+                  })),
                 { label: 'Taxable', value: money(b.taxable) },
                 { label: 'GST', value: money(b.gst) },
                 { label: 'Line total', value: money(lineTotalAmt) },

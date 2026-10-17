@@ -253,7 +253,10 @@ model ProductVariant {
   makingChargePerGram Decimal     @default(0)
   flatMakingCharge    Decimal     @default(0)
   stoneCharges        Decimal     @default(0)
+  /// Sum of miscChargeLines (or legacy flat amount). Used by pricing.
   miscCharges         Decimal     @default(0)
+  /// Labeled misc rows: [{ label, amount }]. Null = treat miscCharges as single Hallmark.
+  miscChargeLines     Json?
   stock               Int         @default(0)
   sku                 String      @unique
   cartItems           CartItem[]
