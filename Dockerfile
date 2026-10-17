@@ -58,10 +58,13 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 # Next's standalone output only traces runtime deps actually imported by app
-# code (@prisma/client) — the `prisma` CLI itself (a devDependency, invoked
-# by name via npx, never imported) is pruned out. Install it directly so
-# `migrate deploy` below has something to run.
-RUN npm install --no-save prisma@5.22.0
+# code (@prisma/client) — the `prisma` CLI itself (a devDependency) is pruned
+# out. Copy it from the builder instead of `npm install` in the standalone
+# tree: npm 10+ crashes with "Cannot read properties of null (reading
+# 'edgesOut')" when installing into a directory that has node_modules but no
+# package.json.
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 3000
 # Applying pending migrations here — not as a separate manual/CI step — is
 # the fix for a real incident: this target database went a full session
@@ -70,4 +73,4 @@ EXPOSE 3000
 # any route touching them 500'd. Running it on every boot makes that
 # structurally impossible to forget again. If it fails, the container
 # should crash-loop rather than silently serve against a stale schema.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=./prisma/schema.prisma && node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy --schema=./prisma/schema.prisma && node server.js"]
