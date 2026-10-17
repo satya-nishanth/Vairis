@@ -93,7 +93,16 @@ const manualOrderSchema = z.object({
       stones: z.number().min(0).max(100000000),
       making: z.number().min(0).max(100000000),
       wastage: z.number().min(0).max(100000000),
-      delivery: z.number().min(0).max(100000000),
+      /** Legacy flat misc; prefer miscLines when present. */
+      delivery: z.number().min(0).max(100000000).optional().default(0),
+      miscLines: z
+        .array(
+          z.object({
+            label: z.string(),
+            amount: z.number().min(0).max(100000000),
+          }),
+        )
+        .optional(),
       gst: z.number().min(0).max(100000000),
       /** Subtracted after GST; net must match goods total. */
       discount: z.number().min(0).max(100000000).optional().default(0),
@@ -190,13 +199,17 @@ export async function POST(req: NextRequest) {
     d.sellingBreakdown &&
     !sellingBreakdownMatchesGoods(d.sellingBreakdown, total, { requireNetIfDiscounted: true })
   ) {
+    const misc =
+      d.sellingBreakdown.miscLines && d.sellingBreakdown.miscLines.length > 0
+        ? d.sellingBreakdown.miscLines.reduce((s, l) => s + l.amount, 0)
+        : d.sellingBreakdown.delivery ?? 0
     const gross =
       d.sellingBreakdown.gold +
       d.sellingBreakdown.diamonds +
       d.sellingBreakdown.stones +
       d.sellingBreakdown.making +
       d.sellingBreakdown.wastage +
-      d.sellingBreakdown.delivery +
+      misc +
       d.sellingBreakdown.gst
     const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
@@ -214,6 +227,12 @@ export async function POST(req: NextRequest) {
     let priceBreakdown = undefined as ReturnType<typeof toOrderItemPriceSnapshot> | undefined
 
     const manual = d.sellingBreakdown
+    const manualMisc =
+      manual != null
+        ? manual.miscLines && manual.miscLines.length > 0
+          ? manual.miscLines.reduce((s, l) => s + l.amount, 0)
+          : manual.delivery ?? 0
+        : 0
     const manualGross =
       manual != null
         ? manual.gold +
@@ -221,7 +240,7 @@ export async function POST(req: NextRequest) {
           manual.stones +
           manual.making +
           manual.wastage +
-          manual.delivery +
+          manualMisc +
           manual.gst +
           (manual.discount ?? 0)
         : 0

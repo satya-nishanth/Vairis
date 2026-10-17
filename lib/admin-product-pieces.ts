@@ -9,6 +9,7 @@ export type PieceVariantInput = {
   flatMakingCharge: number
   stoneCharges: number
   miscCharges: number
+  miscChargeLines?: { label: string; amount: number }[] | null
   stock: number
   sku: string
   size?: string | null
@@ -97,6 +98,9 @@ export async function createProductPieces(
           flatMakingCharge: v.flatMakingCharge,
           stoneCharges: v.stoneCharges,
           miscCharges: v.miscCharges,
+          miscChargeLines: v.miscChargeLines?.length
+            ? (v.miscChargeLines as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
           stock: v.stock,
           sku: v.sku,
           size: v.size || null,
@@ -238,6 +242,9 @@ export async function syncProductPieces(tx: Tx, productId: string, pieces: Piece
         flatMakingCharge: v.flatMakingCharge,
         stoneCharges: v.stoneCharges,
         miscCharges: v.miscCharges,
+        miscChargeLines: v.miscChargeLines?.length
+          ? (v.miscChargeLines as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         stock: v.stock,
         size: sizeKey,
         pieceId,

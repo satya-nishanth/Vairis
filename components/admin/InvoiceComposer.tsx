@@ -23,6 +23,12 @@ import {
 import { formatINRGrouped, INVOICE_GST_SCHEMES, normalizeInvoiceGstScheme } from '@/lib/invoice-tax'
 import { splitGemValues } from '@/lib/pricing'
 import type { PricingConfig } from '@/lib/pricing'
+import {
+  DEFAULT_MISC_LABEL,
+  normalizeMiscChargeLines,
+  sumMiscChargeLines,
+  type MiscChargeLine,
+} from '@/lib/misc-charges'
 
 type CatalogueProps = {
   variants: InvoiceCatalogueVariant[]
@@ -465,6 +471,67 @@ function Field({
   )
 }
 
+function MiscLinesEditor({
+  lines,
+  onChange,
+}: {
+  lines: MiscChargeLine[]
+  onChange: (lines: MiscChargeLine[]) => void
+}) {
+  const rows = lines.length > 0 ? lines : []
+  function setRow(i: number, partial: Partial<MiscChargeLine>) {
+    const next = rows.map((r, idx) => (idx === i ? { ...r, ...partial } : r))
+    onChange(normalizeMiscChargeLines(next))
+  }
+  return (
+    <div style={{ marginTop: 8, marginBottom: 4 }}>
+      <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 6px' }}>
+        Misc / hallmark / other (shown on invoice)
+      </p>
+      {rows.map((row, i) => (
+        <div key={i} className="inv-composer__grid" style={{ alignItems: 'end' }}>
+          <Field
+            label={`Text ${i + 1}`}
+            value={row.label}
+            onChange={(v) => setRow(i, { label: v })}
+          />
+          <Field
+            label={`Amount ${i + 1} ₹`}
+            type="number"
+            value={row.amount}
+            onChange={(v) => setRow(i, { amount: Number(v) || 0 })}
+          />
+          <button
+            type="button"
+            className="admin-btn"
+            style={{ marginBottom: 10 }}
+            onClick={() => onChange(normalizeMiscChargeLines(rows.filter((_, j) => j !== i)))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="admin-btn"
+        onClick={() =>
+          onChange([
+            ...rows,
+            { label: rows.length === 0 ? DEFAULT_MISC_LABEL : '', amount: 0 },
+          ])
+        }
+      >
+        Add misc line
+      </button>
+      {rows.length > 0 && (
+        <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 6 }}>
+          Misc total ₹{formatINRGrouped(sumMiscChargeLines(rows), 0)}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function LineEditor({
   line,
   onChange,
@@ -604,12 +671,6 @@ function LineEditor({
                 })
               }}
             />
-            <Field
-              label="Misc / delivery ₹"
-              type="number"
-              value={line.miscCharges}
-              onChange={(v) => patch({ miscCharges: Number(v) })}
-            />
           </>
         ) : (
           <>
@@ -637,15 +698,25 @@ function LineEditor({
               value={line.leadIncentive}
               onChange={(v) => patch({ leadIncentive: Number(v) })}
             />
-            <Field
-              label="Misc / hallmark"
-              type="number"
-              value={line.miscCharges}
-              onChange={(v) => patch({ miscCharges: Number(v) })}
-            />
           </>
         )}
       </div>
+
+      <MiscLinesEditor
+        lines={
+          line.miscLines?.length
+            ? line.miscLines
+            : computed.miscLines?.length
+              ? computed.miscLines
+              : []
+        }
+        onChange={(miscLines) =>
+          patch({
+            miscLines,
+            miscCharges: sumMiscChargeLines(miscLines),
+          })
+        }
+      />
 
       {!line.lockedPricing ? (
         <>
@@ -701,7 +772,11 @@ function LineEditor({
       <p style={{ fontSize: '0.8rem', marginTop: 8 }}>
         Gold ₹{formatINRGrouped(computed.goldValue, 0)} · wastage ₹{formatINRGrouped(computed.wastage, 0)} · making ₹
         {formatINRGrouped(computed.making, 0)} · diamonds ₹{formatINRGrouped(gems.diamonds, 0)} · stones ₹
-        {formatINRGrouped(gems.stones, 0)} · taxable ₹{formatINRGrouped(computed.taxable)}
+        {formatINRGrouped(gems.stones, 0)}
+        {computed.miscCharges > 0
+          ? ` · misc ₹${formatINRGrouped(computed.miscCharges, 0)}`
+          : ''}{' '}
+        · taxable ₹{formatINRGrouped(computed.taxable)}
       </p>
     </section>
   )

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
 import { getStoreCategories } from '@/lib/store-categories'
+import { resolveMiscChargeLines } from '@/lib/misc-charges'
 import ProductForm from '@/components/admin/ProductForm'
 
 export const dynamic = 'force-dynamic'
@@ -63,18 +64,22 @@ export default async function EditProductPage({
     }
   }
 
-  const mapVariant = (v: (typeof product.variants)[number]) => ({
-    metalType: v.metalType,
-    metalColor: v.metalColor ?? 'YELLOW',
-    size: v.size ?? '',
-    weightGrams: v.weightGrams.toString(),
-    makingChargePerGram: v.makingChargePerGram.toString(),
-    flatMakingCharge: v.flatMakingCharge.toString(),
-    stoneCharges: v.stoneCharges.toString(),
-    miscCharges: v.miscCharges.toString(),
-    stock: v.stock.toString(),
-    sku: v.sku,
-  })
+  const mapVariant = (v: (typeof product.variants)[number]) => {
+    const lines = resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges))
+    return {
+      metalType: v.metalType,
+      metalColor: v.metalColor ?? 'YELLOW',
+      size: v.size ?? '',
+      weightGrams: v.weightGrams.toString(),
+      makingChargePerGram: v.makingChargePerGram.toString(),
+      flatMakingCharge: v.flatMakingCharge.toString(),
+      stoneCharges: v.stoneCharges.toString(),
+      miscCharges: v.miscCharges.toString(),
+      miscLines: lines.map((l) => ({ label: l.label, amount: String(l.amount) })),
+      stock: v.stock.toString(),
+      sku: v.sku,
+    }
+  }
 
   const pieces =
     product.pieces.length > 0
