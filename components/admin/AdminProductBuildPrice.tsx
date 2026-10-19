@@ -112,16 +112,8 @@ function StorefrontBreakdown({
     breakdown.stoneLines.length > 0
       ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
       : Math.round(breakdown.stoneValue)
-  const tableTotal =
-    roundedGold +
-    roundedStones +
-    roundedMaking +
-    roundedVA +
-    roundedMisc +
-    roundedCert +
-    roundedPack +
-    roundedDel +
-    roundedGST
+  // Match storefront header: round formula total once (not sum of rounded lines).
+  const tableTotal = Math.round(breakdown.total)
 
   return (
     <div

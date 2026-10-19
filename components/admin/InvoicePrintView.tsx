@@ -2,7 +2,11 @@ import { Fragment } from 'react'
 import { LOGO_SRC } from '@/lib/logo'
 import { formatINRGrouped } from '@/lib/invoice-tax'
 import type { InvoicePayload } from '@/lib/invoice-document'
-import { resolveInvoiceFeeLabels, totalsFromPayload } from '@/lib/invoice-document'
+import {
+  isInvoicePaymentPaid,
+  resolveInvoiceFeeLabels,
+  totalsFromPayload,
+} from '@/lib/invoice-document'
 
 export function InvoicePrintView({
   number,
@@ -13,7 +17,7 @@ export function InvoicePrintView({
 }) {
   const totals = totalsFromPayload(payload)
   const feeLabels = resolveInvoiceFeeLabels(payload)
-  const paid = /paid/i.test(payload.payment.status)
+  const paid = isInvoicePaymentPaid(payload.payment.status)
 
   return (
     <div className="inv-doc">

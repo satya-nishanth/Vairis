@@ -20,12 +20,20 @@ const inrFixed = z
   .transform(Number)
   .refine((n) => !Number.isNaN(n) && n >= 0, 'Amount cannot be negative')
 
-const feeLabel = z.string().trim().min(1, 'Label is required').max(40)
+const feeLabel = z
+  .string()
+  .trim()
+  .min(1, 'Label is required')
+  .max(40, 'Label must be 40 characters or fewer')
 
 const putSchema = z.object({
   vaGoldPct: pct,
   vaStonePct: pct,
-  vaLabel: z.string().trim().min(1, 'Label is required').max(40),
+  vaLabel: z
+    .string()
+    .trim()
+    .min(1, 'Label is required')
+    .max(40, 'Label must be 40 characters or fewer'),
   defaultCertificationCharges: inrFixed.optional(),
   defaultPackagingCharges: inrFixed.optional(),
   defaultDeliveryCharges: inrFixed.optional(),

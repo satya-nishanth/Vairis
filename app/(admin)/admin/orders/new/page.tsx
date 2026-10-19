@@ -1,9 +1,12 @@
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
-import { calculatePrice } from '@/lib/pricing'
+import {
+  calculatePrice,
+  feeLabelsFromConfig,
+  sellingUnitFromPriceBreakdown,
+} from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
-import { feeLabelsFromConfig } from '@/lib/pricing'
 import { ManualOrderForm } from './ManualOrderForm'
 
 export const dynamic = 'force-dynamic'
@@ -71,6 +74,9 @@ export default async function NewManualOrderPage({
             { stones: toStoneInputs(p.stones), withExchange: false, config: cfg },
           )
         : null
+      const sellingUnit = breakdown
+        ? sellingUnitFromPriceBreakdown(breakdown, v.miscChargeLines)
+        : null
       return {
         variantId: v.id,
         productId: p.id,
@@ -79,10 +85,11 @@ export default async function NewManualOrderPage({
         itemCode: p.itemCode ?? '',
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-        suggestedPrice: breakdown ? Math.round(breakdown.total) : 0,
+        suggestedPrice: sellingUnit?.total ?? (breakdown ? Math.round(breakdown.total) : 0),
         certificationCharges: breakdown?.certificationCharges ?? cfg.defaultCertificationCharges,
         packagingCharges: breakdown?.packagingCharges ?? cfg.defaultPackagingCharges,
         deliveryCharges: breakdown?.deliveryCharges ?? cfg.defaultDeliveryCharges,
+        sellingUnit,
       }
     }),
   )

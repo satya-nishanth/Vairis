@@ -801,16 +801,8 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       ? Math.round(breakdown.deliveryCharges)
                       : 0;
                   const roundedGST = Math.round(breakdown.gst);
-                  const tableTotal =
-                    roundedGold +
-                    roundedStones +
-                    roundedMaking +
-                    roundedVA +
-                    roundedMisc +
-                    roundedCert +
-                    roundedPack +
-                    roundedDel +
-                    roundedGST;
+                  // Match header price: round once on formula total (not sum of rounded lines).
+                  const tableTotal = Math.round(breakdown.total);
                   return (
                     <details
                       key={piece.id}

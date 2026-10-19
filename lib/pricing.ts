@@ -550,6 +550,67 @@ export function sellingBreakdownGross(
   )
 }
 
+export type SellingUnitComponents = {
+  gold: number
+  diamonds: number
+  stones: number
+  making: number
+  wastage: number
+  certification: number
+  packaging: number
+  delivery: number
+  gst: number
+  miscLines: MiscChargeLine[]
+  /** PDP header / manual-order unit price — Math.round(breakdown.total). */
+  total: number
+}
+
+/**
+ * Integer-rupee selling unit for admin manual orders, aligned to the PDP
+ * header total so sellingBreakdownMatchesGoods passes without paise drift.
+ * GST absorbs any remainder after rounding line components.
+ */
+export function sellingUnitFromPriceBreakdown(
+  breakdown: PriceBreakdown,
+  miscLinesRaw?: MiscChargeLine[] | unknown,
+): SellingUnitComponents {
+  const miscLines = resolveMiscChargeLines(
+    miscLinesRaw,
+    Number(breakdown.miscCharges) || 0,
+  )
+    .map((l) => ({
+      label: l.label,
+      amount: Math.round(l.amount),
+    }))
+    .filter((l) => l.amount > 0)
+  const gold = Math.round(breakdown.goldValue)
+  const diamonds = Math.round(breakdown.diamondValue)
+  const stones = Math.round(breakdown.otherStoneValue)
+  const making = Math.round(breakdown.making)
+  const wastage = Math.round(breakdown.goldVA)
+  const certification = Math.round(breakdown.certificationCharges)
+  const packaging = Math.round(breakdown.packagingCharges)
+  const delivery = Math.round(breakdown.deliveryCharges)
+  const misc = sumMiscChargeLines(miscLines)
+  const taxableRounded =
+    gold + diamonds + stones + making + wastage + misc + certification + packaging + delivery
+  const total = Math.round(breakdown.total)
+  const gst = Math.max(0, total - taxableRounded)
+  return {
+    gold,
+    diamonds,
+    stones,
+    making,
+    wastage,
+    certification,
+    packaging,
+    delivery,
+    gst,
+    miscLines,
+    total,
+  }
+}
+
 export interface VariantPriceInput {
   weightGrams: number | string
   makingChargePerGram: number | string
