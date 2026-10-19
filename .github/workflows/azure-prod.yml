@@ -38,6 +38,7 @@ jobs:
       NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
       NEXT_PUBLIC_SITE_THEME: ${{ vars.NEXT_PUBLIC_SITE_THEME }}
       NEXT_PUBLIC_GA_ID: ${{ vars.NEXT_PUBLIC_GA_ID }}
+      NEXT_PUBLIC_GTM_ID: ${{ vars.NEXT_PUBLIC_GTM_ID }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
       GOTRUE_INTERNAL_URL: ${{ vars.GOTRUE_INTERNAL_URL }}
       # Custom domain binding — declared in infra/main.bicep so `azd provision` stops

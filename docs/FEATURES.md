@@ -83,7 +83,7 @@ Status legend: ✅ live & verified · 🟡 built, needs external config · ⏳ p
 | Swappable payment gateway port (`lib/payments`) | ✅ | Razorpay + Mock adapters; add adapter + env to swap |
 | Swappable shipping provider port (`lib/shipping`) | ✅ | Manual, Shiprocket, DTDC adapters |
 | ESLint (zero findings) + TypeScript strict passes | ✅ | `npm run lint` |
-| First-party analytics (`AnalyticsEvent`) + optional GA4 mirror | ✅ | `NEXT_PUBLIC_GA_ID` to enable GA4 |
+| First-party analytics (`AnalyticsEvent`) + optional GA4 / GTM | ✅ | `NEXT_PUBLIC_GA_ID` (GA4), `NEXT_PUBLIC_GTM_ID` (Tag Manager) — both GitHub Actions vars |
 | Error tracking (Sentry) | 🟡 | `@sentry/nextjs` wired (server/edge/client), no-op until `SENTRY_DSN` set |
 | Rate limiting on public APIs | ✅ | track-order, contact, search, promo validate, reviews |
 | SEO: sitemap.xml, robots.txt, per-product JSON-LD (Product + AggregateRating) | ✅ | |

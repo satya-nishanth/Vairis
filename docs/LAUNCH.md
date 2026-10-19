@@ -44,7 +44,8 @@ Set in `.env.local` for dev; in **Vercel → Project → Settings → Environmen
 ### Analytics & error tracking — optional
 | Key | Value | Notes |
 |-----|-------|-------|
-| `NEXT_PUBLIC_GA_ID` | GA4 measurement id | unset = GA4 mirror skipped; first-party `AnalyticsEvent` tracking always runs |
+| `NEXT_PUBLIC_GA_ID` | GA4 measurement id (`G-…`) | unset = gtag mirror skipped; first-party `AnalyticsEvent` always runs. Clear if GA4 is only via GTM |
+| `NEXT_PUBLIC_GTM_ID` | GTM container id (`GTM-…`) | unset = no Tag Manager snippet; set in GitHub Actions **Variables** (same as GA) |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry project DSN (server/client) | unset = Sentry no-ops |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | Sentry source-map upload | only needed in CI/prod build for readable stack traces |
 
