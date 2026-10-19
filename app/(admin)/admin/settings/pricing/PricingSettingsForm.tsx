@@ -149,6 +149,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               onChange={(e) => setForm((f) => ({ ...f, certificationLabel: e.target.value }))}
               className="pform__input"
               placeholder="Certification"
+              maxLength={40}
               data-testid="certification-label"
             />
           </div>
@@ -175,6 +176,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               onChange={(e) => setForm((f) => ({ ...f, packagingLabel: e.target.value }))}
               className="pform__input"
               placeholder="Packaging"
+              maxLength={40}
               data-testid="packaging-label"
             />
           </div>
@@ -201,6 +203,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               onChange={(e) => setForm((f) => ({ ...f, deliveryLabel: e.target.value }))}
               className="pform__input"
               placeholder="Delivery"
+              maxLength={40}
               data-testid="delivery-label"
             />
           </div>

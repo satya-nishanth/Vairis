@@ -3,11 +3,12 @@ import {
   DEFAULT_PRICING_CONFIG,
   encodeFixedChargeForSave,
   feeLabelsFromConfig,
+  sellingBreakdownMatchesGoods,
+  sellingUnitFromPriceBreakdown,
   toOrderItemPriceSnapshot,
   isOrderItemPriceSnapshot,
   sellingComponentsToUnitSnapshot,
   unitSnapshotToSellingComponents,
-  sellingBreakdownMatchesGoods,
 } from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
@@ -248,6 +249,57 @@ describe('calculatePrice (estimator formula)', () => {
     expect(encodeFixedChargeForSave('500.00', 500)).toBeNull()
     expect(encodeFixedChargeForSave(0, 500)).toBe(0)
     expect(encodeFixedChargeForSave(750, 500)).toBe(750)
+  })
+
+  it('sellingUnitFromPriceBreakdown matches PDP total for manual-order goods check', () => {
+    const b = calculatePrice(
+      {
+        weightGrams: 1.234,
+        makingChargePerGram: 500,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: 200,
+        packagingCharges: 100,
+        deliveryCharges: 0,
+      },
+      6789.12,
+      {
+        config: {
+          ...DEFAULT_PRICING_CONFIG,
+          defaultCertificationCharges: 200,
+          defaultPackagingCharges: 100,
+        },
+        stones: [
+          {
+            caratWeight: 0.33,
+            ratePerCarat: 21000,
+            ratePerCaratExchange: 30000,
+            typeLabel: 'Colourless Diamond',
+          },
+        ],
+      },
+    )
+    const unit = sellingUnitFromPriceBreakdown(b)
+    expect(unit.total).toBe(Math.round(b.total))
+    expect(
+      sellingBreakdownMatchesGoods(
+        {
+          gold: unit.gold,
+          diamonds: unit.diamonds,
+          stones: unit.stones,
+          making: unit.making,
+          wastage: unit.wastage,
+          certification: unit.certification,
+          packaging: unit.packaging,
+          delivery: unit.delivery,
+          gst: unit.gst,
+          miscLines: unit.miscLines,
+        },
+        unit.total,
+        { requireNetIfDiscounted: true },
+      ),
+    ).toBe(true)
   })
 
   it('feeLabelsFromConfig uses store labels with safe fallbacks', () => {

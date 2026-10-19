@@ -7,6 +7,7 @@ import {
   calculatePrice,
   feeLabelsFromConfig,
   isOrderItemPriceSnapshot,
+  sellingUnitFromPriceBreakdown,
   unitSnapshotToSellingComponents,
 } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
@@ -101,6 +102,9 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
             { stones: toStoneInputs(p.stones), withExchange: false, config: cfg },
           )
         : null
+      const sellingUnit = breakdown
+        ? sellingUnitFromPriceBreakdown(breakdown, v.miscChargeLines)
+        : null
       return {
         variantId: v.id,
         productId: p.id,
@@ -109,10 +113,11 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
         itemCode: p.itemCode ?? '',
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-        suggestedPrice: breakdown ? Math.round(breakdown.total) : 0,
+        suggestedPrice: sellingUnit?.total ?? (breakdown ? Math.round(breakdown.total) : 0),
         certificationCharges: breakdown?.certificationCharges ?? cfg.defaultCertificationCharges,
         packagingCharges: breakdown?.packagingCharges ?? cfg.defaultPackagingCharges,
         deliveryCharges: breakdown?.deliveryCharges ?? cfg.defaultDeliveryCharges,
+        sellingUnit,
       }
     }),
   )

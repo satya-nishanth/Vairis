@@ -9,6 +9,20 @@ import {
 import type { OrderItemInternalBuild } from '@/lib/order-internal-build'
 import { DEFAULT_FEE_LABELS, type FeeLabels } from '@/lib/pricing'
 
+/** Per-unit selling components from PDP / calculatePrice (qty=1). */
+type SellingUnitPrefill = {
+  gold: number
+  diamonds: number
+  stones: number
+  making: number
+  wastage: number
+  certification: number
+  packaging: number
+  delivery: number
+  gst: number
+  miscLines: { label: string; amount: number }[]
+}
+
 type VariantOption = {
   variantId: string
   productId: string
@@ -21,6 +35,8 @@ type VariantOption = {
   certificationCharges: number
   packagingCharges: number
   deliveryCharges: number
+  /** Full PDP-style selling breakdown for one unit; used to prefill the form. */
+  sellingUnit?: SellingUnitPrefill | null
 }
 type Customer = { id: string; email: string; name: string; mobile: string | null }
 type OrderAttachmentDraft = { url: string; fileName: string; contentType: string }
@@ -101,9 +117,11 @@ function emptySelling(): SellingBreakdown {
   }
 }
 
+type BumpableSellingKey = Exclude<SellingKey, 'discount'>
+
 function addSellingAmount(
   prev: SellingBreakdown,
-  key: 'certification' | 'packaging' | 'delivery',
+  key: BumpableSellingKey,
   amount: number,
 ): SellingBreakdown {
   if (!amount) return prev
@@ -114,16 +132,60 @@ function addSellingAmount(
   return { ...prev, [key]: rounded === 0 ? '' : String(rounded) }
 }
 
-/** ±quantity: add on line add, subtract on remove / qty down. */
+function bumpMiscLines(
+  prev: SellingMiscLine[],
+  lines: { label: string; amount: number }[],
+  quantity: number,
+): SellingMiscLine[] {
+  if (!lines.length || !quantity) return prev
+  let next = [...prev]
+  for (const line of lines) {
+    const delta = Math.round(line.amount * quantity * 100) / 100
+    if (!delta) continue
+    const label = (line.label || 'Misc').trim() || 'Misc'
+    const idx = next.findIndex((r) => (r.label.trim() || 'Misc') === label)
+    if (idx < 0) {
+      if (delta > 0) next.push({ label, amount: String(delta) })
+      continue
+    }
+    const cur = Number(next[idx].amount) || 0
+    const sum = Math.round((cur + delta) * 100) / 100
+    if (sum <= 0) next = next.filter((_, j) => j !== idx)
+    else next[idx] = { ...next[idx], amount: String(sum) }
+  }
+  return next
+}
+
+/** ±quantity: add on line add, subtract on remove / qty down. Prefills from PDP totals. */
 function bumpSellingFromVariant(
   prev: SellingBreakdown,
   opt: VariantOption,
   quantity = 1,
 ): SellingBreakdown {
+  const u = opt.sellingUnit
+  if (!u) {
+    // Fallback: fees only (older callers without sellingUnit).
+    let s = prev
+    s = addSellingAmount(s, 'certification', opt.certificationCharges * quantity)
+    s = addSellingAmount(s, 'packaging', opt.packagingCharges * quantity)
+    s = addSellingAmount(s, 'delivery', opt.deliveryCharges * quantity)
+    return s
+  }
   let s = prev
-  s = addSellingAmount(s, 'certification', opt.certificationCharges * quantity)
-  s = addSellingAmount(s, 'packaging', opt.packagingCharges * quantity)
-  s = addSellingAmount(s, 'delivery', opt.deliveryCharges * quantity)
+  const keys: BumpableSellingKey[] = [
+    'gold',
+    'diamonds',
+    'stones',
+    'making',
+    'wastage',
+    'certification',
+    'packaging',
+    'delivery',
+    'gst',
+  ]
+  for (const key of keys) {
+    s = addSellingAmount(s, key, (u[key] ?? 0) * quantity)
+  }
   return s
 }
 
@@ -531,6 +593,9 @@ export function ManualOrderForm({
       },
     ])
     setSelling((s) => bumpSellingFromVariant(s, opt, 1))
+    if (opt.sellingUnit?.miscLines?.length) {
+      setSellingMiscLines((prev) => bumpMiscLines(prev, opt.sellingUnit!.miscLines, 1))
+    }
     setItemSearch('')
   }
 
@@ -566,7 +631,12 @@ export function ManualOrderForm({
         buildOpen: true,
       },
     ])
-    if (opt) setSelling((s) => bumpSellingFromVariant(s, opt, 1))
+    if (opt) {
+      setSelling((s) => bumpSellingFromVariant(s, opt, 1))
+      if (opt.sellingUnit?.miscLines?.length) {
+        setSellingMiscLines((prev) => bumpMiscLines(prev, opt.sellingUnit!.miscLines, 1))
+      }
+    }
     setItemSearch('')
     setShowNewInventory(false)
   }
@@ -1367,7 +1437,14 @@ export function ManualOrderForm({
                     const delta = nextQty - line.quantity
                     if (delta !== 0) {
                       const vOpt = variantOptions.find((v) => v.variantId === line.variantId)
-                      if (vOpt) setSelling((s) => bumpSellingFromVariant(s, vOpt, delta))
+                      if (vOpt) {
+                        setSelling((s) => bumpSellingFromVariant(s, vOpt, delta))
+                        if (vOpt.sellingUnit?.miscLines?.length) {
+                          setSellingMiscLines((prev) =>
+                            bumpMiscLines(prev, vOpt.sellingUnit!.miscLines, delta),
+                          )
+                        }
+                      }
                     }
                     setLines((ls) =>
                       ls.map((l, i) => (i === idx ? { ...l, quantity: nextQty } : l)),
@@ -1394,7 +1471,14 @@ export function ManualOrderForm({
                   type="button"
                   onClick={() => {
                     const opt = variantOptions.find((v) => v.variantId === line.variantId)
-                    if (opt) setSelling((s) => bumpSellingFromVariant(s, opt, -line.quantity))
+                    if (opt) {
+                      setSelling((s) => bumpSellingFromVariant(s, opt, -line.quantity))
+                      if (opt.sellingUnit?.miscLines?.length) {
+                        setSellingMiscLines((prev) =>
+                          bumpMiscLines(prev, opt.sellingUnit!.miscLines, -line.quantity),
+                        )
+                      }
+                    }
                     setLines((ls) => ls.filter((_, i) => i !== idx))
                   }}
                   style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer' }}

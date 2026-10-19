@@ -950,6 +950,17 @@ export function payloadFromOrder(
   return { ...payload, lines: totals.lines }
 }
 
+/**
+ * True when the invoice payment status means money was received.
+ * Must not treat "Unpaid" as paid (`/paid/i` matches the substring "paid").
+ */
+export function isInvoicePaymentPaid(status: string | null | undefined): boolean {
+  const s = (status ?? '').trim()
+  if (!s) return false
+  if (/unpaid/i.test(s)) return false
+  return /paid/i.test(s)
+}
+
 export function invoiceStatusFromPayload(payload: InvoicePayload): InvoiceStatus {
-  return /paid/i.test(payload.payment.status) ? 'PAID' : 'UNPAID'
+  return isInvoicePaymentPaid(payload.payment.status) ? 'PAID' : 'UNPAID'
 }

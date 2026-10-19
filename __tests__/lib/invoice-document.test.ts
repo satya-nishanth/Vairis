@@ -3,6 +3,8 @@ import {
   applyInvoiceSeller,
   applyInvoiceExchangeFlag,
   invoiceFromProducts,
+  invoiceStatusFromPayload,
+  isInvoicePaymentPaid,
   lineFromOrderItem,
   payloadFromOrder,
   recomputeLine,
@@ -340,6 +342,26 @@ describe('order invoice from priceBreakdown', () => {
     expect(payload.payment.status).toBe('Paid in full')
     expect(payload.payment.method).toBe('Offline')
     expect(payload.payment.received).toBe('2026-09-01')
+  })
+})
+
+describe('isInvoicePaymentPaid', () => {
+  it('does not treat Unpaid as paid (substring trap)', () => {
+    expect(isInvoicePaymentPaid('Unpaid')).toBe(false)
+    expect(isInvoicePaymentPaid('unpaid')).toBe(false)
+    expect(isInvoicePaymentPaid('')).toBe(false)
+    expect(isInvoicePaymentPaid(null)).toBe(false)
+  })
+
+  it('recognises Paid / Paid in full', () => {
+    expect(isInvoicePaymentPaid('Paid')).toBe(true)
+    expect(isInvoicePaymentPaid('Paid in full')).toBe(true)
+    expect(isInvoicePaymentPaid('PAID')).toBe(true)
+  })
+
+  it('maps invoice status enum correctly', () => {
+    expect(invoiceStatusFromPayload({ payment: { status: 'Unpaid' } } as never)).toBe('UNPAID')
+    expect(invoiceStatusFromPayload({ payment: { status: 'Paid in full' } } as never)).toBe('PAID')
   })
 })
 
