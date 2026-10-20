@@ -1,5 +1,10 @@
 import type { FinanceAccountType, FinanceLineKind, FinancePaidThrough } from '@prisma/client'
 import { splitGemValues } from '@/lib/pricing'
+import {
+  resolveMiscChargeLines,
+  sumMiscChargeLines,
+  type MiscChargeLine,
+} from '@/lib/misc-charges'
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
 
@@ -9,8 +14,12 @@ export const FINANCE_LINE_KINDS = [
   'STONES',
   'MAKING_CHARGES',
   'WASTAGE_CHARGES',
+  'CERTIFICATION',
+  'PACKAGING',
   'DELIVERY',
+  'MISC',
   'GST',
+  'DISCOUNT',
 ] as const
 
 export const LINE_KIND_LABEL: Record<FinanceLineKind, string> = {
@@ -20,7 +29,11 @@ export const LINE_KIND_LABEL: Record<FinanceLineKind, string> = {
   STONES: 'Stones',
   DIAMONDS: 'Diamonds',
   MAKING_CHARGES: 'Making charges',
-  WASTAGE_CHARGES: 'Wastage charges',
+  WASTAGE_CHARGES: 'Wastage',
+  CERTIFICATION: 'Certification',
+  PACKAGING: 'Packaging',
+  MISC: 'Misc',
+  DISCOUNT: 'Discount',
 }
 
 export const ACCOUNT_TYPE_LABEL: Record<FinanceAccountType, string> = {
@@ -160,7 +173,13 @@ export function sheetTotals(
   roundOffEnabled: boolean
 } {
   const cost = roundMoney(lines.reduce((s, l) => s + l.costPrice, 0))
-  const sellingRaw = roundMoney(lines.reduce((s, l) => s + l.sellingPrice, 0))
+  // DISCOUNT is stored as a positive amount and subtracted from selling.
+  const sellingRaw = roundMoney(
+    lines.reduce((s, l) => {
+      const n = Number(l.sellingPrice) || 0
+      return l.kind === 'DISCOUNT' ? s - n : s + n
+    }, 0),
+  )
   const roundOffEnabled = Boolean(opts?.roundOffEnabled)
   if (!roundOffEnabled) {
     return {
@@ -186,13 +205,15 @@ export function sheetTotals(
 
 /**
  * Order sheet is complete when every line with a selling price has a
- * non-zero purchase/cost price. No sheet → not complete.
+ * non-zero purchase/cost price. Discount never needs a purchase price.
+ * No sheet → not complete.
  */
 export function isOrderSheetComplete(
-  lines: { costPrice: number; sellingPrice: number }[] | null | undefined,
+  lines: { costPrice: number; sellingPrice: number; kind?: string }[] | null | undefined,
 ): boolean {
   if (!lines) return false
   return lines.every((l) => {
+    if (l.kind === 'DISCOUNT') return true
     const selling = roundMoney(l.sellingPrice)
     if (selling <= 0) return true
     return roundMoney(l.costPrice) > 0
@@ -201,13 +222,14 @@ export function isOrderSheetComplete(
 
 /** Inverse of isOrderSheetComplete — used for dashboard pending counts. */
 export function isPendingOrderSheet(
-  lines: { costPrice: number; sellingPrice: number }[] | null | undefined,
+  lines: { costPrice: number; sellingPrice: number; kind?: string }[] | null | undefined,
 ): boolean {
   return !isOrderSheetComplete(lines)
 }
 
 /** Map retail PriceBreakdown → finance sheet kinds (quoted / selling guidance).
  *  Value Addition (goldVA + stoneVA) → WASTAGE_CHARGES.
+ *  All misc lines collapse into MISC. Discount is positive (subtracted in sheetTotals).
  *  Diamonds / Stones split via {@link splitGemValues}. */
 export function quotedAmountsFromBreakdown(
   b: {
@@ -221,20 +243,45 @@ export function quotedAmountsFromBreakdown(
     diamondValue?: number | null
     otherStoneValue?: number | null
     stoneLines?: { typeLabel: string; value: number }[] | null
+    certificationCharges?: number | null
+    packagingCharges?: number | null
+    deliveryCharges?: number | null
+    miscLines?: MiscChargeLine[] | null
+    autoDiscount?: number | null
+    couponDiscount?: number | null
   },
   quantity = 1,
 ): Record<FinanceLineKind, number> {
   const q = Math.max(1, quantity)
   const gems = splitGemValues(b)
+  const misc = sumMiscChargeLines(
+    resolveMiscChargeLines(b.miscLines, Number(b.miscCharges) || 0),
+  )
+  const discount =
+    Math.max(0, Number(b.autoDiscount) || 0) + Math.max(0, Number(b.couponDiscount) || 0)
   return {
     GOLD: roundMoney(b.goldValue * q),
     DIAMONDS: roundMoney(gems.diamonds * q),
     STONES: roundMoney(gems.stones * q),
     MAKING_CHARGES: roundMoney(b.making * q),
     WASTAGE_CHARGES: roundMoney((b.goldVA + b.stoneVA) * q),
-    DELIVERY: roundMoney(b.miscCharges * q),
+    CERTIFICATION: roundMoney((Number(b.certificationCharges) || 0) * q),
+    PACKAGING: roundMoney((Number(b.packagingCharges) || 0) * q),
+    DELIVERY: roundMoney((Number(b.deliveryCharges) || 0) * q),
+    MISC: roundMoney(misc * q),
     GST: roundMoney(b.gst * q),
+    DISCOUNT: roundMoney(discount * q),
   }
+}
+
+/** Net quoted / selling Σ — discount reduces the total. */
+export function sumFinanceKindsNet(byKind: Record<FinanceLineKind, number>): number {
+  return roundMoney(
+    FINANCE_LINE_KINDS.reduce((s, k) => {
+      const n = byKind[k] ?? 0
+      return k === 'DISCOUNT' ? s - n : s + n
+    }, 0),
+  )
 }
 
 export type OrderItemQuote = {

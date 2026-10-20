@@ -7,6 +7,8 @@ import {
   sheetTotals,
   isPendingOrderSheet,
   isOrderSheetComplete,
+  quotedAmountsFromBreakdown,
+  sumFinanceKindsNet,
   summarizeFinance,
   summarizeTransactionFlows,
   summarizeDashboardKpis,
@@ -68,6 +70,65 @@ describe('sheetTotals / orderProfit', () => {
   it('allows negative profit', () => {
     expect(orderProfit(10000, 14500)).toBe(-4500)
   })
+
+  it('subtracts Discount from selling total', () => {
+    expect(
+      sheetTotals([
+        { kind: 'GOLD', costPrice: 8000, sellingPrice: 10000 },
+        { kind: 'GST', costPrice: 0, sellingPrice: 300 },
+        { kind: 'DISCOUNT', costPrice: 0, sellingPrice: 500 },
+      ]),
+    ).toEqual({
+      cost: 8000,
+      selling: 9800,
+      sellingRaw: 9800,
+      roundOff: 0,
+      profit: 1800,
+      roundOffEnabled: false,
+    })
+  })
+})
+
+describe('quotedAmountsFromBreakdown', () => {
+  it('maps fixed fees, combined misc, and discount', () => {
+    const byKind = quotedAmountsFromBreakdown(
+      {
+        goldValue: 1000,
+        goldVA: 100,
+        making: 200,
+        stoneValue: 500,
+        stoneVA: 0,
+        diamondValue: 400,
+        otherStoneValue: 100,
+        miscCharges: 45,
+        miscLines: [
+          { label: 'Hallmark', amount: 20 },
+          { label: 'Extra', amount: 25 },
+        ],
+        certificationCharges: 500,
+        packagingCharges: 120,
+        deliveryCharges: 10,
+        gst: 74.85,
+        autoDiscount: 50,
+        couponDiscount: 25,
+      },
+      2,
+    )
+    expect(byKind.GOLD).toBe(2000)
+    expect(byKind.DIAMONDS).toBe(800)
+    expect(byKind.STONES).toBe(200)
+    expect(byKind.MAKING_CHARGES).toBe(400)
+    expect(byKind.WASTAGE_CHARGES).toBe(200)
+    expect(byKind.CERTIFICATION).toBe(1000)
+    expect(byKind.PACKAGING).toBe(240)
+    expect(byKind.DELIVERY).toBe(20)
+    expect(byKind.MISC).toBe(90)
+    expect(byKind.GST).toBe(149.7)
+    expect(byKind.DISCOUNT).toBe(150)
+    expect(sumFinanceKindsNet(byKind)).toBe(
+      2000 + 800 + 200 + 400 + 200 + 1000 + 240 + 20 + 90 + 149.7 - 150,
+    )
+  })
 })
 
 describe('isOrderSheetComplete / isPendingOrderSheet', () => {
@@ -113,6 +174,15 @@ describe('isOrderSheetComplete / isPendingOrderSheet', () => {
   it('treats empty sheet / zero-selling lines as complete', () => {
     expect(isOrderSheetComplete([])).toBe(true)
     expect(isOrderSheetComplete([{ costPrice: 0, sellingPrice: 0 }])).toBe(true)
+  })
+
+  it('does not require purchase on Discount lines', () => {
+    expect(
+      isOrderSheetComplete([
+        { kind: 'GOLD', costPrice: 8000, sellingPrice: 10000 },
+        { kind: 'DISCOUNT', costPrice: 0, sellingPrice: 500 },
+      ]),
+    ).toBe(true)
   })
 })
 

@@ -1058,6 +1058,10 @@ enum FinanceLineKind {
   DIAMONDS
   MAKING_CHARGES
   WASTAGE_CHARGES
+  CERTIFICATION
+  PACKAGING
+  MISC
+  DISCOUNT
 }
 
 model OrderFinanceLine {
