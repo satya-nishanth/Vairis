@@ -48,9 +48,13 @@ const putSchema = z.object({
         .string()
         .trim()
         .min(1, 'Code is required')
-        .max(40)
+        .max(40, 'Code must be 40 characters or fewer')
         .transform((s) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '_')),
-      label: z.string().trim().min(1, 'Label is required').max(60),
+      label: z
+        .string()
+        .trim()
+        .min(1, 'Label is required')
+        .max(40, 'Label must be 40 characters or fewer'),
       ratePerCarat: rateValue,
       ratePerCaratExchange: rateValue,
       active: z.boolean().default(true),
