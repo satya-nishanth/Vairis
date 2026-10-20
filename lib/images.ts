@@ -117,8 +117,8 @@ export const marketingImages = {
     styling: img("contact-styling-model.png"),
   },
   returns: {
-    heroOpen: img("returns-hero-open-box.png"),
-    sealed: img("returns-closed-sealed-box.png"),
+    heroOpen: img("returns-hero-care.png"),
+    sealed: img("returns-eligibility-photo.png"),
     footerRings: img("returns-footer-rings.png"),
   },
 } as const;

@@ -22,7 +22,7 @@
 }
 
 .orders-wb__title {
-  font-family: var(--font-display, Georgia, 'Times New Roman', serif);
+  font-family: var(--font-display, var(--font-sans-loaded), Inter, system-ui, sans-serif);
   font-size: 1.75rem;
   font-weight: 400;
   color: #111827;
@@ -171,7 +171,7 @@
 }
 
 .orders-wb__kpi-value {
-  font-family: var(--font-display, Georgia, 'Times New Roman', serif);
+  font-family: var(--font-display, var(--font-sans-loaded), Inter, system-ui, sans-serif);
   font-size: 1.5rem;
   color: #032b24;
   line-height: 1;

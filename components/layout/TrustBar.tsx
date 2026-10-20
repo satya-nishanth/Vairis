@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { TrustBarVariant } from "@/lib/layout-config";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { TRUST_ITEMS_COMPACT } from "@/components/icons";
@@ -14,11 +15,11 @@ export function TrustBar({ variant, className, style }: TrustBarProps) {
     return (
       <div className={["trust-bar", className].filter(Boolean).join(" ")} style={style}>
         <div className="trust-bar__inner">
-          {trustBarItems.map(({ label, icon }) => (
-            <div key={label} className="trust-bar__item">
+          {trustBarItems.map(({ label, icon, id }) => (
+            <Link key={label} href={`/our-services#${id}`} className="trust-bar__item" aria-label={`${label} — learn more`}>
               <ThemeIcon name={icon.name} category={icon.category} size={32} className="trust-bar__icon" />
               <span className="trust-bar__label">{label}</span>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

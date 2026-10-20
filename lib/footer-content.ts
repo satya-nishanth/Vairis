@@ -29,6 +29,7 @@ export const footerShopLinks = [
 
 export const footerHelpLinks = [
   { label: "FAQ", href: "/faq" },
+  { label: "Diamond & Gold Certification Guide", href: "/diamond-certification" },
   { label: "Shipping & Delivery", href: "/policies/shipping" },
   { label: "Returns & Exchanges", href: "/returns" },
   { label: "Care Guide", href: "/faq" },
@@ -45,7 +46,9 @@ export const footerLegalLinks = [
 
 export const footerAboutLinks = [
   { label: "Our Story", href: "/about" },
-  { label: "Why Vairis", href: "/about" },
+  { label: "Why Vairis", href: "/why-vairis" },
+  { label: "Our Services", href: "/our-services" },
+  { label: "DNA Diamond", href: "/dna-diamond" },
   { label: "Reviews", href: "/#reviews" },
   { label: "Careers", href: "mailto:careers@vairis.com" },
 ] as const;
