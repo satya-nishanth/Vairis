@@ -127,6 +127,8 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               onChange={(e) => setForm((f) => ({ ...f, vaLabel: e.target.value }))}
               className="pform__input"
               placeholder="Value Addition"
+              maxLength={40}
+              data-testid="va-label"
             />
             <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Value Addition&rdquo;.</p>
           </div>
@@ -249,6 +251,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
                   onChange={(e) => setRate(idx, 'label', e.target.value)}
                   className="pform__input"
                   placeholder="e.g. Colourless Diamond"
+                  maxLength={40}
                 />
               </div>
               <div className="pform__field pform__span-2">
@@ -258,6 +261,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
                   onChange={(e) => setRate(idx, 'code', e.target.value)}
                   className="pform__input"
                   placeholder="COLORLESS"
+                  maxLength={40}
                 />
               </div>
               <div className="pform__field pform__span-3">
