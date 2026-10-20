@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma'
 import { calculatePrice, isOrderItemPriceSnapshot } from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, type StoneWithRate } from '@/lib/pricing-data'
-import { quotedAmountsFromBreakdown, roundMoney, type OrderItemQuote } from '@/lib/finance'
+import {
+  quotedAmountsFromBreakdown,
+  roundMoney,
+  sumFinanceKindsNet,
+  type OrderItemQuote,
+} from '@/lib/finance'
 import type { MetalType } from '@prisma/client'
 
 /**
@@ -18,6 +23,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
     where: { id: orderId },
     select: {
       id: true,
+      discountAmount: true,
       items: {
         select: {
           id: true,
@@ -33,6 +39,9 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
               flatMakingCharge: true,
               stoneCharges: true,
               miscCharges: true,
+              certificationCharges: true,
+              packagingCharges: true,
+              deliveryCharges: true,
               metalType: true,
               product: {
                 select: {
@@ -65,7 +74,7 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
     number
   >
 
-  return order.items.map((item) => {
+  const quotes = order.items.map((item) => {
     const v = item.variant
     const productStones = (v.product.stones ?? []) as StoneWithRate[]
     let stones = toStoneInputs(productStones)
@@ -88,6 +97,9 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
         flatMakingCharge: Number(v.flatMakingCharge),
         stoneCharges: Number(v.stoneCharges),
         miscCharges: Number(v.miscCharges),
+        certificationCharges: v.certificationCharges,
+        packagingCharges: v.packagingCharges,
+        deliveryCharges: v.deliveryCharges,
       },
       rateMap[v.metalType] ?? 0,
       {
@@ -110,17 +122,32 @@ export async function getOrderItemQuotes(orderId: string): Promise<OrderItemQuot
       ? quotedAmountsFromBreakdown(snapshot, item.quantity)
       : { ...liveByKind }
 
-    const quotedTotal = Object.values(byKind).reduce((s, n) => s + n, 0)
-
     return {
       orderItemId: item.id,
       productName: item.productName,
       quantity: item.quantity,
       withExchange: item.withExchange,
-      quotedTotal,
+      quotedTotal: sumFinanceKindsNet(byKind),
       snapshotTotal: Number(item.price) * item.quantity,
       byKind,
       sellingByKind,
     }
   })
+
+  // Order-level discount when line snapshots didn't carry auto/coupon discount.
+  const orderDiscount = Math.max(0, Number(order.discountAmount) || 0)
+  if (orderDiscount > 0 && quotes.length > 0) {
+    const allocated = quotes.reduce((s, q) => s + (q.sellingByKind.DISCOUNT ?? 0), 0)
+    if (allocated <= 0) {
+      quotes[0] = {
+        ...quotes[0],
+        sellingByKind: {
+          ...quotes[0].sellingByKind,
+          DISCOUNT: roundMoney(orderDiscount),
+        },
+      }
+    }
+  }
+
+  return quotes
 }
