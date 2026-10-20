@@ -217,8 +217,12 @@ function emptyAmounts(): Amounts {
     STONES: { costPrice: '', sellingPrice: '' },
     MAKING_CHARGES: { costPrice: '', sellingPrice: '' },
     WASTAGE_CHARGES: { costPrice: '', sellingPrice: '' },
+    CERTIFICATION: { costPrice: '', sellingPrice: '' },
+    PACKAGING: { costPrice: '', sellingPrice: '' },
     DELIVERY: { costPrice: '', sellingPrice: '' },
+    MISC: { costPrice: '', sellingPrice: '' },
     GST: { costPrice: '', sellingPrice: '' },
+    DISCOUNT: { costPrice: '', sellingPrice: '' },
   }
 }
 
@@ -243,14 +247,18 @@ function amountsFromLines(lines: Line[] | null | undefined): Amounts {
 
 function amountsFromBoot(boot: OrderSheetBoot): Amounts {
   let next = amountsFromLines(boot.lines)
-  const sellingEmpty = FINANCE_LINE_KINDS.every((k) => !next[k].sellingPrice)
-  if (sellingEmpty && boot.quotes.length > 0) {
+  if (boot.quotes.length > 0) {
     const summed = sumSellingByKind(boot.quotes)
+    const sellingEmpty = FINANCE_LINE_KINDS.every((k) => !next[k].sellingPrice)
     next = { ...next }
     for (const kind of FINANCE_LINE_KINDS) {
-      next[kind] = {
-        ...next[kind],
-        sellingPrice: moneyToInput(summed[kind]),
+      // Full prefill when sheet is blank; otherwise only fill missing kinds
+      // (e.g. older sheets saved before Certification / Packaging / Misc / Discount).
+      if (sellingEmpty || !next[kind].sellingPrice) {
+        next[kind] = {
+          ...next[kind],
+          sellingPrice: moneyToInput(summed[kind]),
+        }
       }
     }
   }
@@ -1388,13 +1396,14 @@ export function OrderFinanceManager({
                       </li>
                       <li>
                         <strong>Selling price</strong> — what the customer paid for that line.
-                        Prefills from the order&apos;s checkout price breakdown (gold, diamonds,
-                        making, wastage, delivery, GST). Edit before saving if needed.
+                        Prefills from the order&apos;s checkout price breakdown (gold through
+                        discount, including certification, packaging, delivery, and combined misc).
+                        Edit before saving if needed.
                       </li>
                     </ul>
                     <p>
-                      Profit on the sheet = sum of selling − sum of purchase. Blank fields count as
-                      ₹0.
+                      Profit on the sheet = sum of selling − discount − sum of purchase. Blank
+                      fields count as ₹0. Discount never needs a purchase price.
                     </p>
                   </div>
                 </details>
@@ -1411,7 +1420,7 @@ export function OrderFinanceManager({
 
               <div className="order-sheet-lines-scroll order-sheet-desk">
                 <div className="order-sheet-lines-head" style={linesGridStyle} aria-hidden>
-                  <span>Line</span>
+                  <span>Component</span>
                   {quotes.map((q) => (
                     <span key={q.orderItemId} title={`${q.productName} ×${q.quantity}`}>
                       Quoted
@@ -1430,11 +1439,15 @@ export function OrderFinanceManager({
                   {FINANCE_LINE_KINDS.map((kind) => (
                     <div key={kind} className="order-sheet-row" style={linesGridStyle}>
                       <div className="order-sheet-row__kind">{LINE_KIND_LABEL[kind]}</div>
-                      {quotes.map((q) => (
-                        <div key={q.orderItemId} className="order-sheet-row__quote">
-                          <div className="order-sheet-quote-value">{inr(q.byKind[kind] ?? 0)}</div>
-                        </div>
-                      ))}
+                      {quotes.map((q) => {
+                        const amt = q.byKind[kind] ?? 0
+                        const shown = kind === 'DISCOUNT' && amt > 0 ? -amt : amt
+                        return (
+                          <div key={q.orderItemId} className="order-sheet-row__quote">
+                            <div className="order-sheet-quote-value">{inr(shown)}</div>
+                          </div>
+                        )
+                      })}
                       {quotes.length === 0 && (
                         <div className="order-sheet-row__quote">
                           <div className="order-sheet-quote-value">—</div>
@@ -1483,22 +1496,26 @@ export function OrderFinanceManager({
                 {FINANCE_LINE_KINDS.map((kind) => (
                   <div key={kind} className="order-sheet-m-card">
                     <div className="order-sheet-m-card__kind">{LINE_KIND_LABEL[kind]}</div>
-                    {quotes.map((q) => (
-                      <div key={q.orderItemId} className="order-sheet-m-card__quote">
-                        <span>
-                          Quoted
-                          {quotes.length > 1
-                            ? ` · ${
-                                q.productName.length > 22
-                                  ? `${q.productName.slice(0, 20)}…`
-                                  : q.productName
-                              }`
-                            : ''}
-                          {q.quantity > 1 ? ` ×${q.quantity}` : ''}
-                        </span>
-                        <strong>{inr(q.byKind[kind] ?? 0)}</strong>
-                      </div>
-                    ))}
+                    {quotes.map((q) => {
+                      const amt = q.byKind[kind] ?? 0
+                      const shown = kind === 'DISCOUNT' && amt > 0 ? -amt : amt
+                      return (
+                        <div key={q.orderItemId} className="order-sheet-m-card__quote">
+                          <span>
+                            Quoted
+                            {quotes.length > 1
+                              ? ` · ${
+                                  q.productName.length > 22
+                                    ? `${q.productName.slice(0, 20)}…`
+                                    : q.productName
+                                }`
+                              : ''}
+                            {q.quantity > 1 ? ` ×${q.quantity}` : ''}
+                          </span>
+                          <strong>{inr(shown)}</strong>
+                        </div>
+                      )
+                    })}
                     {quotes.length === 0 && (
                       <div className="order-sheet-m-card__quote order-sheet-m-card__quote--empty">
                         <span>Quoted</span>

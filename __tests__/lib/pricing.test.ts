@@ -1,4 +1,15 @@
-import { calculatePrice, DEFAULT_PRICING_CONFIG, toOrderItemPriceSnapshot, isOrderItemPriceSnapshot, sellingComponentsToUnitSnapshot, unitSnapshotToSellingComponents, sellingBreakdownMatchesGoods } from '@/lib/pricing'
+import {
+  calculatePrice,
+  DEFAULT_PRICING_CONFIG,
+  encodeFixedChargeForSave,
+  feeLabelsFromConfig,
+  sellingBreakdownMatchesGoods,
+  sellingUnitFromPriceBreakdown,
+  toOrderItemPriceSnapshot,
+  isOrderItemPriceSnapshot,
+  sellingComponentsToUnitSnapshot,
+  unitSnapshotToSellingComponents,
+} from '@/lib/pricing'
 import { amountInWords, splitInvoiceTax } from '@/lib/invoice-tax'
 
 describe('calculatePrice (estimator formula)', () => {
@@ -58,7 +69,8 @@ describe('calculatePrice (estimator formula)', () => {
     expect(snap.otherStoneValue).toBe(0)
     expect(snap.making).toBe(4_000)
     expect(snap.goldVA).toBe(3_000)
-    expect(snap.miscCharges).toBe(1_000)
+    expect(snap.miscCharges).toBe(0)
+    expect(snap.deliveryCharges).toBe(1_000)
     expect(snap.gst).toBe(1_710)
     expect(snap.taxable).toBe(58_000)
     expect(snap.total).toBe(59_710)
@@ -155,6 +167,222 @@ describe('calculatePrice (estimator formula)', () => {
     const selling = unitSnapshotToSellingComponents(snap, 1)
     expect(selling.discount).toBe(200)
     expect(selling.gold + selling.making + selling.wastage + selling.gst - selling.discount).toBe(11_645)
+  })
+
+  it('stores labeled misc lines on the unit snapshot for invoices', () => {
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 0,
+        stones: 0,
+        making: 1_000,
+        wastage: 500,
+        miscLines: [
+          { label: 'Hallmark', amount: 800 },
+          { label: 'Certificate', amount: 200 },
+        ],
+        gst: 375,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.miscCharges).toBe(1_000)
+    expect(snap.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    expect(selling.delivery).toBe(0)
+  })
+
+  it('inherits store defaults when certification/packaging/delivery are null', () => {
+    const config = {
+      ...DEFAULT_PRICING_CONFIG,
+      defaultCertificationCharges: 500,
+      defaultPackagingCharges: 120,
+      defaultDeliveryCharges: 80,
+    }
+    const inherited = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: null,
+        packagingCharges: null,
+        deliveryCharges: null,
+      },
+      1000,
+      { config },
+    )
+    expect(inherited.certificationCharges).toBe(500)
+    expect(inherited.packagingCharges).toBe(120)
+    expect(inherited.deliveryCharges).toBe(80)
+    expect(inherited.taxable).toBe(1800) // gold 1000 + VA 100 + fees 700
+
+    const overridden = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: 0,
+        packagingCharges: 50,
+        deliveryCharges: null,
+      },
+      1000,
+      { config },
+    )
+    expect(overridden.certificationCharges).toBe(0)
+    expect(overridden.packagingCharges).toBe(50)
+    expect(overridden.deliveryCharges).toBe(80)
+  })
+
+  it('encodeFixedChargeForSave stores null when blank or equal to store default', () => {
+    expect(encodeFixedChargeForSave('', 500)).toBeNull()
+    expect(encodeFixedChargeForSave(500, 500)).toBeNull()
+    expect(encodeFixedChargeForSave('500.00', 500)).toBeNull()
+    expect(encodeFixedChargeForSave(0, 500)).toBe(0)
+    expect(encodeFixedChargeForSave(750, 500)).toBe(750)
+  })
+
+  it('sellingUnitFromPriceBreakdown matches PDP total for manual-order goods check', () => {
+    const b = calculatePrice(
+      {
+        weightGrams: 1.234,
+        makingChargePerGram: 500,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 0,
+        certificationCharges: 200,
+        packagingCharges: 100,
+        deliveryCharges: 0,
+      },
+      6789.12,
+      {
+        config: {
+          ...DEFAULT_PRICING_CONFIG,
+          defaultCertificationCharges: 200,
+          defaultPackagingCharges: 100,
+        },
+        stones: [
+          {
+            caratWeight: 0.33,
+            ratePerCarat: 21000,
+            ratePerCaratExchange: 30000,
+            typeLabel: 'Colourless Diamond',
+          },
+        ],
+      },
+    )
+    const unit = sellingUnitFromPriceBreakdown(b)
+    expect(unit.total).toBe(Math.round(b.total))
+    expect(
+      sellingBreakdownMatchesGoods(
+        {
+          gold: unit.gold,
+          diamonds: unit.diamonds,
+          stones: unit.stones,
+          making: unit.making,
+          wastage: unit.wastage,
+          certification: unit.certification,
+          packaging: unit.packaging,
+          delivery: unit.delivery,
+          gst: unit.gst,
+          miscLines: unit.miscLines,
+        },
+        unit.total,
+        { requireNetIfDiscounted: true },
+      ),
+    ).toBe(true)
+  })
+
+  it('feeLabelsFromConfig uses store labels with safe fallbacks', () => {
+    expect(feeLabelsFromConfig(DEFAULT_PRICING_CONFIG)).toEqual({
+      certification: 'Certification',
+      packaging: 'Packaging',
+      delivery: 'Delivery',
+    })
+    expect(
+      feeLabelsFromConfig({
+        ...DEFAULT_PRICING_CONFIG,
+        certificationLabel: 'Hallmark fee',
+        packagingLabel: '  ',
+        deliveryLabel: 'Courier',
+      }),
+    ).toEqual({
+      certification: 'Hallmark fee',
+      packaging: 'Packaging',
+      delivery: 'Courier',
+    })
+  })
+
+  it('adds certification, packaging, and delivery as own taxable lines (not misc)', () => {
+    const b = calculatePrice(
+      {
+        weightGrams: 1,
+        makingChargePerGram: 0,
+        flatMakingCharge: 0,
+        stoneCharges: 0,
+        miscCharges: 45,
+        certificationCharges: 500,
+        packagingCharges: 120,
+        deliveryCharges: 80,
+      },
+      1000,
+      { config: DEFAULT_PRICING_CONFIG },
+    )
+    // gold 1000 + wastage 100 + misc 45 + cert 500 + pack 120 + del 80 = 1845; GST 3%
+    expect(b.miscCharges).toBe(45)
+    expect(b.certificationCharges).toBe(500)
+    expect(b.packagingCharges).toBe(120)
+    expect(b.deliveryCharges).toBe(80)
+    expect(b.taxable).toBe(1845)
+    expect(b.gst).toBeCloseTo(55.35, 2)
+
+    const snap = sellingComponentsToUnitSnapshot(
+      {
+        gold: 10_000,
+        diamonds: 0,
+        stones: 0,
+        making: 1_000,
+        wastage: 500,
+        delivery: 80,
+        packaging: 120,
+        certification: 500,
+        miscLines: [{ label: 'Hallmark', amount: 45 }],
+        gst: 367.35,
+      },
+      { quantity: 1, goldRatePerGram: 7000, weightGrams: 2 },
+    )
+    expect(snap.certificationCharges).toBe(500)
+    expect(snap.packagingCharges).toBe(120)
+    expect(snap.deliveryCharges).toBe(80)
+    expect(snap.miscCharges).toBe(45)
+    expect(snap.taxable).toBe(12_245)
+    expect(snap.gst).toBeCloseTo(367.35, 2)
+    const selling = unitSnapshotToSellingComponents(snap, 1)
+    expect(selling.certification).toBe(500)
+    expect(selling.packaging).toBe(120)
+    expect(selling.delivery).toBe(80)
+    expect(
+      sellingBreakdownMatchesGoods(
+        { ...selling, certification: selling.certification },
+        selling.gold +
+          selling.making +
+          selling.wastage +
+          45 +
+          selling.delivery +
+          selling.packaging +
+          selling.certification +
+          selling.gst,
+      ),
+    ).toBe(true)
   })
 
   it('sellingBreakdownMatchesGoods accepts net or gross equality', () => {

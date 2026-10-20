@@ -44,9 +44,9 @@ async function main() {
       },
       variants: {
         create: [
-          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '6', weightGrams: 2.5, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-YG-6' },
-          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '8', weightGrams: 2.8, makingChargePerGram: 500, miscCharges: 45, stock: 3, sku: 'RING-G18K-YG-8' },
-          { metalType: 'GOLD_14K', metalColor: 'YELLOW', size: '6', weightGrams: 2.1, makingChargePerGram: 400, miscCharges: 45, stock: 5, sku: 'RING-G14K-YG-6' },
+          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '6', weightGrams: 2.5, makingChargePerGram: 500, miscCharges: 0, stock: 3, sku: 'RING-G18K-YG-6' },
+          { metalType: 'GOLD_18K', metalColor: 'YELLOW', size: '8', weightGrams: 2.8, makingChargePerGram: 500, miscCharges: 0, stock: 3, sku: 'RING-G18K-YG-8' },
+          { metalType: 'GOLD_14K', metalColor: 'YELLOW', size: '6', weightGrams: 2.1, makingChargePerGram: 400, miscCharges: 0, stock: 5, sku: 'RING-G14K-YG-6' },
         ],
       },
     },

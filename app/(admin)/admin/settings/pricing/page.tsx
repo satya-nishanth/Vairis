@@ -33,6 +33,12 @@ export default async function PricingSettingsPage() {
           vaGoldPct: Number(settings?.vaGoldPct ?? 10),
           vaStonePct: Number(settings?.vaStonePct ?? 0),
           vaLabel: settings?.vaLabel ?? 'Wastage',
+          defaultCertificationCharges: Number(settings?.defaultCertificationCharges ?? 0),
+          defaultPackagingCharges: Number(settings?.defaultPackagingCharges ?? 0),
+          defaultDeliveryCharges: Number(settings?.defaultDeliveryCharges ?? 0),
+          certificationLabel: settings?.certificationLabel ?? 'Certification',
+          packagingLabel: settings?.packagingLabel ?? 'Packaging',
+          deliveryLabel: settings?.deliveryLabel ?? 'Delivery',
           showPricesGlobal: settings?.showPricesGlobal ?? true,
           diamondRates: diamondRates.map((r) => ({
             id: r.id,

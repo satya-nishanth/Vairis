@@ -1,7 +1,11 @@
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
-import { calculatePrice } from '@/lib/pricing'
+import {
+  calculatePrice,
+  feeLabelsFromConfig,
+  sellingUnitFromPriceBreakdown,
+} from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
 import { ManualOrderForm } from './ManualOrderForm'
 
@@ -53,21 +57,26 @@ export default async function NewManualOrderPage({
   const variantOptions = products.flatMap((p) =>
     p.variants.map((v) => {
       const rate = rateMap[v.metalType]
-      const suggested = rate
-        ? Math.round(
-            calculatePrice(
-              {
-                weightGrams: v.weightGrams.toString(),
-                makingChargePerGram: v.makingChargePerGram.toString(),
-                flatMakingCharge: v.flatMakingCharge.toString(),
-                stoneCharges: v.stoneCharges.toString(),
-                miscCharges: v.miscCharges.toString(),
-              },
-              rate,
-              { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
-            ).total,
+      const cfg = resolvePricingConfig(pricingConfig, p)
+      const breakdown = rate
+        ? calculatePrice(
+            {
+              weightGrams: v.weightGrams.toString(),
+              makingChargePerGram: v.makingChargePerGram.toString(),
+              flatMakingCharge: v.flatMakingCharge.toString(),
+              stoneCharges: v.stoneCharges.toString(),
+              miscCharges: v.miscCharges.toString(),
+              certificationCharges: v.certificationCharges,
+              packagingCharges: v.packagingCharges,
+              deliveryCharges: v.deliveryCharges,
+            },
+            rate,
+            { stones: toStoneInputs(p.stones), withExchange: false, config: cfg },
           )
-        : 0
+        : null
+      const sellingUnit = breakdown
+        ? sellingUnitFromPriceBreakdown(breakdown, v.miscChargeLines)
+        : null
       return {
         variantId: v.id,
         productId: p.id,
@@ -76,7 +85,11 @@ export default async function NewManualOrderPage({
         itemCode: p.itemCode ?? '',
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-        suggestedPrice: suggested,
+        suggestedPrice: sellingUnit?.total ?? (breakdown ? Math.round(breakdown.total) : 0),
+        certificationCharges: breakdown?.certificationCharges ?? cfg.defaultCertificationCharges,
+        packagingCharges: breakdown?.packagingCharges ?? cfg.defaultPackagingCharges,
+        deliveryCharges: breakdown?.deliveryCharges ?? cfg.defaultDeliveryCharges,
+        sellingUnit,
       }
     }),
   )
@@ -101,6 +114,7 @@ export default async function NewManualOrderPage({
         }))}
         quotation={quotation}
         isFinance={isFinance}
+        feeLabels={feeLabelsFromConfig(pricingConfig)}
       />
     </div>
   )

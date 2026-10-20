@@ -16,6 +16,12 @@ type FormState = {
   vaGoldPct: number | string
   vaStonePct: number | string
   vaLabel: string
+  defaultCertificationCharges: number | string
+  defaultPackagingCharges: number | string
+  defaultDeliveryCharges: number | string
+  certificationLabel: string
+  packagingLabel: string
+  deliveryLabel: string
   showPricesGlobal: boolean
   diamondRates: RateRow[]
 }
@@ -121,8 +127,102 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
               onChange={(e) => setForm((f) => ({ ...f, vaLabel: e.target.value }))}
               className="pform__input"
               placeholder="Value Addition"
+              maxLength={40}
+              data-testid="va-label"
             />
             <p className="pform__hint">Shown on the price breakup, e.g. &ldquo;Value Addition&rdquo;.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="pform__section">
+        <h2>Fixed charges (defaults + labels)</h2>
+        <p className="pform__section-note">
+          Amounts apply to every product that has not set a different value on its own page
+          (blank on the product = inherit). Changing a default updates those products live.
+          Labels appear on the storefront breakup, admin orders, and tax invoices.
+        </p>
+        <div className="pform__grid pform__grid--2">
+          <div className="pform__field">
+            <label htmlFor="ps-cert-label">Label</label>
+            <input
+              id="ps-cert-label"
+              value={form.certificationLabel}
+              onChange={(e) => setForm((f) => ({ ...f, certificationLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Certification"
+              maxLength={40}
+              data-testid="certification-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-cert-default">Default amount (₹)</label>
+            <input
+              id="ps-cert-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultCertificationCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultCertificationCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-certification-charges"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-pack-label">Label</label>
+            <input
+              id="ps-pack-label"
+              value={form.packagingLabel}
+              onChange={(e) => setForm((f) => ({ ...f, packagingLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Packaging"
+              maxLength={40}
+              data-testid="packaging-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-pack-default">Default amount (₹)</label>
+            <input
+              id="ps-pack-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultPackagingCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultPackagingCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-packaging-charges"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-del-label">Label</label>
+            <input
+              id="ps-del-label"
+              value={form.deliveryLabel}
+              onChange={(e) => setForm((f) => ({ ...f, deliveryLabel: e.target.value }))}
+              className="pform__input"
+              placeholder="Delivery"
+              maxLength={40}
+              data-testid="delivery-label"
+            />
+          </div>
+          <div className="pform__field">
+            <label htmlFor="ps-del-default">Default amount (₹)</label>
+            <input
+              id="ps-del-default"
+              type="number"
+              step="1"
+              min="0"
+              value={form.defaultDeliveryCharges}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, defaultDeliveryCharges: e.target.value }))
+              }
+              className="pform__input"
+              data-testid="default-delivery-charges"
+            />
           </div>
         </div>
       </section>
@@ -151,6 +251,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
                   onChange={(e) => setRate(idx, 'label', e.target.value)}
                   className="pform__input"
                   placeholder="e.g. Colourless Diamond"
+                  maxLength={40}
                 />
               </div>
               <div className="pform__field pform__span-2">
@@ -160,6 +261,7 @@ export function PricingSettingsForm({ initial }: { initial: FormState }) {
                   onChange={(e) => setRate(idx, 'code', e.target.value)}
                   className="pform__input"
                   placeholder="COLORLESS"
+                  maxLength={40}
                 />
               </div>
               <div className="pform__field pform__span-3">

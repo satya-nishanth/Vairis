@@ -15,10 +15,31 @@ const rateValue = z
   .transform(Number)
   .refine((n) => !Number.isNaN(n) && n >= 0, 'Rate cannot be negative')
 
+const inrFixed = z
+  .union([z.string(), z.number()])
+  .transform(Number)
+  .refine((n) => !Number.isNaN(n) && n >= 0, 'Amount cannot be negative')
+
+const feeLabel = z
+  .string()
+  .trim()
+  .min(1, 'Label is required')
+  .max(40, 'Label must be 40 characters or fewer')
+
 const putSchema = z.object({
   vaGoldPct: pct,
   vaStonePct: pct,
-  vaLabel: z.string().trim().min(1, 'Label is required').max(40),
+  vaLabel: z
+    .string()
+    .trim()
+    .min(1, 'Label is required')
+    .max(40, 'Label must be 40 characters or fewer'),
+  defaultCertificationCharges: inrFixed.optional(),
+  defaultPackagingCharges: inrFixed.optional(),
+  defaultDeliveryCharges: inrFixed.optional(),
+  certificationLabel: feeLabel.optional(),
+  packagingLabel: feeLabel.optional(),
+  deliveryLabel: feeLabel.optional(),
   showPricesGlobal: z.boolean(),
   diamondRates: z.array(
     z.object({
@@ -27,9 +48,13 @@ const putSchema = z.object({
         .string()
         .trim()
         .min(1, 'Code is required')
-        .max(40)
+        .max(40, 'Code must be 40 characters or fewer')
         .transform((s) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '_')),
-      label: z.string().trim().min(1, 'Label is required').max(60),
+      label: z
+        .string()
+        .trim()
+        .min(1, 'Label is required')
+        .max(40, 'Label must be 40 characters or fewer'),
       ratePerCarat: rateValue,
       ratePerCaratExchange: rateValue,
       active: z.boolean().default(true),
@@ -47,6 +72,12 @@ export async function GET() {
     vaGoldPct: Number(settings?.vaGoldPct ?? 10),
     vaStonePct: Number(settings?.vaStonePct ?? 0),
     vaLabel: settings?.vaLabel ?? 'Value Addition',
+    defaultCertificationCharges: Number(settings?.defaultCertificationCharges ?? 0),
+    defaultPackagingCharges: Number(settings?.defaultPackagingCharges ?? 0),
+    defaultDeliveryCharges: Number(settings?.defaultDeliveryCharges ?? 0),
+    certificationLabel: settings?.certificationLabel ?? 'Certification',
+    packagingLabel: settings?.packagingLabel ?? 'Packaging',
+    deliveryLabel: settings?.deliveryLabel ?? 'Delivery',
     showPricesGlobal: settings?.showPricesGlobal ?? true,
     diamondRates: diamondRates.map((r) => ({
       id: r.id,
@@ -76,6 +107,12 @@ export async function PUT(req: NextRequest) {
         vaGoldPct: data.vaGoldPct,
         vaStonePct: data.vaStonePct,
         vaLabel: data.vaLabel,
+        defaultCertificationCharges: data.defaultCertificationCharges ?? 0,
+        defaultPackagingCharges: data.defaultPackagingCharges ?? 0,
+        defaultDeliveryCharges: data.defaultDeliveryCharges ?? 0,
+        certificationLabel: data.certificationLabel ?? 'Certification',
+        packagingLabel: data.packagingLabel ?? 'Packaging',
+        deliveryLabel: data.deliveryLabel ?? 'Delivery',
         showPricesGlobal: data.showPricesGlobal,
       }
       await tx.pricingSettings.upsert({

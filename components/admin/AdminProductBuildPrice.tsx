@@ -1,7 +1,12 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import type { PricingConfig, PriceBreakdown } from '@/lib/pricing'
+import {
+  feeLabelsFromConfig,
+  type FeeLabels,
+  type PricingConfig,
+  type PriceBreakdown,
+} from '@/lib/pricing'
 import { formatINR } from '@/lib/pricing'
 import {
   METAL_COLORS,
@@ -20,6 +25,10 @@ export type BuildPriceVariant = {
   flatMakingCharge: string
   stoneCharges: string
   miscCharges: string
+  miscLines: { label: string; amount: string }[]
+  certificationCharges: string
+  packagingCharges: string
+  deliveryCharges: string
   stock: string
   sku: string
 }
@@ -61,6 +70,7 @@ type Props = {
   onAddVariant: () => void
   onRemoveVariant: (idx: number) => void
   onSetVariant: (idx: number, field: keyof BuildPriceVariant, value: string) => void
+  onSetVariantMiscLines?: (idx: number, lines: { label: string; amount: string }[]) => void
   onAddStone: () => void
   onRemoveStone: (idx: number) => void
   onSetStone: (idx: number, field: keyof BuildPriceStone, value: string | boolean) => void
@@ -80,22 +90,30 @@ function StorefrontBreakdown({
   breakdown,
   weightGrams,
   exchangeTotal,
+  feeLabels,
 }: {
   breakdown: PriceBreakdown
   weightGrams: number
   exchangeTotal: number | null
+  feeLabels: FeeLabels
 }) {
   const roundedGold = Math.round(breakdown.goldValue)
   const roundedMaking = Math.round(breakdown.making)
   const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0
   const roundedMisc = breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0
+  const roundedCert =
+    breakdown.certificationCharges > 0 ? Math.round(breakdown.certificationCharges) : 0
+  const roundedPack =
+    breakdown.packagingCharges > 0 ? Math.round(breakdown.packagingCharges) : 0
+  const roundedDel =
+    breakdown.deliveryCharges > 0 ? Math.round(breakdown.deliveryCharges) : 0
   const roundedGST = Math.round(breakdown.gst)
   const roundedStones =
     breakdown.stoneLines.length > 0
       ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
       : Math.round(breakdown.stoneValue)
-  const tableTotal =
-    roundedGold + roundedStones + roundedMaking + roundedVA + roundedMisc + roundedGST
+  // Match storefront header: round formula total once (not sum of rounded lines).
+  const tableTotal = Math.round(breakdown.total)
 
   return (
     <div
@@ -185,9 +203,33 @@ function StorefrontBreakdown({
               </td>
             </tr>
           )}
+          {roundedCert > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.certification}</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedCert)}
+              </td>
+            </tr>
+          )}
+          {roundedPack > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.packaging}</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedPack)}
+              </td>
+            </tr>
+          )}
+          {roundedDel > 0 && (
+            <tr style={{ borderTop: '1px solid #dcfce7' }}>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>{feeLabels.delivery}</td>
+              <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
+                {formatINR(roundedDel)}
+              </td>
+            </tr>
+          )}
           {roundedMisc > 0 && (
             <tr style={{ borderTop: '1px solid #dcfce7' }}>
-              <td style={{ padding: '8px 14px', color: '#166534' }}>Hallmarking &amp; certification</td>
+              <td style={{ padding: '8px 14px', color: '#166534' }}>Misc</td>
               <td style={{ padding: '8px 14px', textAlign: 'right', color: '#14532d', fontWeight: 500 }}>
                 {formatINR(roundedMisc)}
               </td>
@@ -230,6 +272,7 @@ export default function AdminProductBuildPrice(props: Props) {
     vaLabel,
     calcBreakdown,
   } = props
+  const feeLabels = feeLabelsFromConfig(storePricing)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -599,17 +642,125 @@ export default function AdminProductBuildPrice(props: Props) {
                       <p className="pform__hint">Legacy flat gem cost</p>
                     </div>
                     <div className="pform__field">
-                      <label>Misc (₹)</label>
+                      <label>{feeLabels.certification} (₹)</label>
                       <input
                         type="number"
-                        step="1"
+                        step="0.01"
                         min="0"
-                        value={v.miscCharges}
-                        onChange={(e) => props.onSetVariant(idx, 'miscCharges', e.target.value)}
+                        value={v.certificationCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'certificationCharges', e.target.value)
+                        }
                         className="pform__input"
-                        placeholder="e.g. 45"
+                        placeholder={String(storePricing.defaultCertificationCharges ?? 0)}
                       />
-                      <p className="pform__hint">BIS hallmark</p>
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultCertificationCharges ?? 0})
+                      </p>
+                    </div>
+                    <div className="pform__field">
+                      <label>{feeLabels.packaging} (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.packagingCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'packagingCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder={String(storePricing.defaultPackagingCharges ?? 0)}
+                      />
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultPackagingCharges ?? 0})
+                      </p>
+                    </div>
+                    <div className="pform__field">
+                      <label>{feeLabels.delivery} (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={v.deliveryCharges}
+                        onChange={(e) =>
+                          props.onSetVariant(idx, 'deliveryCharges', e.target.value)
+                        }
+                        className="pform__input"
+                        placeholder={String(storePricing.defaultDeliveryCharges ?? 0)}
+                      />
+                      <p className="pform__hint">
+                        Blank = store default (₹{storePricing.defaultDeliveryCharges ?? 0})
+                      </p>
+                    </div>
+                    <div className="pform__field" style={{ gridColumn: '1 / -1' }}>
+                      <label>Misc (text + amount, optional)</label>
+                      {(v.miscLines?.length ? v.miscLines : []).map((row, ri) => {
+                        const rows = v.miscLines?.length ? v.miscLines : []
+                        return (
+                          <div
+                            key={ri}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 120px auto',
+                              gap: 8,
+                              marginTop: 6,
+                            }}
+                          >
+                            <input
+                              className="pform__input"
+                              value={row.label}
+                              placeholder={`Text ${ri + 1}`}
+                              onChange={(e) => {
+                                const next = rows.map((r, j) =>
+                                  j === ri ? { ...r, label: e.target.value } : r,
+                                )
+                                props.onSetVariantMiscLines?.(idx, next)
+                              }}
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="pform__input"
+                              value={row.amount}
+                              placeholder={`Amount ${ri + 1}`}
+                              onChange={(e) => {
+                                const next = rows.map((r, j) =>
+                                  j === ri ? { ...r, amount: e.target.value } : r,
+                                )
+                                props.onSetVariantMiscLines?.(idx, next)
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="admin-btn"
+                              onClick={() =>
+                                props.onSetVariantMiscLines?.(
+                                  idx,
+                                  rows.filter((_, j) => j !== ri),
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        className="admin-btn"
+                        style={{ marginTop: 8 }}
+                        onClick={() => {
+                          const rows = v.miscLines?.length ? v.miscLines : []
+                          props.onSetVariantMiscLines?.(idx, [
+                            ...rows,
+                            { label: '', amount: '0' },
+                          ])
+                        }}
+                      >
+                        Add misc line
+                      </button>
+                      <p className="pform__hint">Shown with labels on the tax invoice</p>
                     </div>
                   </div>
                   <p
@@ -624,7 +775,8 @@ export default function AdminProductBuildPrice(props: Props) {
                     }}
                   >
                     Taxable = gold + {effectivePricing.vaLabel} ({effectivePricing.vaGoldPct}%) + making +
-                    diamonds + misc · then GST 3%
+                    diamonds + {feeLabels.certification} + {feeLabels.packaging} + {feeLabels.delivery} +
+                    misc · then GST 3%
                   </p>
                 </div>
 
@@ -633,6 +785,7 @@ export default function AdminProductBuildPrice(props: Props) {
                     breakdown={breakdown}
                     weightGrams={weight}
                     exchangeTotal={exchBreakdown ? Math.round(exchBreakdown.total) : null}
+                    feeLabels={feeLabels}
                   />
                 )}
               </div>

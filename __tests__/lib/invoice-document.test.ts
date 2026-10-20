@@ -3,6 +3,8 @@ import {
   applyInvoiceSeller,
   applyInvoiceExchangeFlag,
   invoiceFromProducts,
+  invoiceStatusFromPayload,
+  isInvoicePaymentPaid,
   lineFromOrderItem,
   payloadFromOrder,
   recomputeLine,
@@ -90,6 +92,7 @@ describe('order invoice from priceBreakdown', () => {
     vaTotal: 1075.82,
     vaLabel: 'Value Addition',
     miscCharges: 45,
+    certificationCharges: 0,
     taxable: 23737.17,
     gst: 712.11,
     total: 24449.28,
@@ -125,11 +128,55 @@ describe('order invoice from priceBreakdown', () => {
     expect(line.wastage).toBeCloseTo(1075.82, 2)
     expect(line.making).toBe(1100)
     expect(line.taxable).toBeCloseTo(23737.17, 2)
+    expect(line.miscLines).toEqual([{ label: 'Misc', amount: 45 }])
 
     // Live recompute would use 99999/g — locked path must not.
     const again = recomputeLine({ ...line, goldRatePerGram: 99999 }, 'Wastage')
     expect(again.goldValue).toBeCloseTo(21516.35, 2)
     expect(again.taxable).toBeCloseTo(23737.17, 2)
+  })
+
+  it('keeps multiple labeled misc lines in taxable and on the line', () => {
+    const line = recomputeLine(
+      {
+        ...lineFromOrderItem(orderItem, { GOLD_18K: 9780.16 }, DEFAULT_PRICING_CONFIG),
+        lockedPricing: false,
+        miscLines: [
+          { label: 'Hallmark', amount: 800 },
+          { label: 'Certificate', amount: 200 },
+        ],
+        miscCharges: 1000,
+      },
+      'Wastage',
+    )
+    expect(line.miscCharges).toBe(1000)
+    expect(line.miscLines).toEqual([
+      { label: 'Hallmark', amount: 800 },
+      { label: 'Certificate', amount: 200 },
+    ])
+    expect(line.taxable).toBeGreaterThan(0)
+  })
+
+  it('discloses certification separately from misc on locked snapshots', () => {
+    const line = lineFromOrderItem(
+      {
+        ...orderItem,
+        priceBreakdown: {
+          ...snap,
+          miscCharges: 45,
+          certificationCharges: 500,
+          taxable: 24237.17,
+          gst: 727.12,
+          total: 24964.29,
+        },
+      },
+      { GOLD_18K: 9780.16 },
+      DEFAULT_PRICING_CONFIG,
+    )
+    expect(line.lockedPricing).toBe(true)
+    expect(line.miscCharges).toBe(45)
+    expect(line.certificationCharges).toBe(500)
+    expect(line.taxable).toBeCloseTo(24237.17, 2)
   })
 
   it('payloadFromOrder keeps snapshot taxable on the invoice', () => {
@@ -295,6 +342,26 @@ describe('order invoice from priceBreakdown', () => {
     expect(payload.payment.status).toBe('Paid in full')
     expect(payload.payment.method).toBe('Offline')
     expect(payload.payment.received).toBe('2026-09-01')
+  })
+})
+
+describe('isInvoicePaymentPaid', () => {
+  it('does not treat Unpaid as paid (substring trap)', () => {
+    expect(isInvoicePaymentPaid('Unpaid')).toBe(false)
+    expect(isInvoicePaymentPaid('unpaid')).toBe(false)
+    expect(isInvoicePaymentPaid('')).toBe(false)
+    expect(isInvoicePaymentPaid(null)).toBe(false)
+  })
+
+  it('recognises Paid / Paid in full', () => {
+    expect(isInvoicePaymentPaid('Paid')).toBe(true)
+    expect(isInvoicePaymentPaid('Paid in full')).toBe(true)
+    expect(isInvoicePaymentPaid('PAID')).toBe(true)
+  })
+
+  it('maps invoice status enum correctly', () => {
+    expect(invoiceStatusFromPayload({ payment: { status: 'Unpaid' } } as never)).toBe('UNPAID')
+    expect(invoiceStatusFromPayload({ payment: { status: 'Paid in full' } } as never)).toBe('PAID')
   })
 })
 

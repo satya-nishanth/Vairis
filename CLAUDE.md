@@ -97,9 +97,20 @@ wastage    = goldValue × vaGoldPct        (PricingSettings, default 10%; gold o
 making     = weight × makingChargePerGram + flatMakingCharge
 stoneValue = Σ stones(carat × DiamondRate[type][withExchange?]) + legacy flat stoneCharges
 taxable    = goldValue + wastage + making + stoneValue + miscCharges
+           + certificationCharges + packagingCharges + deliveryCharges
 GST        = taxable × 3%
 total      = taxable + GST
 ```
+
+Certification, packaging, and delivery are fixed per-variant fees
+(`ProductVariant.certificationCharges`, `packagingCharges`, `deliveryCharges`), each disclosed
+as its own line on PDP, order selling breakdown, and tax invoice (not folded into misc).
+Null on the variant inherits store defaults from `PricingSettings`
+(`defaultCertificationCharges`, `defaultPackagingCharges`, `defaultDeliveryCharges`) —
+changing those defaults updates every non-overridden product live. Explicit values
+(including 0) override the store default for that product. Customer-facing names are
+also store-wide (`certificationLabel`, `packagingLabel`, `deliveryLabel`) and show on
+PDP, orders, and invoices.
 
 Wastage is a **disclosed** breakup line (admin-editable label + % on gold value only).
 Weights and carats shown to the customer are always the true values — **never**

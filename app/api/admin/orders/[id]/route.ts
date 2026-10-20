@@ -14,6 +14,7 @@ import { getShippingProvider } from '@/lib/shipping'
 import { sendOrderDeliveredEmail, sendOrderShippedEmail } from '@/lib/email'
 import {
   roundMoney,
+  sellingBreakdownGross,
   sellingBreakdownMatchesGoods,
   sellingComponentsToUnitSnapshot,
   toOrderItemPriceSnapshot,
@@ -293,7 +294,20 @@ const editOrderSchema = z.object({
       stones: z.number().min(0).max(100000000),
       making: z.number().min(0).max(100000000),
       wastage: z.number().min(0).max(100000000),
-      delivery: z.number().min(0).max(100000000),
+      /** Order-level delivery fee (₹). */
+      delivery: z.number().min(0).max(100000000).optional().default(0),
+      /** Order-level packaging fee (₹). */
+      packaging: z.number().min(0).max(100000000).optional().default(0),
+      miscLines: z
+        .array(
+          z.object({
+            label: z.string(),
+            amount: z.number().min(0).max(100000000),
+          }),
+        )
+        .optional(),
+      /** Fixed certification fee (order-level ₹). */
+      certification: z.number().min(0).max(100000000).optional().default(0),
       gst: z.number().min(0).max(100000000),
       /** Subtracted after GST; net must match goods total. */
       discount: z.number().min(0).max(100000000).optional().default(0),
@@ -419,14 +433,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const total = roundMoney(d.items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))
 
   if (d.sellingBreakdown && !sellingBreakdownMatchesGoods(d.sellingBreakdown, total)) {
-    const gross =
-      d.sellingBreakdown.gold +
-      d.sellingBreakdown.diamonds +
-      d.sellingBreakdown.stones +
-      d.sellingBreakdown.making +
-      d.sellingBreakdown.wastage +
-      d.sellingBreakdown.delivery +
-      d.sellingBreakdown.gst
+    const gross = sellingBreakdownGross(d.sellingBreakdown)
     const sellingTotal = roundMoney(gross - (d.sellingBreakdown.discount ?? 0))
     return NextResponse.json(
       { error: `Selling breakdown (₹${sellingTotal}) doesn't match goods total (₹${total})` },
@@ -452,14 +459,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const manual = d.sellingBreakdown
     const manualGross =
       manual != null
-        ? manual.gold +
-          manual.diamonds +
-          manual.stones +
-          manual.making +
-          manual.wastage +
-          manual.delivery +
-          manual.gst +
-          (manual.discount ?? 0)
+        ? sellingBreakdownGross(manual) + (manual.discount ?? 0)
         : 0
 
     if (index === 0 && manual != null && manualGross > 0) {

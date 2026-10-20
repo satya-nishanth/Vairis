@@ -3,7 +3,13 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { isFinanceEmail } from '@/lib/finance-auth'
-import { calculatePrice, isOrderItemPriceSnapshot, unitSnapshotToSellingComponents } from '@/lib/pricing'
+import {
+  calculatePrice,
+  feeLabelsFromConfig,
+  isOrderItemPriceSnapshot,
+  sellingUnitFromPriceBreakdown,
+  unitSnapshotToSellingComponents,
+} from '@/lib/pricing'
 import { getPricingConfig, toStoneInputs, resolvePricingConfig } from '@/lib/pricing-data'
 import { parseInternalBuild } from '@/lib/order-internal-build'
 import { ManualOrderForm, type ManualOrderEditPrefill } from '../../new/ManualOrderForm'
@@ -79,21 +85,26 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
   const variantOptions = products.flatMap((p) =>
     p.variants.map((v) => {
       const rate = rateMap[v.metalType]
-      const suggested = rate
-        ? Math.round(
-            calculatePrice(
-              {
-                weightGrams: v.weightGrams.toString(),
-                makingChargePerGram: v.makingChargePerGram.toString(),
-                flatMakingCharge: v.flatMakingCharge.toString(),
-                stoneCharges: v.stoneCharges.toString(),
-                miscCharges: v.miscCharges.toString(),
-              },
-              rate,
-              { stones: toStoneInputs(p.stones), withExchange: false, config: resolvePricingConfig(pricingConfig, p) },
-            ).total,
+      const cfg = resolvePricingConfig(pricingConfig, p)
+      const breakdown = rate
+        ? calculatePrice(
+            {
+              weightGrams: v.weightGrams.toString(),
+              makingChargePerGram: v.makingChargePerGram.toString(),
+              flatMakingCharge: v.flatMakingCharge.toString(),
+              stoneCharges: v.stoneCharges.toString(),
+              miscCharges: v.miscCharges.toString(),
+              certificationCharges: v.certificationCharges,
+              packagingCharges: v.packagingCharges,
+              deliveryCharges: v.deliveryCharges,
+            },
+            rate,
+            { stones: toStoneInputs(p.stones), withExchange: false, config: cfg },
           )
-        : 0
+        : null
+      const sellingUnit = breakdown
+        ? sellingUnitFromPriceBreakdown(breakdown, v.miscChargeLines)
+        : null
       return {
         variantId: v.id,
         productId: p.id,
@@ -102,7 +113,11 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
         itemCode: p.itemCode ?? '',
         sku: v.sku,
         label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-        suggestedPrice: suggested,
+        suggestedPrice: sellingUnit?.total ?? (breakdown ? Math.round(breakdown.total) : 0),
+        certificationCharges: breakdown?.certificationCharges ?? cfg.defaultCertificationCharges,
+        packagingCharges: breakdown?.packagingCharges ?? cfg.defaultPackagingCharges,
+        deliveryCharges: breakdown?.deliveryCharges ?? cfg.defaultDeliveryCharges,
+        sellingUnit,
       }
     }),
   )
@@ -202,6 +217,7 @@ export default async function EditOrderPage({ params }: { params: Promise<{ id: 
         }))}
         isFinance={isFinance}
         editOrder={editOrder}
+        feeLabels={feeLabelsFromConfig(pricingConfig)}
       />
     </div>
   )

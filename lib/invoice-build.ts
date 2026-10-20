@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig, toStoneInputs } from '@/lib/pricing-data'
-import type { PricingConfig } from '@/lib/pricing'
+import { resolveFixedCharges, type PricingConfig } from '@/lib/pricing'
+import { resolveMiscChargeLines } from '@/lib/misc-charges'
 import {
   blankPayload,
   invoiceFromProducts,
@@ -37,28 +38,42 @@ export async function loadInvoiceCatalogue(): Promise<InvoiceCatalogue> {
   ])
   const goldRates = Object.fromEntries(goldRateRows.map((r) => [r.metalType, Number(r.ratePerGram)]))
   const variants: InvoiceCatalogueVariant[] = products.flatMap((p) =>
-    p.variants.map((v) => ({
-      variantId: v.id,
-      productId: p.id,
-      category: p.category,
-      productName: p.name,
-      itemCode: p.itemCode ?? '',
-      sku: v.sku,
-      metalType: v.metalType,
-      size: v.size ?? '',
-      label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
-      weightGrams: Number(v.weightGrams),
-      makingChargePerGram: Number(v.makingChargePerGram),
-      flatMakingCharge: Number(v.flatMakingCharge),
-      miscCharges: Number(v.miscCharges),
-      stoneCharges: Number(v.stoneCharges),
-      stones: toStoneInputs(p.stones).map((s) => ({
-        typeLabel: s.typeLabel ?? 'Diamond',
-        caratWeight: Number(s.caratWeight),
-        ratePerCarat: Number(s.ratePerCarat),
-        ratePerCaratExchange: Number(s.ratePerCaratExchange),
-      })),
-    })),
+    p.variants.map((v) => {
+      const fixed = resolveFixedCharges(
+        {
+          certificationCharges: v.certificationCharges,
+          packagingCharges: v.packagingCharges,
+          deliveryCharges: v.deliveryCharges,
+        },
+        config,
+      )
+      return {
+        variantId: v.id,
+        productId: p.id,
+        category: p.category,
+        productName: p.name,
+        itemCode: p.itemCode ?? '',
+        sku: v.sku,
+        metalType: v.metalType,
+        size: v.size ?? '',
+        label: `${p.name} — ${v.metalType}${v.size ? ` · ${v.size}` : ''} (${v.sku})`,
+        weightGrams: Number(v.weightGrams),
+        makingChargePerGram: Number(v.makingChargePerGram),
+        flatMakingCharge: Number(v.flatMakingCharge),
+        miscCharges: Number(v.miscCharges),
+        miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
+        certificationCharges: fixed.certificationCharges,
+        packagingCharges: fixed.packagingCharges,
+        deliveryCharges: fixed.deliveryCharges,
+        stoneCharges: Number(v.stoneCharges),
+        stones: toStoneInputs(p.stones).map((s) => ({
+          typeLabel: s.typeLabel ?? 'Diamond',
+          caratWeight: Number(s.caratWeight),
+          ratePerCarat: Number(s.ratePerCarat),
+          ratePerCaratExchange: Number(s.ratePerCaratExchange),
+        })),
+      }
+    }),
   )
   return {
     variants,
@@ -180,6 +195,10 @@ export async function invoiceFromVariants(
       makingChargePerGram: Number(v.makingChargePerGram),
       flatMakingCharge: Number(v.flatMakingCharge),
       miscCharges: Number(v.miscCharges),
+      miscLines: resolveMiscChargeLines(v.miscChargeLines, Number(v.miscCharges)),
+      certificationCharges: v.certificationCharges != null ? Number(v.certificationCharges) : null,
+      packagingCharges: v.packagingCharges != null ? Number(v.packagingCharges) : null,
+      deliveryCharges: v.deliveryCharges != null ? Number(v.deliveryCharges) : null,
       stoneCharges: Number(v.stoneCharges),
       stones: toStoneInputs(v.product.stones),
     }
@@ -203,7 +222,10 @@ export async function invoiceFromOrderId(orderId: string): Promise<{
 }
 
 export async function invoicePrefill(orderId?: string | null): Promise<InvoicePayload> {
-  if (!orderId) return blankPayload()
+  if (!orderId) {
+    const { config } = await goldRatesAndConfig({})
+    return blankPayload(config)
+  }
   const built = await invoiceFromOrderId(orderId)
   if (!built) throw Object.assign(new Error('Order not found'), { status: 404 })
   return built.payload

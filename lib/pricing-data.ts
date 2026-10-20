@@ -25,6 +25,12 @@ export async function getPricingConfig(): Promise<PricingConfig> {
     vaGoldPct: Number(row.vaGoldPct),
     vaStonePct: Number(row.vaStonePct),
     vaLabel: row.vaLabel,
+    defaultCertificationCharges: Number(row.defaultCertificationCharges ?? 0),
+    defaultPackagingCharges: Number(row.defaultPackagingCharges ?? 0),
+    defaultDeliveryCharges: Number(row.defaultDeliveryCharges ?? 0),
+    certificationLabel: row.certificationLabel || DEFAULT_PRICING_CONFIG.certificationLabel,
+    packagingLabel: row.packagingLabel || DEFAULT_PRICING_CONFIG.packagingLabel,
+    deliveryLabel: row.deliveryLabel || DEFAULT_PRICING_CONFIG.deliveryLabel,
   }
 }
 

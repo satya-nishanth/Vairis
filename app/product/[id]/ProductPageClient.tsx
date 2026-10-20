@@ -19,7 +19,13 @@ import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
-import { calculatePrice, type PricingConfig, type PriceBreakdown, type StoneInput } from "@/lib/pricing";
+import {
+  calculatePrice,
+  feeLabelsFromConfig,
+  type PricingConfig,
+  type PriceBreakdown,
+  type StoneInput,
+} from "@/lib/pricing";
 import { resolvePiecePricingConfig, type StoneView } from "@/lib/pricing-data";
 import type { Product } from "@/lib/ui-data";
 import { track } from "@/lib/analytics-client";
@@ -35,6 +41,9 @@ type Variant = {
   flatMakingCharge: string;
   stoneCharges: string;
   miscCharges: string;
+  certificationCharges?: string;
+  packagingCharges?: string;
+  deliveryCharges?: string;
   sku: string | null;
   size: string | null;
 };
@@ -107,6 +116,18 @@ function pieceBreakdown(
       flatMakingCharge: Number(variant.flatMakingCharge),
       stoneCharges: Number(variant.stoneCharges),
       miscCharges: Number(variant.miscCharges),
+      certificationCharges:
+        variant.certificationCharges === "" || variant.certificationCharges == null
+          ? null
+          : Number(variant.certificationCharges),
+      packagingCharges:
+        variant.packagingCharges === "" || variant.packagingCharges == null
+          ? null
+          : Number(variant.packagingCharges),
+      deliveryCharges:
+        variant.deliveryCharges === "" || variant.deliveryCharges == null
+          ? null
+          : Number(variant.deliveryCharges),
     },
     rate,
     { stones, withExchange, config },
@@ -114,6 +135,7 @@ function pieceBreakdown(
 }
 
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
+  const feeLabels = feeLabelsFromConfig(pricingConfig);
   const { openCartModal } = useCartModal();
   const { addItem, isLoggedIn, hydrated } = useCart();
   const router = useRouter();
@@ -766,14 +788,21 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
                   const roundedMisc =
                     breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
+                  const roundedCert =
+                    breakdown.certificationCharges > 0
+                      ? Math.round(breakdown.certificationCharges)
+                      : 0;
+                  const roundedPack =
+                    breakdown.packagingCharges > 0
+                      ? Math.round(breakdown.packagingCharges)
+                      : 0;
+                  const roundedDel =
+                    breakdown.deliveryCharges > 0
+                      ? Math.round(breakdown.deliveryCharges)
+                      : 0;
                   const roundedGST = Math.round(breakdown.gst);
-                  const tableTotal =
-                    roundedGold +
-                    roundedStones +
-                    roundedMaking +
-                    roundedVA +
-                    roundedMisc +
-                    roundedGST;
+                  // Match header price: round once on formula total (not sum of rounded lines).
+                  const tableTotal = Math.round(breakdown.total);
                   return (
                     <details
                       key={piece.id}
@@ -824,9 +853,27 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                               <td>₹{roundedVA.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
+                          {roundedCert > 0 && (
+                            <tr>
+                              <td>{feeLabels.certification}</td>
+                              <td>₹{roundedCert.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedPack > 0 && (
+                            <tr>
+                              <td>{feeLabels.packaging}</td>
+                              <td>₹{roundedPack.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
+                          {roundedDel > 0 && (
+                            <tr>
+                              <td>{feeLabels.delivery}</td>
+                              <td>₹{roundedDel.toLocaleString("en-IN")}</td>
+                            </tr>
+                          )}
                           {roundedMisc > 0 && (
                             <tr>
-                              <td>Hallmarking &amp; certification</td>
+                              <td>Misc</td>
                               <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
                             </tr>
                           )}
