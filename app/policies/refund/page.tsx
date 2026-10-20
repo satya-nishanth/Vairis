@@ -2,20 +2,20 @@ import type { Metadata } from "next";
 import { PolicyPage } from "../PolicyPage";
 
 export const metadata: Metadata = {
-  title: "Refund & Return Policy",
+  title: "Refund, Return & Exchange Policy",
   description:
-    "Our 7-day hassle-free return and exchange policy for fine jewellery. Insured pickups, quality verification, and transparent refunds.",
+    "Our 15-day return and exchange policy for eligible fine jewellery. Insured pickups, quality verification, 90% exchange value, and transparent refunds.",
 };
 
 export default function RefundPolicyPage() {
   return (
-    <PolicyPage title="Refund & Return Policy" updated="25 September 2026">
+    <PolicyPage title="Refund, Return & Exchange Policy" updated="19 October 2026">
       <h2>Returns</h2>
       <p>
-        You may request a return within 7 days of delivery by reaching out to our
+        You may request a return within 15 days of delivery by reaching out to our
         concierge support via WhatsApp or email (hello@vairis.com) with your order ID.
         Once approved, we arrange an insured pickup at your address. After the
-        piece passes our quality check (unworn, undamaged, with the original IGI
+        piece passes our quality check (unworn, undamaged, with the original diamond
         certificate and packaging), your refund is initiated.
       </p>
       <h2>Cancellations</h2>
@@ -35,11 +35,14 @@ export default function RefundPolicyPage() {
         within 48 hours of delivery with photos — we will replace it or refund
         you in full, including shipping.
       </p>
-      <h2>Exchange-priced diamonds</h2>
+      <h2>Exchanges</h2>
       <p>
-        Pieces purchased at the with-exchange diamond rate qualify for
-        full-value exchange of the diamond value against a future VAIRIS
-        purchase, as stated on the product page at the time of purchase.
+        Eligible pieces receive 90% exchange value toward another VAIRIS
+        purchase, calculated according to the item-specific exchange terms
+        shown at purchase. Please contact our team for the exact calculation
+        before confirming an exchange. Any difference in the price of the new
+        piece is payable by the customer. Exchange value is not a cash refund.
+        Engraved and made-to-order pieces are final sale.
       </p>
       <h2>Contact</h2>
       <p>

@@ -179,7 +179,7 @@ export const DEFAULT_INVOICE_NOTES = {
   certification:
     'Every piece is BIS hallmarked with a unique HUID and ships with its IGI or SGL diamond grading report, quoted per item above. Certificates are enclosed with the parcel and mirrored in your account at thevairis.com.',
   returns:
-    'Unworn pieces may be returned within 15 days of delivery in their original packaging with all certificates for a full refund. Lifetime exchange is offered at prevailing metal and diamond rates, less making charges. Engraved and made-to-order pieces are final sale. Write to contact@thevairis.com to raise a request.',
+    'Unworn pieces may be returned within 15 days of delivery in their original packaging with all certificates for a full refund. Eligible pieces receive 90% exchange value toward another VAIRIS purchase, calculated according to the item-specific exchange terms shown at purchase. Contact us for the exact calculation before confirming an exchange. Engraved and made-to-order pieces are final sale. Write to contact@thevairis.com to raise a request.',
 }
 
 /** Legal seller on every tax invoice — not env-overridable, not editable in admin. */

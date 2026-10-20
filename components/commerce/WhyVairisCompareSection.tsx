@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/Section";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
+import Link from "next/link";
+import { serviceHrefForLabel } from "@/lib/trust-content";
 import { compareTrustItems } from "@/lib/compare-trust-content";
 
 export function WhyVairisCompareSection() {
@@ -50,8 +52,10 @@ export function WhyVairisCompareSection() {
         <ul className="why-vairis-compare__trust" aria-label="Shopping guarantees">
           {compareTrustItems.map(({ icon, label }) => (
             <li key={label} className="why-vairis-compare__trust-item">
-              <ThemeIcon name={icon.name} category={icon.category} size={40} className="why-vairis-compare__trust-icon" />
-              <span>{label}</span>
+              <Link href={serviceHrefForLabel(label)} className="why-vairis-compare__trust-link">
+                <ThemeIcon name={icon.name} category={icon.category} size={40} className="why-vairis-compare__trust-icon" />
+                <span>{label}</span>
+              </Link>
             </li>
           ))}
         </ul>
