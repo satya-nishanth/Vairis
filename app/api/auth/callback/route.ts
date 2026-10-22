@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const supabase = await createServerSupabaseClient()
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    const { data: exchanged, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
     if (exchangeError) {
       return NextResponse.redirect(
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: { session } } = await supabase.auth.getSession()
+    // Use the session the Auth server just returned, not one re-read from cookies.
+    const session = exchanged.session
     if (session?.user) {
       await prisma.user.upsert({
         where: { email: session.user.email! },

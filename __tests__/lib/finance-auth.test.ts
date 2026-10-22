@@ -21,7 +21,13 @@ jest.mock('next/navigation', () => ({
 const mockCreateClient = createServerSupabaseClient as jest.MockedFunction<typeof createServerSupabaseClient>
 
 function mockSupabase(session: unknown) {
-  return { auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) } } as never
+  const user = (session as { user?: unknown } | null)?.user ?? null
+  return {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session } }),
+      getUser: jest.fn().mockResolvedValue({ data: { user }, error: user ? null : new Error('no user') }),
+    },
+  } as never
 }
 
 const fakeUser = (email: string) => ({

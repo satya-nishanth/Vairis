@@ -26,9 +26,20 @@ jest.mock('next/navigation', () => ({
 const mockCreateClient = createServerSupabaseClient as jest.MockedFunction<typeof createServerSupabaseClient>
 const mockUser = prisma.user as jest.Mocked<typeof prisma.user>
 
-// Mocks getSession() — reads from cookie, no network call
-function mockSupabase(session: any) {
-  return { auth: { getSession: jest.fn().mockResolvedValue({ data: { session } }) } } as any
+// getSession() returns the cookie as-is; getUser() is the Auth-server check.
+// By default the server confirms the cookie's user; pass verifiedUser = null
+// to simulate a forged/expired cookie the server rejects.
+function mockSupabase(session: any, verifiedUser: any = session?.user ?? null) {
+  return {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session } }),
+      getUser: jest.fn().mockResolvedValue(
+        verifiedUser
+          ? { data: { user: verifiedUser }, error: null }
+          : { data: { user: null }, error: new Error('invalid JWT') },
+      ),
+    },
+  } as any
 }
 
 const fakeUser = (email = 'user@test.com') => ({
@@ -54,6 +65,17 @@ describe('getSession', () => {
     const session = fakeUser()
     mockCreateClient.mockResolvedValue(mockSupabase(session))
     expect(await getSession()).toEqual(session)
+  })
+
+  it('returns null for a cookie session the Auth server rejects (forged cookie)', async () => {
+    mockCreateClient.mockResolvedValue(mockSupabase(fakeUser('admin@vairis.com'), null))
+    expect(await getSession()).toBeNull()
+  })
+
+  it('trusts the server-verified user over the cookie copy', async () => {
+    const verified = { email: 'real@test.com', id: 'uid-1', user_metadata: {} }
+    mockCreateClient.mockResolvedValue(mockSupabase(fakeUser('admin@vairis.com'), verified))
+    expect((await getSession())?.user.email).toBe('real@test.com')
   })
 })
 
