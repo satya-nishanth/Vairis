@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
-import { promoSchema } from '@/lib/promo'
+import { promoSchema, serializePromo } from '@/lib/promo'
 import { normalizeScope, promoScopeInclude, replacePromoScopes } from '@/lib/discount-scope'
 
 export const dynamic = 'force-dynamic'
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       },
     })
     await replacePromoScopes(promo.id, scope)
-    return NextResponse.json(promo, { status: 201 })
+    return NextResponse.json(serializePromo(promo), { status: 201 })
   } catch {
     return NextResponse.json({ error: 'A promo with this code already exists' }, { status: 409 })
   }

@@ -15,6 +15,7 @@ import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { track } from "@/lib/analytics-client";
 import { formatMetalLabel } from "@/lib/metal";
 import { couponKindSuffix } from "@/lib/promo-labels";
+import { readAppliedPromo, writeAppliedPromo } from "@/lib/applied-promo";
 import type { PromoKind } from "@prisma/client";
 
 /**
@@ -151,6 +152,7 @@ export default function CheckoutPage() {
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
+  const [promoHydrated, setPromoHydrated] = useState(false);
 
   const subtotal = useMemo(
     () => items.reduce((sum, i) => sum + (i.unitPrice != null ? i.unitPrice * i.quantity : 0), 0),
@@ -165,17 +167,33 @@ export default function CheckoutPage() {
     [items],
   );
 
+  // Restore cart-applied promo once, then keep auto + coupon in sync with cart.
   useEffect(() => {
+    if (!promoHydrated) {
+      const stored = readAppliedPromo();
+      if (stored) setPromoInput(stored);
+      setPromoHydrated(true);
+      return;
+    }
     if (!isLoggedIn || items.length === 0) return;
     let cancelled = false;
+    const code = promo?.code ?? readAppliedPromo();
     fetch("/api/discounts/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ promoCode: promo?.code ?? null }),
+      body: JSON.stringify({ promoCode: code }),
     })
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled || data.error) return;
+      .then(async (r) => {
+        const data = await r.json();
+        if (cancelled) return;
+        if (!r.ok || data.error) {
+          // Keep last auto/coupon on rate-limit; otherwise drop failed restore.
+          if (r.status !== 429 && code && !promo?.code) {
+            writeAppliedPromo(null);
+            setPromoInput("");
+          }
+          return;
+        }
         setAutomatic(
           data.automatic && data.automatic.amount > 0
             ? {
@@ -185,20 +203,28 @@ export default function CheckoutPage() {
               }
             : null,
         );
-        if (promo && data.coupon) {
+        if (code && data.coupon && data.coupon.amount > 0) {
           setPromo({
             code: data.coupon.code,
             discount: data.coupon.amount,
             percent: data.coupon.percent,
             kind: data.coupon.kind,
           });
+          setPromoInput(data.coupon.code);
+          writeAppliedPromo(data.coupon.code);
+        } else if (code) {
+          writeAppliedPromo(null);
+          setPromo(null);
+          setPromoInput("");
         }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, refreshKey, promo?.code]);
+    // promo?.code intentionally omitted — restore uses sessionStorage; applyPromo sets promo.
+     
+  }, [isLoggedIn, refreshKey, promoHydrated, items.length]);
 
   const set = (field: keyof AddressForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setAddress((a) => ({ ...a, [field]: e.target.value }));
@@ -248,6 +274,7 @@ export default function CheckoutPage() {
       if (!res.ok) {
         setPromoError(data.error ?? "Invalid code");
         setPromo(null);
+        writeAppliedPromo(null);
         return;
       }
       setAutomatic(
@@ -262,6 +289,7 @@ export default function CheckoutPage() {
       if (!data.coupon || data.coupon.amount <= 0) {
         setPromoError("This code does not apply to your cart");
         setPromo(null);
+        writeAppliedPromo(null);
         return;
       }
       setPromo({
@@ -270,6 +298,7 @@ export default function CheckoutPage() {
         percent: data.coupon.percent,
         kind: data.coupon.kind,
       });
+      writeAppliedPromo(data.coupon.code);
     } catch {
       setPromoError("Could not validate the code. Try again.");
     } finally {
@@ -716,9 +745,10 @@ export default function CheckoutPage() {
                     placeholder="Enter code"
                     value={promoInput}
                     onChange={(e) => {
-                      setPromoInput(e.target.value.toUpperCase());
+                      setPromoInput(e.target.value.toUpperCase().slice(0, 40));
                       setPromoError(null);
                     }}
+                    maxLength={40}
                     disabled={promo != null}
                     style={{ textTransform: "uppercase" }}
                   />
@@ -729,6 +759,7 @@ export default function CheckoutPage() {
                       onClick={() => {
                         setPromo(null);
                         setPromoInput("");
+                        writeAppliedPromo(null);
                       }}
                     >
                       Remove

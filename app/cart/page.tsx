@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/layout/PageShell";
 import { Container } from "@/components/ui/Container";
 import { CartItem } from "@/components/commerce/CartItem";
@@ -16,6 +16,7 @@ import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { formatMetalLabel } from "@/lib/metal";
+import { readAppliedPromo, writeAppliedPromo } from "@/lib/applied-promo";
 
 const breadcrumbs = [{ label: "Home", href: "/" }, { label: "Your Cart" }];
 
@@ -27,6 +28,14 @@ export default function CartPage() {
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = readAppliedPromo();
+    if (stored) {
+      setAppliedCode(stored);
+      setPromoInput(stored);
+    }
+  }, []);
 
   const refreshKey = useMemo(
     () => items.map((i) => `${i.id}:${i.quantity}`).join("|"),
@@ -130,15 +139,18 @@ export default function CartPage() {
     if (!res.ok) {
       setPromoError(data.error ?? "Invalid code");
       setAppliedCode(null);
+      writeAppliedPromo(null);
       await reload();
       return;
     }
     if (!data.coupon || data.coupon.amount <= 0) {
       setPromoError("This code does not apply to your cart");
       setAppliedCode(null);
+      writeAppliedPromo(null);
       await reload();
       return;
     }
+    writeAppliedPromo(code);
   }
 
   return (
@@ -202,7 +214,10 @@ export default function CartPage() {
                     type="text"
                     placeholder="Apply code"
                     value={promoInput}
-                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setPromoInput(e.target.value.toUpperCase().slice(0, 40))
+                    }
+                    maxLength={40}
                     disabled={!!appliedCode}
                     style={{ textTransform: "uppercase" }}
                   />
@@ -213,6 +228,7 @@ export default function CartPage() {
                         setAppliedCode(null);
                         setPromoInput("");
                         setPromoError(null);
+                        writeAppliedPromo(null);
                       }}
                     >
                       Remove

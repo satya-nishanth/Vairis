@@ -210,6 +210,17 @@
   margin: 0 0 8px;
 }
 
+.pdp-info__discount-label {
+  margin-top: 6px;
+  margin-bottom: 0;
+  font-size: 0.8125rem;
+  color: var(--brand-olive, #5e684e);
+}
+
+[data-theme="dark"] .pdp-info__discount-label {
+  color: var(--color-accent-light, #e8d092);
+}
+
 .pdp-info__meta {
   font-size: 0.8125rem;
   color: var(--color-text-muted);

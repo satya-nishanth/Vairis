@@ -603,8 +603,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 </p>
                 {product.autoDiscountPercent && product.autoDiscountPercent > 0 && (
                     <p
-                      className="pdp-info__meta"
-                      style={{ marginTop: 6, marginBottom: 0, color: "var(--brand-olive, #5e684e)" }}
+                      className="pdp-info__discount-label"
                       data-testid="pdp-discount-display-name"
                     >
                       {product.autoDiscountDisplayName
@@ -988,7 +987,16 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
 
       {!product.comingSoon && (
         <PdpStickyBar
-          price={product.showPrice ? price : undefined}
+          price={
+            product.showPrice && price != null
+              ? product.autoDiscountPercent && product.autoDiscountPercent > 0
+                ? Math.max(
+                    0,
+                    Math.round(price * (1 - product.autoDiscountPercent / 100)),
+                  )
+                : price
+              : undefined
+          }
           onAddToCart={handleAddToCart}
           addingToCart={addingToCart}
           onBuyNow={handleBuyNow}

@@ -377,6 +377,22 @@ export function DiscountsManager({ initial, products, collections, storeCategori
                       />
                     </label>
                   </div>
+                  <label style={field}>
+                    Priority
+                    <input
+                      style={control}
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={form.priority}
+                      onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+                      placeholder="0"
+                      data-testid="discount-priority"
+                    />
+                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: muted }}>
+                      Higher wins when multiple discounts match the same product
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -703,7 +719,7 @@ export function DiscountsManager({ initial, products, collections, storeCategori
               <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>{row.name}</div>
               <div style={{ fontSize: '0.8125rem', color: muted, marginTop: 2 }}>
                 {row.displayName ? `${row.displayName} · ` : ''}
-                {scopeLabel(row)} · {scheduleLabel(row)}
+                Priority {row.priority} · {scopeLabel(row)} · {scheduleLabel(row)}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>

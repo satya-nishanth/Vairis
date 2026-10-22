@@ -47,14 +47,16 @@ export function useDiscountPreview(refreshKey: string | number, promoCode?: stri
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Could not load discounts')
-        setPreview(null)
+        // Keep last good preview on rate-limit so totals don't flash blank.
+        if (res.status !== 429) setPreview(null)
         return null
       }
       setPreview(data)
+      setError(null)
       return data as PreviewResponse
     } catch {
       setError('Could not load discounts')
-      setPreview(null)
+      // Network blip — keep last preview if we have one.
       return null
     } finally {
       setBusy(false)
