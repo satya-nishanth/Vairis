@@ -964,3 +964,13 @@ export function isInvoicePaymentPaid(status: string | null | undefined): boolean
 export function invoiceStatusFromPayload(payload: InvoicePayload): InvoiceStatus {
   return isInvoicePaymentPaid(payload.payment.status) ? 'PAID' : 'UNPAID'
 }
+
+/** First line product name for list views; "+N more" when multi-line. */
+export function invoiceItemsLabel(payload: Pick<InvoicePayload, 'lines'> | null | undefined): string {
+  const names = (payload?.lines ?? [])
+    .map((l) => (l.productName ?? '').trim())
+    .filter(Boolean)
+  if (names.length === 0) return '—'
+  if (names.length === 1) return names[0]
+  return `${names[0]} +${names.length - 1} more`
+}

@@ -41,9 +41,28 @@ function blankDash(value: string) {
 }
 
 function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod|Mobile|EdgA|EdgiOS/i.test(
-    typeof navigator !== 'undefined' ? navigator.userAgent || '' : '',
-  )
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPad|iPod|Mobile|EdgA|EdgiOS/i.test(ua)) return true
+  // iPadOS desktop-mode UA looks like Macintosh
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+}
+
+/** Safari / iOS — share must run from a fresh tap; downloads are unreliable. */
+function isAppleBrowser() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const iOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (iOS) return true
+  return /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox/i.test(ua)
+}
+
+function captureScale() {
+  if (isAppleBrowser()) return 1
+  if (isMobileBrowser()) return 1.5
+  return 2
 }
 
 /** Plain numeric input — digits + optional decimal only. No thousand separators. */
@@ -356,15 +375,25 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
   }
 
   async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob)
-          else reject(new Error('toBlob failed'))
-        },
-        'image/png',
-      )
+    // Safari sometimes returns null from toBlob — fall back to toDataURL.
+    const fromToBlob = await new Promise<Blob | null>((resolve) => {
+      if (typeof canvas.toBlob !== 'function') {
+        resolve(null)
+        return
+      }
+      try {
+        canvas.toBlob((blob) => resolve(blob), 'image/png')
+      } catch {
+        resolve(null)
+      }
     })
+    if (fromToBlob && fromToBlob.size > 0) return fromToBlob
+
+    const dataUrl = canvas.toDataURL('image/png')
+    const res = await fetch(dataUrl)
+    const blob = await res.blob()
+    if (!blob || blob.size === 0) throw new Error('toBlob failed')
+    return blob
   }
 
   function renderShareMarkup(detailed: boolean): string {
@@ -478,22 +507,76 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     if (!root) throw new Error('capture root missing')
     root.innerHTML = renderShareMarkup(detailed)
     const card = root.querySelector(detailed ? '.cost-est-detail' : '.cost-est-share') as HTMLElement
+    if (!card) throw new Error('capture card missing')
+    // Two frames so WebKit lays out fonts/box before clone (avoids blank PNG).
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     void card.offsetHeight
-    const canvas = await html2canvas(card, {
-      scale: isMobileBrowser() ? 1.5 : 2,
-      backgroundColor: detailed ? '#f5f5f5' : '#0b241c',
-      useCORS: true,
-      logging: false,
-      width: card.scrollWidth,
-      height: card.scrollHeight,
-      windowWidth: Math.max(card.scrollWidth, 1),
-      windowHeight: Math.max(card.scrollHeight, 1),
-      scrollX: 0,
-      scrollY: 0,
-      allowTaint: true,
-    })
-    root.innerHTML = ''
-    return canvasToBlob(canvas)
+
+    const width = Math.max(card.scrollWidth, card.offsetWidth, 1)
+    const height = Math.max(card.scrollHeight, card.offsetHeight, 1)
+    const scale = captureScale()
+    // iOS Safari blanks canvases past ~4096px on a side.
+    const maxSide = 4096
+    const safeScale = Math.min(scale, maxSide / width, maxSide / height)
+
+    try {
+      const canvas = await html2canvas(card, {
+        scale: Math.max(1, safeScale),
+        backgroundColor: detailed ? '#f5f5f5' : '#0b241c',
+        useCORS: true,
+        logging: false,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        allowTaint: true,
+        foreignObjectRendering: false,
+        ignoreElements: (el) => {
+          const tag = el.tagName
+          if (tag === 'IMG' && el.getAttribute('loading') === 'lazy') return true
+          return false
+        },
+        onclone: (_doc, el) => {
+          // Inline critical colors — WebKit clone often drops CSS variables.
+          const green = '#0b241c'
+          const gold = '#d4af37'
+          const goldBright = '#f9e076'
+          const goldMuted = '#b8962e'
+          const greenCard = '#143528'
+          const greenElev = '#1a3d30'
+          el.querySelectorAll<HTMLElement>('.cost-est-share').forEach((n) => {
+            n.style.background = green
+            n.style.color = goldBright
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__final').forEach((n) => {
+            n.style.background = greenElev
+            n.style.borderColor = gold
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__section').forEach((n) => {
+            n.style.background = greenCard
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__header, .cost-est-share__final .val').forEach(
+            (n) => {
+              n.style.color = goldBright
+            },
+          )
+          el.querySelectorAll<HTMLElement>('.cost-est-share__date, .cost-est-share__final .lbl').forEach(
+            (n) => {
+              n.style.color = goldMuted
+            },
+          )
+          el.querySelectorAll<HTMLElement>('.cost-est-share__section h3').forEach((n) => {
+            n.style.color = gold
+          })
+        },
+      })
+      if (!canvas.width || !canvas.height) throw new Error('empty canvas')
+      return await canvasToBlob(canvas)
+    } finally {
+      root.innerHTML = ''
+    }
   }
 
   function saveBlob(blob: Blob) {
@@ -502,21 +585,28 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     a.href = url
     a.download = 'vairis-estimate.png'
     a.rel = 'noopener'
+    a.target = '_blank'
     document.body.appendChild(a)
     a.click()
     a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
   }
 
   async function nativeShare(blob: Blob): Promise<'shared' | 'aborted' | 'failed' | 'unsupported'> {
-    if (!navigator.share) return 'unsupported'
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+      return 'unsupported'
+    }
     try {
       const file = new File([blob], 'vairis-estimate.png', { type: 'image/png' })
-      await navigator.share({
+      const payload: ShareData = {
         files: [file],
         title: 'Vairis Fine Jewellery Estimate',
         text: 'Vairis Fine Jewellery Estimate',
-      })
+      }
+      if (typeof navigator.canShare === 'function' && !navigator.canShare(payload)) {
+        return 'unsupported'
+      }
+      await navigator.share(payload)
       return 'shared'
     } catch (error) {
       if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
@@ -526,22 +616,32 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     }
   }
 
+  function openShareSheet(blob: Blob, hint: string) {
+    const url = URL.createObjectURL(blob)
+    setSheet({ url, blob, hint })
+  }
+
   async function handleShare(detailed: boolean) {
     try {
       showToast('Preparing image…')
       if (!canShare) return
       const blob = await captureImage(detailed)
+      // Apple: async capture burns the user-gesture — open sheet; Share tap is fresh.
+      if (isAppleBrowser() || isMobileBrowser()) {
+        openShareSheet(
+          blob,
+          'Tap Share to send via WhatsApp / Messages, or long-press the image to save to Photos.',
+        )
+        return
+      }
       const result = await nativeShare(blob)
       if (result === 'shared' || result === 'aborted') return
-      const url = URL.createObjectURL(blob)
-      setSheet({
-        url,
+      openShareSheet(
         blob,
-        hint:
-          result === 'failed' || isMobileBrowser()
-            ? 'Tap Share below to open WhatsApp or other apps. On some phones, long-press the image to save it.'
-            : 'Share is not available here. Save the image, or long-press it.',
-      })
+        result === 'unsupported'
+          ? 'Share is not available here. Save the image, or long-press it.'
+          : 'Tap Share below, or Save image / long-press the preview.',
+      )
     } catch {
       showToast('Unable to create estimate image. Try again.')
     }
@@ -552,14 +652,11 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       showToast('Preparing image…')
       if (!canShare) return
       const blob = await captureImage(detailed)
-      if (isMobileBrowser()) {
-        const url = URL.createObjectURL(blob)
-        setSheet({
-          url,
+      if (isAppleBrowser() || isMobileBrowser()) {
+        openShareSheet(
           blob,
-          hint: 'Mobile browsers often block downloads. Long-press the image to save it, or tap Share.',
-        })
-        saveBlob(blob)
+          'On iPhone/iPad: tap Share → Save Image, or long-press the preview. Direct download is blocked by Safari.',
+        )
         return
       }
       saveBlob(blob)
@@ -969,7 +1066,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
             <p className="cost-est__sheet-hint">{sheet.hint}</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={sheet.url} alt="Estimate preview" />
-            {typeof navigator !== 'undefined' && 'share' in navigator && (
+            {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
               <button
                 type="button"
                 className="cost-est__btn cost-est__btn--primary"
@@ -985,7 +1082,15 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
             <button
               type="button"
               className="cost-est__btn cost-est__btn--outline"
-              onClick={() => {
+              onClick={async () => {
+                // iOS: system share sheet is the reliable “Save Image” path.
+                if (isAppleBrowser() && typeof navigator.share === 'function') {
+                  const result = await nativeShare(sheet.blob)
+                  if (result === 'shared' || result === 'aborted') {
+                    closeSheet()
+                    return
+                  }
+                }
                 saveBlob(sheet.blob)
                 showToast('If nothing downloaded, long-press the image to save it')
               }}

@@ -394,14 +394,22 @@
   margin: 0;
 }
 
+/* Off-screen but fully painted — Safari blanks opacity:0 / z-index:-1 clones. */
 .cost-est__capture {
   position: fixed;
-  left: 0;
+  left: -10000px;
   top: 0;
-  z-index: -1;
-  opacity: 0;
+  z-index: 0;
+  opacity: 1;
   pointer-events: none;
   overflow: visible;
+  /* Re-declare vars so html2canvas clone still resolves colors on WebKit */
+  --ce-green: #0b241c;
+  --ce-green-card: #143528;
+  --ce-green-elevated: #1a3d30;
+  --ce-gold: #d4af37;
+  --ce-gold-bright: #f9e076;
+  --ce-gold-muted: #b8962e;
 }
 
 /* Share card (Vairis green) */

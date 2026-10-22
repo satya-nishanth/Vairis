@@ -2,6 +2,11 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { AdminGuide } from '@/components/admin/AdminGuide'
 import { InvoiceDeleteButton } from '@/components/admin/InvoiceDeleteButton'
+import {
+  invoiceItemsLabel,
+  invoiceStatusFromPayload,
+  type InvoicePayload,
+} from '@/lib/invoice-document'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,8 +20,8 @@ export default async function AdminInvoicesPage() {
   const inr = (n: unknown) => `₹${Number(n).toLocaleString('en-IN')}`
 
   return (
-    <div className="admin-page" style={{ maxWidth: 1100 }}>
-      <div className="admin-page__header" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+    <div className="admin-page admin-page--invoices">
+      <div className="admin-page__header admin-invoices__header">
         <h1 className="admin-page__title" style={{ marginBottom: 0 }}>
           Invoices
         </h1>
@@ -35,54 +40,71 @@ export default async function AdminInvoicesPage() {
         ]}
       />
 
-      <div className="admin-table-wrap">
-        <table className="admin-products" style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="admin-table-wrap admin-invoices__table-wrap">
+        <table className="admin-invoices__table">
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: 10 }}>Number</th>
-              <th style={{ textAlign: 'left', padding: 10 }}>Date</th>
-              <th style={{ textAlign: 'left', padding: 10 }}>Customer</th>
-              <th style={{ textAlign: 'left', padding: 10 }}>Order</th>
-              <th style={{ textAlign: 'right', padding: 10 }}>Total</th>
-              <th style={{ textAlign: 'left', padding: 10 }}>Status</th>
-              <th style={{ padding: 10 }} />
+              <th>Number</th>
+              <th>Date</th>
+              <th>Customer</th>
+              <th>Item</th>
+              <th>Order</th>
+              <th className="is-num">Total</th>
+              <th>Status</th>
+              <th className="is-actions" />
             </tr>
           </thead>
           <tbody>
             {invoices.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: 16, color: '#6b7280' }}>
+                <td colSpan={8} className="admin-invoices__empty">
                   No invoices yet. Create one from an order or a blank form.
                 </td>
               </tr>
             )}
             {invoices.map((inv) => {
-              const payload = inv.payload as { billedTo?: { name?: string } }
+              const payload = inv.payload as InvoicePayload
+              // Prefer live payment.status — stored column may be wrong on pre-STG-61 rows.
+              const status = invoiceStatusFromPayload(payload)
+              const itemLabel = invoiceItemsLabel(payload)
               return (
-                <tr key={inv.id} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: 10 }}>{inv.number}</td>
-                  <td style={{ padding: 10 }}>
-                    {inv.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                <tr key={inv.id}>
+                  <td className="admin-invoices__number">{inv.number}</td>
+                  <td>
+                    {inv.createdAt.toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
                   </td>
-                  <td style={{ padding: 10 }}>{payload.billedTo?.name || inv.order?.contactName || '—'}</td>
-                  <td style={{ padding: 10 }}>
+                  <td>{payload.billedTo?.name || inv.order?.contactName || '—'}</td>
+                  <td className="admin-invoices__item" title={itemLabel}>
+                    {itemLabel}
+                  </td>
+                  <td>
                     {inv.orderId ? (
-                      <Link href={`/admin/orders/${inv.orderId}`} style={{ color: '#032b24' }}>
+                      <Link href={`/admin/orders/${inv.orderId}`} className="admin-invoices__order-link">
                         {inv.orderId.slice(0, 8)}…
                       </Link>
                     ) : (
                       '—'
                     )}
                   </td>
-                  <td style={{ padding: 10, textAlign: 'right' }}>{inr(inv.grandTotal)}</td>
-                  <td style={{ padding: 10 }}>{inv.status}</td>
-                  <td style={{ padding: 10, whiteSpace: 'nowrap' }}>
-                    <Link href={`/admin/invoices/${inv.id}`} style={{ marginRight: 12 }}>
-                      Edit
-                    </Link>
-                    <Link href={`/admin/invoices/${inv.id}/print`} style={{ marginRight: 12 }}>
-                      Print
-                    </Link>
+                  <td className="is-num">{inr(inv.grandTotal)}</td>
+                  <td>
+                    <span
+                      className={
+                        status === 'PAID'
+                          ? 'admin-invoices__status is-paid'
+                          : 'admin-invoices__status is-unpaid'
+                      }
+                    >
+                      {status}
+                    </span>
+                  </td>
+                  <td className="admin-invoices__actions">
+                    <Link href={`/admin/invoices/${inv.id}`}>Edit</Link>
+                    <Link href={`/admin/invoices/${inv.id}/print`}>Print</Link>
                     <InvoiceDeleteButton id={inv.id} number={inv.number} />
                   </td>
                 </tr>
