@@ -3,15 +3,21 @@ import { prisma } from './prisma'
 import { redirect } from 'next/navigation'
 import type { User } from '@prisma/client'
 
-// getSession() reads from cookie — fast, no extra network round-trip.
-// JWT is signed by Supabase and verified locally — safe for a jewellery store.
-// Use getUser() only if you need to verify against Auth server (banking-level security).
+// supabase.auth.getSession() on the server returns whatever the cookie says —
+// it does NOT verify the JWT, so a hand-crafted cookie could claim any email.
+// getUser() validates the token with the Auth server; only its user is trusted.
 export async function getSession() {
   const supabase = await createServerSupabaseClient()
   const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
+  if (error || !user) return null
+  const {
     data: { session },
   } = await supabase.auth.getSession()
-  return session
+  if (!session) return null
+  return { ...session, user }
 }
 
 import { NextResponse } from 'next/server'

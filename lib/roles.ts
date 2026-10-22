@@ -132,7 +132,9 @@ export async function refreshRoleCache(): Promise<CachedRoles> {
       for (const u of data.users) {
         if (!u.email) continue
         const e = u.email.toLowerCase()
-        const metaRole = (u.app_metadata?.role || u.user_metadata?.role || '').toString().toUpperCase()
+        // app_metadata only — user_metadata is writable by the user themself
+        // (supabase.auth.updateUser({ data })), so it must never grant a role.
+        const metaRole = (u.app_metadata?.role || '').toString().toUpperCase()
         if (metaRole === 'FINANCE') {
           financeEmails.add(e)
           adminEmails.add(e)

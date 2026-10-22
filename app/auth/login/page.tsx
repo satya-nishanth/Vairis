@@ -24,12 +24,13 @@ async function signIn(formData: FormData) {
   const rawNext = (formData.get('next') as string) || null
   const next = rawNext ? sanitizeRedirect(rawNext, '/') : null
   const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const { data: signIn, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
     const q = next ? `&next=${encodeURIComponent(next)}` : ''
     redirect(`/auth/login?error=${encodeURIComponent(error.message)}${q}`)
   }
-  const { data: { session } } = await supabase.auth.getSession()
+  // Use the session the Auth server just returned, not one re-read from cookies.
+  const session = signIn.session
   if (session?.user) {
     await prisma.user.upsert({
       where: { email: session.user.email! },
