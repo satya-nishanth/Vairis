@@ -404,6 +404,13 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     const weight = isComplex ? cxWeight : stdWeight
     const purityLabel = GOLD_PURITIES[karat].label
     const today = formatToday()
+    const named = estimateName.trim()
+    const detailNameHtml = named
+      ? `<div class="cost-est-detail__name">${escapeHtml(named)}</div>`
+      : ''
+    const shareNameHtml = named
+      ? `<div class="cost-est-share__name">${escapeHtml(named)}</div>`
+      : ''
 
     if (detailed) {
       const setsHtml =
@@ -425,8 +432,9 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
 
       return `<div class="cost-est-detail">
         <div class="cost-est-detail__title">Jewellery Cost Calculator</div>
+        ${detailNameHtml}
         <div class="cost-est-detail__date">${today}</div>
-        <div class="cost-est-detail__total"><div class="lbl">Final Total Cost</div><div class="val">${formatCurrency(results.finalTotal)}</div></div>
+        ${renderFinalTotalBannerHtml(formatCurrency(results.finalTotal), 'detail')}
         <div class="cost-est-detail__cols">
           <div class="col">
             <div class="cost-est-detail__section"><h3>Market Rates</h3>
@@ -464,8 +472,8 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       </div>`
     }
 
-    const header = `<div class="cost-est-share__header"><div>Vairis Fine Jewellery Estimate</div><div class="cost-est-share__date">${today}</div></div>`
-    const finalBlock = `<div class="cost-est-share__final"><div class="lbl">Final Total Cost</div><div class="val">${formatCurrency(results.finalTotal)}</div></div>`
+    const header = `<div class="cost-est-share__header"><div>Vairis Fine Jewellery Estimate</div>${shareNameHtml}<div class="cost-est-share__date">${today}</div></div>`
+    const finalBlock = renderFinalTotalBannerHtml(formatCurrency(results.finalTotal), 'share')
     const costBlock = `<div class="cost-est-share__section" style="margin-top:8px">
       <div class="cost-est-share__row"><span class="lbl">Gold Cost</span><span class="val">${formatCurrency(results.goldCost)}</span></div>
       <div class="cost-est-share__row"><span class="lbl">Diamond Cost</span><span class="val">${formatCurrency(results.diamondCost)}</span></div>
@@ -511,6 +519,9 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     // Two frames so WebKit lays out fonts/box before clone (avoids blank PNG).
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     void card.offsetHeight
+    // Paint final-total as a raster <img> — html2canvas mis-sizes CSS/table backgrounds.
+    await materializeFinalTotalBanners(card)
+    void card.offsetHeight
 
     const width = Math.max(card.scrollWidth, card.offsetWidth, 1)
     const height = Math.max(card.scrollHeight, card.offsetHeight, 1)
@@ -545,28 +556,21 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
           const goldBright = '#f9e076'
           const goldMuted = '#b8962e'
           const greenCard = '#143528'
-          const greenElev = '#1a3d30'
           el.querySelectorAll<HTMLElement>('.cost-est-share').forEach((n) => {
             n.style.background = green
             n.style.color = goldBright
           })
-          el.querySelectorAll<HTMLElement>('.cost-est-share__final').forEach((n) => {
-            n.style.background = greenElev
-            n.style.borderColor = gold
-          })
           el.querySelectorAll<HTMLElement>('.cost-est-share__section').forEach((n) => {
             n.style.background = greenCard
           })
-          el.querySelectorAll<HTMLElement>('.cost-est-share__header, .cost-est-share__final .val').forEach(
+          el.querySelectorAll<HTMLElement>('.cost-est-share__header, .cost-est-share__name').forEach(
             (n) => {
               n.style.color = goldBright
             },
           )
-          el.querySelectorAll<HTMLElement>('.cost-est-share__date, .cost-est-share__final .lbl').forEach(
-            (n) => {
-              n.style.color = goldMuted
-            },
-          )
+          el.querySelectorAll<HTMLElement>('.cost-est-share__date').forEach((n) => {
+            n.style.color = goldMuted
+          })
           el.querySelectorAll<HTMLElement>('.cost-est-share__section h3').forEach((n) => {
             n.style.color = gold
           })
@@ -583,7 +587,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'vairis-estimate.png'
+    a.download = estimateDownloadFilename(estimateName)
     a.rel = 'noopener'
     a.target = '_blank'
     document.body.appendChild(a)
@@ -597,11 +601,12 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       return 'unsupported'
     }
     try {
-      const file = new File([blob], 'vairis-estimate.png', { type: 'image/png' })
+      const shareLabel = estimateName.trim() || 'Vairis Fine Jewellery Estimate'
+      const file = new File([blob], estimateDownloadFilename(estimateName), { type: 'image/png' })
       const payload: ShareData = {
         files: [file],
-        title: 'Vairis Fine Jewellery Estimate',
-        text: 'Vairis Fine Jewellery Estimate',
+        title: shareLabel,
+        text: shareLabel,
       }
       if (typeof navigator.canShare === 'function' && !navigator.canShare(payload)) {
         return 'unsupported'
@@ -1105,6 +1110,119 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       </div>
     </div>
   )
+}
+
+/** Placeholder swapped for a canvas-drawn <img> before html2canvas. */
+function renderFinalTotalBannerHtml(amountText: string, variant: 'detail' | 'share'): string {
+  return `<div class="cost-est-total-banner-slot" data-variant="${variant}" data-amount="${escapeHtml(amountText)}" style="margin:0 0 10px;width:100%;min-height:80px;"></div>`
+}
+
+function drawRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + radius, y)
+  ctx.arcTo(x + w, y, x + w, y + h, radius)
+  ctx.arcTo(x + w, y + h, x, y + h, radius)
+  ctx.arcTo(x, y + h, x, y, radius)
+  ctx.arcTo(x, y, x + w, y, radius)
+  ctx.closePath()
+}
+
+/** Raster banner with label+amount truly centered — avoids html2canvas CSS bg bugs. */
+function paintFinalTotalBannerDataUrl(
+  amount: string,
+  variant: 'detail' | 'share',
+  widthPx: number,
+): string {
+  const w = Math.max(120, Math.round(widthPx))
+  const h = 80
+  const dpr = 2
+  const canvas = document.createElement('canvas')
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.scale(dpr, dpr)
+
+  const isDetail = variant === 'detail'
+  drawRoundRect(ctx, 0.75, 0.75, w - 1.5, h - 1.5, 12)
+  ctx.fillStyle = isDetail ? '#1565c0' : '#1a3d30'
+  ctx.fill()
+  if (!isDetail) {
+    ctx.strokeStyle = '#d4af37'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
+  const labelSize = isDetail ? 12 : 13
+  const valueSize = isDetail ? 24 : 28
+  const gap = 6
+  const labelBlock = labelSize * 1.2
+  const valueBlock = valueSize * 1.15
+  const stackH = labelBlock + gap + valueBlock
+  const stackTop = (h - stackH) / 2
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `500 ${labelSize}px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`
+  ctx.fillStyle = isDetail ? 'rgba(255,255,255,0.92)' : '#b8962e'
+  ctx.fillText('Final Total Cost', w / 2, stackTop + labelBlock / 2)
+
+  ctx.font = `700 ${valueSize}px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`
+  ctx.fillStyle = isDetail ? '#ffffff' : '#f9e076'
+  ctx.fillText(amount, w / 2, stackTop + labelBlock + gap + valueBlock / 2)
+
+  return canvas.toDataURL('image/png')
+}
+
+async function materializeFinalTotalBanners(card: HTMLElement) {
+  const slots = [...card.querySelectorAll<HTMLElement>('.cost-est-total-banner-slot')]
+  await Promise.all(
+    slots.map(async (slot) => {
+      const amount = slot.dataset.amount ?? ''
+      const variant = (slot.dataset.variant === 'share' ? 'share' : 'detail') as 'detail' | 'share'
+      const width = Math.max(slot.clientWidth || card.clientWidth - 32, 200)
+      const dataUrl = paintFinalTotalBannerDataUrl(amount, variant, width)
+      if (!dataUrl) return
+      const img = document.createElement('img')
+      img.src = dataUrl
+      img.alt = `Final Total Cost ${amount}`
+      img.width = width
+      img.height = 80
+      img.style.display = 'block'
+      img.style.width = '100%'
+      img.style.height = 'auto'
+      img.style.margin = '0 0 10px'
+      img.style.borderRadius = '12px'
+      slot.replaceWith(img)
+      if (typeof img.decode === 'function') {
+        try {
+          await img.decode()
+        } catch {
+          /* already decoded / broken — continue */
+        }
+      }
+    }),
+  )
+}
+
+/** Safe PNG filename from Estimate name (fallback when blank). */
+function estimateDownloadFilename(name: string): string {
+  const cleaned = name
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .slice(0, 80)
+  const base = cleaned || 'vairis-estimate'
+  return `${base}.png`
 }
 
 function escapeHtml(str: string) {
