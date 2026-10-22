@@ -61,9 +61,10 @@ export const pageLayouts = {
   },
   returns: {
     promoBar: "utility",
-    header: "minimal",
+    header: "full",
     trustBar: "none",
-    footer: "minimal",
+    footer: "full",
+    whatsapp: "Contact us",
   },
   wishlist: {
     promoBar: "utility",

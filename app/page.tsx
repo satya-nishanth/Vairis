@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
+import Link from "next/link";
 import { PageShell } from "@/components/layout/PageShell";
 import { TrustBar } from "@/components/layout/TrustBar";
 import { Container } from "@/components/ui/Container";
@@ -22,6 +23,7 @@ import { getBanner } from "@/lib/site-content";
 import { getActiveHomeSections } from "@/lib/home-sections";
 import { HomeDbSections } from "@/components/home/HomeDbSections";
 import { getHomeCategoryCarouselItems } from "@/lib/home-categories";
+import { serviceHrefForLabel } from "@/lib/trust-content";
 
 export const dynamic = "force-dynamic";
 
@@ -114,13 +116,15 @@ export default async function HomePage() {
                       .join(" ")}
                     data-span={i === 4 ? "solo" : undefined}
                   >
-                    <span className="feature-item__icon" aria-hidden>
-                      <ThemeIcon name={icon.name} category={icon.category} size={44} />
-                    </span>
-                    <div className="feature-item__body">
-                      <h4>{title}</h4>
-                      <p>{description}</p>
-                    </div>
+                    <Link href={serviceHrefForLabel(title)} className="feature-item__link">
+                      <span className="feature-item__icon" aria-hidden>
+                        <ThemeIcon name={icon.name} category={icon.category} size={44} />
+                      </span>
+                      <div className="feature-item__body">
+                        <h4>{title}</h4>
+                        <p>{description}</p>
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -181,11 +185,19 @@ export default async function HomePage() {
                       <IconChevronRight />
                     </div>
                   )}
-                  <div className="how-step">
-                    <ThemeIcon name={icon.name} category={icon.category} size={40} className="how-step__icon" />
-                    <h4>{title}</h4>
-                    <p>{description}</p>
-                  </div>
+                  {title === "Choose Your Jewellery" ? (
+                    <div className="how-step">
+                      <ThemeIcon name={icon.name} category={icon.category} size={40} className="how-step__icon" />
+                      <h4>{title}</h4>
+                      <p>{description}</p>
+                    </div>
+                  ) : (
+                    <Link href={serviceHrefForLabel(title)} className="how-step how-step--link">
+                      <ThemeIcon name={icon.name} category={icon.category} size={40} className="how-step__icon" />
+                      <h4>{title}</h4>
+                      <p>{description}</p>
+                    </Link>
+                  )}
                 </Fragment>
               ))}
             </div>

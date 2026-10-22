@@ -14,8 +14,9 @@
   --cream: #ffffff;
   --brand-olive: #5e684e;
 
-  --font-serif: var(--font-serif-loaded), "Cormorant Garamond", "Playfair Display", Georgia, serif;
   --font-sans: var(--font-sans-loaded), "Inter", system-ui, sans-serif;
+  /* Keep the legacy display token as an alias so every page shares one readable family. */
+  --font-serif: var(--font-sans);
 
   /* Fluid page width - ~same fill ratio on laptop and large desktop */
   --layout-gutter: clamp(16px, 2vw, 40px);

@@ -12,6 +12,7 @@ import {
   footerSocialLinks,
   footerTrustItems,
 } from "@/lib/footer-content";
+import { serviceHrefForLabel } from "@/lib/trust-content";
 
 type SiteFooterProps = {
   variant: FooterVariant;
@@ -55,8 +56,10 @@ export function SiteFooter({ variant }: SiteFooterProps) {
             <ul className="site-footer__trust-grid" aria-label="Shopping guarantees">
               {footerTrustItems.map(({ label, icon }) => (
                 <li key={label} className="site-footer__trust-item">
-                  <ThemeIcon name={icon.name} category={icon.category} size={28} className="site-footer__trust-icon" />
-                  <span>{label}</span>
+                  <Link href={serviceHrefForLabel(label)} className="site-footer__trust-link">
+                    <ThemeIcon name={icon.name} category={icon.category} size={28} className="site-footer__trust-icon" />
+                    <span>{label}</span>
+                  </Link>
                 </li>
               ))}
             </ul>

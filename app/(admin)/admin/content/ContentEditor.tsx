@@ -29,7 +29,7 @@ const EMPTY: BannerForm = {
   active: true,
 }
 
-const serif = 'Georgia, "Times New Roman", serif'
+const siteFont = 'var(--font-sans)'
 
 /**
  * Full-page banner editor: unlimited carousel uploads + live storefront preview.
@@ -490,14 +490,14 @@ export function ContentEditor({
                 <>
                   <label style={fieldLabel}>Headline line 1</label>
                   <textarea
-                    style={{ ...field, minHeight: 64, resize: 'vertical', fontFamily: serif, fontSize: '1rem' }}
+                    style={{ ...field, minHeight: 64, resize: 'vertical', fontFamily: siteFont, fontSize: '1rem' }}
                     value={form.title}
                     onChange={set('title')}
                     placeholder="She bought it after her first solo presentation."
                   />
                   <label style={fieldLabel}>Headline line 2</label>
                   <textarea
-                    style={{ ...field, minHeight: 64, resize: 'vertical', fontFamily: serif, fontSize: '1rem' }}
+                    style={{ ...field, minHeight: 64, resize: 'vertical', fontFamily: siteFont, fontSize: '1rem' }}
                     value={form.subtitle}
                     onChange={set('subtitle')}
                     placeholder="Still wears it on every big day since."
