@@ -13,61 +13,127 @@ const PROMO_KINDS = [
   'MAKING_FLAT',
 ] as const
 
-/** Admin create/update payload (also used by the admin promos UI). */
+const promoFields = {
+  code: z
+    .string()
+    .trim()
+    .min(3, 'Code must be at least 3 characters')
+    .max(40, 'Code must be 40 characters or fewer')
+    .transform((s) => s.toUpperCase().replace(/\s+/g, '')),
+  description: z.string().trim().max(200).optional().nullable(),
+  kind: z.enum(PROMO_KINDS),
+  value: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      // Omit → undefined (PATCH must not invent 0). Empty/null → 0 for create.
+      if (v === undefined) return undefined
+      if (v === '' || v === null) return 0
+      return Number(v)
+    }),
+  minOrderValue: num.refine((n) => n >= 0),
+  maxDiscount: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined
+      if (v === '' || v === null) return null
+      return Number(v)
+    }),
+  startsAt: z.string().datetime().optional().nullable(),
+  endsAt: z.string().datetime().optional().nullable(),
+  maxRedemptions: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined
+      if (v === '' || v === null) return null
+      return Number(v)
+    }),
+  maxPerUser: num.refine((n) => n >= 1),
+  firstOrderOnly: z.boolean(),
+  active: z.boolean(),
+  /** Empty arrays = whole cart. Omit on PATCH to leave unchanged. */
+  productIds: z.array(z.string()).optional(),
+  collectionIds: z.array(z.string()).optional(),
+  storeCategoryIds: z.array(z.string()).optional(),
+  categories: z
+    .array(z.enum(['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']))
+    .optional(),
+} as const
+
+function refinePromoValue(
+  data: { kind?: (typeof PROMO_KINDS)[number]; value?: number },
+  ctx: z.RefinementCtx,
+) {
+  // Partial PATCH may omit kind — skip value rules then.
+  if (data.kind == null) return
+  if (data.kind === 'FREE_DELIVERY') return
+  if (data.value == null || !(data.value > 0)) {
+    ctx.addIssue({ code: 'custom', message: 'Value must be positive', path: ['value'] })
+  }
+  if (
+    (data.kind === 'PERCENT' || data.kind === 'MAKING_PERCENT') &&
+    data.value != null &&
+    data.value > 100
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Percent discount cannot exceed 100',
+      path: ['value'],
+    })
+  }
+}
+
+/** Admin create payload (also used by the admin promos UI). */
 export const promoSchema = z
   .object({
-    code: z
-      .string()
-      .trim()
-      .min(3, 'Code must be at least 3 characters')
-      .max(40)
-      .transform((s) => s.toUpperCase().replace(/\s+/g, '')),
-    description: z.string().trim().max(200).optional().nullable(),
-    kind: z.enum(PROMO_KINDS),
-    value: z
-      .union([z.string(), z.number(), z.null(), z.undefined()])
-      .optional()
-      .transform((v) => (v === '' || v === null || v === undefined ? 0 : Number(v))),
-    minOrderValue: num.refine((n) => n >= 0).default(0),
-    maxDiscount: z
-      .union([z.string(), z.number(), z.null()])
-      .optional()
-      .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
-    startsAt: z.string().datetime().optional().nullable(),
-    endsAt: z.string().datetime().optional().nullable(),
-    maxRedemptions: z
-      .union([z.string(), z.number(), z.null()])
-      .optional()
-      .transform((v) => (v === '' || v === null || v === undefined ? null : Number(v))),
-    maxPerUser: num.refine((n) => n >= 1).default(1),
-    firstOrderOnly: z.boolean().optional().default(false),
-    active: z.boolean().default(true),
-    /** Empty arrays = whole cart. Omit on PATCH to leave unchanged. */
-    productIds: z.array(z.string()).optional(),
-    collectionIds: z.array(z.string()).optional(),
-    storeCategoryIds: z.array(z.string()).optional(),
-    categories: z
-      .array(z.enum(['RINGS', 'EARRINGS', 'PENDANTS', 'BRACELETS', 'NECKLACES']))
-      .optional(),
+    ...promoFields,
+    minOrderValue: promoFields.minOrderValue.default(0),
+    maxPerUser: promoFields.maxPerUser.default(1),
+    firstOrderOnly: promoFields.firstOrderOnly.optional().default(false),
+    active: promoFields.active.default(true),
   })
-  .superRefine((data, ctx) => {
-    // Partial PATCH may omit kind — skip value rules then.
-    if (data.kind == null) return
-    if (data.kind === 'FREE_DELIVERY') return
-    if (!(data.value > 0)) {
-      ctx.addIssue({ code: 'custom', message: 'Value must be positive', path: ['value'] })
-    }
-    if (
-      (data.kind === 'PERCENT' || data.kind === 'MAKING_PERCENT') &&
-      data.value > 100
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Percent discount cannot exceed 100',
-        path: ['value'],
-      })
-    }
+  .superRefine(refinePromoValue)
+
+/**
+ * PATCH payload — no defaults. Omitted fields stay unchanged.
+ * Prevents `{ active: false }` from inventing value:0 / resetting caps.
+ */
+export const promoPatchSchema = z
+  .object({
+    code: promoFields.code.optional(),
+    description: promoFields.description,
+    kind: promoFields.kind.optional(),
+    value: promoFields.value,
+    minOrderValue: promoFields.minOrderValue.optional(),
+    maxDiscount: promoFields.maxDiscount,
+    startsAt: promoFields.startsAt,
+    endsAt: promoFields.endsAt,
+    maxRedemptions: promoFields.maxRedemptions,
+    maxPerUser: promoFields.maxPerUser.optional(),
+    firstOrderOnly: promoFields.firstOrderOnly.optional(),
+    active: promoFields.active.optional(),
+    productIds: promoFields.productIds,
+    collectionIds: promoFields.collectionIds,
+    storeCategoryIds: promoFields.storeCategoryIds,
+    categories: promoFields.categories,
   })
+  .superRefine(refinePromoValue)
+
+/** JSON-safe promo row (Prisma Decimal → number). */
+export function serializePromo<T extends {
+  value: { toString(): string } | number
+  minOrderValue: { toString(): string } | number
+  maxDiscount: { toString(): string } | number | null
+}>(p: T) {
+  return {
+    ...p,
+    value: Number(p.value),
+    minOrderValue: Number(p.minOrderValue),
+    maxDiscount: p.maxDiscount != null ? Number(p.maxDiscount) : null,
+  }
+}
 
 /**
  * Promo code validation + discount math — single source of truth used by

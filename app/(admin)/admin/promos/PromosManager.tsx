@@ -233,18 +233,28 @@ export function PromosManager({ initial, products, collections, storeCategories 
   }
 
   async function toggleActive(p: PromoRow) {
-    await fetch(`/api/admin/promos/${p.id}`, {
+    const res = await fetch(`/api/admin/promos/${p.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !p.active }),
     })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      window.alert(j.error ?? 'Could not update promo status')
+      return
+    }
     router.refresh()
   }
 
   async function remove(p: PromoRow) {
     const label = p.redemptionCount > 0 ? `Retire “${p.code}”? (has redemptions)` : `Delete “${p.code}”?`
     if (!window.confirm(label)) return
-    await fetch(`/api/admin/promos/${p.id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/admin/promos/${p.id}`, { method: 'DELETE' })
+    if (!res.ok && res.status !== 204) {
+      const j = await res.json().catch(() => ({}))
+      window.alert(j.error ?? 'Could not delete promo')
+      return
+    }
     router.refresh()
   }
 
@@ -356,16 +366,23 @@ export function PromosManager({ initial, products, collections, storeCategories 
                     <input
                       style={{ ...control, textTransform: 'uppercase' }}
                       value={form.code}
-                      onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          code: e.target.value.toUpperCase().slice(0, 40),
+                        }))
+                      }
                       placeholder="WELCOME10"
                       required
+                      maxLength={40}
                       disabled={codeLocked}
+                      data-testid="promo-code-input"
                     />
-                    {codeLocked && (
-                      <span style={{ fontWeight: 400, fontSize: '0.75rem', color: muted }}>
-                        Code locked — already redeemed
-                      </span>
-                    )}
+                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: muted }}>
+                      {codeLocked
+                        ? 'Code locked — already redeemed'
+                        : `${form.code.length}/40 characters`}
+                    </span>
                   </label>
                   <label style={field}>
                     Description <span style={{ fontWeight: 400, color: muted }}>(optional)</span>
@@ -831,6 +848,9 @@ export function PromosManager({ initial, products, collections, storeCategories 
               <div style={{ fontSize: '0.8125rem', color: muted, marginTop: 2 }}>
                 {row.description ? `${row.description} · ` : ''}
                 {row.firstOrderOnly ? 'First order · ' : ''}
+                {row.minOrderValue > 0
+                  ? `Min ₹${Number(row.minOrderValue).toLocaleString('en-IN')} · `
+                  : ''}
                 {scopeLabel(row)} · {scheduleLabel(row)} · used {row.redemptionCount}
                 {row.maxRedemptions != null ? ` / ${row.maxRedemptions}` : ''}
               </div>
