@@ -41,9 +41,28 @@ function blankDash(value: string) {
 }
 
 function isMobileBrowser() {
-  return /Android|iPhone|iPad|iPod|Mobile|EdgA|EdgiOS/i.test(
-    typeof navigator !== 'undefined' ? navigator.userAgent || '' : '',
-  )
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPad|iPod|Mobile|EdgA|EdgiOS/i.test(ua)) return true
+  // iPadOS desktop-mode UA looks like Macintosh
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+}
+
+/** Safari / iOS — share must run from a fresh tap; downloads are unreliable. */
+function isAppleBrowser() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const iOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (iOS) return true
+  return /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox/i.test(ua)
+}
+
+function captureScale() {
+  if (isAppleBrowser()) return 1
+  if (isMobileBrowser()) return 1.5
+  return 2
 }
 
 /** Plain numeric input — digits + optional decimal only. No thousand separators. */
@@ -356,15 +375,25 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
   }
 
   async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob)
-          else reject(new Error('toBlob failed'))
-        },
-        'image/png',
-      )
+    // Safari sometimes returns null from toBlob — fall back to toDataURL.
+    const fromToBlob = await new Promise<Blob | null>((resolve) => {
+      if (typeof canvas.toBlob !== 'function') {
+        resolve(null)
+        return
+      }
+      try {
+        canvas.toBlob((blob) => resolve(blob), 'image/png')
+      } catch {
+        resolve(null)
+      }
     })
+    if (fromToBlob && fromToBlob.size > 0) return fromToBlob
+
+    const dataUrl = canvas.toDataURL('image/png')
+    const res = await fetch(dataUrl)
+    const blob = await res.blob()
+    if (!blob || blob.size === 0) throw new Error('toBlob failed')
+    return blob
   }
 
   function renderShareMarkup(detailed: boolean): string {
@@ -375,6 +404,13 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     const weight = isComplex ? cxWeight : stdWeight
     const purityLabel = GOLD_PURITIES[karat].label
     const today = formatToday()
+    const named = estimateName.trim()
+    const detailNameHtml = named
+      ? `<div class="cost-est-detail__name">${escapeHtml(named)}</div>`
+      : ''
+    const shareNameHtml = named
+      ? `<div class="cost-est-share__name">${escapeHtml(named)}</div>`
+      : ''
 
     if (detailed) {
       const setsHtml =
@@ -396,8 +432,9 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
 
       return `<div class="cost-est-detail">
         <div class="cost-est-detail__title">Jewellery Cost Calculator</div>
+        ${detailNameHtml}
         <div class="cost-est-detail__date">${today}</div>
-        <div class="cost-est-detail__total"><div class="lbl">Final Total Cost</div><div class="val">${formatCurrency(results.finalTotal)}</div></div>
+        ${renderFinalTotalBannerHtml(formatCurrency(results.finalTotal), 'detail')}
         <div class="cost-est-detail__cols">
           <div class="col">
             <div class="cost-est-detail__section"><h3>Market Rates</h3>
@@ -435,8 +472,8 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       </div>`
     }
 
-    const header = `<div class="cost-est-share__header"><div>Vairis Fine Jewellery Estimate</div><div class="cost-est-share__date">${today}</div></div>`
-    const finalBlock = `<div class="cost-est-share__final"><div class="lbl">Final Total Cost</div><div class="val">${formatCurrency(results.finalTotal)}</div></div>`
+    const header = `<div class="cost-est-share__header"><div>Vairis Fine Jewellery Estimate</div>${shareNameHtml}<div class="cost-est-share__date">${today}</div></div>`
+    const finalBlock = renderFinalTotalBannerHtml(formatCurrency(results.finalTotal), 'share')
     const costBlock = `<div class="cost-est-share__section" style="margin-top:8px">
       <div class="cost-est-share__row"><span class="lbl">Gold Cost</span><span class="val">${formatCurrency(results.goldCost)}</span></div>
       <div class="cost-est-share__row"><span class="lbl">Diamond Cost</span><span class="val">${formatCurrency(results.diamondCost)}</span></div>
@@ -478,45 +515,103 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     if (!root) throw new Error('capture root missing')
     root.innerHTML = renderShareMarkup(detailed)
     const card = root.querySelector(detailed ? '.cost-est-detail' : '.cost-est-share') as HTMLElement
+    if (!card) throw new Error('capture card missing')
+    // Two frames so WebKit lays out fonts/box before clone (avoids blank PNG).
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     void card.offsetHeight
-    const canvas = await html2canvas(card, {
-      scale: isMobileBrowser() ? 1.5 : 2,
-      backgroundColor: detailed ? '#f5f5f5' : '#0b241c',
-      useCORS: true,
-      logging: false,
-      width: card.scrollWidth,
-      height: card.scrollHeight,
-      windowWidth: Math.max(card.scrollWidth, 1),
-      windowHeight: Math.max(card.scrollHeight, 1),
-      scrollX: 0,
-      scrollY: 0,
-      allowTaint: true,
-    })
-    root.innerHTML = ''
-    return canvasToBlob(canvas)
+    // Paint final-total as a raster <img> — html2canvas mis-sizes CSS/table backgrounds.
+    await materializeFinalTotalBanners(card)
+    void card.offsetHeight
+
+    const width = Math.max(card.scrollWidth, card.offsetWidth, 1)
+    const height = Math.max(card.scrollHeight, card.offsetHeight, 1)
+    const scale = captureScale()
+    // iOS Safari blanks canvases past ~4096px on a side.
+    const maxSide = 4096
+    const safeScale = Math.min(scale, maxSide / width, maxSide / height)
+
+    try {
+      const canvas = await html2canvas(card, {
+        scale: Math.max(1, safeScale),
+        backgroundColor: detailed ? '#f5f5f5' : '#0b241c',
+        useCORS: true,
+        logging: false,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        allowTaint: true,
+        foreignObjectRendering: false,
+        ignoreElements: (el) => {
+          const tag = el.tagName
+          if (tag === 'IMG' && el.getAttribute('loading') === 'lazy') return true
+          return false
+        },
+        onclone: (_doc, el) => {
+          // Inline critical colors — WebKit clone often drops CSS variables.
+          const green = '#0b241c'
+          const gold = '#d4af37'
+          const goldBright = '#f9e076'
+          const goldMuted = '#b8962e'
+          const greenCard = '#143528'
+          el.querySelectorAll<HTMLElement>('.cost-est-share').forEach((n) => {
+            n.style.background = green
+            n.style.color = goldBright
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__section').forEach((n) => {
+            n.style.background = greenCard
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__header, .cost-est-share__name').forEach(
+            (n) => {
+              n.style.color = goldBright
+            },
+          )
+          el.querySelectorAll<HTMLElement>('.cost-est-share__date').forEach((n) => {
+            n.style.color = goldMuted
+          })
+          el.querySelectorAll<HTMLElement>('.cost-est-share__section h3').forEach((n) => {
+            n.style.color = gold
+          })
+        },
+      })
+      if (!canvas.width || !canvas.height) throw new Error('empty canvas')
+      return await canvasToBlob(canvas)
+    } finally {
+      root.innerHTML = ''
+    }
   }
 
   function saveBlob(blob: Blob) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'vairis-estimate.png'
+    a.download = estimateDownloadFilename(estimateName)
     a.rel = 'noopener'
+    a.target = '_blank'
     document.body.appendChild(a)
     a.click()
     a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
   }
 
   async function nativeShare(blob: Blob): Promise<'shared' | 'aborted' | 'failed' | 'unsupported'> {
-    if (!navigator.share) return 'unsupported'
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+      return 'unsupported'
+    }
     try {
-      const file = new File([blob], 'vairis-estimate.png', { type: 'image/png' })
-      await navigator.share({
+      const shareLabel = estimateName.trim() || 'Vairis Fine Jewellery Estimate'
+      const file = new File([blob], estimateDownloadFilename(estimateName), { type: 'image/png' })
+      const payload: ShareData = {
         files: [file],
-        title: 'Vairis Fine Jewellery Estimate',
-        text: 'Vairis Fine Jewellery Estimate',
-      })
+        title: shareLabel,
+        text: shareLabel,
+      }
+      if (typeof navigator.canShare === 'function' && !navigator.canShare(payload)) {
+        return 'unsupported'
+      }
+      await navigator.share(payload)
       return 'shared'
     } catch (error) {
       if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
@@ -526,22 +621,32 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     }
   }
 
+  function openShareSheet(blob: Blob, hint: string) {
+    const url = URL.createObjectURL(blob)
+    setSheet({ url, blob, hint })
+  }
+
   async function handleShare(detailed: boolean) {
     try {
       showToast('Preparing image…')
       if (!canShare) return
       const blob = await captureImage(detailed)
+      // Apple: async capture burns the user-gesture — open sheet; Share tap is fresh.
+      if (isAppleBrowser() || isMobileBrowser()) {
+        openShareSheet(
+          blob,
+          'Tap Share to send via WhatsApp / Messages, or long-press the image to save to Photos.',
+        )
+        return
+      }
       const result = await nativeShare(blob)
       if (result === 'shared' || result === 'aborted') return
-      const url = URL.createObjectURL(blob)
-      setSheet({
-        url,
+      openShareSheet(
         blob,
-        hint:
-          result === 'failed' || isMobileBrowser()
-            ? 'Tap Share below to open WhatsApp or other apps. On some phones, long-press the image to save it.'
-            : 'Share is not available here. Save the image, or long-press it.',
-      })
+        result === 'unsupported'
+          ? 'Share is not available here. Save the image, or long-press it.'
+          : 'Tap Share below, or Save image / long-press the preview.',
+      )
     } catch {
       showToast('Unable to create estimate image. Try again.')
     }
@@ -552,14 +657,11 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       showToast('Preparing image…')
       if (!canShare) return
       const blob = await captureImage(detailed)
-      if (isMobileBrowser()) {
-        const url = URL.createObjectURL(blob)
-        setSheet({
-          url,
+      if (isAppleBrowser() || isMobileBrowser()) {
+        openShareSheet(
           blob,
-          hint: 'Mobile browsers often block downloads. Long-press the image to save it, or tap Share.',
-        })
-        saveBlob(blob)
+          'On iPhone/iPad: tap Share → Save Image, or long-press the preview. Direct download is blocked by Safari.',
+        )
         return
       }
       saveBlob(blob)
@@ -969,7 +1071,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
             <p className="cost-est__sheet-hint">{sheet.hint}</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={sheet.url} alt="Estimate preview" />
-            {typeof navigator !== 'undefined' && 'share' in navigator && (
+            {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
               <button
                 type="button"
                 className="cost-est__btn cost-est__btn--primary"
@@ -985,7 +1087,15 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
             <button
               type="button"
               className="cost-est__btn cost-est__btn--outline"
-              onClick={() => {
+              onClick={async () => {
+                // iOS: system share sheet is the reliable “Save Image” path.
+                if (isAppleBrowser() && typeof navigator.share === 'function') {
+                  const result = await nativeShare(sheet.blob)
+                  if (result === 'shared' || result === 'aborted') {
+                    closeSheet()
+                    return
+                  }
+                }
                 saveBlob(sheet.blob)
                 showToast('If nothing downloaded, long-press the image to save it')
               }}
@@ -1000,6 +1110,119 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       </div>
     </div>
   )
+}
+
+/** Placeholder swapped for a canvas-drawn <img> before html2canvas. */
+function renderFinalTotalBannerHtml(amountText: string, variant: 'detail' | 'share'): string {
+  return `<div class="cost-est-total-banner-slot" data-variant="${variant}" data-amount="${escapeHtml(amountText)}" style="margin:0 0 10px;width:100%;min-height:80px;"></div>`
+}
+
+function drawRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + radius, y)
+  ctx.arcTo(x + w, y, x + w, y + h, radius)
+  ctx.arcTo(x + w, y + h, x, y + h, radius)
+  ctx.arcTo(x, y + h, x, y, radius)
+  ctx.arcTo(x, y, x + w, y, radius)
+  ctx.closePath()
+}
+
+/** Raster banner with label+amount truly centered — avoids html2canvas CSS bg bugs. */
+function paintFinalTotalBannerDataUrl(
+  amount: string,
+  variant: 'detail' | 'share',
+  widthPx: number,
+): string {
+  const w = Math.max(120, Math.round(widthPx))
+  const h = 80
+  const dpr = 2
+  const canvas = document.createElement('canvas')
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.scale(dpr, dpr)
+
+  const isDetail = variant === 'detail'
+  drawRoundRect(ctx, 0.75, 0.75, w - 1.5, h - 1.5, 12)
+  ctx.fillStyle = isDetail ? '#1565c0' : '#1a3d30'
+  ctx.fill()
+  if (!isDetail) {
+    ctx.strokeStyle = '#d4af37'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
+  const labelSize = isDetail ? 12 : 13
+  const valueSize = isDetail ? 24 : 28
+  const gap = 6
+  const labelBlock = labelSize * 1.2
+  const valueBlock = valueSize * 1.15
+  const stackH = labelBlock + gap + valueBlock
+  const stackTop = (h - stackH) / 2
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `500 ${labelSize}px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`
+  ctx.fillStyle = isDetail ? 'rgba(255,255,255,0.92)' : '#b8962e'
+  ctx.fillText('Final Total Cost', w / 2, stackTop + labelBlock / 2)
+
+  ctx.font = `700 ${valueSize}px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`
+  ctx.fillStyle = isDetail ? '#ffffff' : '#f9e076'
+  ctx.fillText(amount, w / 2, stackTop + labelBlock + gap + valueBlock / 2)
+
+  return canvas.toDataURL('image/png')
+}
+
+async function materializeFinalTotalBanners(card: HTMLElement) {
+  const slots = [...card.querySelectorAll<HTMLElement>('.cost-est-total-banner-slot')]
+  await Promise.all(
+    slots.map(async (slot) => {
+      const amount = slot.dataset.amount ?? ''
+      const variant = (slot.dataset.variant === 'share' ? 'share' : 'detail') as 'detail' | 'share'
+      const width = Math.max(slot.clientWidth || card.clientWidth - 32, 200)
+      const dataUrl = paintFinalTotalBannerDataUrl(amount, variant, width)
+      if (!dataUrl) return
+      const img = document.createElement('img')
+      img.src = dataUrl
+      img.alt = `Final Total Cost ${amount}`
+      img.width = width
+      img.height = 80
+      img.style.display = 'block'
+      img.style.width = '100%'
+      img.style.height = 'auto'
+      img.style.margin = '0 0 10px'
+      img.style.borderRadius = '12px'
+      slot.replaceWith(img)
+      if (typeof img.decode === 'function') {
+        try {
+          await img.decode()
+        } catch {
+          /* already decoded / broken — continue */
+        }
+      }
+    }),
+  )
+}
+
+/** Safe PNG filename from Estimate name (fallback when blank). */
+function estimateDownloadFilename(name: string): string {
+  const cleaned = name
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .slice(0, 80)
+  const base = cleaned || 'vairis-estimate'
+  return `${base}.png`
 }
 
 function escapeHtml(str: string) {
