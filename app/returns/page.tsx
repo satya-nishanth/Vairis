@@ -10,7 +10,7 @@ import { WHATSAPP_URL } from "@/lib/ui-data";
 import { marketingImages } from "@/lib/images";
 
 export const metadata: Metadata = {
-  title: "Returns & Exchanges — 15-Day Returns | VAIRIS",
+  title: "Returns & Exchanges — 15-Day Returns",
   description:
     "Understand the fine print in jewellery return policies, then see how VAIRIS makes eligible returns and exchanges simple with 15-day returns and 90% exchange value.",
 };

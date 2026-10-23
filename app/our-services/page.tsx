@@ -6,7 +6,7 @@ import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { pageLayouts } from "@/lib/layout-config";
 
 export const metadata: Metadata = {
-  title: "Our Services & Promises | VAIRIS",
+  title: "Our Services & Promises",
   description:
     "Explore VAIRIS services: certified diamonds, BIS hallmarked gold, insured jewellery delivery, secure payments, easy returns, and personal support.",
 };

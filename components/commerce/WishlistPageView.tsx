@@ -114,6 +114,7 @@ export function WishlistPageView() {
           { label: "Wishlist" },
         ]}
       >
+        <main>
         <Container>
           <div className="wishlist-page">
             <h1 className="wishlist-page__title">Wishlist ({count})</h1>
@@ -149,6 +150,7 @@ export function WishlistPageView() {
             )}
           </div>
         </Container>
+        </main>
       </PageShell>
     </CartModalProvider>
   );

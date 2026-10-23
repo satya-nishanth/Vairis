@@ -7,7 +7,7 @@ import { Accordion } from "@/components/ui/Accordion";
 import { pageLayouts } from "@/lib/layout-config";
 
 export const metadata: Metadata = {
-  title: "What Makes a Diamond Sparkle—and Gold Pure? | VAIRIS Guide",
+  title: "What Makes a Diamond Sparkle—and Gold Pure? A Guide",
   description:
     "Learn diamond grading and the 4Cs, how to verify a grading report, and what a BIS gold hallmark and HUID mean in this simple jewellery guide.",
 };

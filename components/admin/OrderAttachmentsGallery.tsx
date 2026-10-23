@@ -18,13 +18,15 @@ function isPdf(a: OrderAttachmentItem) {
 function formatCreatedAt(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('en-IN', {
+  const when = d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   })
+  return `${when} IST`
 }
 
 /**

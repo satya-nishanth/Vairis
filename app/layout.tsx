@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { ThemeInitScript } from "@/components/theme/ThemeInitScript";
@@ -14,10 +14,15 @@ const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 /** Google Tag Manager container (e.g. GTM-XXXX). Optional — unset = no GTM. */
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Self-hosted (Latin subset, variable weight) rather than next/font/google: the
+// Google fetch at build time broke Vercel's Turbopack build ("next/font/google
+// queries have exactly one entry") and ties every build to fonts.googleapis.com.
+const inter = localFont({
+  src: "./fonts/Inter-latin-wght.woff2",
+  weight: "400 700",
+  display: "swap",
   variable: "--font-sans-loaded",
+  fallback: ["system-ui", "Arial", "sans-serif"],
 });
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://thevairis.com";

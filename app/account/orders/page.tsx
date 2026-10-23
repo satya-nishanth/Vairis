@@ -11,7 +11,7 @@ import { formatPrice } from "@/lib/ui-data";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "My Orders | VAIRIS",
+  title: "My Orders",
   description: "View and track your VAIRIS orders.",
 };
 

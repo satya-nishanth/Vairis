@@ -154,7 +154,7 @@ export function getHeroSlides(): readonly string[] {
 
 export const formatPrice = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
-export const WHATSAPP_URL = "https://wa.me/917070607070";
+export const WHATSAPP_URL = "https://wa.me/917075486464";
 export const WHATSAPP_CONSULTATION_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%27d%20like%20to%20book%20a%20consultation%20call.`;
 export const WHATSAPP_SIZING_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%20need%20help%20finding%20my%20ring%20size.`;
 export const WHATSAPP_STYLING_URL = `${WHATSAPP_URL}?text=Hi%20VAIRIS%2C%20I%27d%20like%20to%20start%20a%20personal%20styling%20session.`;

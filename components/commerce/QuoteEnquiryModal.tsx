@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { WHATSAPP_URL } from '@/lib/ui-data'
 
 type Props = {
   open: boolean
@@ -80,7 +81,7 @@ export function QuoteEnquiryModal({ open, onClose, isLoggedIn, productName, prod
       const text = encodeURIComponent(
         `Hi! I'm interested in *${productName}*${itemCode ? ` (Code: ${itemCode})` : ''} from VAIRIS.\n${productUrl}\n\nRef ${data.displayId}`,
       )
-      window.open(`https://wa.me/917075486464?text=${text}`, '_blank', 'noopener,noreferrer')
+      window.open(`${WHATSAPP_URL}?text=${text}`, '_blank', 'noopener,noreferrer')
       onClose()
     } catch {
       setError('Network error — check your connection and try again')

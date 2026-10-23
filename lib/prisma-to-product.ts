@@ -117,7 +117,7 @@ export function prismaToProduct(
     variantId,
     badge: p.comingSoon
       ? "Coming Soon"
-      : autoDiscountPercent && autoDiscountPercent > 0
+      : price != null && autoDiscountPercent && autoDiscountPercent > 0 // none on Price on Request (STG-67)
         ? `${Math.round(autoDiscountPercent)}% off`
         : index === 0
           ? "Best Seller"

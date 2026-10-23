@@ -47,10 +47,13 @@ function computeReturnEligibility(
  */
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ payment?: string }>;
 }) {
   const { id } = await params;
+  const { payment: paymentResult } = await searchParams;
   const session = await getSession();
   if (!session) redirect(`/auth/login?next=/account/orders/${id}`);
 
@@ -79,6 +82,11 @@ export default async function OrderDetailPage({
   const deposit = Number(order.depositAmount);
   const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
+  // Split children carry no Payment row of their own — the parent was paid.
+  const unpaid =
+    order.status === "PAYMENT_PENDING" ||
+    order.status === "PAYMENT_EXPIRED" ||
+    (order.payment != null && ["CREATED", "FAILED"].includes(order.payment.status));
   const isSplitParent = order.status === "SPLIT_INTO_DELIVERIES" && order.children.length > 0;
   const { returnEligibleUntil, canRequestReturn } = computeReturnEligibility(order.status, order.events);
 
@@ -96,6 +104,14 @@ export default async function OrderDetailPage({
 
           <div className="order-detail__layout">
             <div>
+              {/* Mock gateway's Cancel lands here; Razorpay's close shows the same
+                  message on /checkout (STG-45). */}
+              {order.status === "PAYMENT_PENDING" && paymentResult === "cancelled" && (
+                <p className="checkout-alert checkout-alert--info" role="status">
+                  Payment cancelled — you haven&apos;t been charged and your bag is unchanged. This
+                  order is saved as Payment Pending; complete it below whenever you&apos;re ready.
+                </p>
+              )}
               {order.status === "PAYMENT_PENDING" && <RetryPaymentButton orderId={order.id} />}
               {["PAYMENT_PENDING", "PAYMENT_CONFIRMED", "PREPARING"].includes(order.status) && (
                 <CancelOrderButton
@@ -221,7 +237,7 @@ export default async function OrderDetailPage({
                   : []),
               ]}
               total={Number(order.grandTotal)}
-              totalLabel="Paid"
+              totalLabel={unpaid ? "Total" : "Paid"}
             />
           </div>
         </div>

@@ -10,7 +10,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { OrderSummary } from "@/components/commerce/OrderSummary";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
-import { formatPrice } from "@/lib/ui-data";
+import { formatPrice, WHATSAPP_URL } from "@/lib/ui-data";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { track } from "@/lib/analytics-client";
 import { formatMetalLabel } from "@/lib/metal";
@@ -124,11 +124,14 @@ type SavedAddress = {
 export default function CheckoutPage() {
   const layout = pageLayouts.checkout;
   const router = useRouter();
-  const { items, isLoggedIn, hydrated } = useCart();
+  const { items, isLoggedIn, hydrated, refresh: refreshCart } = useCart();
 
   const [address, setAddress] = useState<AddressForm>(EMPTY_ADDRESS);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the shopper closes the gateway without paying — the order already
+  // exists as Payment Pending, so say so instead of failing silently (STG-45).
+  const [cancelledOrderId, setCancelledOrderId] = useState<string | null>(null);
   const [setupNotice, setSetupNotice] = useState(false);
 
   // Saved addresses (address book)
@@ -324,6 +327,7 @@ export default function CheckoutPage() {
           }),
         });
         if (verifyRes.ok) {
+          await refreshCart();
           router.push(`/order-confirmation?orderId=${data.orderId}`);
         } else {
           setError(
@@ -331,7 +335,12 @@ export default function CheckoutPage() {
           );
         }
       },
-      modal: { ondismiss: () => setPaying(false) },
+      modal: {
+        ondismiss: () => {
+          setPaying(false);
+          setCancelledOrderId(data.orderId);
+        },
+      },
     });
     rzp.open();
   }
@@ -339,6 +348,7 @@ export default function CheckoutPage() {
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setCancelledOrderId(null);
     setSetupNotice(false);
     if (hasUnpriced) {
       setError("One or more cart items could not be priced. Return to cart and remove them, or enquire on WhatsApp.");
@@ -400,7 +410,7 @@ export default function CheckoutPage() {
             <h1>Ordering via WhatsApp</h1>
             <p>Online checkout is launching soon — message us to place your order.</p>
             <a
-              href="https://wa.me/917075486464"
+              href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"
@@ -768,10 +778,17 @@ export default function CheckoutPage() {
                 <p className="checkout-alert checkout-alert--info" role="status">
                   Online payment is being set up and will be live shortly. Your cart is saved —
                   meanwhile you can order via{" "}
-                  <a href="https://wa.me/917075486464" target="_blank" rel="noopener noreferrer">
+                  <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
                     WhatsApp
                   </a>
                   .
+                </p>
+              )}
+              {cancelledOrderId && (
+                <p className="checkout-alert checkout-alert--info" role="status">
+                  Payment cancelled — you haven&apos;t been charged and your bag is unchanged. The
+                  order is saved as Payment Pending; pay again here, or complete it later from{" "}
+                  <Link href={`/account/orders/${cancelledOrderId}`}>My Orders</Link>.
                 </p>
               )}
               {error && (

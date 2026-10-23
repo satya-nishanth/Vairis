@@ -144,6 +144,8 @@ describe('POST /api/checkout — address handling', () => {
 
     expect(res.status).toBe(200)
     expect(mockCheck).not.toHaveBeenCalled()
+    // STG-44: the bag stays until payment is captured.
+    expect(prisma.cartItem.deleteMany).not.toHaveBeenCalled()
     expect(prisma.order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

@@ -155,8 +155,11 @@ function findOrder(orders: OrdersListRow[], id: string | null): OrdersListRow | 
   return null
 }
 
+// Rendered in the browser, so pin the zone — otherwise an admin outside India
+// sees their own local time instead of the store's (STG-55).
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', {
+  const when = new Date(iso).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -164,10 +167,12 @@ function formatWhen(iso: string): string {
     minute: '2-digit',
     hour12: true,
   })
+  return `${when} IST`
 }
 
 function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'short',
     year: 'numeric',

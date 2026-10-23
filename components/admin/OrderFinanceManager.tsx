@@ -312,53 +312,43 @@ function pctOrDash(n: number | null | undefined): string {
   return `${s}%`
 }
 
+// Client component: format in the store's zone, not the viewer's (STG-55) —
+// in a UTC−4 browser a date-only payment day even showed the day before.
+function istParts(d: Date) {
+  // en-US: "Sep", not en-GB/en-IN "Sept" — keeps the sheet's existing month labels.
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d)
+  const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? ''
+  return {
+    day: get('day'),
+    mon: get('month'),
+    year: get('year'),
+    h: get('hour'),
+    mm: get('minute'),
+    ampm: get('dayPeriod').toUpperCase(),
+  }
+}
+
 function formatSheetDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  const day = d.getDate()
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ]
-  const mon = months[d.getMonth()]
-  const year = d.getFullYear()
-  let h = d.getHours()
-  const m = d.getMinutes()
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  h = h % 12 || 12
-  const mm = m < 10 ? `0${m}` : String(m)
-  return `${day} ${mon} ${year}, ${h}:${mm} ${ampm}`
+  const { day, mon, year, h, mm, ampm } = istParts(d)
+  return `${day} ${mon} ${year}, ${h}:${mm} ${ampm} IST`
 }
 
 function formatPaymentDay(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ]
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+  const { day, mon, year } = istParts(d)
+  return `${day} ${mon} ${year}`
 }
 
 function balanceStatusLabel(status: SettlementStatus | undefined, balance: number): string {

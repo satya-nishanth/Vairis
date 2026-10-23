@@ -1,11 +1,11 @@
 .services-page { --services-ink: var(--color-text); --services-muted: var(--color-text-muted); --services-accent: var(--color-accent); --services-line: var(--color-border-light); --services-card: var(--bg-card); --services-soft: var(--color-surface-subtle); color: var(--services-ink); padding: clamp(2.5rem, 6vw, 5rem) 0 clamp(4rem, 8vw, 7rem); }
 .services-page .container { max-width: 1240px; }
 .services-hero { max-width: 900px; margin: 0 auto clamp(3rem, 6vw, 5rem); text-align: center; }
-.services-eyebrow { margin: 0 0 .65rem; color: var(--services-accent); font-size: .68rem; font-weight: 700; letter-spacing: .15em; line-height: 1.5; text-transform: uppercase; }
+.services-eyebrow { margin: 0 0 .65rem; color: var(--services-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .15em; line-height: 1.5; text-transform: uppercase; }
 .services-hero h1 { max-width: 850px; margin: 0 auto; font-family: var(--font-serif, Georgia, serif); font-size: clamp(2.5rem, 5.5vw, 4.5rem); font-weight: 400; letter-spacing: -.04em; line-height: 1.06; }
 .services-hero > p:not(.services-eyebrow) { max-width: 680px; margin: 1.2rem auto 0; color: var(--services-muted); font-size: 1rem; line-height: 1.8; }
 .services-quick-links { display: flex; flex-wrap: wrap; justify-content: center; gap: .6rem; margin-top: 2rem; }
-.services-quick-links a { padding: .55rem .8rem; border: 1px solid var(--services-line); background: var(--services-card); color: var(--services-muted); font-size: .74rem; text-decoration: none; transition: border-color .2s ease, color .2s ease; }
+.services-quick-links a { padding: .55rem .8rem; border: 1px solid var(--services-line); background: var(--services-card); color: var(--services-muted); font-size: 0.75rem; text-decoration: none; transition: border-color .2s ease, color .2s ease; }
 .services-quick-links a:hover { border-color: var(--services-accent); color: var(--services-accent); }
 .services-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; scroll-margin-top: 7rem; }
 .service-card { display: flex; min-height: 300px; flex-direction: column; align-items: flex-start; padding: clamp(1.35rem, 3vw, 2.1rem); border: 1px solid var(--services-line); background: var(--services-card); scroll-margin-top: 7rem; }
