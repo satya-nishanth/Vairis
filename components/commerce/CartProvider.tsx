@@ -48,6 +48,8 @@ type CartContextValue = {
   addItem: (variantId: string, quantity?: number, withExchange?: boolean) => Promise<void>;
   updateQuantity: (itemId: string, quantity: number) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
+  /** Re-read the cart from the server (e.g. after payment clears paid items). */
+  refresh: () => Promise<void>;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -149,8 +151,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ items, count, isLoggedIn, hydrated, addItem, updateQuantity, removeItem }),
-    [items, count, isLoggedIn, hydrated, addItem, updateQuantity, removeItem],
+    () => ({ items, count, isLoggedIn, hydrated, addItem, updateQuantity, removeItem, refresh }),
+    [items, count, isLoggedIn, hydrated, addItem, updateQuantity, removeItem, refresh],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -13,7 +13,7 @@ import {
 } from "@/components/commerce/CartDiscountPanel";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
-import { formatPrice } from "@/lib/ui-data";
+import { formatPrice, WHATSAPP_URL } from "@/lib/ui-data";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
 import { formatMetalLabel } from "@/lib/metal";
 
@@ -49,7 +49,7 @@ export default function CartPage() {
               we&apos;ll confirm your order and you can track it right here under My Orders.
             </p>
             <a
-              href="https://wa.me/917075486464"
+              href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"

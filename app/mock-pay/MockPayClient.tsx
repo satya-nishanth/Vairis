@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCart } from "@/components/commerce/CartProvider";
 
 /**
  * Mock payment modal — stand-in for the Razorpay Checkout popup when
@@ -13,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 function MockPayContent() {
   const router = useRouter();
   const params = useSearchParams();
+  const { refresh: refreshCart } = useCart();
   const orderId = params.get("orderId") ?? "";
   const gatewayOrderId = params.get("gatewayOrderId") ?? "";
   const amount = Number(params.get("amount") ?? 0);
@@ -39,7 +41,7 @@ function MockPayContent() {
         return;
       }
       // Mirror the Razorpay success handler: browser-side verify, then confirmation.
-      const verifyRes = await fetch("/api/payment/verify", {
+      await fetch("/api/payment/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,12 +50,9 @@ function MockPayContent() {
           signature: data.signature,
         }),
       });
-      if (verifyRes.ok) {
-        router.push(`/order-confirmation?orderId=${data.orderId}`);
-      } else {
-        // Webhook already posted — confirmation lands regardless.
-        router.push(`/order-confirmation?orderId=${data.orderId}`);
-      }
+      // Webhook already posted if verify fails — confirmation lands regardless.
+      await refreshCart();
+      router.push(`/order-confirmation?orderId=${data.orderId}`);
     } catch {
       setError("Something went wrong. Try again.");
     } finally {
