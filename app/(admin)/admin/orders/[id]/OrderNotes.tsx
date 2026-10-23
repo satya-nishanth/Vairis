@@ -131,6 +131,7 @@ export function OrderNotes({ orderId, notes }: { orderId: string; notes: OrderNo
                   hour: 'numeric',
                   minute: '2-digit',
                 })}{' '}
+                IST{' '}
                 ·{' '}
                 <span style={{ color: n.internal ? '#b45309' : '#15803d' }}>
                   {n.internal ? 'Internal' : 'Customer-visible'}
