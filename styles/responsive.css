@@ -249,7 +249,7 @@
   .site-header__drawer-theme .theme-switcher button {
     min-width: 72px;
     padding: 10px 14px;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 
   .site-header__drawer-theme-label {
@@ -348,7 +348,7 @@
     gap: 8px 16px;
     padding-top: 8px;
     padding-bottom: 8px;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 
   .utility-bar__item:nth-child(n + 3),
@@ -436,5 +436,16 @@
 
   .auth-popover__caret {
     display: none;
+  }
+}
+
+/* iOS Safari zooms the page when a focused field's text is under 16px
+   (newsletter, sign-in, contact, search — PRD-30). !important because many
+   inputs set their size per component or inline. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"]),
+  select,
+  textarea {
+    font-size: 16px !important;
   }
 }

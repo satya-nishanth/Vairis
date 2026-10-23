@@ -12,7 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Curated Collections | VAIRIS",
+  title: "Curated Collections",
   description: "Explore our curated edits of minimal fine diamond jewellery. Handcrafted in 18kt and 14kt gold for modern everyday wear.",
 };
 

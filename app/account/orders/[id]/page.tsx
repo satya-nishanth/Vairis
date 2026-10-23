@@ -79,6 +79,11 @@ export default async function OrderDetailPage({
   const deposit = Number(order.depositAmount);
   const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
+  // Split children carry no Payment row of their own — the parent was paid.
+  const unpaid =
+    order.status === "PAYMENT_PENDING" ||
+    order.status === "PAYMENT_EXPIRED" ||
+    (order.payment != null && ["CREATED", "FAILED"].includes(order.payment.status));
   const isSplitParent = order.status === "SPLIT_INTO_DELIVERIES" && order.children.length > 0;
   const { returnEligibleUntil, canRequestReturn } = computeReturnEligibility(order.status, order.events);
 
@@ -221,7 +226,7 @@ export default async function OrderDetailPage({
                   : []),
               ]}
               total={Number(order.grandTotal)}
-              totalLabel="Paid"
+              totalLabel={unpaid ? "Total" : "Paid"}
             />
           </div>
         </div>

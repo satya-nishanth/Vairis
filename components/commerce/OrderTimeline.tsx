@@ -24,7 +24,11 @@ type OrderTimelineProps = {
  */
 export function OrderTimeline({ status, events, notes = [] }: OrderTimelineProps) {
   const terminal = !isHappyPath(status);
-  const reachedIndex = TIMELINE_STEPS.indexOf(status);
+  // Unpaid: the first step reads "Payment Pending" (current, not ticked) rather
+  // than "Payment Confirmed / Payment received" (STG-46).
+  const pending = status === "PAYMENT_PENDING";
+  const steps: OrderStatus[] = pending ? ["PAYMENT_PENDING", ...TIMELINE_STEPS.slice(1)] : TIMELINE_STEPS;
+  const reachedIndex = steps.indexOf(status);
 
   const eventFor = (step: OrderStatus) => events.findLast((e) => e.status === step);
 
@@ -65,9 +69,9 @@ export function OrderTimeline({ status, events, notes = [] }: OrderTimelineProps
   return (
     <>
       <ol className="order-timeline">
-        {TIMELINE_STEPS.map((step, i) => {
+        {steps.map((step, i) => {
           const meta = ORDER_STATUS_META[step];
-          const done = reachedIndex >= i;
+          const done = !pending && reachedIndex >= i;
           const active = reachedIndex === i;
           const event = eventFor(step);
           return (
