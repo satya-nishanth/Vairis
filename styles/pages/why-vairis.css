@@ -1,6 +1,6 @@
 .why-page { --why-ink: var(--color-text); --why-muted: var(--color-text-muted); --why-accent: var(--color-accent); --why-line: var(--color-border-light); --why-card: var(--bg-card); --why-soft: var(--color-surface-subtle); color: var(--why-ink); padding-bottom: 3rem; }
 .why-page .container { max-width: 1240px; }
-.why-eyebrow { margin: 0 0 .8rem; color: var(--why-accent); font-size: .7rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.why-eyebrow { margin: 0 0 .8rem; color: var(--why-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .why-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: clamp(2rem, 6vw, 5rem); padding: clamp(2rem, 5vw, 4rem); background: var(--bg-muted); }
 .why-hero__copy { max-width: 650px; }
 .why-hero h1, .why-section-heading h2, .why-price h2, .why-proof h2, .why-cta h2 { max-width: 760px; margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: clamp(2.5rem, 5vw, 4.6rem); font-weight: 400; letter-spacing: -.035em; line-height: 1.08; }
@@ -10,14 +10,14 @@
 .why-hero__actions > a span { padding-left: .35rem; color: var(--why-accent); }
 .why-hero__visual { position: relative; }
 .why-hero__visual img { display: block; width: 100%; height: auto; max-height: 480px; border-radius: var(--radius-md); object-fit: cover; }
-.why-hero__caption { display: inline-block; margin-top: .7rem; color: var(--why-muted); font-size: .72rem; letter-spacing: .04em; }
+.why-hero__caption { display: inline-block; margin-top: .7rem; color: var(--why-muted); font-size: 0.75rem; letter-spacing: .04em; }
 .why-frictions, .why-approach, .why-proof { padding-block: clamp(3.5rem, 8vw, 6.5rem); }
 .why-choice { padding-block: clamp(3.5rem, 7vw, 5.5rem); }
 .why-choice .why-section-heading { max-width: 800px; }
 .why-choice__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .why-choice-card { display: flex; min-height: 280px; flex-direction: column; align-items: flex-start; padding: clamp(1.5rem, 4vw, 2.5rem); border: 1px solid var(--why-line); background: var(--why-card); }
 .why-choice-card--saving { border-color: color-mix(in srgb, var(--why-accent) 55%, var(--why-line)); background: var(--why-soft); }
-.why-choice-card__tag { color: var(--why-accent); font-size: .66rem; font-weight: 700; letter-spacing: .14em; }
+.why-choice-card__tag { color: var(--why-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .14em; }
 .why-choice-card h3 { margin: 1rem 0 .55rem; font-family: var(--font-serif, Georgia, serif); font-size: 1.8rem; font-weight: 400; }
 .why-choice-card p { margin: 0; color: var(--why-ink); font-size: .96rem; line-height: 1.75; }
 .why-choice-card small { margin-top: auto; padding-top: 1.5rem; color: var(--why-muted); font-size: .76rem; line-height: 1.6; }
@@ -45,7 +45,7 @@
 .why-price > div:first-child > p:last-child { color: var(--why-muted); line-height: 1.8; }
 .why-price__list { border-top: 1px solid var(--why-line); }
 .why-price__list > div { display: flex; justify-content: space-between; gap: 1rem; padding: .9rem 0; border-bottom: 1px solid var(--why-line); color: var(--why-muted); font-size: .86rem; }
-.why-price__list b { color: var(--why-accent); font-size: .7rem; letter-spacing: .08em; }
+.why-price__list b { color: var(--why-accent); font-size: 0.75rem; letter-spacing: .08em; }
 .why-proof { padding-top: 0; }
 .why-proof h2 { margin-bottom: 1.5rem; }
 .why-proof__links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }

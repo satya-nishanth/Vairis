@@ -50,7 +50,7 @@
 .dna-eyebrow {
   margin: 0 0 .9rem;
   color: var(--dna-gold);
-  font-size: .72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: .17em;
   line-height: 1.5;
@@ -86,7 +86,7 @@
 .dna-carousel-dots { display: flex; align-items: center; gap: .45rem; }
 .dna-carousel-dot { width: .48rem; height: .48rem; padding: 0; border: 0; border-radius: 99px; background: var(--dna-dot-idle); cursor: pointer; }
 .dna-carousel-dot.is-active { width: 1.3rem; background: var(--dna-gold); }
-.dna-carousel-count { color: #80756b; font-size: .68rem; letter-spacing: .06em; }
+.dna-carousel-count { color: #80756b; font-size: 0.75rem; letter-spacing: .06em; }
 .dna-carousel-count span { padding-inline: .2rem; color: #b09a7d; }
 @keyframes dna-content-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -105,7 +105,7 @@
 .dna-story-card { overflow: hidden; margin: 0; border: 1px solid var(--dna-line); background: var(--dna-card); }
 .dna-story-card img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
 .dna-story-card figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 1rem 1.15rem; color: var(--dna-ink); font-size: .86rem; }
-.dna-story-card figcaption small { flex: 0 0 auto; color: var(--dna-muted); font-size: .65rem; letter-spacing: .06em; text-transform: uppercase; }
+.dna-story-card figcaption small { flex: 0 0 auto; color: var(--dna-muted); font-size: 0.75rem; letter-spacing: .06em; text-transform: uppercase; }
 
 .dna-process { padding: clamp(2.8rem, 6vw, 5.5rem) clamp(1.2rem, 6vw, 5rem); background: var(--dna-paper); }
 .dna-process__heading { max-width: 700px; margin: 0 auto 3.3rem; text-align: center; }
@@ -113,9 +113,9 @@
 .dna-timeline { position: relative; display: grid; gap: 1rem; max-width: 850px; margin: 0 auto; padding: 0; list-style: none; }
 .dna-timeline::before { position: absolute; top: 1.25rem; bottom: 1.25rem; left: 1.25rem; width: 1px; background: var(--dna-line); content: ""; }
 .dna-step { position: relative; display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); gap: 1.1rem; align-items: start; }
-.dna-step__marker { z-index: 1; display: grid; width: 2.55rem; height: 2.55rem; place-items: center; border: 1px solid var(--dna-gold); border-radius: 50%; background: var(--dna-paper); color: var(--dna-gold); font-size: .67rem; font-weight: 700; }
+.dna-step__marker { z-index: 1; display: grid; width: 2.55rem; height: 2.55rem; place-items: center; border: 1px solid var(--dna-gold); border-radius: 50%; background: var(--dna-paper); color: var(--dna-gold); font-size: 0.75rem; font-weight: 700; }
 .dna-step__card { padding: .2rem 0 1.6rem; }
-.dna-step__note { margin: 0 0 .4rem; color: var(--dna-gold); font-size: .68rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.dna-step__note { margin: 0 0 .4rem; color: var(--dna-gold); font-size: 0.75rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 .dna-step__card h3 { margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: 1.42rem; font-weight: 400; }
 .dna-step__card > p:last-child { max-width: 700px; margin: .55rem 0 0; color: var(--dna-muted); font-size: .92rem; line-height: 1.75; }
 .dna-process__clarifier { max-width: 850px; margin: 1.4rem auto 0; padding: 1.2rem 1.35rem; border-left: 2px solid var(--dna-gold); background: var(--dna-note-bg); color: var(--dna-note-copy); font-size: .82rem; line-height: 1.7; }
@@ -139,7 +139,7 @@
 .dna-instagram__heading > p:last-child { margin: 1rem 0 0; color: var(--dna-muted); line-height: 1.7; }
 .dna-instagram__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.2rem, 3vw, 2.5rem); max-width: 1100px; margin-inline: auto; }
 .dna-instagram__card { padding: clamp(1.2rem, 3vw, 2rem); border: 1px solid var(--dna-line); background: var(--dna-card); }
-.dna-instagram__label { margin: 0 0 .45rem; color: var(--dna-gold); font-size: .66rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.dna-instagram__label { margin: 0 0 .45rem; color: var(--dna-gold); font-size: 0.75rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .dna-instagram__card h3 { margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: 1.55rem; font-weight: 400; }
 .dna-instagram__card > p:not(.dna-instagram__label) { min-height: 3.4rem; margin: .6rem 0 1.1rem; color: var(--dna-muted); font-size: .88rem; line-height: 1.7; }
 .dna-instagram__card .instagram-media { width: 100%; max-width: 540px; min-width: 0; margin: 0 auto !important; border: 1px solid var(--dna-line) !important; border-radius: 2px; box-shadow: none !important; background: var(--dna-paper) !important; }

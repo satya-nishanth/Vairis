@@ -187,12 +187,15 @@
 
 .returns-page .container { max-width: 1240px; }
 .returns-hero { grid-template-columns: 1.05fr .95fr; gap: clamp(2rem, 6vw, 5rem); padding: clamp(2rem, 5vw, 4rem) 0 clamp(4rem, 8vw, 7rem); }
-.returns-eyebrow { margin: 0 0 .75rem; color: var(--returns-accent); font-size: .68rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.returns-eyebrow { margin: 0 0 .75rem; color: var(--returns-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .returns-hero h1 { max-width: 700px; margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: clamp(2.5rem, 5vw, 4.5rem); font-weight: 400; letter-spacing: -.04em; line-height: 1.05; }
 .returns-hero__copy > p:not(.returns-eyebrow) { max-width: 570px; margin: 1.2rem 0; color: var(--returns-muted); font-size: 1rem; line-height: 1.8; }
 .returns-hero__visual { position: relative; }
 .returns-hero__visual img { max-height: 480px; }
 .returns-hero__stamp { position: absolute; right: -1rem; bottom: 1.5rem; display: grid; width: 7rem; height: 7rem; place-content: center; border-radius: 50%; background: var(--color-primary); color: var(--color-text-inverse); font-family: var(--font-serif, Georgia, serif); font-size: .95rem; line-height: 1.3; text-align: center; transform: rotate(8deg); }
+/* The stamp overhangs the image by 1rem; below ~1200px there's no page margin
+   to absorb that, so /returns scrolled sideways at 768/1024 (PRD-71). */
+@media (max-width: 1199px) { .returns-hero__stamp { right: 0; } }
 .returns-promises { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.7rem 0; }
 .returns-promises > div { display: grid; gap: .2rem; min-width: 180px; padding: .95rem 1.15rem; border: 1px solid var(--color-border-light); background: var(--bg-card); }
 .returns-promises strong { color: var(--returns-accent); font-family: var(--font-serif, Georgia, serif); font-size: 1.55rem; font-weight: 400; }
@@ -208,7 +211,7 @@
 .returns-watch-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--returns-accent) 46%, var(--color-border-light)); box-shadow: 0 12px 30px rgb(20 30 25 / 7%); }
 .returns-watch-card__number { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border: 1px solid color-mix(in srgb, var(--returns-accent) 36%, var(--color-border-light)); border-radius: 50%; color: var(--returns-accent); font-family: var(--font-sans); font-size: .75rem; font-weight: 600; }
 .returns-watch-card__content { align-self: start; }
-.returns-watch-card__category { display: block; margin: .15rem 0 .75rem; color: var(--returns-accent); font-size: .58rem; font-weight: 700; letter-spacing: .13em; }
+.returns-watch-card__category { display: block; margin: .15rem 0 .75rem; color: var(--returns-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .13em; }
 .returns-watch-card h3 { margin: 0 0 .55rem; font-family: var(--font-sans); font-size: 1rem; font-weight: 600; letter-spacing: -.015em; line-height: 1.35; }
 .returns-watch-card p { margin: 0; color: var(--returns-muted); font-family: var(--font-sans); font-size: .82rem; line-height: 1.65; }
 .returns-promise { margin-bottom: clamp(4rem, 8vw, 7rem); padding: clamp(1.6rem, 4vw, 3rem); background: var(--bg-muted); }

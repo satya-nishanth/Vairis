@@ -1,19 +1,19 @@
 .igi-page { --igi-ink: var(--color-text); --igi-muted: var(--color-text-muted); --igi-accent: var(--color-accent); --igi-surface: var(--bg-card); --igi-soft: var(--color-surface-subtle); color: var(--igi-ink); padding-bottom: clamp(3rem, 7vw, 6rem); }
 .igi-page .container { max-width: 1240px; }
 .igi-hero { display: grid; grid-template-columns: 1fr .85fr; align-items: center; gap: clamp(2rem, 7vw, 6rem); padding: clamp(3rem, 7vw, 6rem) 0; }
-.igi-eyebrow { margin: 0 0 .8rem; color: var(--igi-accent); font-size: .7rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.igi-eyebrow { margin: 0 0 .8rem; color: var(--igi-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .igi-hero h1, .igi-intro h2, .igi-origin h2, .igi-verify h2, .igi-limits h2, .igi-faq h2 { margin: 0; font-family: var(--font-serif, Georgia, serif); font-size: clamp(2.3rem, 4.5vw, 4.2rem); font-weight: 400; letter-spacing: -.035em; line-height: 1.08; }
 .igi-hero__copy > p:not(.igi-eyebrow) { max-width: 590px; margin: 1.25rem 0 1.8rem; color: var(--igi-muted); font-size: 1.05rem; line-height: 1.8; }
 .igi-report-card { position: relative; max-width: 480px; margin-inline: auto; padding: clamp(1.3rem, 3vw, 2.1rem); border: 1px solid var(--color-border-light); background: var(--igi-soft); box-shadow: 0 18px 45px rgb(30 25 20 / 8%); transform: rotate(1.5deg); }
-.igi-report-card__top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border-light); color: var(--igi-muted); font-size: .58rem; font-weight: 700; letter-spacing: .15em; }
+.igi-report-card__top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border-light); color: var(--igi-muted); font-size: 0.75rem; font-weight: 700; letter-spacing: .15em; }
 .igi-report-card__seal { display: grid; width: 2.55rem; height: 2.55rem; place-items: center; border: 1px solid var(--igi-accent); border-radius: 50%; color: var(--igi-accent); font-family: var(--font-serif, Georgia, serif); font-size: 1rem; letter-spacing: .05em; }
 .igi-report-card__stone { display: flex; min-height: 140px; justify-content: center; align-items: center; flex-direction: column; gap: .5rem; border-bottom: 1px solid var(--color-border-light); color: var(--igi-accent); }
 .igi-report-card__stone span:first-child { font-size: 3.2rem; line-height: 1; }
 .igi-report-card__stone span:last-child { color: var(--igi-muted); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
 .igi-report-card__lines { display: grid; gap: .8rem; padding-block: 1.1rem; }
-.igi-report-card__lines div { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; color: var(--igi-muted); font-size: .55rem; letter-spacing: .1em; }
+.igi-report-card__lines div { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; color: var(--igi-muted); font-size: 0.75rem; letter-spacing: .1em; }
 .igi-report-card__lines i { display: block; height: .4rem; background: var(--color-border-light); }
-.igi-report-card__caption { margin: .5rem 0 0; color: var(--igi-muted); font-size: .68rem; font-style: italic; line-height: 1.5; }
+.igi-report-card__caption { margin: .5rem 0 0; color: var(--igi-muted); font-size: 0.75rem; font-style: italic; line-height: 1.5; }
 .igi-intro { margin: 0 auto clamp(4rem, 8vw, 7rem); text-align: center; }
 .igi-intro h2 { font-size: clamp(2.1rem, 4vw, 3.2rem); }
 .igi-intro__lead { max-width: 690px; margin: 1rem auto 2.5rem; color: var(--igi-muted); line-height: 1.75; }
@@ -68,7 +68,7 @@
 .igi-section-heading > p:last-child { margin: .8rem 0 0; color: var(--igi-muted); }
 .igi-choice__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .igi-choice__grid article { padding: 1.5rem; border: 1px solid var(--color-border-light); background: var(--igi-surface); }
-.igi-choice__grid article > span { color: var(--igi-accent); font-size: .66rem; font-weight: 700; letter-spacing: .15em; }
+.igi-choice__grid article > span { color: var(--igi-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .15em; }
 .igi-choice__grid h3 { margin: 1rem 0 .5rem; font-family: var(--font-serif, Georgia, serif); font-size: 1.45rem; font-weight: 400; }
 .igi-choice__grid p, .igi-choice__note { color: var(--igi-muted); font-size: .9rem; line-height: 1.75; }
 .igi-choice__grid p { margin: 0; }
@@ -95,7 +95,7 @@
 .igi-guide-card__art { display: grid; min-height: 130px; place-items: center; background: var(--igi-soft); color: var(--igi-accent); }
 .igi-guide-card__art svg { width: min(80%, 210px); height: 100px; fill: color-mix(in srgb, var(--igi-accent) 10%, transparent); stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .igi-guide-card__copy { padding: 1.2rem; }
-.igi-guide-card__copy > span { color: var(--igi-accent); font-size: .62rem; font-weight: 700; letter-spacing: .14em; }
+.igi-guide-card__copy > span { color: var(--igi-accent); font-size: 0.75rem; font-weight: 700; letter-spacing: .14em; }
 .igi-guide-card h3 { margin: .65rem 0 .5rem; font-family: var(--font-serif, Georgia, serif); font-size: 1.3rem; font-weight: 400; line-height: 1.2; }
 .igi-guide-card p { min-height: 4.5em; margin: 0; color: var(--igi-muted); font-size: .82rem; line-height: 1.65; }
 .igi-guide-card i { display: inline-block; margin-top: 1rem; color: var(--igi-accent); font-size: .78rem; font-style: normal; }
@@ -106,8 +106,8 @@
 .igi-gold__sample { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .65rem; min-height: 110px; padding: 1rem; border: 1px dashed var(--color-border-light); background: var(--igi-soft); }
 .igi-gold__sample > span { display: grid; min-height: 2.7rem; place-items: center; padding: .4rem .8rem; border: 1px solid var(--igi-accent); color: var(--igi-ink); font-size: .76rem; font-weight: 700; letter-spacing: .06em; }
 .igi-gold__sample .igi-gold__bis { border-radius: 50%; color: var(--igi-accent); }
-.igi-gold__sample .igi-gold__huid { font-size: .65rem; }
-.igi-gold__caption { margin: .65rem 0 1rem; color: var(--igi-muted); font-size: .68rem; text-align: center; }
+.igi-gold__sample .igi-gold__huid { font-size: 0.75rem; }
+.igi-gold__caption { margin: .65rem 0 1rem; color: var(--igi-muted); font-size: 0.75rem; text-align: center; }
 .igi-gold__marks ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin: 0; padding: 0; list-style: none; }
 .igi-gold__marks li { display: grid; align-content: start; gap: .4rem; }
 .igi-gold__marks li b { color: var(--igi-accent); font-size: .78rem; }
