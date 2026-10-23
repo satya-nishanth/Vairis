@@ -108,12 +108,14 @@ export function OrderTimeline({ status, events, notes = [] }: OrderTimelineProps
 }
 
 function formatWhen(d: Date): string {
-  return d.toLocaleString("en-IN", {
+  const when = d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "numeric",
     month: "short",
     hour: "numeric",
     minute: "2-digit",
   });
+  return `${when} IST`;
 }
 
 export function OrderStatusChip({ status }: { status: OrderStatus }) {
