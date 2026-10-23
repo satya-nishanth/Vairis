@@ -124,7 +124,7 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
 
             {dynamicCols.length > 0 && (
               <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
-                <span className="site-header__drawer-section-title" style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
+                <span className="site-header__drawer-section-title" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
                   Collections
                 </span>
                 <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>
@@ -141,7 +141,7 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
             )}
 
             <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
-              <span className="site-header__drawer-section-title" style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
+              <span className="site-header__drawer-section-title" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
                 Account &amp; Support
               </span>
               <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>

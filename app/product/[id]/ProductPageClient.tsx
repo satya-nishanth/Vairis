@@ -572,7 +572,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     }}
                     title={`Browse all ${categoryLabel} in ${lbl}`}
                   >
-                    <span style={{ fontSize: "0.6875rem" }}>🏷️</span>
+                    <span style={{ fontSize: "0.75rem" }}>🏷️</span>
                     <span>{lbl}</span>
                   </Link>
                 ))}

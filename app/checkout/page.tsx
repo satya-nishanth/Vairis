@@ -130,6 +130,9 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState<AddressForm>(EMPTY_ADDRESS);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the shopper closes the gateway without paying — the order already
+  // exists as Payment Pending, so say so instead of failing silently (STG-45).
+  const [cancelledOrderId, setCancelledOrderId] = useState<string | null>(null);
   const [setupNotice, setSetupNotice] = useState(false);
 
   // Saved addresses (address book)
@@ -361,7 +364,12 @@ export default function CheckoutPage() {
           );
         }
       },
-      modal: { ondismiss: () => setPaying(false) },
+      modal: {
+        ondismiss: () => {
+          setPaying(false);
+          setCancelledOrderId(data.orderId);
+        },
+      },
     });
     rzp.open();
   }
@@ -369,6 +377,7 @@ export default function CheckoutPage() {
   async function handlePay(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setCancelledOrderId(null);
     setSetupNotice(false);
     if (hasUnpriced) {
       setError("One or more cart items could not be priced. Return to cart and remove them, or enquire on WhatsApp.");
@@ -804,6 +813,13 @@ export default function CheckoutPage() {
                     WhatsApp
                   </a>
                   .
+                </p>
+              )}
+              {cancelledOrderId && (
+                <p className="checkout-alert checkout-alert--info" role="status">
+                  Payment cancelled — you haven&apos;t been charged and your bag is unchanged. The
+                  order is saved as Payment Pending; pay again here, or complete it later from{" "}
+                  <Link href={`/account/orders/${cancelledOrderId}`}>My Orders</Link>.
                 </p>
               )}
               {error && (

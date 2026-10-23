@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { prisma } from '@/lib/prisma'
@@ -10,10 +11,27 @@ import { PageShell } from '@/components/layout/PageShell'
 import { pageLayouts } from '@/lib/layout-config'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 
-export const metadata: Metadata = {
-  title: 'Sign In',
-  description: 'Sign in to your VAIRIS account to view orders, manage wishlist, and save delivery addresses.',
+const MODE_TITLES: Record<string, string> = {
+  signup: 'Create Account',
+  confirm: 'Check Your Inbox',
+  forgot: 'Reset Password',
 }
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>
+}): Promise<Metadata> {
+  const { mode } = await searchParams
+  return {
+    title: (mode && MODE_TITLES[mode]) || 'Sign In',
+    description: 'Sign in to your VAIRIS account to view orders, manage wishlist, and save delivery addresses.',
+  }
+}
+
+// Remembers the email across a failed sign-in so the shopper only re-types the
+// password (PRD-39). Short-lived and httpOnly — kept out of the URL (PRD-37).
+const LAST_EMAIL_COOKIE = 'vairis_login_email'
 
 // ── Server Actions ────────────────────────────────────────────────────────
 
@@ -26,6 +44,8 @@ async function signIn(formData: FormData) {
   const supabase = await createServerSupabaseClient()
   const { data: signIn, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
+    const jar = await cookies()
+    jar.set(LAST_EMAIL_COOKIE, `${Date.now()}:${email}`, { httpOnly: true, sameSite: 'lax', path: '/auth', maxAge: 300 })
     const q = next ? `&next=${encodeURIComponent(next)}` : ''
     redirect(`/auth/login?error=${encodeURIComponent(error.message)}${q}`)
   }
@@ -117,6 +137,10 @@ export default async function LoginPage({
   const next = rawNext ? sanitizeRedirect(rawNext, '') : ''
   const nextQ = next ? `?next=${encodeURIComponent(next)}` : ''
   const nextAmp = next ? `&next=${encodeURIComponent(next)}` : ''
+  // "<attempt ms>:<email>" — the timestamp keys the form so every failed attempt
+  // remounts it (email refilled, password cleared), even with the same error.
+  const lastAttempt = safeError ? (await cookies()).get(LAST_EMAIL_COOKIE)?.value ?? '' : ''
+  const lastEmail = lastAttempt.slice(lastAttempt.indexOf(':') + 1)
 
   return (
     <div className="auth-page-flex">
@@ -186,11 +210,11 @@ export default async function LoginPage({
 
           {/* ── Sign In ── */}
           {mode === 'signin' && (
-            <form action={signIn} className="auth-form">
+            <form key={lastAttempt || 'signin'} action={signIn} className="auth-form">
               {next && <input type="hidden" name="next" value={next} />}
               <div className="auth-field">
                 <label htmlFor="signin-email">Email</label>
-                <input id="signin-email" name="email" type="email" required className="auth-input" placeholder="you@example.com" autoComplete="email" />
+                <input id="signin-email" name="email" type="email" required defaultValue={lastEmail} className="auth-input" placeholder="you@example.com" autoComplete="email" />
               </div>
               <div className="auth-field">
                 <label htmlFor="signin-password">Password</label>

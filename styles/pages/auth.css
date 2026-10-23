@@ -121,7 +121,7 @@
 
 .auth-field label {
   display: block;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.6);
@@ -335,7 +335,7 @@
 
 .admin-auth__brand {
   font-family: var(--font-sans);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: #9ca3af;
@@ -395,7 +395,7 @@
 
 .admin-auth__form label {
   display: block;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #6b7280;
@@ -423,7 +423,7 @@
   padding: 12px;
   background: #111827;
   color: #fff;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   border: none;
@@ -437,7 +437,7 @@
 
 .admin-auth__foot {
   text-align: center;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   color: #d1d5db;
 }
 

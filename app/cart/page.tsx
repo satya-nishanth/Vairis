@@ -50,6 +50,7 @@ export default function CartPage() {
   if (!CHECKOUT_ENABLED) {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <main>
         <Container>
           <div className="cart-state">
             <h1>Ordering via WhatsApp</h1>
@@ -67,6 +68,7 @@ export default function CartPage() {
             </a>
           </div>
         </Container>
+        </main>
       </PageShell>
     );
   }
@@ -74,11 +76,13 @@ export default function CartPage() {
   if (!hydrated) {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <main>
         <Container>
           <div className="cart-state">
             <p>Loading your cart…</p>
           </div>
         </Container>
+        </main>
       </PageShell>
     );
   }
@@ -86,6 +90,7 @@ export default function CartPage() {
   if (!isLoggedIn) {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <main>
         <Container>
           <div className="cart-state">
             <h1>Your Cart</h1>
@@ -95,6 +100,7 @@ export default function CartPage() {
             </Link>
           </div>
         </Container>
+        </main>
       </PageShell>
     );
   }
@@ -102,6 +108,7 @@ export default function CartPage() {
   if (items.length === 0) {
     return (
       <PageShell {...layout} breadcrumbs={breadcrumbs}>
+        <main>
         <Container>
           <div className="cart-state">
             <h1>Your Cart is Empty</h1>
@@ -111,6 +118,7 @@ export default function CartPage() {
             </Link>
           </div>
         </Container>
+        </main>
       </PageShell>
     );
   }
@@ -155,6 +163,7 @@ export default function CartPage() {
 
   return (
     <PageShell {...layout} breadcrumbs={breadcrumbs}>
+      <main>
       <Container>
         <h1 className="cart-page__title">
           Your Cart ({count} {count === 1 ? "Item" : "Items"})
@@ -262,6 +271,7 @@ export default function CartPage() {
           />
         </div>
       </Container>
+      </main>
       <MobileCheckoutBar total={payable} href="/checkout" label="Proceed to Checkout" />
     </PageShell>
   );
