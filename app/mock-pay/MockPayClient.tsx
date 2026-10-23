@@ -132,7 +132,7 @@ function MockPayContent() {
             type="button"
             data-testid="mock-pay-cancel"
             disabled={busy !== null}
-            onClick={() => router.push(`/account/orders/${orderId}`)}
+            onClick={() => router.push(`/account/orders/${orderId}?payment=cancelled`)}
             style={{
               padding: "10px 16px",
               borderRadius: 8,
