@@ -66,7 +66,7 @@ export function StaffAvatars({ size = 36 }: { images?: readonly string[]; size?:
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "0.6875rem",
+            fontSize: "0.75rem",
             fontWeight: 600,
           }}
           aria-hidden="true"

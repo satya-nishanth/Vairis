@@ -11,7 +11,7 @@ import { AccountDashboardClient } from '@/components/account/AccountDashboardCli
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'My Account | VAIRIS',
+  title: 'My Account',
   description: 'Manage your profile, orders, addresses, and settings at VAIRIS.',
 }
 
@@ -114,7 +114,7 @@ export default async function AccountPage() {
               <div>
                 <p
                   style={{
-                    fontSize: '0.625rem',
+                    fontSize: '0.75rem',
                     color: 'var(--color-text-muted)',
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',
@@ -170,7 +170,7 @@ export default async function AccountPage() {
               <div>
                 <p
                   style={{
-                    fontSize: '0.625rem',
+                    fontSize: '0.75rem',
                     color: 'var(--color-text-muted)',
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',
@@ -226,7 +226,7 @@ export default async function AccountPage() {
               <div>
                 <p
                   style={{
-                    fontSize: '0.625rem',
+                    fontSize: '0.75rem',
                     color: 'var(--color-text-muted)',
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',

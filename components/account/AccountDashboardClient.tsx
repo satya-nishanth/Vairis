@@ -181,7 +181,7 @@ export function AccountDashboardClient({ initialUser, initialAddresses }: Props)
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
           <p
             style={{
-              fontSize: "0.625rem",
+              fontSize: "0.75rem",
               color: "var(--color-text-muted)",
               letterSpacing: "0.1em",
               textTransform: "uppercase",
@@ -470,7 +470,7 @@ export function AccountDashboardClient({ initialUser, initialAddresses }: Props)
                     {addr.isDefault && (
                       <span
                         style={{
-                          fontSize: "0.625rem",
+                          fontSize: "0.75rem",
                           letterSpacing: "0.06em",
                           textTransform: "uppercase",
                           padding: "2px 6px",

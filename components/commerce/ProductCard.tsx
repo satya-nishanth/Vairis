@@ -69,8 +69,9 @@ export function ProductCard({
   const productId = product.catalogueId ?? product.slug;
   const displayName = formatDisplayName(product.name, product.category);
   const hoverSrc = product.hoverImage && product.hoverImage !== product.image ? product.hoverImage : null;
+  // No ribbon without a visible price — "8% off" on "Price on Request" (STG-67).
   const salePercent =
-    product.autoDiscountPercent && product.autoDiscountPercent > 0
+    product.price != null && product.autoDiscountPercent && product.autoDiscountPercent > 0
       ? Math.round(product.autoDiscountPercent)
       : null;
   // Ribbon owns the sale callout — skip duplicate "% off" pill badge.

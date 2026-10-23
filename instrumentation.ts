@@ -1,5 +1,9 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Store runs on India time: server-rendered order times, the admin "today"
+    // stats and invoice numbering all read the server's local zone, which is
+    // UTC on Azure and Vercel (STG-55). Node picks up a TZ change at runtime.
+    process.env.TZ = "Asia/Kolkata";
     await import("./sentry.server.config");
   }
   if (process.env.NEXT_RUNTIME === "edge") {

@@ -159,7 +159,7 @@ export function HeaderPincode({ className }: { className?: string }) {
               </button>
             </div>
             {error && (
-              <span style={{ fontSize: "0.6875rem", color: "#e11d48" }}>{error}</span>
+              <span style={{ fontSize: "0.75rem", color: "#e11d48" }}>{error}</span>
             )}
           </form>
         </div>
