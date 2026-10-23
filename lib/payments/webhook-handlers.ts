@@ -77,9 +77,20 @@ export async function confirmPayment(
           events: { create: { status: "PAYMENT_CONFIRMED", note } },
         },
       });
-      // Clear the cart on confirmation — covers the customer who paid but
-      // closed the tab before the browser verify call fired.
-      await tx.cartItem.deleteMany({ where: { userId: payment.order.userId } });
+      // Clear the paid items from the cart on confirmation — covers the customer
+      // who paid but closed the tab before the browser verify call fired. Only
+      // this order's variants: the cart survives checkout, so paying an older
+      // pending order must not wipe pieces added since.
+      const paidItems = await tx.orderItem.findMany({
+        where: { orderId: payment.orderId },
+        select: { variantId: true },
+      });
+      await tx.cartItem.deleteMany({
+        where: {
+          userId: payment.order.userId,
+          variantId: { in: paidItems.map((i) => i.variantId) },
+        },
+      });
       // Multi-item orders split into one child order per line item,
       // atomically with confirmation (lib/split.ts).
       await autoSplitOrder(tx, payment.orderId);
