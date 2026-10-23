@@ -11,7 +11,7 @@ const GROUPS: { id: Group; title: string; hint: string; suggestions: string[] }[
   {
     id: "types",
     title: "Type",
-    hint: "What the piece is, e.g. Solitaire, Band. The first three also show as quick chips on mobile.",
+    hint: "What the piece is, e.g. Solitaire, Band. Also shown as quick chips above the grid on mobile.",
     suggestions: ["Solitaire", "Stackable", "Band", "Halo", "Cocktail", "Bridal", "Floral", "Minimal"],
   },
   {

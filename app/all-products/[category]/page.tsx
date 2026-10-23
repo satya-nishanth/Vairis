@@ -166,10 +166,8 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         }
         storyOverride={storyOverride}
         introOverride={heroBanner?.ctaLabel ?? undefined}
-        filterGroups={
-          categoryFilters
-            ? [{ id: "styles", title: "Style", options: categoryFilters.labels }]
-            : undefined
+        filterOptions={
+          categoryFilters ? { types: categoryFilters.types, occasions: categoryFilters.occasions } : undefined
         }
       />
     </Suspense>
