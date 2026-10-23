@@ -39,7 +39,7 @@ type OrderJourneyProps = {
 
 // Client component: pin the store's zone or admins outside India see their own (STG-55).
 function formatEntered(d: Date): string {
-  return d.toLocaleString('en-IN', {
+  const when = d.toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'short',
@@ -48,6 +48,7 @@ function formatEntered(d: Date): string {
     minute: '2-digit',
     hour12: true,
   })
+  return `${when} IST`
 }
 
 function FailedIcon() {

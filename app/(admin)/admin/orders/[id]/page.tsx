@@ -90,14 +90,15 @@ export default async function AdminOrderDetailPage({
   const gatewayLabel = (id: string) => (id.startsWith('mock_') ? 'Mock (dev)' : 'Razorpay')
 
   const fmtDt = (d: Date) =>
-    d.toLocaleString('en-IN', {
+    `${d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       day: 'numeric',
       month: 'short',
       year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    })
+    })} IST`
 
   const card: React.CSSProperties = {
     background: '#fff',
@@ -342,7 +343,7 @@ export default async function AdminOrderDetailPage({
           {order.events.map((e) => (
             <p key={e.id} style={{ fontSize: '0.8125rem', marginBottom: 6 }}>
               <span style={{ color: '#9ca3af' }}>
-                {e.createdAt.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                {e.createdAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} IST
               </span>{' '}
               — <strong>{ORDER_STATUS_META[e.status].label}</strong>
               {e.note ? ` · ${e.note}` : ''}

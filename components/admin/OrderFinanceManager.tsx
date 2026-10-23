@@ -341,7 +341,7 @@ function formatSheetDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   const { day, mon, year, h, mm, ampm } = istParts(d)
-  return `${day} ${mon} ${year}, ${h}:${mm} ${ampm}`
+  return `${day} ${mon} ${year}, ${h}:${mm} ${ampm} IST`
 }
 
 function formatPaymentDay(iso: string): string {
