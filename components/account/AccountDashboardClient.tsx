@@ -150,7 +150,7 @@ export function AccountDashboardClient({ initialUser, initialAddresses }: Props)
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
       const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${window.location.origin}/auth/login`,
+        redirectTo: `${window.location.origin}/auth/update-password`,
       });
       if (error) {
         setPwdMsg({ text: error.message, error: true });

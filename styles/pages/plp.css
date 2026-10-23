@@ -620,7 +620,23 @@
   }
 
   .plp-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Up to 7 page links + Previous/Next don't fit a phone row; with nowrap they
+     pushed the whole page sideways (PRD-03). */
+  .plp-pagination,
+  .plp-pagination__pages {
+    flex-wrap: wrap;
+  }
+
+  .plp-pagination {
+    gap: 8px;
+  }
+
+  .plp-pagination button,
+  .plp-pagination a.plp-pagination__link {
+    padding: 8px 10px;
   }
 
   .plp-filters {
