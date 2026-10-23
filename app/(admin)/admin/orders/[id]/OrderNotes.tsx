@@ -125,6 +125,7 @@ export function OrderNotes({ orderId, notes }: { orderId: string; notes: OrderNo
               <p style={{ color: '#9ca3af', fontSize: '0.75rem', marginBottom: 4 }}>
                 {n.author} ·{' '}
                 {new Date(n.createdAt).toLocaleString('en-IN', {
+                  timeZone: 'Asia/Kolkata',
                   day: 'numeric',
                   month: 'short',
                   hour: 'numeric',

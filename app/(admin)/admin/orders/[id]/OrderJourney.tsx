@@ -37,8 +37,10 @@ type OrderJourneyProps = {
   intlReviewApproved: boolean
 }
 
+// Client component: pin the store's zone or admins outside India see their own (STG-55).
 function formatEntered(d: Date): string {
   return d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
