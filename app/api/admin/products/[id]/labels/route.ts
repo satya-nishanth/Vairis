@@ -3,10 +3,9 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import {
-  getAllCategoryFilters,
-  getProductLinkedLabels,
+  getCategoryFilters,
+  productLabelsFromTags,
   setProductLabels,
-  getDefaultFilterConfig,
 } from '@/lib/category-filters'
 
 export const dynamic = 'force-dynamic'
@@ -21,36 +20,27 @@ export async function GET(_: NextRequest, { params }: { params: Params }) {
   await requireAdmin()
   const { id } = await params
 
-  const [product, allFilters] = await Promise.all([
-    prisma.product.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        itemCode: true,
-        category: true,
-        designStyle: true,
-        description: true,
-      },
-    }),
-    getAllCategoryFilters(),
-  ])
+  const product = await prisma.product.findUnique({
+    where: { id },
+    select: { id: true, category: true, tags: { select: { group: true, value: true } } },
+  })
 
   if (!product) {
     return NextResponse.json({ error: 'Product not found' }, { status: 404 })
   }
 
   const catSlug = (product.category ?? '').toLowerCase().trim()
-  const config = allFilters[catSlug] || allFilters[catSlug.replace(/s$/, '')] || getDefaultFilterConfig(catSlug)
-  const linkedLabels = getProductLinkedLabels(product, allFilters)
+  const config = await getCategoryFilters(catSlug)
 
   return NextResponse.json({
     ok: true,
     productId: id,
     category: product.category,
     categorySlug: catSlug,
-    labels: linkedLabels,
-    availableLabels: config.labels || [],
+    labels: productLabelsFromTags(product.tags),
+    availableLabels: config.labels,
+    types: config.types,
+    occasions: config.occasions,
   })
 }
 
@@ -69,14 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
 
   const product = await prisma.product.findUnique({
     where: { id },
-    select: {
-      id: true,
-      name: true,
-      itemCode: true,
-      category: true,
-      designStyle: true,
-      description: true,
-    },
+    select: { id: true, category: true },
   })
 
   if (!product) {
@@ -84,17 +67,20 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   }
 
   const catSlug = (product.category ?? '').toLowerCase().trim()
-  const updatedConfig = await setProductLabels(id, catSlug, parsed.data.labels, product)
-
-  // Recalculate linked labels
-  const linkedLabels = getProductLinkedLabels(product, updatedConfig)
+  const updatedConfig = await setProductLabels(id, catSlug, parsed.data.labels)
+  const tags = await prisma.productTag.findMany({
+    where: { productId: id },
+    select: { group: true, value: true },
+  })
 
   return NextResponse.json({
     ok: true,
     productId: id,
     category: product.category,
     categorySlug: catSlug,
-    labels: linkedLabels,
+    labels: productLabelsFromTags(tags),
     availableLabels: updatedConfig.labels,
+    types: updatedConfig.types,
+    occasions: updatedConfig.occasions,
   })
 }

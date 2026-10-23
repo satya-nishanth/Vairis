@@ -41,8 +41,6 @@ type CategoryPageViewProps = {
   heroImageFits?: BannerImageFit[];
   introOverride?: string;
   filterGroups?: { id: "styles" | "metals"; title: string; options: string[] }[];
-  labelProductMap?: Record<string, string[]>;
-  labelExcludedMap?: Record<string, string[]>;
 };
 
 function usePlpPageSize() {
@@ -62,12 +60,7 @@ function usePlpPageSize() {
   return pageSize;
 }
 
-function filterProducts(
-  products: Product[],
-  filters: FilterState,
-  labelProductMap?: Record<string, string[]>,
-  labelExcludedMap?: Record<string, string[]>
-): Product[] {
+function filterProducts(products: Product[], filters: FilterState): Product[] {
   let result = [...products];
 
   if (filters.metals.length > 0) {
@@ -75,43 +68,9 @@ function filterProducts(
   }
 
   if (filters.styles.length > 0) {
-    const wanted = filters.styles.map((s) => s.toLowerCase());
-    result = result.filter((p) => {
-      // 0. If explicitly excluded from the chosen style label, skip it
-      const isExcluded = filters.styles.some((label) => {
-        const excluded = labelExcludedMap?.[label];
-        return (
-          excluded &&
-          (excluded.includes(p.slug) ||
-            excluded.includes(p.sku ?? "") ||
-            (p.catalogueId && excluded.includes(p.catalogueId)))
-        );
-      });
-      if (isExcluded) return false;
-
-      // 1. Explicitly mapped label check
-      const isExplicitlyTagged = filters.styles.some((label) => {
-        const mapped = labelProductMap?.[label];
-        return (
-          mapped &&
-          (mapped.includes(p.slug) ||
-            mapped.includes(p.sku ?? "") ||
-            (p.catalogueId && mapped.includes(p.catalogueId)))
-        );
-      });
-      if (isExplicitlyTagged) return true;
-
-      // 2. Keyword/style match across product attributes
-      const text = [
-        p.styleText ?? "",
-        p.description ?? "",
-        p.name ?? "",
-        p.sku ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return wanted.some((s) => text.includes(s));
-    });
+    result = result.filter((p) =>
+      filters.styles.some((label) => p.types?.includes(label) || p.occasions?.includes(label)),
+    );
   }
 
   if (filters.readyToShip) {
@@ -161,8 +120,6 @@ export function CategoryPageView({
   heroImageFits,
   introOverride,
   filterGroups: filterGroupsProp,
-  labelProductMap,
-  labelExcludedMap,
 }: CategoryPageViewProps) {
   const layout = pageLayouts.plp;
   const isBuiltIn = isShopCategory(category);
@@ -224,8 +181,8 @@ export function CategoryPageView({
   const pageFromUrl = isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
 
   const filteredProducts = useMemo(
-    () => filterProducts(allProducts, filters, labelProductMap, labelExcludedMap),
-    [allProducts, filters, labelProductMap, labelExcludedMap]
+    () => filterProducts(allProducts, filters),
+    [allProducts, filters]
   );
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
   const currentPage = Math.min(pageFromUrl, totalPages);

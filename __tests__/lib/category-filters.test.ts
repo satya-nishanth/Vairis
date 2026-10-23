@@ -1,150 +1,155 @@
-import fs from "fs";
-import path from "path";
+/**
+ * @jest-environment node
+ */
 import {
   getDefaultFilterConfig,
   getAllCategoryFilters,
   getCategoryFilters,
   saveCategoryFilters,
   resetCategoryFilters,
-  getProductLinkedLabels,
+  productLabelsFromTags,
   setProductLabels,
 } from "@/lib/category-filters";
 
-const TEST_FILE = path.join(process.cwd(), "data", "category-filters.json");
+// In-memory stand-in for the DB tables, so "a fresh process" is just re-reading from it.
+type ConfigRow = { categorySlug: string; categoryName: string | null; types: string[]; occasions: string[]; updatedAt: Date };
+type TagRow = { productId: string; group: string; value: string };
+const db: { configs: ConfigRow[]; tags: TagRow[] } = { configs: [], tags: [] };
+const products = [
+  { id: "ring_1", category: "RINGS" },
+  { id: "ring_2", category: "RINGS" },
+  { id: "earring_1", category: "EARRINGS" },
+];
 
-describe("Category Filters Management", () => {
-  let originalFileContent: string | null = null;
+jest.mock("@/lib/store-categories", () => ({ getStoreCategories: jest.fn().mockResolvedValue([]) }));
+jest.mock("@/lib/prisma", () => ({
+  prisma: {
+    categoryFilterConfig: {
+      findMany: jest.fn(async () => db.configs),
+      findUnique: jest.fn(async ({ where }) => db.configs.find((c) => c.categorySlug === where.categorySlug) ?? null),
+      upsert: jest.fn(async ({ where, create, update }) => {
+        const existing = db.configs.find((c) => c.categorySlug === where.categorySlug);
+        if (existing) return Object.assign(existing, update, { updatedAt: new Date() });
+        const row = { categoryName: null, ...create, updatedAt: new Date() };
+        db.configs.push(row);
+        return row;
+      }),
+    },
+    product: {
+      findMany: jest.fn(async ({ where }) => products.filter((p) => p.category === where.category)),
+    },
+    productTag: {
+      findMany: jest.fn(async () =>
+        db.tags.map((t) => ({ ...t, product: { category: products.find((p) => p.id === t.productId)!.category } })),
+      ),
+      deleteMany: jest.fn(({ where }) => {
+        const ids: string[] | undefined = where.productId?.in;
+        db.tags = db.tags.filter(
+          (t) =>
+            !((ids ? ids.includes(t.productId) : t.productId === where.productId) && where.value.in.includes(t.value)),
+        );
+        return Promise.resolve();
+      }),
+      createMany: jest.fn(({ data }) => {
+        for (const d of data) {
+          if (!db.tags.some((t) => t.productId === d.productId && t.group === d.group && t.value === d.value)) db.tags.push(d);
+        }
+        return Promise.resolve();
+      }),
+    },
+    $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+  },
+}));
 
-  beforeAll(() => {
-    if (fs.existsSync(TEST_FILE)) {
-      originalFileContent = fs.readFileSync(TEST_FILE, "utf-8");
-    }
-  });
+beforeEach(() => {
+  db.configs = [];
+  db.tags = [];
+});
 
-  afterAll(() => {
-    if (originalFileContent !== null) {
-      fs.writeFileSync(TEST_FILE, originalFileContent, "utf-8");
-    } else if (fs.existsSync(TEST_FILE)) {
-      fs.unlinkSync(TEST_FILE);
-    }
-  });
-
-  it("returns default filter config for built-in category", () => {
+describe("Category filters (DB-backed)", () => {
+  it("returns built-in defaults for a category with no stored row", async () => {
     const config = getDefaultFilterConfig("rings");
-    expect(config.categorySlug).toBe("rings");
-    expect(config.labels).toContain("Solitaire");
-    expect(config.metals).toContain("Yellow Gold");
+    expect(config.types).toContain("Solitaire");
+    expect(config.occasions).toContain("Office");
+    expect(config.labels).toEqual([...config.types, ...config.occasions]);
+    expect((await getCategoryFilters("rings")).types).toEqual(config.types);
   });
 
-  it("saves and retrieves custom filter labels for a category", async () => {
+  it("falls back to empty lists for a custom store category", () => {
+    expect(getDefaultFilterConfig("custom-cat").labels).toEqual([]);
+  });
+
+  it("BUG-PLP-01: saved filter config survives a fresh process", async () => {
     await saveCategoryFilters("rings", {
-      labels: ["Solitaire", "Cocktail", "Stackable", "Custom Floral"],
-      metals: ["Yellow Gold", "Platinum"],
-      labelProductMap: {
-        "Custom Floral": ["prod_123"],
-      },
-    });
-
-    const filters = await getCategoryFilters("rings");
-    expect(filters.labels).toEqual(["Solitaire", "Cocktail", "Stackable", "Custom Floral"]);
-    expect(filters.groups[0].options).toEqual(["Solitaire", "Cocktail", "Stackable", "Custom Floral"]);
-    expect(filters.groups[1].options).toEqual(["Yellow Gold", "Platinum"]);
-    expect(filters.labelProductMap["Custom Floral"]).toEqual(["prod_123"]);
-  });
-
-  it("determines linked labels for products via explicit assignment and text match", async () => {
-    const config = {
-      categorySlug: "rings",
+      types: [" Solitaire ", "Cocktail", "Solitaire"],
+      occasions: ["Gifting", "Cocktail"],
       categoryName: "Rings",
-      labels: ["Solitaire", "Cocktail", "Stackable", "Halo"],
-      metals: ["Yellow Gold"],
-      labelProductMap: {
-        Solitaire: ["prod_explicit_1"],
-      },
-      updatedAt: new Date().toISOString(),
-    };
-
-    // Explicit match
-    const p1 = {
-      id: "prod_explicit_1",
-      itemCode: "VR-001",
-      name: "Classic Band",
-      category: "rings",
-    };
-    expect(getProductLinkedLabels(p1, config)).toEqual(["Solitaire"]);
-
-    // Keyword match in name
-    const p2 = {
-      id: "prod_other_2",
-      itemCode: "VR-002",
-      name: "Vintage Cocktail Diamond Ring",
-      category: "rings",
-    };
-    expect(getProductLinkedLabels(p2, config)).toEqual(["Cocktail"]);
-
-    // Keyword match in designStyle
-    const p3 = {
-      id: "prod_other_3",
-      itemCode: "VR-003",
-      name: "Eternity Band",
-      designStyle: "Stackable",
-      category: "rings",
-    };
-    expect(getProductLinkedLabels(p3, config)).toEqual(["Stackable"]);
-  });
-
-  it("sets and updates product labels via setProductLabels", async () => {
-    await saveCategoryFilters("earrings", {
-      labels: ["Studs", "Drops", "Hoops"],
-      metals: ["Yellow Gold"],
-      labelProductMap: {},
     });
 
-    await setProductLabels("prod_earring_1", "earrings", ["Studs", "Hoops"]);
-    const filters1 = await getCategoryFilters("earrings");
-    expect(filters1.labelProductMap["Studs"]).toContain("prod_earring_1");
-    expect(filters1.labelProductMap["Hoops"]).toContain("prod_earring_1");
-    expect(filters1.labelProductMap["Drops"] || []).not.toContain("prod_earring_1");
-
-    // Remove "Studs"
-    await setProductLabels("prod_earring_1", "earrings", ["Hoops"]);
-    const filters2 = await getCategoryFilters("earrings");
-    expect(filters2.labelProductMap["Studs"] || []).not.toContain("prod_earring_1");
-    expect(filters2.labelProductMap["Hoops"]).toContain("prod_earring_1");
+    jest.resetModules(); // nothing is cached in memory or on disk — only the DB remains
+    const fresh = await import("@/lib/category-filters");
+    const filters = await fresh.getCategoryFilters("rings");
+    expect(filters.types).toEqual(["Solitaire", "Cocktail"]);
+    expect(filters.occasions).toEqual(["Gifting"]); // a label can't be both a Type and an Occasion
+    const all = await fresh.getAllCategoryFilters();
+    expect(all.rings.types).toEqual(["Solitaire", "Cocktail"]);
+    expect(all.earrings.types).toContain("Studs"); // built-ins still filled in
   });
 
-  it("respects label exclusions when product text naturally matches a keyword", async () => {
-    await saveCategoryFilters("pendants", {
-      labels: ["Solitaire", "Minimal"],
-      metals: ["Yellow Gold"],
-      labelProductMap: {},
-      labelExcludedMap: {},
+  it("assigns products to labels, only within the category", async () => {
+    db.tags.push({ productId: "earring_1", group: "TYPE", value: "Studs" });
+    await saveCategoryFilters("rings", {
+      types: ["Solitaire", "Band"],
+      occasions: ["Gifting"],
+      labelProductMap: { Solitaire: ["ring_1", "earring_1"], Gifting: ["ring_2"] },
     });
+    expect(db.tags).toEqual(
+      expect.arrayContaining([
+        { productId: "ring_1", group: "TYPE", value: "Solitaire" },
+        { productId: "ring_2", group: "OCCASION", value: "Gifting" },
+        { productId: "earring_1", group: "TYPE", value: "Studs" },
+      ]),
+    );
+    expect(db.tags.some((t) => t.productId === "earring_1" && t.value === "Solitaire")).toBe(false);
 
-    const product = {
-      id: "prod_pendant_1",
-      itemCode: "PD-01",
-      name: "Classic Solitaire Diamond Pendant",
-      category: "pendants",
-    };
-
-    // Initially matches "Solitaire" via name
-    const initialConfig = await getCategoryFilters("pendants");
-    expect(getProductLinkedLabels(product, initialConfig)).toContain("Solitaire");
-
-    // Admin unchecks "Solitaire" and only sets "Minimal"
-    await setProductLabels(product.id, "pendants", ["Minimal"], product);
-    const updatedFilters = await getCategoryFilters("pendants");
-    const updatedLinked = getProductLinkedLabels(product, updatedFilters);
-
-    expect(updatedLinked).not.toContain("Solitaire");
-    expect(updatedLinked).toContain("Minimal");
+    const all = await getAllCategoryFilters({ withAssignments: true });
+    expect(all.rings.labelProductMap).toEqual({ Solitaire: ["ring_1"], Gifting: ["ring_2"] });
   });
 
-  it("resets category filters back to default presets", async () => {
-    await resetCategoryFilters("rings");
-    const filters = await getCategoryFilters("rings");
-    expect(filters.labels).toContain("Solitaire");
-    expect(filters.labels).not.toContain("Custom Floral");
+  it("sets a product's labels, grouping by the category lists and adding unknown ones as Types", async () => {
+    await saveCategoryFilters("earrings", { types: ["Studs", "Drops"], occasions: ["Office"] });
+
+    await setProductLabels("earring_1", "earrings", ["Studs", "Office", "Chandelier"]);
+    expect(productLabelsFromTags(db.tags.filter((t) => t.productId === "earring_1"))).toEqual([
+      "Studs",
+      "Chandelier",
+      "Office",
+    ]);
+    expect((await getCategoryFilters("earrings")).types).toContain("Chandelier");
+
+    await setProductLabels("earring_1", "earrings", ["Drops"]);
+    expect(db.tags.filter((t) => t.productId === "earring_1")).toEqual([
+      { productId: "earring_1", group: "TYPE", value: "Drops" },
+    ]);
+  });
+
+  it("resets the option lists to defaults and keeps product tags", async () => {
+    await saveCategoryFilters("rings", { types: ["Custom Floral"], occasions: [] });
+    db.tags.push({ productId: "ring_1", group: "TYPE", value: "Custom Floral" });
+
+    const reset = await resetCategoryFilters("rings");
+    expect(reset.types).toContain("Solitaire");
+    expect(reset.types).not.toContain("Custom Floral");
+    expect(db.tags).toHaveLength(1);
+  });
+
+  it("lists a product's labels with Types before Occasions", () => {
+    expect(
+      productLabelsFromTags([
+        { group: "OCCASION", value: "Gifting" },
+        { group: "TYPE", value: "Band" },
+      ]),
+    ).toEqual(["Band", "Gifting"]);
+    expect(productLabelsFromTags(undefined)).toEqual([]);
   });
 });

@@ -98,8 +98,8 @@ export async function getActiveHomeSections(): Promise<HomeSectionView[]> {
           .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || (a.name ?? '').localeCompare(b.name ?? ''))
         const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
         const saleMap = await autoDiscountPercentsForProducts(liveProducts)
-        const validProducts = liveProducts.map((p, i) =>
-          prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+        const validProducts = liveProducts.map((p) =>
+          prismaToProduct(p, goldRates, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
         )
 
         if (validProducts.length === 0) continue

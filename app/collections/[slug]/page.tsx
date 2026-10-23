@@ -72,8 +72,8 @@ export default async function CollectionPage({ params }: Props) {
     .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || a.name.localeCompare(b.name));
   const { autoDiscountPercentsForProducts } = await import("@/lib/auto-discount-display");
   const saleMap = await autoDiscountPercentsForProducts(liveProducts);
-  const products = liveProducts.map((p, i) =>
-    prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+  const products = liveProducts.map((p) =>
+    prismaToProduct(p, goldRates, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
   );
 
   // Collage follows collection sort order (not PLP priority sort).

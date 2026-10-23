@@ -109,6 +109,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
           include: {
             variants: true,
             stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" } },
+            tags: { select: { group: true, value: true } },
           },
           orderBy: { name: "asc" },
         }),
@@ -119,8 +120,8 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
       const sortedDbProducts = sortProductsByPriority(dbProducts);
       const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
       const saleMap = await autoDiscountPercentsForProducts(sortedDbProducts)
-      prismaProducts = sortedDbProducts.map((p, i) =>
-        prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+      prismaProducts = sortedDbProducts.map((p) =>
+        prismaToProduct(p, goldRates, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
       );
     } catch (err) {
       // e.g. Category enum value missing on DB (NECKLACES migration not applied)
@@ -161,9 +162,11 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         }
         storyOverride={storyOverride}
         introOverride={heroBanner?.ctaLabel ?? undefined}
-        filterGroups={categoryFilters?.groups}
-        labelProductMap={categoryFilters?.labelProductMap}
-        labelExcludedMap={categoryFilters?.labelExcludedMap}
+        filterGroups={
+          categoryFilters
+            ? [{ id: "styles", title: "Style", options: categoryFilters.labels }]
+            : undefined
+        }
       />
     </Suspense>
   );

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
 import { getStoreCategories } from '@/lib/store-categories'
-import { getAllCategoryFilters, getProductLinkedLabels } from '@/lib/category-filters'
+import { getAllCategoryFilters, productLabelsFromTags } from '@/lib/category-filters'
 import { resolveMiscChargeLines } from '@/lib/misc-charges'
 import ProductForm from '@/components/admin/ProductForm'
 
@@ -27,6 +27,7 @@ export default async function EditProductPage({
         },
         variants: true,
         stones: { orderBy: { sortOrder: 'asc' }, include: { diamondRate: true } },
+        tags: { select: { group: true, value: true } },
         storeCategories: {
           include: { category: { select: { slug: true } } },
           take: 1,
@@ -42,7 +43,7 @@ export default async function EditProductPage({
 
   if (!product) notFound()
 
-  const linkedLabels = getProductLinkedLabels(product, allFilters)
+  const linkedLabels = productLabelsFromTags(product.tags)
   // Prefer StoreCategory join slug so custom cats don't show as PENDANTS in the form.
   const storeSlug = product.storeCategories[0]?.category?.slug
   const formCategory = storeSlug

@@ -1,123 +1,119 @@
-import fs from "fs";
-import path from "path";
-import {
-  PLP_FILTER_GROUPS,
-  SHOP_CATEGORIES,
-  CATEGORY_LABELS,
-  type ShopCategory,
-} from "@/lib/catalogue-ui";
+import type { ProductTagGroup } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { SHOP_CATEGORIES } from "@/lib/catalogue-ui";
+import { SLUG_TO_PRISMA } from "@/lib/categories";
 import { getStoreCategories } from "@/lib/store-categories";
 
-export type CategoryFilterGroup = {
-  id: "styles" | "metals";
-  title: string;
-  options: string[];
-};
-
+/**
+ * PLP filter options (Type, Occasion) per category + product tags.
+ * Stored in CategoryFilterConfig / ProductTag — the migration seeds the same defaults.
+ */
 export type CategoryFilterConfig = {
   categorySlug: string;
   categoryName: string;
-  labels: string[]; // Options under "styles" group (e.g. "Solitaire", "Stackable", etc.)
-  metals?: string[]; // Options under "metals" group
-  labelProductMap?: Record<string, string[]>; // label -> array of productIds explicitly tagged
-  labelExcludedMap?: Record<string, string[]>; // label -> array of productIds explicitly untagged/excluded
+  types: string[];
+  occasions: string[];
+  /** types + occasions, for pickers that treat them as one list */
+  labels: string[];
+  /** label -> ids of this category's products carrying it (only when assignments are loaded) */
+  labelProductMap: Record<string, string[]>;
   updatedAt: string;
 };
 
-const DATA_FILE = path.join(process.cwd(), "data", "category-filters.json");
+export type ProductTagRow = { group: ProductTagGroup; value: string };
 
-const DEFAULT_METALS = [
-  "Yellow Gold",
-  "White Gold",
-  "Rose Gold",
-  "22K Gold",
-  "18K Gold",
-  "14K Gold",
-  "9K Gold",
-];
+export const DEFAULT_FILTER_OPTIONS: Record<string, { types: string[]; occasions: string[] }> = {
+  rings: { types: ["Solitaire", "Stackable", "Band"], occasions: ["Everyday", "Office", "Gifting"] },
+  necklaces: { types: ["Solitaire", "Layering", "Minimal"], occasions: ["Everyday", "Office"] },
+  earrings: { types: ["Studs", "Drops", "Hoops"], occasions: ["Everyday", "Office"] },
+  bracelets: { types: ["Tennis", "Chain", "Layering", "Minimal"], occasions: [] },
+  pendants: { types: ["Solitaire", "Minimal"], occasions: ["Everyday", "Gifting"] },
+  mangalsutra: { types: ["Modern", "Traditional", "Solitaire", "Minimal"], occasions: ["Everyday"] },
+  cufflinks: { types: ["Classic", "Modern"], occasions: ["Gifting"] },
+  sets: { types: ["Necklace & Earrings", "Bridal"], occasions: ["Gifting"] },
+  "nose-pins": { types: ["Stud", "Minimal"], occasions: ["Everyday"] },
+};
 
-/**
- * Returns baseline default filters for a category from PLP_FILTER_GROUPS or sensible defaults.
- */
-export function getDefaultFilterConfig(slug: string, name?: string): CategoryFilterConfig {
-  const normSlug = slug.toLowerCase().trim();
-  const builtIn = PLP_FILTER_GROUPS[normSlug as ShopCategory];
-  const builtInTitle = CATEGORY_LABELS[normSlug as ShopCategory]?.title;
+const clean = (list: string[] | undefined) =>
+  Array.from(new Set((list ?? []).map((l) => l.trim()).filter(Boolean)));
 
-  const styleGroup = builtIn?.find((g) => g.id === "styles");
-  const metalGroup = builtIn?.find((g) => g.id === "metals");
+const titleCase = (slug: string) => slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ");
 
-  const defaultLabels = styleGroup?.options ?? [
-    "Solitaire",
-    "Everyday Wear",
-    "Office Wear",
-    "Minimal",
-    "Gifting",
-  ];
-  const defaultMetals = metalGroup?.options ?? DEFAULT_METALS;
-
+function buildConfig(
+  slug: string,
+  opts: { types: string[]; occasions: string[]; name?: string | null; updatedAt?: Date },
+  labelProductMap: Record<string, string[]> = {},
+): CategoryFilterConfig {
   return {
-    categorySlug: normSlug,
-    categoryName: name || builtInTitle || normSlug.charAt(0).toUpperCase() + normSlug.slice(1),
-    labels: [...defaultLabels],
-    metals: [...defaultMetals],
-    labelProductMap: {},
-    labelExcludedMap: {},
-    updatedAt: new Date().toISOString(),
+    categorySlug: slug,
+    categoryName: opts.name || titleCase(slug),
+    types: opts.types,
+    occasions: opts.occasions,
+    labels: [...opts.types, ...opts.occasions],
+    labelProductMap,
+    updatedAt: (opts.updatedAt ?? new Date()).toISOString(),
   };
 }
 
-function readFiltersFile(): Record<string, CategoryFilterConfig> {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const content = fs.readFileSync(DATA_FILE, "utf-8");
-      const parsed = JSON.parse(content);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.error("[category-filters] Failed reading category-filters.json:", err);
-  }
-  return {};
+/** Built-in defaults for a category (empty lists for custom store categories). */
+export function getDefaultFilterConfig(slug: string, name?: string): CategoryFilterConfig {
+  const norm = slug.toLowerCase().trim();
+  const d = DEFAULT_FILTER_OPTIONS[norm] ?? { types: [], occasions: [] };
+  return buildConfig(norm, { types: [...d.types], occasions: [...d.occasions], name });
 }
 
-function writeFiltersFile(data: Record<string, CategoryFilterConfig>): void {
-  try {
-    const dir = path.dirname(DATA_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.error("[category-filters] Failed writing category-filters.json:", err);
+/** Tag labels on a product, Types first. */
+export function productLabelsFromTags(tags: ProductTagRow[] | undefined | null): string[] {
+  const list = tags ?? [];
+  return [
+    ...list.filter((t) => t.group === "TYPE").map((t) => t.value),
+    ...list.filter((t) => t.group === "OCCASION").map((t) => t.value),
+  ];
+}
+
+/** label -> product ids, for one category's products (enum categories only). */
+async function loadLabelProductMaps(): Promise<Record<string, Record<string, string[]>>> {
+  const tags = await prisma.productTag.findMany({
+    select: { value: true, productId: true, product: { select: { category: true } } },
+  });
+  const bySlug: Record<string, Record<string, string[]>> = {};
+  for (const t of tags) {
+    const slug = t.product.category.toLowerCase();
+    ((bySlug[slug] ??= {})[t.value] ??= []).push(t.productId);
   }
+  return bySlug;
 }
 
 /**
- * Returns all category filter configurations merged with available store categories.
+ * All category configs: stored rows, built-in defaults, and store categories.
+ * `withAssignments` also loads which products carry each label (admin filters page).
  */
-export async function getAllCategoryFilters(): Promise<Record<string, CategoryFilterConfig>> {
-  const stored = readFiltersFile();
-  const result: Record<string, CategoryFilterConfig> = { ...stored };
+export async function getAllCategoryFilters(
+  options: { withAssignments?: boolean } = {},
+): Promise<Record<string, CategoryFilterConfig>> {
+  const [rows, maps] = await Promise.all([
+    prisma.categoryFilterConfig.findMany(),
+    options.withAssignments ? loadLabelProductMaps() : Promise.resolve<Record<string, Record<string, string[]>>>({}),
+  ]);
+  const result: Record<string, CategoryFilterConfig> = {};
 
-  // Ensure built-in categories have entries
+  for (const row of rows) {
+    result[row.categorySlug] = buildConfig(
+      row.categorySlug,
+      { types: row.types, occasions: row.occasions, name: row.categoryName, updatedAt: row.updatedAt },
+      maps[row.categorySlug],
+    );
+  }
   for (const slug of SHOP_CATEGORIES) {
-    if (!result[slug]) {
-      result[slug] = getDefaultFilterConfig(slug);
-    }
+    result[slug] ??= { ...getDefaultFilterConfig(slug), labelProductMap: maps[slug] ?? {} };
   }
 
-  // Ensure store categories have entries
   try {
-    const storeCategories = await getStoreCategories();
-    for (const sc of storeCategories) {
+    for (const sc of await getStoreCategories()) {
       const slug = sc.slug.toLowerCase().trim();
-      if (!result[slug]) {
-        result[slug] = getDefaultFilterConfig(slug, sc.name);
-      } else if (!result[slug].categoryName && sc.name) {
-        result[slug].categoryName = sc.name;
-      }
+      const stored = rows.find((r) => r.categorySlug === slug);
+      result[slug] ??= { ...getDefaultFilterConfig(slug), labelProductMap: maps[slug] ?? {} };
+      if (!stored?.categoryName && sc.name) result[slug].categoryName = sc.name;
     }
   } catch (err) {
     console.error("[category-filters] Failed merging store categories:", err);
@@ -126,262 +122,109 @@ export async function getAllCategoryFilters(): Promise<Record<string, CategoryFi
   return result;
 }
 
-/**
- * Returns filter groups and label-product mappings for a specific category.
- * Used directly by the storefront PLP (`/all-products/[category]`).
- */
-export async function getCategoryFilters(slug: string): Promise<{
-  categorySlug: string;
-  categoryName: string;
-  groups: CategoryFilterGroup[];
-  labels: string[];
-  labelProductMap: Record<string, string[]>;
-  labelExcludedMap: Record<string, string[]>;
-}> {
-  const normSlug = slug.toLowerCase().trim();
-  const allFilters = await getAllCategoryFilters();
-  const config = allFilters[normSlug] || getDefaultFilterConfig(normSlug);
-
-  const groups: CategoryFilterGroup[] = [];
-
-  // Group 1: Style / Category Labels
-  if (config.labels && config.labels.length > 0) {
-    groups.push({
-      id: "styles",
-      title: "Style",
-      options: config.labels,
-    });
-  }
-
-  // Group 2: Metal Options
-  const metals = config.metals && config.metals.length > 0 ? config.metals : DEFAULT_METALS;
-  groups.push({
-    id: "metals",
-    title: "Metal",
-    options: metals,
+/** Option lists for one category (storefront PLP). */
+export async function getCategoryFilters(slug: string): Promise<CategoryFilterConfig> {
+  const norm = slug.toLowerCase().trim();
+  const row = await prisma.categoryFilterConfig.findUnique({ where: { categorySlug: norm } });
+  if (!row) return getDefaultFilterConfig(norm);
+  return buildConfig(norm, {
+    types: row.types,
+    occasions: row.occasions,
+    name: row.categoryName,
+    updatedAt: row.updatedAt,
   });
-
-  return {
-    categorySlug: normSlug,
-    categoryName: config.categoryName,
-    groups,
-    labels: config.labels,
-    labelProductMap: config.labelProductMap ?? {},
-    labelExcludedMap: config.labelExcludedMap ?? {},
-  };
 }
 
-/**
- * Saves updated labels, metals, and product assignments for a category.
- */
+/** Sets which of a category's products carry each label (enum categories only). */
+async function syncAssignments(
+  slug: string,
+  config: { types: string[]; occasions: string[] },
+  labelProductMap: Record<string, string[]>,
+) {
+  const category = SLUG_TO_PRISMA[slug];
+  if (!category) return;
+  const products = await prisma.product.findMany({ where: { category }, select: { id: true } });
+  const productIds = products.map((p) => p.id);
+  const groupOf = (label: string): ProductTagGroup => (config.occasions.includes(label) ? "OCCASION" : "TYPE");
+
+  const wanted = Object.entries(labelProductMap).flatMap(([label, ids]) =>
+    config.types.includes(label) || config.occasions.includes(label)
+      ? ids.filter((id) => productIds.includes(id)).map((productId) => ({ productId, group: groupOf(label), value: label }))
+      : [],
+  );
+  const labels = [...config.types, ...config.occasions];
+  await prisma.$transaction([
+    prisma.productTag.deleteMany({ where: { productId: { in: productIds }, value: { in: labels } } }),
+    prisma.productTag.createMany({ data: wanted, skipDuplicates: true }),
+  ]);
+}
+
+/** Saves a category's option lists (and optionally which products carry each label). */
 export async function saveCategoryFilters(
   slug: string,
   updates: {
-    labels: string[];
-    metals?: string[];
+    types: string[];
+    occasions: string[];
     labelProductMap?: Record<string, string[]>;
-    labelExcludedMap?: Record<string, string[]>;
     categoryName?: string;
-  }
-): Promise<CategoryFilterConfig> {
-  const normSlug = slug.toLowerCase().trim();
-  const stored = readFiltersFile();
-
-  const existing = stored[normSlug] || getDefaultFilterConfig(normSlug, updates.categoryName);
-
-  // Clean and deduplicate labels
-  const cleanedLabels = Array.from(
-    new Set((updates.labels || []).map((l) => l.trim()).filter(Boolean))
-  );
-
-  const cleanedMetals = updates.metals
-    ? Array.from(new Set(updates.metals.map((m) => m.trim()).filter(Boolean)))
-    : existing.metals ?? DEFAULT_METALS;
-
-  // Clean labelProductMap to only retain entries for valid labels
-  const cleanedMap: Record<string, string[]> = {};
-  if (updates.labelProductMap) {
-    for (const [label, prodIds] of Object.entries(updates.labelProductMap)) {
-      if (cleanedLabels.includes(label) && Array.isArray(prodIds)) {
-        cleanedMap[label] = Array.from(new Set(prodIds.filter(Boolean)));
-      }
-    }
-  }
-
-  // Clean labelExcludedMap to only retain entries for valid labels
-  const cleanedExcludedMap: Record<string, string[]> = {};
-  if (updates.labelExcludedMap) {
-    for (const [label, prodIds] of Object.entries(updates.labelExcludedMap)) {
-      if (cleanedLabels.includes(label) && Array.isArray(prodIds)) {
-        cleanedExcludedMap[label] = Array.from(new Set(prodIds.filter(Boolean)));
-      }
-    }
-  }
-
-  const updatedConfig: CategoryFilterConfig = {
-    categorySlug: normSlug,
-    categoryName: updates.categoryName || existing.categoryName || normSlug,
-    labels: cleanedLabels,
-    metals: cleanedMetals,
-    labelProductMap: cleanedMap,
-    labelExcludedMap: cleanedExcludedMap,
-    updatedAt: new Date().toISOString(),
-  };
-
-  stored[normSlug] = updatedConfig;
-  writeFiltersFile(stored);
-  return updatedConfig;
-}
-
-/**
- * Resets a category back to default presets.
- */
-export async function resetCategoryFilters(slug: string): Promise<CategoryFilterConfig> {
-  const normSlug = slug.toLowerCase().trim();
-  const stored = readFiltersFile();
-  const defaultConfig = getDefaultFilterConfig(normSlug);
-  stored[normSlug] = defaultConfig;
-  writeFiltersFile(stored);
-  return defaultConfig;
-}
-
-/**
- * Returns the list of filter labels a specific product is linked with
- * (both via explicit assignment in labelProductMap and via text keyword matching,
- * respecting explicit exclusions in labelExcludedMap).
- */
-export function getProductLinkedLabels(
-  product: {
-    id: string;
-    itemCode?: string | null;
-    name?: string;
-    designStyle?: string | null;
-    description?: string | null;
-    category?: string;
-    metals?: string[];
   },
-  filterConfigs?: Record<string, CategoryFilterConfig> | CategoryFilterConfig
-): string[] {
-  if (!filterConfigs) return [];
+): Promise<CategoryFilterConfig> {
+  const norm = slug.toLowerCase().trim();
+  const types = clean(updates.types);
+  const occasions = clean(updates.occasions).filter((o) => !types.includes(o));
+  const categoryName = updates.categoryName?.trim() || undefined;
 
-  let config: CategoryFilterConfig | undefined;
-  if ("labels" in filterConfigs && Array.isArray((filterConfigs as any).labels)) {
-    config = filterConfigs as CategoryFilterConfig;
-  } else {
-    const slug = (product.category ?? "").toLowerCase().trim();
-    const map = filterConfigs as Record<string, CategoryFilterConfig>;
-    config = map[slug] || map[slug.replace(/s$/, "")] || map[`${slug}s`];
-  }
+  const row = await prisma.categoryFilterConfig.upsert({
+    where: { categorySlug: norm },
+    create: { categorySlug: norm, categoryName: categoryName ?? null, types, occasions },
+    update: { types, occasions, ...(categoryName ? { categoryName } : {}) },
+  });
+  if (updates.labelProductMap) await syncAssignments(norm, { types, occasions }, updates.labelProductMap);
 
-  if (!config || !config.labels || config.labels.length === 0) return [];
+  return buildConfig(norm, {
+    types: row.types,
+    occasions: row.occasions,
+    name: row.categoryName,
+    updatedAt: row.updatedAt,
+  });
+}
 
-  const matchedLabels: string[] = [];
-  const map = config.labelProductMap || {};
-  const excludedMap = config.labelExcludedMap || {};
-  const text = [
-    product.name ?? "",
-    product.itemCode ?? "",
-    product.designStyle ?? "",
-    product.description ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  for (const label of config.labels) {
-    const lower = label.toLowerCase();
-    const explicitIds = map[label] || [];
-    const excludedIds = excludedMap[label] || [];
-
-    const isExcluded =
-      excludedIds.includes(product.id) ||
-      (product.itemCode ? excludedIds.includes(product.itemCode) : false);
-
-    if (isExcluded) continue;
-
-    const isExplicit =
-      explicitIds.includes(product.id) ||
-      (product.itemCode ? explicitIds.includes(product.itemCode) : false);
-
-    if (isExplicit || text.includes(lower)) {
-      matchedLabels.push(label);
-    }
-  }
-
-  return matchedLabels;
+/** Resets a category's option lists to the built-in defaults. Product tags are kept. */
+export async function resetCategoryFilters(slug: string): Promise<CategoryFilterConfig> {
+  const norm = slug.toLowerCase().trim();
+  const d = getDefaultFilterConfig(norm);
+  return saveCategoryFilters(norm, { types: d.types, occasions: d.occasions });
 }
 
 /**
- * Updates the explicitly assigned labels for a specific product in a category,
- * adding new labels if needed and updating exclusions.
+ * Replaces the labels one product carries within its category's option lists.
+ * Labels not yet in the lists are added as Types.
  */
 export async function setProductLabels(
   productId: string,
   categorySlug: string,
   targetLabels: string[],
-  productInfo?: {
-    itemCode?: string | null;
-    name?: string;
-    designStyle?: string | null;
-    description?: string | null;
-  }
 ): Promise<CategoryFilterConfig> {
-  const normSlug = categorySlug.toLowerCase().trim();
-  const allFilters = await getAllCategoryFilters();
-  const config = allFilters[normSlug] || getDefaultFilterConfig(normSlug);
+  const norm = categorySlug.toLowerCase().trim();
+  const target = clean(targetLabels);
+  let config = await getCategoryFilters(norm);
 
-  // If any targetLabels are not yet in config.labels, add them to available labels
-  const allLabels = [...config.labels];
-  for (const t of targetLabels) {
-    const trimmed = t.trim();
-    if (trimmed && !allLabels.includes(trimmed)) {
-      allLabels.push(trimmed);
-    }
+  const unknown = target.filter((l) => !config.labels.includes(l));
+  if (unknown.length > 0) {
+    config = await saveCategoryFilters(norm, {
+      types: [...config.types, ...unknown],
+      occasions: config.occasions,
+    });
   }
 
-  const map = { ...(config.labelProductMap || {}) };
-  const excludedMap = { ...(config.labelExcludedMap || {}) };
-
-  const text = [
-    productInfo?.name ?? "",
-    productInfo?.itemCode ?? "",
-    productInfo?.designStyle ?? "",
-    productInfo?.description ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  for (const label of allLabels) {
-    const lower = label.toLowerCase();
-    const list = map[label] || [];
-    const excludedList = excludedMap[label] || [];
-    const shouldHave = targetLabels.includes(label);
-
-    if (shouldHave) {
-      if (!list.includes(productId)) {
-        map[label] = [...list, productId];
-      }
-      if (excludedList.includes(productId)) {
-        excludedMap[label] = excludedList.filter((id) => id !== productId);
-      }
-    } else {
-      if (list.includes(productId)) {
-        map[label] = list.filter((id) => id !== productId);
-      }
-      // If product text would otherwise match this label, add to excludedMap so it stays removed
-      if (text.includes(lower) || !excludedList.includes(productId)) {
-        if (!excludedList.includes(productId)) {
-          excludedMap[label] = [...excludedList, productId];
-        }
-      }
-    }
-  }
-
-  return saveCategoryFilters(normSlug, {
-    labels: allLabels,
-    metals: config.metals,
-    labelProductMap: map,
-    labelExcludedMap: excludedMap,
-    categoryName: config.categoryName,
-  });
+  const data = target.map((value) => ({
+    productId,
+    value,
+    group: (config.occasions.includes(value) ? "OCCASION" : "TYPE") as ProductTagGroup,
+  }));
+  await prisma.$transaction([
+    prisma.productTag.deleteMany({ where: { productId, value: { in: config.labels } } }),
+    prisma.productTag.createMany({ data, skipDuplicates: true }),
+  ]);
+  return config;
 }
-

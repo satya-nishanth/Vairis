@@ -12,36 +12,42 @@ jest.mock("@/lib/auth", () => ({
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    product: {
-      findUnique: jest.fn(),
-    },
+    product: { findUnique: jest.fn() },
+    productTag: { findMany: jest.fn() },
+    categoryFilterConfig: { findUnique: jest.fn() },
   },
 }));
+
+const config = {
+  categorySlug: "rings",
+  categoryName: "Rings",
+  types: ["Solitaire", "Stackable", "Halo"],
+  occasions: ["Gifting"],
+  labels: ["Solitaire", "Stackable", "Halo", "Gifting"],
+  labelProductMap: {},
+  updatedAt: "2026-09-28T00:00:00.000Z",
+};
 
 describe("/api/admin/products/[id]/labels route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("GET returns current labels and available category labels", async () => {
+  it("GET returns the product's tags and the category's available labels", async () => {
     (prisma.product.findUnique as jest.Mock).mockResolvedValueOnce({
       id: "prod_1",
-      name: "Solitaire Engagement Ring",
-      itemCode: "VR-R01",
       category: "RINGS",
-      designStyle: "Solitaire",
-      description: "Classic band",
+      tags: [
+        { group: "OCCASION", value: "Gifting" },
+        { group: "TYPE", value: "Solitaire" },
+      ],
     });
-
-    jest.spyOn(categoryFilters, "getAllCategoryFilters").mockResolvedValueOnce({
-      rings: {
-        categorySlug: "rings",
-        categoryName: "Rings",
-        labels: ["Solitaire", "Cocktail", "Stackable"],
-        metals: ["Yellow Gold"],
-        labelProductMap: {},
-        updatedAt: "2026-09-28T00:00:00.000Z",
-      },
+    (prisma.categoryFilterConfig.findUnique as jest.Mock).mockResolvedValueOnce({
+      categorySlug: "rings",
+      categoryName: "Rings",
+      types: config.types,
+      occasions: config.occasions,
+      updatedAt: new Date("2026-09-28"),
     });
 
     const req = new NextRequest("http://localhost/api/admin/products/prod_1/labels");
@@ -51,48 +57,25 @@ describe("/api/admin/products/[id]/labels route", () => {
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(json.productId).toBe("prod_1");
-    expect(json.labels).toContain("Solitaire");
-    expect(json.availableLabels).toEqual(["Solitaire", "Cocktail", "Stackable"]);
+    expect(json.labels).toEqual(["Solitaire", "Gifting"]);
+    expect(json.availableLabels).toEqual(config.labels);
   });
 
-  it("POST updates product labels via setProductLabels", async () => {
-    const mockProduct = {
-      id: "prod_1",
-      name: "Solitaire Engagement Ring",
-      itemCode: "VR-R01",
-      category: "RINGS",
-      designStyle: "Solitaire",
-      description: "Classic band",
-    };
-
-    (prisma.product.findUnique as jest.Mock).mockResolvedValueOnce(mockProduct);
-
-    const setSpy = jest.spyOn(categoryFilters, "setProductLabels").mockResolvedValueOnce({
-      categorySlug: "rings",
-      categoryName: "Rings",
-      labels: ["Solitaire", "Cocktail", "Stackable", "Halo"],
-      metals: ["Yellow Gold"],
-      labelProductMap: {
-        Halo: ["prod_1"],
-      },
-      labelExcludedMap: {
-        Solitaire: ["prod_1"],
-      },
-      updatedAt: "2026-09-28T00:00:00.000Z",
-    });
+  it("POST replaces the product's labels via setProductLabels", async () => {
+    (prisma.product.findUnique as jest.Mock).mockResolvedValueOnce({ id: "prod_1", category: "RINGS" });
+    (prisma.productTag.findMany as jest.Mock).mockResolvedValueOnce([{ group: "TYPE", value: "Halo" }]);
+    const setSpy = jest.spyOn(categoryFilters, "setProductLabels").mockResolvedValueOnce(config);
 
     const req = new NextRequest("http://localhost/api/admin/products/prod_1/labels", {
       method: "POST",
       body: JSON.stringify({ labels: ["Halo"] }),
     });
-
     const res = await POST(req, { params: Promise.resolve({ id: "prod_1" }) });
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.ok).toBe(true);
-    expect(setSpy).toHaveBeenCalledWith("prod_1", "rings", ["Halo"], mockProduct);
-    expect(json.labels).toContain("Halo");
-    expect(json.labels).not.toContain("Solitaire");
+    expect(setSpy).toHaveBeenCalledWith("prod_1", "rings", ["Halo"]);
+    expect(json.labels).toEqual(["Halo"]);
   });
 });

@@ -10,6 +10,9 @@ jest.mock('@/lib/prisma', () => ({
     goldRate: {
       findMany: jest.fn(),
     },
+    productTag: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     analyticsEvent: {
       create: jest.fn().mockResolvedValue({}),
     },
@@ -24,17 +27,6 @@ jest.mock('@/lib/pricing-data', () => {
     getShowPricesGlobal: jest.fn().mockResolvedValue(true),
   }
 })
-
-jest.mock('@/lib/category-filters', () => ({
-  getAllCategoryFilters: jest.fn().mockResolvedValue({
-    rings: {
-      labels: ['Solitaire', 'Everyday Wear'],
-      labelProductMap: {
-        Solitaire: ['prod-sol-1'],
-      },
-    },
-  }),
-}))
 
 describe('GET /api/search', () => {
   beforeEach(() => {
@@ -103,6 +95,7 @@ describe('GET /api/search', () => {
       },
     ])
     ;(prisma.goldRate.findMany as jest.Mock).mockResolvedValue([])
+    ;(prisma.productTag.findMany as jest.Mock).mockResolvedValueOnce([{ productId: 'prod-sol-1' }])
 
     const req = new NextRequest('http://localhost:3000/api/search?q=solitaire')
     const res = await GET(req)

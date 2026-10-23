@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
-import { sortProductsByPriority, setProductPriority } from '@/lib/product-priorities'
+import { sortProductsByPriority } from '@/lib/product-priorities'
 import {
   createProductPieces,
   flattenPieceVariants,
@@ -245,8 +245,6 @@ export async function POST(req: NextRequest) {
       },
     })
   })
-
-  setProductPriority(product.id, data.priority)
 
   try {
     const catSlug = data.category.toLowerCase().replace(/_/g, '-')
