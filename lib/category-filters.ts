@@ -34,8 +34,9 @@ export const DEFAULT_FILTER_OPTIONS: Record<string, { types: string[]; occasions
   "nose-pins": { types: ["Stud", "Minimal"], occasions: ["Everyday"] },
 };
 
+// Commas separate values in the ?type=… URL params, so they can't be part of a label.
 const clean = (list: string[] | undefined) =>
-  Array.from(new Set((list ?? []).map((l) => l.trim()).filter(Boolean)));
+  Array.from(new Set((list ?? []).map((l) => l.replace(/\s*,\s*/g, " ").trim()).filter(Boolean)));
 
 const titleCase = (slug: string) => slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ");
 
