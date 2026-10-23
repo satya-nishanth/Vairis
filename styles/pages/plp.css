@@ -9,7 +9,8 @@
 }
 
 .plp-hero--landing .plp-hero__content {
-  padding: 12px clamp(24px, 3vw, 48px) 48px var(--layout-gutter-left);
+  /* Left edge matches the .container below (centred max-width + gutter) */
+  padding: 12px clamp(24px, 3vw, 48px) 48px calc((100vw - var(--max-width)) / 2 + var(--layout-gutter-left));
   display: grid;
   grid-template-rows: auto 1fr;
   align-content: start;
