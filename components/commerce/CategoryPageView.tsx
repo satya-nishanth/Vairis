@@ -169,19 +169,12 @@ export function CategoryPageView({
     if (el) window.scrollBy(0, el.getBoundingClientRect().top - held.top);
   }, [filters.worn]);
 
-  // Back from a product: same page, same filters (they're in the URL), same scroll, and the
-  // product just viewed gets an outline + "Last viewed" tag for a few seconds.
-  const returned = useRef<ReturnType<typeof takePlpReturn> | undefined>(undefined);
+  // Back from a product: same page, same filters (they're in the URL), same scroll.
+  const returned = useRef<number | null | undefined>(undefined);
   useEffect(() => {
     // Read once — the saved visit is consumed, and effects can run twice in development.
     if (returned.current === undefined) returned.current = takePlpReturn();
-    const back = returned.current;
-    if (!back) return;
-    window.scrollTo(0, back.scrollY);
-    const card = document.querySelector(`.plp-grid [data-product-id="${back.productId}"]`);
-    card?.classList.add("product-card--last-viewed");
-    const t = window.setTimeout(() => card?.classList.remove("product-card--last-viewed"), 4200);
-    return () => window.clearTimeout(t);
+    if (returned.current !== null) window.scrollTo(0, returned.current);
   }, []);
 
   // The filter column sticks just under the (measured) sticky header.
@@ -322,7 +315,7 @@ export function CategoryPageView({
                             showActions={i < 4}
                             worn={filters.worn}
                             swipeable
-                            onOpen={() => rememberPlpVisit(product.catalogueId)}
+                            onOpen={rememberPlpVisit}
                           />
                         ))}
                       </div>

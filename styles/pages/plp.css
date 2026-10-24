@@ -1301,6 +1301,7 @@
 @media (max-width: 900px) {
   .plp-bottom {
     grid-template-columns: 1fr;
+    gap: 24px;
     padding: clamp(28px, 4vw, 40px) 0;
   }
 
@@ -1437,37 +1438,6 @@
 .product-card__worn-label,
 .product-card__dots {
   display: none;
-}
-
-/* "Last viewed" — outline + tag when coming back from a product */
-.product-card--last-viewed {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-  animation: plp-last-viewed 4s ease-out forwards;
-}
-
-.product-card--last-viewed .product-card__img-wrap::after {
-  content: "Last viewed";
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  z-index: 3;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-@keyframes plp-last-viewed {
-  0%,
-  80% {
-    outline-color: var(--color-primary);
-  }
-  100% {
-    outline-color: transparent;
-  }
 }
 
 .plp-toast {
