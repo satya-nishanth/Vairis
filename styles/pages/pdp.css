@@ -1076,7 +1076,8 @@
 .pdp-plans__intro { margin: -8px 0 0; font-size: 0.8125rem; color: var(--color-text-muted); }
 .pdp-plans__cards { display: grid; gap: 12px; }
 @media (min-width: 900px) {
-  .pdp-plans__cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+  .pdp-plans__cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .pdp-plan:not(.pdp-plan--value) { margin-top: 26px; }
 }
 .pdp-plan {
   display: flex;
@@ -1101,7 +1102,10 @@
   font-weight: 700;
   letter-spacing: 1.2px;
   text-transform: uppercase;
+  height: 26px;
+  line-height: 14px;
   padding: 6px 14px;
+  box-sizing: border-box;
 }
 .pdp-plan__body {
   display: grid;
