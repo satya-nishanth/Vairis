@@ -200,9 +200,9 @@ export function CategoryPageView({
   }, []);
 
   useEffect(() => {
-    document.body.classList.add("has-mobile-sticky-bar");
+    document.body.classList.add("has-mobile-sticky-bar", "has-plp-bar");
     return () => {
-      document.body.classList.remove("has-mobile-sticky-bar");
+      document.body.classList.remove("has-mobile-sticky-bar", "has-plp-bar");
       window.clearTimeout(toastTimer.current);
     };
   }, []);

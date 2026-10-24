@@ -1491,6 +1491,12 @@
 }
 
 @media (max-width: 767px) {
+  /* The listing's bottom bar is 64px (other pages' sticky bars stay 56px); the Contact
+     button, toast and page padding all follow this token. */
+  body.has-plp-bar {
+    --mobile-sticky-bar-height: 64px;
+  }
+
   .plp-layout {
     grid-template-columns: minmax(0, 1fr);
   }
