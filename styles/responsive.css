@@ -126,10 +126,6 @@
   display: none;
 }
 
-.site-header__drawer {
-  display: none;
-}
-
 @media (max-width: 1080px) {
   .site-header__menu-btn {
     display: flex;
@@ -163,101 +159,6 @@
     inset: 0;
     z-index: 150;
     background: rgba(0, 0, 0, 0.45);
-  }
-
-  .site-header__drawer {
-    display: flex;
-    flex-direction: column;
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: min(320px, 88vw);
-    z-index: 160;
-    background: var(--bg-page);
-    border-right: 1px solid var(--color-border-light);
-    padding: 16px;
-    padding-top: max(16px, env(safe-area-inset-top));
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-    overflow-y: auto;
-    box-shadow: var(--shadow-md);
-  }
-
-  .site-header__drawer-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  .site-header__drawer-title {
-    font-family: var(--font-serif);
-    font-size: 1.25rem;
-    font-weight: 600;
-  }
-
-  .site-header__drawer-close {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--header-action-color);
-  }
-
-  .site-header__drawer-pincode {
-    margin-bottom: 16px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  .site-header__drawer-pincode .header-pincode {
-    border-right: none;
-    padding-right: 0;
-  }
-
-  .site-header__drawer-links {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-  }
-
-  .site-header__drawer-links a {
-    padding: 12px 0;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--header-nav-text);
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  .site-header__drawer-theme {
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid var(--color-border-light);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .site-header__drawer-theme .theme-switcher {
-    align-self: flex-start;
-  }
-
-  .site-header__drawer-theme .theme-switcher button {
-    min-width: 72px;
-    padding: 10px 14px;
-    font-size: 0.75rem;
-  }
-
-  .site-header__drawer-theme-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
   }
 
   .home-main__body {
