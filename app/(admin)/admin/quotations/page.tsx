@@ -5,7 +5,14 @@ import { AdminGuide } from '@/components/admin/AdminGuide'
 
 export const dynamic = 'force-dynamic'
 
-const FILTERS: (QuotationStatus | 'ALL')[] = ['ALL', 'REQUESTED', 'QUOTED', 'CONVERTED', 'CANCELLED']
+const FILTERS: (QuotationStatus | 'ALL')[] = [
+  'ALL',
+  'REQUESTED',
+  'QUOTED',
+  'ACCEPTED',
+  'CONVERTED',
+  'CANCELLED',
+]
 const STALE_QUOTED_HOURS = Number(process.env.QUOTE_STALE_QUOTED_HOURS ?? 24)
 
 type QuotationRow = Awaited<ReturnType<typeof loadQuotations>>[number]
@@ -60,18 +67,27 @@ export default async function AdminQuotationsPage({
   const quotations: QuotationRow[] = await loadQuotations(filter, attention)
 
   return (
-    <div className="admin-page">
+    <div className="admin-page admin-page--quotations">
       <div className="admin-page__header">
         <h1 className="admin-page__title" style={{ marginBottom: 0 }}>Quotations</h1>
-        <Link href="/admin/quotations/new" className="admin-btn">
-          + New Quotation
-        </Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link
+            href="/admin/quotations/settings"
+            className="admin-btn"
+            style={{ background: '#fff', color: '#032b24', border: '1px solid #032b24' }}
+          >
+            Settings
+          </Link>
+          <Link href="/admin/quotations/new" className="admin-btn">
+            + New Quotation
+          </Link>
+        </div>
       </div>
       <AdminGuide
         pageKey="quotations"
         title="Quotations"
-        blurb="Vendor-quote pipeline for offline/WhatsApp deals. Reminders ping the assignee on Discord while REQUESTED; Convert to order once QUOTED."
-        tips={['Rows flagged red/amber have been escalated (REQUESTED) or sat QUOTED too long — check the Attention filter.']}
+        blurb="Admin quote desk: build Cost Estimator versions, mark quoted, record customer response, then convert when ACCEPTED. Discord is secondary notify only."
+        tips={['Rows flagged red/amber have been escalated (REQUESTED) or sat QUOTED too long — check the Attention filter. Convert requires ACCEPTED.']}
       />
 
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>

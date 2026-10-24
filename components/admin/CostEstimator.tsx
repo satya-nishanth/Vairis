@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   GOLD_PURITIES,
   type DiamondSetInput,
@@ -207,13 +208,34 @@ const PURITY_OPTIONS: { value: string; label: string }[] = (
   label: GOLD_PURITIES[k].label,
 }))
 
-export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?: string }) {
+export function CostEstimator({
+  initialGoldRate24k = '',
+  initialAdditional = '',
+  quotationId,
+  quotationDisplayId,
+  initialSnapshot = null,
+  initialRatesLocked = false,
+}: {
+  initialGoldRate24k?: string
+  /** Prefill Additional Charges from store fixed-fee defaults (cert + pack + delivery). */
+  initialAdditional?: string
+  /** When set, saves create new QuotationEstimate versions on the server. */
+  quotationId?: string
+  quotationDisplayId?: string
+  /** Prefill from latest quotation estimate (new version starts from prior inputs). */
+  initialSnapshot?: CostEstimateSnapshot | null
+  initialRatesLocked?: boolean
+}) {
+  const router = useRouter()
   const [mode, setMode] = useState<Mode>('standard')
   const [toast, setToast] = useState('')
   const [sheet, setSheet] = useState<{ url: string; hint: string; blob: Blob } | null>(null)
   const [estimateName, setEstimateName] = useState('')
+  const [ratesLocked, setRatesLocked] = useState(initialRatesLocked)
+  const [savingQuote, setSavingQuote] = useState(false)
   const [history, setHistory] = useState<CostEstimateSnapshot[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
+  const prefilledRef = useRef(false)
 
   const [stdGoldRate, setStdGoldRate] = useState(() => stripCommas(initialGoldRate24k))
   const [stdDiamondRate, setStdDiamondRate] = useState('21000')
@@ -223,7 +245,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
   const [stdWastage, setStdWastage] = useState('10')
   const [stdGst, setStdGst] = useState('3')
   const [stdMaking, setStdMaking] = useState('750')
-  const [stdAdditional, setStdAdditional] = useState('')
+  const [stdAdditional, setStdAdditional] = useState(() => stripCommas(initialAdditional))
 
   const [cxGoldRate, setCxGoldRate] = useState(() => stripCommas(initialGoldRate24k))
   const [cxKarat, setCxKarat] = useState<GoldKarat>(18)
@@ -231,7 +253,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
   const [cxWastage, setCxWastage] = useState('10')
   const [cxGst, setCxGst] = useState('3')
   const [cxMaking, setCxMaking] = useState('750')
-  const [cxAdditional, setCxAdditional] = useState('')
+  const [cxAdditional, setCxAdditional] = useState(() => stripCommas(initialAdditional))
   const [diamondSets, setDiamondSets] = useState<DiamondSetInput[]>([
     { id: 1, name: 'Diamond 1', carats: '', costPerCarat: '' },
   ])
@@ -248,6 +270,15 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     setStdGoldRate((prev) => (stripCommas(prev) === '' ? raw : prev))
     setCxGoldRate((prev) => (stripCommas(prev) === '' ? raw : prev))
   }, [initialGoldRate24k])
+
+  // Apply latest quotation estimate once (do not set editingId — next save is a new version).
+  useEffect(() => {
+    if (!initialSnapshot || prefilledRef.current) return
+    prefilledRef.current = true
+    loadSnapshot(initialSnapshot, { asNewVersion: true, silent: true })
+    setRatesLocked(initialRatesLocked)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot prefill on mount
+  }, [initialSnapshot, initialRatesLocked])
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -322,9 +353,9 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     }
   }
 
-  function handleSaveEstimate() {
+  async function handleSaveEstimate() {
     const name = estimateName.trim()
-    if (!name) {
+    if (!quotationId && !name) {
       showToast('Enter a name for this estimate')
       return
     }
@@ -332,15 +363,49 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
       showToast('Fill the calculator so the total is greater than zero')
       return
     }
+
+    if (quotationId) {
+      setSavingQuote(true)
+      try {
+        const snapshot = buildSnapshot(name || quotationDisplayId || 'Estimate')
+        const res = await fetch(`/api/admin/quotations/${quotationId}/estimates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name || undefined,
+            mode: snapshot.mode,
+            ratesLocked,
+            standard: snapshot.standard,
+            complex: snapshot.complex,
+            results: snapshot.results,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          showToast(data.error ?? 'Failed to save estimate')
+          return
+        }
+        setEditingId(null)
+        router.push(`/admin/quotations/${quotationId}`)
+        router.refresh()
+      } finally {
+        setSavingQuote(false)
+      }
+      return
+    }
+
     const next = upsertCostEstimate(buildSnapshot(name))
     setHistory(next)
     setEditingId(next[0]?.id ?? null)
     showToast('Estimate saved')
   }
 
-  function loadSnapshot(item: CostEstimateSnapshot) {
-    setEstimateName(item.name)
-    setEditingId(item.id)
+  function loadSnapshot(
+    item: CostEstimateSnapshot,
+    opts?: { asNewVersion?: boolean; silent?: boolean },
+  ) {
+    setEstimateName(opts?.asNewVersion ? '' : item.name)
+    setEditingId(opts?.asNewVersion ? null : item.id)
     const s = item.standard
     setStdGoldRate(stripCommas(s.goldRate))
     setStdDiamondRate(stripCommas(s.diamondRate))
@@ -350,7 +415,12 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     setStdWastage(stripCommas(s.wastage))
     setStdGst(stripCommas(s.gst))
     setStdMaking(stripCommas(s.making))
-    setStdAdditional(stripCommas(s.additional))
+    // Keep intentional blank additional; only fall back when the field is missing (old snapshots).
+    setStdAdditional(
+      s.additional === undefined || s.additional === null
+        ? stripCommas(initialAdditional)
+        : stripCommas(s.additional),
+    )
     const c = item.complex
     setCxGoldRate(stripCommas(c.goldRate))
     setCxKarat(c.karat)
@@ -358,7 +428,11 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     setCxWastage(stripCommas(c.wastage))
     setCxGst(stripCommas(c.gst))
     setCxMaking(stripCommas(c.making))
-    setCxAdditional(stripCommas(c.additional))
+    setCxAdditional(
+      c.additional === undefined || c.additional === null
+        ? stripCommas(initialAdditional)
+        : stripCommas(c.additional),
+    )
     setDiamondSets(
       c.diamondSets?.length
         ? c.diamondSets.map((d) => ({
@@ -371,7 +445,9 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
     const maxId = Math.max(0, ...(c.diamondSets ?? []).map((d) => d.id))
     nextId.current = maxId + 1
     setMode(item.mode)
-    showToast(`Loaded “${item.name}”`)
+    if (!opts?.silent) {
+      showToast(opts?.asNewVersion ? 'Prefilled from latest estimate' : `Loaded “${item.name}”`)
+    }
   }
 
   async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -451,7 +527,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
               <div class="cost-est-detail__field"><div class="lbl">Wastage Percentage</div><div class="val">${blankDash(isComplex ? cxWastage : stdWastage)}</div></div>
               <div class="cost-est-detail__field"><div class="lbl">GST Percentage</div><div class="val">${blankDash(isComplex ? cxGst : stdGst)}</div></div>
               <div class="cost-est-detail__field"><div class="lbl">Making Charges Per Gram</div><div class="val">${blankDash(isComplex ? cxMaking : stdMaking)}</div></div>
-              ${(isComplex ? cxAdditional : stdAdditional) ? `<div class="cost-est-detail__field"><div class="lbl">Additional Charges (flat amount)</div><div class="val">${blankDash(isComplex ? cxAdditional : stdAdditional)}</div></div>` : ''}
+              ${(isComplex ? cxAdditional : stdAdditional) ? `<div class="cost-est-detail__field"><div class="lbl">Additional Charges (flat · cert + packaging + delivery)</div><div class="val">${blankDash(isComplex ? cxAdditional : stdAdditional)}</div></div>` : ''}
             </div>
           </div>
           <div class="col">
@@ -720,21 +796,66 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
         </button>
       </div>
 
+      {quotationId && (
+        <p style={{ margin: '0 0 12px', fontSize: '0.8125rem', color: 'var(--ce-muted)' }}>
+          Saving against quotation{' '}
+          <strong style={{ color: 'var(--ce-ink)' }}>{quotationDisplayId ?? quotationId}</strong>
+          {' — '}each save creates a new version on the desk.
+        </p>
+      )}
+
       {mode !== 'history' && (
         <div className="cost-est__save-bar">
-          <div className="cost-est__field">
-            <label>Estimate name</label>
-            <input
-              type="text"
-              value={estimateName}
-              onChange={(e) => setEstimateName(e.target.value)}
-              placeholder="e.g. Heart solitaire quote"
-              autoComplete="off"
-            />
-          </div>
-          <button type="button" className="cost-est__btn cost-est__btn--primary" onClick={handleSaveEstimate}>
-            {editingId ? 'Update saved estimate' : 'Save estimate'}
+          {!quotationId && (
+            <div className="cost-est__field">
+              <label>Estimate name</label>
+              <input
+                type="text"
+                value={estimateName}
+                onChange={(e) => setEstimateName(e.target.value)}
+                placeholder="e.g. Heart solitaire quote"
+                autoComplete="off"
+              />
+            </div>
+          )}
+          {quotationId && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: '0.8125rem',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={ratesLocked}
+                onChange={(e) => setRatesLocked(e.target.checked)}
+              />
+              Lock gold rate
+            </label>
+          )}
+          <button
+            type="button"
+            className="cost-est__btn cost-est__btn--primary"
+            disabled={savingQuote}
+            onClick={() => void handleSaveEstimate()}
+          >
+            {savingQuote
+              ? 'Saving…'
+              : quotationId
+                ? 'Save as new estimate version'
+                : editingId
+                  ? 'Update saved estimate'
+                  : 'Save estimate'}
           </button>
+          {quotationId && (
+            <a className="cost-est__btn" href={`/admin/quotations/${quotationId}`}>
+              Back to desk
+            </a>
+          )}
         </div>
       )}
 
@@ -849,7 +970,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
               invalid={!isValidDecimal(stripCommas(stdMaking))}
             />
             <Field
-              label="Additional Charges (flat amount)"
+              label="Additional Charges (flat · cert + packaging + delivery)"
               value={stdAdditional}
               onChange={setStdAdditional}
               invalid={!isValidDecimal(stripCommas(stdAdditional))}
@@ -909,7 +1030,7 @@ export function CostEstimator({ initialGoldRate24k = '' }: { initialGoldRate24k?
                   invalid={!isValidDecimal(stripCommas(cxMaking))}
                 />
                 <Field
-                  label="Additional Charges (flat amount)"
+                  label="Additional Charges (flat · cert + packaging + delivery)"
                   value={cxAdditional}
                   onChange={setCxAdditional}
                   invalid={!isValidDecimal(stripCommas(cxAdditional))}

@@ -351,9 +351,23 @@
 .admin-page--finance,
 .admin-page--discounts,
 .admin-page--promos,
-.admin-page--invoices {
+.admin-page--invoices,
+.admin-page--quotations {
   width: 100%;
   max-width: 100%;
+}
+
+.quotation-desk {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .quotation-desk {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

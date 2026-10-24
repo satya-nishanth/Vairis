@@ -5,7 +5,10 @@ import { requireAdmin } from '@/lib/auth'
 import * as quotations from '@/lib/quotations'
 
 jest.mock('@/lib/prisma', () => ({
-  prisma: { quotation: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() } },
+  prisma: {
+    quotation: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    quotationEvent: { create: jest.fn().mockResolvedValue({}) },
+  },
 }))
 jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
 jest.mock('@/lib/quotations', () => ({
@@ -13,6 +16,7 @@ jest.mock('@/lib/quotations', () => ({
   createQuoteThread: jest.fn().mockResolvedValue('thread-1'),
   postToThread: jest.fn(),
   mentionAssignee: jest.fn(() => '<@assignee>'),
+  quotationDeskUrl: jest.fn((id: string) => `/admin/quotations/${id}`),
 }))
 
 function postReq(body: unknown) {

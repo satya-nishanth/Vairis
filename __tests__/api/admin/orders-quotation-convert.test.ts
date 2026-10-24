@@ -17,6 +17,7 @@ jest.mock('@/lib/prisma', () => ({
       updateMany: jest.fn(),
       update: jest.fn(),
     },
+    quotationEvent: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn((cb) => cb(prisma)),
   },
 }))
@@ -25,6 +26,7 @@ jest.mock('@/lib/split', () => ({ autoSplitOrder: jest.fn().mockResolvedValue([]
 jest.mock('@/lib/quotations', () => ({
   ...jest.requireActual('@/lib/quotations'),
   closeThread: jest.fn(),
+  notifyQuotationUpdate: jest.fn(),
 }))
 
 function baseBody(overrides: Record<string, unknown> = {}) {
@@ -60,15 +62,20 @@ describe('POST /api/admin/orders — quotation conversion', () => {
     ;(prisma.pricingSettings.findUnique as jest.Mock).mockResolvedValue(null)
   })
 
-  it('converts a QUOTED quotation and closes its thread', async () => {
+  it('converts an ACCEPTED quotation and closes its thread', async () => {
     // The claim (updateMany) happens first now, before order.create — see
     // app/api/admin/orders/route.ts. Once it reports count: 1 the transaction re-reads the row
     // (now CONVERTED) to get discordThreadId, THEN creates the order, THEN links orderId back
     // onto the quotation with a plain update.
     ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 1 })
     ;(prisma.quotation.findUniqueOrThrow as jest.Mock).mockResolvedValue({
-      id: 'q1', status: 'CONVERTED', discordThreadId: 'thread-1',
+      id: 'q1',
+      displayId: 'Q-TEST',
+      status: 'CONVERTED',
+      discordThreadId: 'thread-1',
+      details: null,
     })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ discordThreadId: 'thread-1' })
     ;(prisma.order.create as jest.Mock).mockResolvedValue({ id: 'order-123', items: [{ id: 'item-1' }] })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
@@ -81,7 +88,7 @@ describe('POST /api/admin/orders — quotation conversion', () => {
 
     expect(prisma.quotation.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'q1', status: 'QUOTED' },
+        where: { id: 'q1', status: 'ACCEPTED' },
         data: { status: 'CONVERTED' },
       }),
     )
@@ -91,31 +98,42 @@ describe('POST /api/admin/orders — quotation conversion', () => {
         data: { orderId: 'order-123' },
       }),
     )
-    expect(quotations.closeThread).toHaveBeenCalledWith('thread-1', expect.stringContaining('order-123'.slice(-8)))
+    expect(quotations.notifyQuotationUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'q1', discordThreadId: 'thread-1' }),
+      expect.stringContaining('Converted'),
+    )
+    // Archive only — convert message already posted via notify (avoids duplicate thread posts).
+    expect(quotations.closeThread).toHaveBeenCalledWith('thread-1')
   })
 
   it('409s and creates no order when the claim fails because the quotation is already CONVERTED', async () => {
-    // The conditional updateMany (where status: 'QUOTED') matches 0 rows for a quotation that's
-    // no longer QUOTED — this is now the ONLY status check; there's no separate unlocked read
+    // The conditional updateMany (where status: 'ACCEPTED') matches 0 rows for a quotation that's
+    // no longer ACCEPTED — this is now the ONLY status check; there's no separate unlocked read
     // beforehand to race against, which is exactly the fix (see route.ts comment).
     ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 0 })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ status: 'CONVERTED' })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(409)
     const data = await res.json()
+    expect(data.error).toMatch(/already converted or cancelled/i)
     expect(data.orderId).toBeUndefined()
     expect(prisma.quotation.findUniqueOrThrow).not.toHaveBeenCalled()
     expect(prisma.order.create).not.toHaveBeenCalled()
     expect(quotations.closeThread).not.toHaveBeenCalled()
   })
 
-  it('409s and creates no order when the quotation is still REQUESTED (not yet QUOTED)', async () => {
-    // Same code path as the already-CONVERTED case: the where: { status: 'QUOTED' } clause on
-    // the claim simply doesn't match a REQUESTED row either, so count is 0.
+  it('409s and creates no order when the quotation is still QUOTED (not yet ACCEPTED)', async () => {
+    // Same code path as the already-CONVERTED case: the where: { status: 'ACCEPTED' } clause on
+    // the claim simply doesn't match a QUOTED row either, so count is 0.
     ;(prisma.quotation.updateMany as jest.Mock).mockResolvedValue({ count: 0 })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ status: 'QUOTED' })
 
     const res = await POST(req(baseBody({ quotationId: 'q1' })))
     expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.error).toMatch(/ACCEPTED/i)
+    expect(data.error).toMatch(/QUOTED/)
     expect(prisma.order.create).not.toHaveBeenCalled()
   })
 

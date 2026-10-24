@@ -54,7 +54,14 @@ const TEST_EMAIL = `integration-test-${RUN_ID}@integration-test.local`
 const TEST_SKU = `INTTEST-SKU-${RUN_ID}`
 const TEST_MOBILE_1 = `9999${RUN_ID}`.slice(0, 15) // step 1 (public intake + dedup)
 
-jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/auth', () => ({
+  requireAdmin: jest.fn().mockResolvedValue({ user: { email: 'admin@integration-test.local' } }),
+  requireAdminApi: jest.fn().mockResolvedValue({
+    session: { user: { email: 'admin@integration-test.local' } },
+    role: 'ADMIN',
+    email: 'admin@integration-test.local',
+  }),
+}))
 
 function jsonReq(url: string, method: string, body?: unknown, extraHeaders: Record<string, string> = {}) {
   return new NextRequest(url, {
@@ -244,6 +251,27 @@ describeIfConfigured('Quotation pipeline — real-database integration', () => {
     expect(dbRow?.quotedNotes).toBe('[integration-test] corrected quote after typo')
   })
 
+  // --- Step 3b: record customer acceptance before convert ---------------------------------
+
+  it('PATCH record_response accepted moves QUOTED → ACCEPTED', async () => {
+    const res = await patchAdminQuotation(
+      jsonReq(`http://localhost/api/admin/quotations/${quotationStep2Id}`, 'PATCH', {
+        action: 'record_response',
+        response: 'accepted',
+        channel: 'call',
+        notes: '[integration-test] verbal yes',
+      }),
+      { params: Promise.resolve({ id: quotationStep2Id }) },
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.status).toBe('ACCEPTED')
+
+    const dbRow = await prisma.quotation.findUnique({ where: { id: quotationStep2Id } })
+    expect(dbRow?.status).toBe('ACCEPTED')
+    expect(dbRow?.acceptedAt).not.toBeNull()
+  })
+
   // --- Step 4: convert to order — the race guard, for real --------------------------------
 
   function orderPayload() {
@@ -262,7 +290,7 @@ describeIfConfigured('Quotation pipeline — real-database integration', () => {
     }
   }
 
-  it('POST /api/admin/orders converts the QUOTED quotation to CONVERTED with a real orderId', async () => {
+  it('POST /api/admin/orders converts the ACCEPTED quotation to CONVERTED with a real orderId', async () => {
     const res = await postAdminOrder(jsonReq('http://localhost/api/admin/orders', 'POST', orderPayload()))
     expect(res.status).toBe(201)
     const body = await res.json()
@@ -280,7 +308,7 @@ describeIfConfigured('Quotation pipeline — real-database integration', () => {
 
   it('converting the same (now-CONVERTED) quotation again returns 409 and creates no second order', async () => {
     const res = await postAdminOrder(jsonReq('http://localhost/api/admin/orders', 'POST', orderPayload()))
-    // Proves the updateMany({ where: { id, status: 'QUOTED' } }) atomic guard holds against a
+    // Proves the updateMany({ where: { id, status: 'ACCEPTED' } }) atomic guard holds against a
     // genuinely CONVERTED row in real Postgres — not a mock told to return count: 0.
     expect(res.status).toBe(409)
     const body = await res.json()
@@ -351,11 +379,12 @@ describeIfConfigured('Quotation pipeline — real-database integration', () => {
         data: {
           displayId: `Q-RACE-${RUN_ID}`,
           source: 'MANUAL',
-          status: 'QUOTED',
+          status: 'ACCEPTED',
           orderType: 'CUSTOMISATION',
           details: '[integration-test] concurrency race fixture — safe to delete',
           quotedAmount: 40000,
           quotedAt: new Date(),
+          acceptedAt: new Date(),
         },
       })
       concurrencyQuotationId = quotation.id

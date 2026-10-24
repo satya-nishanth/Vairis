@@ -4,12 +4,26 @@ import { prisma } from '@/lib/prisma'
 import * as quotations from '@/lib/quotations'
 
 jest.mock('@/lib/prisma', () => ({
-  prisma: { quotation: { findUnique: jest.fn(), update: jest.fn() } },
+  prisma: {
+    quotation: { findUnique: jest.fn(), update: jest.fn() },
+    quotationEvent: { create: jest.fn() },
+    $transaction: jest.fn((cb) => cb({
+      quotation: { update: (...args: unknown[]) => (prisma.quotation.update as jest.Mock)(...args) },
+      quotationEvent: { create: jest.fn().mockResolvedValue({}) },
+    })),
+  },
 }))
-jest.mock('@/lib/auth', () => ({ requireAdmin: jest.fn() }))
+jest.mock('@/lib/auth', () => ({
+  requireAdminApi: jest.fn().mockResolvedValue({
+    session: { user: { email: 'admin@thevairis.com' } },
+    role: 'ADMIN',
+    email: 'admin@thevairis.com',
+  }),
+}))
 jest.mock('@/lib/quotations', () => ({
   ...jest.requireActual('@/lib/quotations'),
   closeThread: jest.fn(),
+  notifyQuotationUpdate: jest.fn(),
 }))
 
 function patchReq(body: unknown) {
@@ -28,14 +42,24 @@ describe('PATCH /api/admin/quotations/[id]', () => {
   beforeEach(() => jest.clearAllMocks())
 
   it('mark_quoted is rejected from a terminal status', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'CONVERTED',
+      discordThreadId: null,
+      estimates: [],
+    })
     const res = await PATCH(patchReq({ action: 'mark_quoted' }), { params: Promise.resolve({ id: 'q1' }) })
     expect(res.status).toBe(409)
     expect(prisma.quotation.update).not.toHaveBeenCalled()
   })
 
   it('mark_quoted sets QUOTED + quotedAt + optional amount/notes', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: null })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'REQUESTED',
+      discordThreadId: null,
+      estimates: [],
+    })
     ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
     const res = await PATCH(
       patchReq({ action: 'mark_quoted', quotedAmount: 45000, quotedNotes: 'Discussed at the store' }),
@@ -50,17 +74,48 @@ describe('PATCH /api/admin/quotations/[id]', () => {
   })
 
   it('mark_quoted can be called again while still QUOTED to overwrite amount/notes', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'QUOTED',
+      discordThreadId: null,
+      estimates: [],
+    })
     ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'QUOTED', discordThreadId: null })
-    const res = await PATCH(patchReq({ action: 'mark_quoted', quotedAmount: 50000 }), { params: Promise.resolve({ id: 'q1' }) })
+    const res = await PATCH(patchReq({ action: 'mark_quoted', quotedAmount: 50000 }), {
+      params: Promise.resolve({ id: 'q1' }),
+    })
     expect(res.status).toBe(200)
     expect(prisma.quotation.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'QUOTED', quotedAmount: 50000 }) }),
     )
   })
 
+  it('record_response accepted moves QUOTED → ACCEPTED', async () => {
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'QUOTED',
+      discordThreadId: null,
+      estimates: [],
+      acceptedAt: null,
+    })
+    ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'ACCEPTED', discordThreadId: null })
+    const res = await PATCH(
+      patchReq({ action: 'record_response', response: 'accepted', channel: 'call' }),
+      { params: Promise.resolve({ id: 'q1' }) },
+    )
+    expect(res.status).toBe(200)
+    expect(prisma.quotation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'ACCEPTED' }) }),
+    )
+  })
+
   it('cancel closes the Discord thread when one exists', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'REQUESTED', discordThreadId: 'thread-1' })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'REQUESTED',
+      discordThreadId: 'thread-1',
+      estimates: [],
+    })
     ;(prisma.quotation.update as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CANCELLED', discordThreadId: 'thread-1' })
     const res = await PATCH(patchReq({ action: 'cancel' }), { params: Promise.resolve({ id: 'q1' }) })
     expect(res.status).toBe(200)
@@ -68,7 +123,12 @@ describe('PATCH /api/admin/quotations/[id]', () => {
   })
 
   it('cancel is rejected from a terminal status', async () => {
-    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({ id: 'q1', status: 'CONVERTED', discordThreadId: null })
+    ;(prisma.quotation.findUnique as jest.Mock).mockResolvedValue({
+      id: 'q1',
+      status: 'CONVERTED',
+      discordThreadId: null,
+      estimates: [],
+    })
     const res = await PATCH(patchReq({ action: 'cancel' }), { params: Promise.resolve({ id: 'q1' }) })
     expect(res.status).toBe(409)
   })

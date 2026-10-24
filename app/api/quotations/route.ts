@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { createWithUniqueDisplayId, createQuoteThread, postToThread, mentionAssignee } from '@/lib/quotations'
+import {
+  createWithUniqueDisplayId,
+  createQuoteThread,
+  mentionAssignee,
+  notifyQuotationUpdate,
+  quotationMilestone,
+} from '@/lib/quotations'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
     // rapid submissions from the same phone can't race past this check.
     const existingRows = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Quotation"
-      WHERE "customerMobile" = ${d.customerMobile} AND status IN ('REQUESTED', 'QUOTED')
+      WHERE "customerMobile" = ${d.customerMobile} AND status IN ('REQUESTED', 'QUOTED', 'ACCEPTED')
       FOR UPDATE
     `
     if (existingRows.length > 0) {
@@ -50,20 +56,31 @@ export async function POST(req: NextRequest) {
           },
         }),
     )
+    await tx.quotationEvent.create({
+      data: {
+        quotationId: quotation.id,
+        type: 'CREATED',
+        message: 'Created (WEBSITE)',
+        meta: { source: 'WEBSITE' },
+      },
+    })
     return { quotation, created: true }
   })
 
   if (result.created) {
     try {
       const threadId = await createQuoteThread(`${result.quotation.displayId} · vairis · ${d.customerName}`)
-      await prisma.quotation.update({
+      const withThread = await prisma.quotation.update({
         where: { id: result.quotation.id },
         data: { discordThreadId: threadId },
       })
-      result.quotation = { ...result.quotation, discordThreadId: threadId }
-      await postToThread(
-        threadId,
-        `${mentionAssignee()} New website quotation request\n**Customer:** ${d.customerName}\n**Mobile:** ${d.customerMobile}${d.details ? `\n**Details:** ${d.details}` : ''}`,
+      result.quotation = withThread
+      await notifyQuotationUpdate(
+        withThread,
+        `${mentionAssignee()} ${quotationMilestone(
+          'Quotation created',
+          `Website · ${d.customerName}\n**Mobile:** ${d.customerMobile}${d.details ? `\n**Details:** ${d.details}` : ''}`,
+        )}`,
       )
     } catch (err) {
       // Never blocks the response — reminderPoll retries thread creation (a later task).
@@ -81,12 +98,17 @@ export async function POST(req: NextRequest) {
         data: { details: appendedDetails },
       })
       result.quotation = { ...result.quotation, details: appendedDetails }
-      if (result.quotation.discordThreadId) {
-        await postToThread(
-          result.quotation.discordThreadId,
-          `${mentionAssignee()} Additional enquiry from ${result.quotation.customerName ?? d.customerName}\n**Details:** ${d.details}`,
-        )
-      }
+      await prisma.quotationEvent.create({
+        data: {
+          quotationId: result.quotation.id,
+          type: 'NOTE',
+          message: `Additional enquiry: ${d.details.slice(0, 280)}`,
+        },
+      })
+      await notifyQuotationUpdate(
+        result.quotation,
+        `${mentionAssignee()} Additional enquiry from ${result.quotation.customerName ?? d.customerName}\n**Details:** ${d.details}`,
+      )
     } catch (err) {
       console.error('[api/quotations] Failed to record additional enquiry on existing quotation', err)
     }
