@@ -11,6 +11,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
+import { orderDiscountDisplayLines } from "@/lib/discounts";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,7 @@ export default async function OrderDetailPage({
       events: { orderBy: { createdAt: "asc" } },
       notes: { orderBy: { createdAt: "asc" } },
       user: { select: { email: true } },
+      promoCode: { select: { code: true } },
       parent: { select: { id: true } },
       children: {
         include: {
@@ -80,6 +82,11 @@ export default async function OrderDetailPage({
   if (!order || order.user.email !== session.user.email) notFound();
 
   const deposit = Number(order.depositAmount);
+  const discountLines = orderDiscountDisplayLines(
+    order.discountBreakdown,
+    Number(order.discountAmount),
+    order.promoCode?.code,
+  );
   const shipment = order.shipments[0] ?? null;
   const refunded = Number(order.payment?.refundedAmount ?? 0);
   // Split children carry no Payment row of their own — the parent was paid.
@@ -228,6 +235,10 @@ export default async function OrderDetailPage({
                     value: formatPrice(Number(item.price) * item.quantity),
                   }),
                 ),
+                ...discountLines.map((d) => ({
+                  label: d.label,
+                  value: `− ${formatPrice(d.amount)}`,
+                })),
                 ...(deposit > 0
                   ? [{ label: "Refundable deposit", value: formatPrice(deposit) }]
                   : []),

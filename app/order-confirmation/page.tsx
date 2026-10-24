@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { pageLayouts } from "@/lib/layout-config";
 import { formatPrice } from "@/lib/ui-data";
+import { orderDiscountDisplayLines } from "@/lib/discounts";
 import { CopyOrderButton } from "./CopyOrderButton";
 import { PurchaseTracker } from "./PurchaseTracker";
 
@@ -34,12 +35,21 @@ export default async function OrderConfirmationPage({
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true, user: { select: { email: true } } },
+    include: {
+      items: true,
+      user: { select: { email: true } },
+      promoCode: { select: { code: true } },
+    },
   });
   if (!order || order.user.email !== session.user.email) redirect("/account/orders");
 
   const paymentPending = order.status === "PAYMENT_PENDING";
   const deposit = Number(order.depositAmount);
+  const discountLines = orderDiscountDisplayLines(
+    order.discountBreakdown,
+    Number(order.discountAmount),
+    order.promoCode?.code,
+  );
 
   return (
     <PageShell {...layout}>
@@ -130,6 +140,10 @@ export default async function OrderConfirmationPage({
               ...order.items.map((item) => ({
                 label: `${item.productName} × ${item.quantity}${item.withExchange ? " (with exchange)" : ""}`,
                 value: formatPrice(Number(item.price) * item.quantity),
+              })),
+              ...discountLines.map((d) => ({
+                label: d.label,
+                value: `− ${formatPrice(d.amount)}`,
               })),
               ...(deposit > 0
                 ? [{ label: "Refundable deposit", value: formatPrice(deposit) }]

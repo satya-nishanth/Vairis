@@ -1,4 +1,4 @@
-import { computeDiscount, componentInclGst, promoSchema } from '@/lib/promo'
+import { computeDiscount, componentInclGst, promoPatchSchema, promoSchema } from '@/lib/promo'
 
 describe('promoSchema', () => {
   it('accepts FREE_DELIVERY with zero value', () => {
@@ -28,6 +28,31 @@ describe('promoSchema', () => {
     })
     expect(parsed.success).toBe(true)
     if (parsed.success) expect(parsed.data.firstOrderOnly).toBe(true)
+  })
+
+  it('rejects codes longer than 40 characters', () => {
+    const parsed = promoSchema.safeParse({
+      code: 'A'.repeat(41),
+      kind: 'PERCENT',
+      value: 10,
+    })
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.message).toMatch(/40/)
+    }
+  })
+})
+
+describe('promoPatchSchema', () => {
+  it('active-only PATCH does not invent value or defaults', () => {
+    const parsed = promoPatchSchema.safeParse({ active: false })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data).toEqual({ active: false })
+      expect(parsed.data.value).toBeUndefined()
+      expect(parsed.data.minOrderValue).toBeUndefined()
+      expect(parsed.data.maxPerUser).toBeUndefined()
+    }
   })
 })
 

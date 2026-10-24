@@ -598,3 +598,42 @@ export function isOrderDiscountBreakdown(v: unknown): v is OrderDiscountBreakdow
   const o = v as Record<string, unknown>
   return 'automatic' in o && 'coupon' in o
 }
+
+/**
+ * Customer-facing summary rows for Order.discountBreakdown
+ * (confirmation, My Orders). Falls back to a single promo line when
+ * only Order.discountAmount is set (legacy / manual).
+ */
+export function orderDiscountDisplayLines(
+  discountBreakdown: unknown,
+  discountAmount: number,
+  promoCode?: string | null,
+): { label: string; amount: number }[] {
+  const lines: { label: string; amount: number }[] = []
+  const bd = isOrderDiscountBreakdown(discountBreakdown) ? discountBreakdown : null
+  const auto = bd?.automatic
+  const coupon = bd?.coupon
+
+  if (auto && auto.amount > 0) {
+    const pct = auto.percent != null ? ` · ${auto.percent}%` : ''
+    const name = auto.name ? ` (${auto.name}${pct})` : pct ? ` (${String(auto.percent)}%)` : ''
+    lines.push({ label: `Discount${name}`, amount: auto.amount })
+  }
+  if (coupon && coupon.amount > 0) {
+    const code = coupon.code ?? 'Coupon'
+    const detail =
+      coupon.percent != null
+        ? ` · ${coupon.percent}%`
+        : coupon.kind
+          ? ` · ${coupon.kind}`
+          : ''
+    lines.push({ label: `Coupon (${code}${detail})`, amount: coupon.amount })
+  }
+  if (lines.length === 0 && discountAmount > 0) {
+    lines.push({
+      label: promoCode ? `Promo (${promoCode})` : 'Discount',
+      amount: discountAmount,
+    })
+  }
+  return lines
+}

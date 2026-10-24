@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
-import { promoSchema } from '@/lib/promo'
+import { promoPatchSchema, serializePromo } from '@/lib/promo'
 import { normalizeScope, replacePromoScopes } from '@/lib/discount-scope'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   await requireAdmin()
   const { id } = await params
 
-  const parsed = promoSchema.partial().safeParse(await req.json().catch(() => ({})))
+  const parsed = promoPatchSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? 'Invalid promo' },
@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
       )
     }
 
-    return NextResponse.json(promo)
+    return NextResponse.json(serializePromo(promo))
   } catch {
     return NextResponse.json({ error: 'Update failed (missing promo or duplicate code)' }, { status: 409 })
   }
