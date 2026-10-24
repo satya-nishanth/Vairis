@@ -1507,3 +1507,8 @@ body:has(.pdp-page) .breadcrumbs.container {
   .pdp-actions--desktop { display: none; }
   .pdp-gallery__wish { display: flex; }
 }
+
+/* Mobile: the sticky bar and the photo already carry these promises */
+@media (max-width: 767px) {
+  .pdp-promises--info { display: none; }
+}
