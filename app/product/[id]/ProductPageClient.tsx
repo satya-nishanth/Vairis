@@ -864,12 +864,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   </thead>
                   <tbody>
                     <tr>
-                      <th scope="row">Gold exchange value*</th>
+                      <th scope="row">Gold exchange<span className="pdp-plans__long"> value</span>*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 100% · {inr(exchangeGold)}</td>
                     </tr>
                     <tr>
-                      <th scope="row">Diamond exchange value*</th>
+                      <th scope="row">Diamond exchange<span className="pdp-plans__long"> value</span>*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 90% · {inr(exchangeDiamond)}</td>
                     </tr>
