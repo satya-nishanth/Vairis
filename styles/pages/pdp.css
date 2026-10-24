@@ -1248,7 +1248,7 @@
   .pdp-gallery { position: sticky; top: 105px; align-self: start; }
 }
 .pdp-gallery > * { min-width: 0; max-width: 100%; }
-.pdp-gallery__main { order: 1; position: static; border-radius: 12px; width: 100%; }
+.pdp-gallery__main { order: 1; position: relative; border-radius: 12px; width: 100%; }
 .pdp-gallery__main img { max-width: 100%; height: auto; }
 .pdp-gallery__thumbs {
   order: 2;
@@ -1499,4 +1499,11 @@ body:has(.pdp-page) .breadcrumbs.container {
   .pdp-info__title { font-size: 1.375rem; line-height: 1.25; }
   .pdp-price__now { font-size: 1.375rem; }
   .pdp-layout { padding-bottom: 32px; }
+}
+
+/* Mobile: Add to cart / Buy now / Enquire live in the sticky bar; wishlist sits on the photo */
+.pdp-gallery__wish { display: none; }
+@media (max-width: 767px) {
+  .pdp-actions--desktop { display: none; }
+  .pdp-gallery__wish { display: flex; }
 }
