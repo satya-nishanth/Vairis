@@ -791,16 +791,24 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       </span>
                       <ul className="pdp-plan__perks">
                         <li>
-                          <b>100% gold value</b> towards an exchange, at that day&rsquo;s gold rate
+                          <span>
+                            <b>100% gold value</b>{" "}towards an exchange, at that day&rsquo;s gold rate
+                          </span>
                         </li>
                         <li>
-                          <b>90% diamond value</b> towards an exchange
+                          <span>
+                            <b>90% diamond value</b>{" "}towards an exchange
+                          </span>
                         </li>
                         <li>
-                          <b>Free service for life</b> for any damage
+                          <span>
+                            <b>Free service for life</b>{" "}for any damage
+                          </span>
                         </li>
                         <li>
-                          <b>Lifetime support</b>
+                          <span>
+                            <b>Lifetime support</b>
+                          </span>
                         </li>
                       </ul>
                     </span>

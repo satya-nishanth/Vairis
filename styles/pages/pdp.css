@@ -1138,7 +1138,9 @@
   font-size: 0.8125rem;
   line-height: 1.4;
 }
-.pdp-plan--value .pdp-plan__perks li::before { content: "✓ "; color: var(--brand-olive); font-weight: 700; }
+.pdp-plan__perks li { display: flex; gap: 6px; }
+.pdp-plan__perks b { display: inline; }
+.pdp-plan--value .pdp-plan__perks li::before { content: "✓"; color: var(--brand-olive); font-weight: 700; }
 .pdp-plans__value {
   margin: 0;
   padding: 10px 12px;
