@@ -1949,6 +1949,11 @@
     padding-inline: 16px;
   }
 
+  /* the hero already pads its content by 16px */
+  body:has(.plp-main) .plp-hero__content .breadcrumbs.container {
+    padding-inline: 0;
+  }
+
   .plp-grid .product-card__img-wrap {
     aspect-ratio: auto;
     height: 196px;
