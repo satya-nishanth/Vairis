@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 
@@ -198,7 +198,7 @@ export function ProductFilterLabelsEditor({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#111827' }}>
-              ≡ƒÅ╖∩╕Å Filter Labels &amp; Tags
+              🏷️ Filter Labels &amp; Tags
             </span>
             <span
               style={{
@@ -316,7 +316,7 @@ export function ProductFilterLabelsEditor({
             gap: '6px',
           }}
         >
-          <span>Γ£ô</span>
+          <span>✓</span>
           <span>{statusMessage}</span>
         </div>
       )}
@@ -335,7 +335,7 @@ export function ProductFilterLabelsEditor({
             gap: '6px',
           }}
         >
-          <span>ΓÜá∩╕Å</span>
+          <span>⚠️</span>
           <span>{statusMessage}</span>
         </div>
       )}
@@ -381,10 +381,10 @@ export function ProductFilterLabelsEditor({
                 title={`Click to remove "${lbl}"`}
               >
                 <span className="pfl-icon-check" style={{ fontSize: '11px', color: '#2563eb' }}>
-                  Γ£ô
+                  ✓
                 </span>
                 <span className="pfl-icon-cross" style={{ fontSize: '11px', color: '#dc2626' }}>
-                  Γ£ò
+                  ✕
                 </span>
                 <span>{lbl}</span>
                 <span
@@ -395,7 +395,7 @@ export function ProductFilterLabelsEditor({
                     opacity: 0.7,
                   }}
                 >
-                  ├ù
+                  ×
                 </span>
               </button>
             ))}

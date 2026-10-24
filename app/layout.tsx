@@ -27,7 +27,7 @@ const cormorant = localFont({
 
 const inter = localFont({
   src: "./fonts/Inter-latin-wght.woff2",
-  weight: "400 600",
+  weight: "400 700",
   display: "swap",
   variable: "--font-sans-loaded",
   fallback: ["system-ui", "Arial", "sans-serif"],
@@ -79,7 +79,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="en"
-      className={`${cormorant.variable} ${inter.variable}`}
+      className={inter.variable}
       data-theme={DEFAULT_SITE_THEME}
       suppressHydrationWarning
     >

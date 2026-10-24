@@ -181,13 +181,21 @@ export async function runFinanceDigest(): Promise<{
   content: string
   alerts: FinanceDigestAlerts
 }> {
-  const webhookUrl = process.env.DISCORD_FINANCE_WEBHOOK_URL?.trim()
-  if (!webhookUrl) {
-    throw new Error('DISCORD_FINANCE_WEBHOOK_URL is not set')
-  }
-
   const alerts = await loadFinanceDigestAlerts()
   const content = formatFinanceDigestMessage(alerts)
+  const webhookUrl = process.env.DISCORD_FINANCE_WEBHOOK_URL?.trim()
+
+  if (
+    !webhookUrl ||
+    webhookUrl === 'disabled' ||
+    webhookUrl.startsWith('https://discord.com/api/webhooks/disabled') ||
+    webhookUrl.startsWith('placeholder')
+  ) {
+    console.warn('[finance-digest] DISCORD_FINANCE_WEBHOOK_URL is disabled or not set; skipped posting.')
+    return { posted: false, content, alerts }
+  }
+
   await postDiscordWebhook(webhookUrl, content)
   return { posted: true, content, alerts }
 }
+

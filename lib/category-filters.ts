@@ -1,4 +1,4 @@
-﻿import fs from "fs";
+import fs from "fs";
 import path from "path";
 import {
   PLP_FILTER_GROUPS,
@@ -26,7 +26,15 @@ export type CategoryFilterConfig = {
 
 const DATA_FILE = path.join(process.cwd(), "data", "category-filters.json");
 
-const DEFAULT_METALS = ["Yellow Gold", "White Gold", "Rose Gold", "18K Gold"];
+const DEFAULT_METALS = [
+  "Yellow Gold",
+  "White Gold",
+  "Rose Gold",
+  "22K Gold",
+  "18K Gold",
+  "14K Gold",
+  "9K Gold",
+];
 
 /**
  * Returns baseline default filters for a category from PLP_FILTER_GROUPS or sensible defaults.

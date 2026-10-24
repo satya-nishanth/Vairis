@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getPricingConfig } from '@/lib/pricing-data'
 import { getStoreCategories } from '@/lib/store-categories'
+import { getAllCategoryFilters, getProductLinkedLabels } from '@/lib/category-filters'
 import { resolveMiscChargeLines } from '@/lib/misc-charges'
 import ProductForm from '@/components/admin/ProductForm'
 
@@ -14,7 +14,7 @@ export default async function EditProductPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [product, diamondRates, goldRates, pricingConfig, storeCategories] = await Promise.all([
+  const [product, diamondRates, goldRates, pricingConfig, storeCategories, allFilters] = await Promise.all([
     prisma.product.findUnique({
       where: { id },
       include: {
@@ -37,10 +37,12 @@ export default async function EditProductPage({
     prisma.goldRate.findMany(),
     getPricingConfig(),
     getStoreCategories(),
+    getAllCategoryFilters(),
   ])
 
   if (!product) notFound()
 
+  const linkedLabels = getProductLinkedLabels(product, allFilters)
   // Prefer StoreCategory join slug so custom cats don't show as PENDANTS in the form.
   const storeSlug = product.storeCategories[0]?.category?.slug
   const formCategory = storeSlug
@@ -112,14 +114,7 @@ export default async function EditProductPage({
       : undefined
 
   return (
-    <div className="admin-page">
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#9ca3af', textDecoration: 'none' }}>
-          ← Products
-        </Link>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 400, color: '#111827', marginTop: '0.5rem' }}>Edit Product</h1>
-        <p style={{ fontSize: '0.875rem', color: '#9ca3af', marginTop: '0.125rem' }}>{product.name}</p>
-      </div>
+    <div className="admin-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <ProductForm
         mode="edit"
         categories={storeCategories.map((c) => ({ slug: c.slug, name: c.name }))}
@@ -131,8 +126,10 @@ export default async function EditProductPage({
         }))}
         goldRates={Object.fromEntries(goldRates.map((r) => [r.metalType, Number(r.ratePerGram)]))}
         pricingConfig={pricingConfig}
+        allCategoryFilters={allFilters}
         initialData={{
           id: product.id,
+          labels: linkedLabels,
           name: product.name,
           description: product.description,
           category: formCategory,

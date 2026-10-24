@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getStoreCategories } from "@/lib/store-categories";
+import { DEFAULT_STORE_CATEGORIES, getStoreCategories } from "@/lib/store-categories";
 import {
   CATEGORY_LABELS,
   getCategoryHeroImage,
@@ -7,6 +7,7 @@ import {
   STOCKED_CATEGORIES,
 } from "@/lib/catalogue-ui";
 import { SLUG_TO_PRISMA } from "@/lib/categories";
+import { getCategoryFallbackHero } from "@/lib/category-hero-images";
 import { marketingImages } from "@/lib/images";
 import type { Category } from "@prisma/client";
 
@@ -27,25 +28,22 @@ export async function getHomeCategoryCarouselItems(): Promise<HomeCategoryCarous
   try {
     const storeCategories = await getStoreCategories({ activeOnly: true }).catch(() => []);
 
-    const targetCategories =
+    // Ensure we have a valid category list. If storeCategories has items, preserve core STOCKED_CATEGORIES if missing.
+    const baseList =
       storeCategories.length > 0
-        ? storeCategories.map((c) => ({
-            slug: c.slug,
-            name: c.name,
-            description:
-              c.description ||
-              CATEGORY_LABELS[c.slug as keyof typeof CATEGORY_LABELS]?.description ||
-              "",
-            image: c.image,
-            productIds: c.productIds ?? [],
-          }))
-        : STOCKED_CATEGORIES.map((slug) => ({
-            slug,
-            name: CATEGORY_LABELS[slug]?.title || slug,
-            description: CATEGORY_LABELS[slug]?.description || "",
-            image: null,
-            productIds: [] as string[],
-          }));
+        ? storeCategories
+        : DEFAULT_STORE_CATEGORIES.filter((c) => c.isActive);
+
+    const targetCategories = baseList.map((c) => ({
+      slug: c.slug,
+      name: c.name,
+      description:
+        c.description ||
+        CATEGORY_LABELS[c.slug as keyof typeof CATEGORY_LABELS]?.description ||
+        "",
+      image: c.image,
+      productIds: c.productIds ?? [],
+    }));
 
     const items: HomeCategoryCarouselItem[] = [];
 
@@ -146,13 +144,14 @@ export async function getHomeCategoryCarouselItems(): Promise<HomeCategoryCarous
           images: productImages,
         });
       } else {
-        // Fallback for static mock / unseeded environments:
-        // Only if no DB products exist at all, use catalogue preview images if available
+        // Fallback for static mock / unseeded environments / sparse categories:
+        // Use catalogue preview images or hero image fallbacks
         const fallbackPreviews = getCategoryPreviewImages(cat.slug as any, 6);
         const heroImg =
           cat.image ||
           getCategoryHeroImage(cat.slug as any) ||
-          marketingImages.categories[cat.slug as keyof typeof marketingImages.categories];
+          marketingImages.categories[cat.slug as keyof typeof marketingImages.categories] ||
+          getCategoryFallbackHero(cat.slug);
         const finalImages =
           fallbackPreviews.length > 0 ? fallbackPreviews : heroImg ? [heroImg] : [];
         if (finalImages.length > 0) {
@@ -166,18 +165,25 @@ export async function getHomeCategoryCarouselItems(): Promise<HomeCategoryCarous
       }
     }
 
-    return items;
+    if (items.length > 0) {
+      return items;
+    }
   } catch (err) {
     console.error("[getHomeCategoryCarouselItems] Error:", err);
-    return STOCKED_CATEGORIES.map((slug) => {
-      const previewImages = getCategoryPreviewImages(slug);
-      const heroImage = getCategoryHeroImage(slug) ?? marketingImages.categories[slug];
-      return {
-        slug,
-        title: CATEGORY_LABELS[slug].title,
-        description: CATEGORY_LABELS[slug].description,
-        images: previewImages.length > 0 ? previewImages : [heroImage],
-      };
-    });
   }
+
+  // Guaranteed fallback: return stocked categories with preview/hero images
+  return STOCKED_CATEGORIES.map((slug) => {
+    const previewImages = getCategoryPreviewImages(slug);
+    const heroImage =
+      getCategoryFallbackHero(slug) ??
+      getCategoryHeroImage(slug) ??
+      marketingImages.categories[slug];
+    return {
+      slug,
+      title: CATEGORY_LABELS[slug]?.title || slug,
+      description: CATEGORY_LABELS[slug]?.description || "",
+      images: previewImages.length > 0 ? previewImages : heroImage ? [heroImage] : [],
+    };
+  });
 }

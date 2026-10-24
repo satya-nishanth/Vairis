@@ -27,6 +27,9 @@ param customDomainFqdn string = ''
 @description('Name of an existing managed certificate under the Container Apps Environment, matching customDomainFqdn. Must already be issued before this deploys, or provisioning fails.')
 param customCertificateName string = ''
 
+@description('Discord webhook URL for daily finance digest notifications. Defaults to disabled.')
+param discordFinanceWebhookUrl string = 'disabled'
+
 @description('True when deploying the prod environment — lets modules size themselves differently per environment')
 var isProd = environmentName == 'prod'
 
@@ -152,7 +155,7 @@ module app 'modules/app.bicep' = {
       { name: 'admin-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/admin-emails', identity: identity.outputs.identityId }
       { name: 'finance-emails', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/finance-emails', identity: identity.outputs.identityId }
       { name: 'finance-digest-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/finance-digest-secret', identity: identity.outputs.identityId }
-      { name: 'discord-finance-webhook-url', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/discord-finance-webhook-url', identity: identity.outputs.identityId }
+      { name: 'discord-finance-webhook-url', value: !empty(discordFinanceWebhookUrl) ? discordFinanceWebhookUrl : 'disabled' }
       { name: 'gold-sync-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/gold-sync-secret', identity: identity.outputs.identityId }
       { name: 'order-sweep-secret', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/order-sweep-secret', identity: identity.outputs.identityId }
       { name: 'metal-price-api-key', keyVaultUrl: '${keyVault.outputs.keyVaultUri}secrets/metal-price-api-key', identity: identity.outputs.identityId }
