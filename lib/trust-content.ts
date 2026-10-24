@@ -19,6 +19,8 @@ const serviceAnchors: Record<string, string> = {
   "secure payments": "secure-payments",
   "easy returns": "returns-exchange",
   "lifetime support": "lifetime-support",
+  "lifetime care plans": "lifetime-support",
+  "lifetime care": "lifetime-support",
   "no showroom markups": "vairis-way",
   "transparent pricing": "diamond-pricing",
   "made for everyday": "vairis-way",

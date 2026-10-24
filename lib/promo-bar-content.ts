@@ -20,5 +20,5 @@ export const announcementBarItems: PromoBarItem[] = [
   { label: "BIS Hallmarked Gold", icon: { name: "bis_hallmark", category: "brand" } },
   { label: "Insured Shipping", icon: { name: "insured_shipping", category: "brand" } },
   { label: "Easy Returns", icon: { name: "easy_returns", category: "brand" } },
-  { label: "Lifetime Support", icon: { name: "lifetime_support", category: "brand" } },
+  { label: "Lifetime care plans", icon: { name: "lifetime_support", category: "brand" } },
 ];

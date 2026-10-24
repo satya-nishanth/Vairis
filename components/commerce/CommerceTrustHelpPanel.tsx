@@ -9,9 +9,9 @@ type TrustCardProps = {
   description: string;
 };
 
-function TrustCard({ icon, label, description }: TrustCardProps) {
+function TrustCard({ icon, label, description, href }: TrustCardProps & { href?: string }) {
   return (
-    <Link href={serviceHrefForLabel(label)} className="plp-trust-card-link">
+    <Link href={href ?? serviceHrefForLabel(label)} className="plp-trust-card-link">
       <article className="plp-trust-card">
         <span className="plp-trust-card__icon-wrap">
           <ThemeIcon name={icon.name} category={icon.category} size={36} className="plp-trust-card__icon" />
@@ -24,20 +24,38 @@ function TrustCard({ icon, label, description }: TrustCardProps) {
 }
 
 /** Shared trust + help panel used on PLP and PDP. */
-export function CommerceTrustHelpPanel({ className }: { className?: string }) {
+export function CommerceTrustHelpPanel({
+  className,
+  heading,
+  lifetimeCareCopy,
+}: {
+  className?: string;
+  heading?: string;
+  /** PDP wording: the card promises only what the Lifetime Value plan gives. */
+  lifetimeCareCopy?: boolean;
+}) {
+  const card = (item: (typeof plpTrustItemsPrimary)[number] | (typeof plpTrustItemsSecondary)[number]) =>
+    lifetimeCareCopy && item.label === "Lifetime Support" ? (
+      <TrustCard
+        key={item.label}
+        icon={item.icon}
+        label="Lifetime Care"
+        description="With the Lifetime Value plan."
+        href={serviceHrefForLabel(item.label)}
+      />
+    ) : (
+      <TrustCard key={item.label} {...item} />
+    );
   return (
     <div className={["plp-bottom", className].filter(Boolean).join(" ")}>
       <div className="plp-bottom__trust" aria-label="Shopping guarantees">
+        {heading && <h2 className="plp-bottom__heading">{heading}</h2>}
         <div className="plp-trust-cards">
           <div className="plp-trust-cards__row plp-trust-cards__row--four">
-            {plpTrustItemsPrimary.map((item) => (
-              <TrustCard key={item.label} {...item} />
-            ))}
+            {plpTrustItemsPrimary.map(card)}
           </div>
           <div className="plp-trust-cards__row plp-trust-cards__row--three">
-            {plpTrustItemsSecondary.map((item) => (
-              <TrustCard key={item.label} {...item} />
-            ))}
+            {plpTrustItemsSecondary.map(card)}
           </div>
         </div>
       </div>
