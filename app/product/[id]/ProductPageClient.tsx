@@ -1115,6 +1115,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 : price
               : undefined
           }
+          wasPrice={product.showPrice && price != null && discPct ? price : undefined}
           planLabel={
             hasStones && priceWithTotal != null && priceWithoutTotal != null &&
             Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
