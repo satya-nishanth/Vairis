@@ -30,7 +30,7 @@ export type PlpFilters = {
   shapes: string[];
   ready: boolean;
   sort: SortKey;
-  onHand: boolean;
+  worn: boolean;
 };
 
 export const DEFAULT_FILTERS: PlpFilters = {
@@ -40,7 +40,7 @@ export const DEFAULT_FILTERS: PlpFilters = {
   shapes: [],
   ready: false,
   sort: "recommended",
-  onHand: false,
+  worn: false,
 };
 
 export type FilterGroup = "types" | "occasions" | "prices" | "shapes";
@@ -154,7 +154,7 @@ export function parseFilters(
     shapes: list(params.get("shape")),
     ready: params.get("ready") === "1" || params.get("readyToShip") === "true",
     sort,
-    onHand: params.get("view") === "hand",
+    worn: params.get("view") === "worn",
   };
 }
 
@@ -167,7 +167,7 @@ export function serializeFilters(f: PlpFilters, page = 1): string {
   if (f.shapes.length) q.set("shape", f.shapes.join(","));
   if (f.ready) q.set("ready", "1");
   if (f.sort !== "recommended") q.set("sort", f.sort);
-  if (f.onHand) q.set("view", "hand");
+  if (f.worn) q.set("view", "worn");
   if (page > 1) q.set("page", String(page));
   return q.toString();
 }

@@ -1410,7 +1410,7 @@
   display: none;
 }
 
-/* Worn photo first (On hand) — hover/touch still reveals the other */
+/* Worn photo first (Worn view) — hover/touch still reveals the other */
 .product-card__img--face,
 .product-card__img--hover {
   transition: opacity 0.25s ease;
@@ -1633,9 +1633,14 @@
     border-left: 1px solid var(--color-border-light);
   }
 
+  /* Worn on: the cell fills green */
+  .mobile-filter-bar__btn.is-on {
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+  }
+
   .mobile-filter-bar__btn.is-on .mobile-filter-bar__sub {
-    color: var(--color-primary);
-    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
   }
 
   .mobile-filter-bar__stack {
@@ -1709,6 +1714,20 @@
 
   .product-card__dots span.is-active {
     background: var(--color-primary);
+  }
+
+  /* Worn view: label bottom-left, photo dots bottom-right */
+  .product-card--worn .product-card__worn-label {
+    bottom: 8px;
+    max-width: calc(100% - 44px); /* leave room for the dots */
+    line-height: 1.2;
+  }
+
+  .product-card--worn .product-card__dots {
+    left: auto;
+    right: 10px;
+    bottom: 12px;
+    transform: none;
   }
 
   /* Sheets */

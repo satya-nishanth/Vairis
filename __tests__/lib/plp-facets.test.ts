@@ -99,9 +99,9 @@ describe("URL state", () => {
   const read = (qs: string) => parseFilters(new URLSearchParams(qs), options);
 
   it("round-trips filters and page", () => {
-    const filters = f({ types: ["Band", "Solitaire"], occasions: ["Office"], prices: ["u15", "15-25"], shapes: ["Round"], ready: true, sort: "price-asc", onHand: true });
+    const filters = f({ types: ["Band", "Solitaire"], occasions: ["Office"], prices: ["u15", "15-25"], shapes: ["Round"], ready: true, sort: "price-asc", worn: true });
     const qs = serializeFilters(filters, 3);
-    expect(qs).toBe("type=Band%2CSolitaire&occasion=Office&price=u15%2C15-25&shape=Round&ready=1&sort=price-asc&view=hand&page=3");
+    expect(qs).toBe("type=Band%2CSolitaire&occasion=Office&price=u15%2C15-25&shape=Round&ready=1&sort=price-asc&view=worn&page=3");
     expect(read(qs)).toEqual(filters);
   });
 
@@ -120,7 +120,7 @@ describe("URL state", () => {
 
   it("counts active filters", () => {
     expect(activeFilterCount(f({ types: ["a", "b"], ready: true, shapes: ["x"] }))).toBe(4);
-    expect(activeFilterCount(f({ sort: "new", onHand: true }))).toBe(0);
+    expect(activeFilterCount(f({ sort: "new", worn: true }))).toBe(0);
   });
 });
 

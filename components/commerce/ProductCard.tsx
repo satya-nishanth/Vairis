@@ -19,7 +19,7 @@ type ProductCardProps = {
   linkPrefix?: string;
   collectionSlug?: string;
   /** PLP: flip cards with a worn photo to it (the hover photo, slot 7). */
-  onHand?: boolean;
+  worn?: boolean;
   /** PLP: swipe a card to see its other photo, with position dots. */
   swipeable?: boolean;
   /** PLP: remember this card so Back restores the page. */
@@ -68,7 +68,7 @@ export function ProductCard({
   showActions = true,
   linkPrefix = "/product",
   collectionSlug,
-  onHand = false,
+  worn = false,
   swipeable = false,
   onOpen,
 }: ProductCardProps) {
@@ -87,9 +87,9 @@ export function ProductCard({
       : null;
   // Ribbon owns the sale callout — skip duplicate "% off" pill badge.
   const showBadge = Boolean(product.badge) && salePercent == null;
-  // On hand shows the worn photo first; a swipe flips whichever photo is showing.
-  const wornShown = Boolean(hoverSrc) && onHand !== flipped;
-  const onHandLabel = onHand && hoverSrc && !flipped;
+  // Worn view shows the worn photo first; a swipe flips whichever photo is showing.
+  const wornShown = Boolean(hoverSrc) && worn !== flipped;
+  const onHandLabel = worn && hoverSrc && !flipped;
 
   const classes = [
     "product-card",

@@ -101,7 +101,7 @@ export function CategoryPageView({
     }),
     [filterOptions, allProducts],
   );
-  const canShowOnHand = useMemo(() => allProducts.some((p) => p.hoverImage), [allProducts]);
+  const canShowWorn = useMemo(() => allProducts.some((p) => p.hoverImage), [allProducts]);
   const gold = useMemo(() => goldSummary(allProducts), [allProducts]);
 
   // Price sorts make no sense when nothing shows a price (NAV-05).
@@ -143,9 +143,9 @@ export function CategoryPageView({
     }
   };
 
-  // On hand: keep the card in view where it is while every photo swaps.
+  // Worn: keep the card in view where it is while every photo swaps.
   const anchor = useRef<{ id: string; top: number } | null>(null);
-  const toggleOnHand = () => {
+  const toggleWorn = () => {
     const headerBottom = document.querySelector(".site-header")?.getBoundingClientRect().bottom ?? 0;
     for (const card of document.querySelectorAll<HTMLElement>(".plp-grid [data-product-id]")) {
       const rect = card.getBoundingClientRect();
@@ -154,8 +154,8 @@ export function CategoryPageView({
         break;
       }
     }
-    router.replace(hrefFor({ ...filters, onHand: !filters.onHand }, currentPage), { scroll: false });
-    if (!filters.onHand) {
+    router.replace(hrefFor({ ...filters, worn: !filters.worn }, currentPage), { scroll: false });
+    if (!filters.worn) {
       setToast(true);
       window.clearTimeout(toastTimer.current);
       toastTimer.current = window.setTimeout(() => setToast(false), 2200);
@@ -167,7 +167,7 @@ export function CategoryPageView({
     if (!held) return;
     const el = document.querySelector(`.plp-grid [data-product-id="${held.id}"]`);
     if (el) window.scrollBy(0, el.getBoundingClientRect().top - held.top);
-  }, [filters.onHand]);
+  }, [filters.worn]);
 
   // Back from a product: same page, same filters (they're in the URL), same scroll, and the
   // product just viewed gets an outline + "Last viewed" tag for a few seconds.
@@ -320,7 +320,7 @@ export function CategoryPageView({
                             key={product.catalogueId}
                             product={product}
                             showActions={i < 4}
-                            onHand={filters.onHand}
+                            worn={filters.worn}
                             swipeable
                             onOpen={() => rememberPlpVisit(product.catalogueId)}
                           />
@@ -351,7 +351,7 @@ export function CategoryPageView({
 
         {toast && (
           <div className="plp-toast" role="status">
-            Showing all {noun} on hand
+            Showing {noun} as worn
           </div>
         )}
 
@@ -359,12 +359,12 @@ export function CategoryPageView({
           <PlpMobileBar
             activeFilters={activeFilterCount(filters)}
             sort={sort}
-            onHand={filters.onHand}
-            canShowOnHand={canShowOnHand}
+            worn={filters.worn}
+            canShowWorn={canShowWorn}
             noun={noun}
             onOpenFilters={() => setSheet("filter")}
             onOpenSort={() => setSheet("sort")}
-            onToggleOnHand={toggleOnHand}
+            onToggleWorn={toggleWorn}
           />
         )}
         <PlpFilterSheet
