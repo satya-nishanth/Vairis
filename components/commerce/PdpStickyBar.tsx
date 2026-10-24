@@ -8,6 +8,8 @@ import { CHECKOUT_ENABLED } from "@/lib/flags";
 
 type PdpStickyBarProps = {
   price: number | null | undefined;
+  planLabel?: string;
+  switchNudge?: { text: string; onSwitch: () => void };
   onAddToCart: () => void;
   addingToCart?: boolean;
   onBuyNow?: () => void;
@@ -20,6 +22,8 @@ type PdpStickyBarProps = {
 
 export function PdpStickyBar({
   price,
+  planLabel,
+  switchNudge,
   onAddToCart,
   addingToCart,
   onBuyNow,
@@ -36,9 +40,18 @@ export function PdpStickyBar({
 
   return (
     <div className="pdp-sticky-bar" role="region" aria-label="Purchase actions">
+      {switchNudge && (
+        <button type="button" className="pdp-sticky-bar__nudge" onClick={switchNudge.onSwitch}>
+          <span>{switchNudge.text}</span>
+          <b>Switch</b>
+        </button>
+      )}
       <div className="pdp-sticky-bar__expert">
         {price != null && (
-          <span className="pdp-sticky-bar__price">₹{price.toLocaleString("en-IN")}</span>
+          <span className="pdp-sticky-bar__price">
+            ₹{price.toLocaleString("en-IN")}
+            {planLabel && <small className="pdp-sticky-bar__plan">{planLabel}</small>}
+          </span>
         )}
         {onExpertClick ? (
           <button type="button" onClick={onExpertClick} className="pdp-sticky-bar__expert-link">

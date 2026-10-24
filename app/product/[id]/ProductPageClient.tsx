@@ -134,6 +134,8 @@ function pieceBreakdown(
   );
 }
 
+const COLOR_SWATCH: Record<string, string> = { YELLOW: "#D9B45A", WHITE: "#E3E3E0", ROSE: "#E8B8A0" };
+
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
   const feeLabels = feeLabelsFromConfig(pricingConfig);
   const { openCartModal } = useCartModal();
@@ -276,6 +278,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     priceWithPieces && priceWithPieces.length > 0
       ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
+
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+  // Exchange value shown under Lifetime Value: gold at 100%, diamonds at 90%.
+  const exchangeGold = (priceWithPieces ?? []).reduce((t, p) => t + p.breakdown.goldValue, 0);
+  const exchangeDiamond =
+    0.9 * (priceWithPieces ?? []).reduce((t, p) => t + p.breakdown.stoneValue, 0);
 
   // Purity + color available on every piece (same rule as set pricing).
   const purities = product.pieces.reduce<string[]>((acc, piece, i) => {
@@ -687,14 +695,17 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 ) : null}
 
             {purities.length > 0 && (
-              <div className="pdp-options">
-                <label>Metal</label>
+              <div className="pdp-options pdp-gold">
+                <div className="pdp-gold__head">
+                  <label>Gold purity</label>
+                  <span>BIS hallmarked</span>
+                </div>
                 <div className="pdp-variants">
                   {purities.map((m) => (
                     <button
                       key={m}
                       type="button"
-                      className={`btn ${m === selectedPurity ? "btn-primary" : "btn-secondary"}`}
+                      className={`pdp-purity${m === selectedPurity ? " is-selected" : ""}`}
                       aria-pressed={m === selectedPurity}
                       onClick={() => selectPurity(m)}
                     >
@@ -707,18 +718,23 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
 
             {colorsForSelected.length > 0 && (
               <div className="pdp-options" data-testid="pdp-metal-color">
-                <label>Color</label>
-                <div className="pdp-variants">
+                <label>
+                  Colour
+                  {selectedColor && (
+                    <span className="pdp-colour__name"> · {colorMeta(selectedColor)?.shortLabel ?? selectedColor}</span>
+                  )}
+                </label>
+                <div className="pdp-variants pdp-colours">
                   {colorsForSelected.map((c) => (
                     <button
                       key={c}
                       type="button"
-                      className={`btn ${c === selectedColor ? "btn-primary" : "btn-secondary"}`}
+                      className={`pdp-swatch${c === selectedColor ? " is-selected" : ""}`}
+                      style={{ background: COLOR_SWATCH[c] ?? "#ddd" }}
+                      aria-label={`${colorMeta(c)?.shortLabel ?? c} gold`}
                       aria-pressed={c === selectedColor}
                       onClick={() => selectColor(c)}
-                    >
-                      {colorMeta(c)?.shortLabel ?? c}
-                    </button>
+                    />
                   ))}
                 </div>
               </div>
@@ -748,31 +764,113 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               priceWithTotal != null &&
               priceWithoutTotal != null &&
               Math.round(priceWithTotal) !== Math.round(priceWithoutTotal) && (
-              <div className="pdp-options" data-testid="pdp-exchange">
-                <label>Diamond Pricing</label>
-                <div className="pdp-variants">
+              <section className="pdp-plans" data-testid="pdp-exchange" aria-label="Choose your plan">
+                <h2 className="pdp-plans__title">Choose your plan</h2>
+                <p className="pdp-plans__intro">
+                  Same piece, same diamonds. Lifetime Value adds exchange value and lifetime
+                  care. Standard is the piece only.
+                </p>
+                <div className="pdp-plans__cards" role="radiogroup" aria-label="Plan">
                   <button
                     type="button"
-                    className={`btn ${!withExchange ? "btn-primary" : "btn-secondary"}`}
-                    aria-pressed={!withExchange}
-                    onClick={() => setWithExchange(false)}
-                  >
-                    Without Exchange — ₹{Math.round(priceWithoutTotal).toLocaleString("en-IN")}
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${withExchange ? "btn-primary" : "btn-secondary"}`}
-                    aria-pressed={withExchange}
+                    role="radio"
+                    aria-checked={withExchange}
+                    className={`pdp-plan pdp-plan--value${withExchange ? " is-selected" : ""}`}
                     onClick={() => setWithExchange(true)}
                   >
-                    With Exchange — ₹{Math.round(priceWithTotal).toLocaleString("en-IN")}
+                    <span className="pdp-plan__tag">Recommended · Most chosen</span>
+                    <span className="pdp-plan__body">
+                      <span className="pdp-plan__radio" aria-hidden="true" />
+                      <span className="pdp-plan__head">
+                        <span className="pdp-plan__name">Lifetime Value</span>
+                        <span className="pdp-plan__price">{inr(priceWithTotal)}</span>
+                        <span className="pdp-plan__sub">Exchange value + lifetime care</span>
+                        <span className="pdp-plan__delta">
+                          +{inr(priceWithTotal - priceWithoutTotal)}
+                        </span>
+                      </span>
+                      <ul className="pdp-plan__perks">
+                        <li>
+                          <b>100% gold value</b> towards an exchange, at that day&rsquo;s gold rate
+                        </li>
+                        <li>
+                          <b>90% diamond value</b> towards an exchange
+                        </li>
+                        <li>
+                          <b>Free service for life</b> for any damage
+                        </li>
+                        <li>
+                          <b>Lifetime support</b>
+                        </li>
+                      </ul>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!withExchange}
+                    className={`pdp-plan${!withExchange ? " is-selected" : ""}`}
+                    onClick={() => setWithExchange(false)}
+                  >
+                    <span className="pdp-plan__body">
+                      <span className="pdp-plan__radio" aria-hidden="true" />
+                      <span className="pdp-plan__head">
+                        <span className="pdp-plan__name">Standard</span>
+                        <span className="pdp-plan__price">{inr(priceWithoutTotal)}</span>
+                        <span className="pdp-plan__sub">Piece only</span>
+                      </span>
+                      <ul className="pdp-plan__perks">
+                        <li>IGI certified diamond, BIS hallmarked gold</li>
+                        <li>Easy returns</li>
+                      </ul>
+                    </span>
                   </button>
                 </div>
-                <p className="pdp-info__meta">
-                  With Exchange: your diamonds are priced at the higher exchange
-                  rate per carat and qualify for full-value exchange later.
+                <p className="pdp-plans__value">
+                  With Lifetime Value, this piece carries up to <b>{inr(exchangeGold + exchangeDiamond)}</b>{" "}
+                  in exchange value towards your next Vairis piece*
+                  <span>
+                    Gold {inr(exchangeGold)} (100%) + Diamond {inr(exchangeDiamond)} (90%)
+                  </span>
                 </p>
-              </div>
+                <table className="pdp-plans__table">
+                  <caption>Compare the plans</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col"><span className="sr-only">Benefit</span></th>
+                      <th scope="col">Standard</th>
+                      <th scope="col">Lifetime Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Gold exchange value</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ 100% · {inr(exchangeGold)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Diamond exchange value</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ 90% · {inr(exchangeDiamond)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Service for damage</th>
+                      <td>Paid</td>
+                      <td>✓ Free, for life</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Lifetime support</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ Included</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="pdp-plans__fine">
+                  *Exchange value is credit towards a new Vairis piece, not a cash refund. Gold is
+                  valued at the rate on the day you exchange; today&rsquo;s rate is shown. Diamond
+                  value is 90% of the Lifetime Value diamond price.
+                </p>
+              </section>
             )}
 
             {product.showPrice && piecePrices.length > 0 && (
@@ -995,6 +1093,21 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     Math.round(price * (1 - product.autoDiscountPercent / 100)),
                   )
                 : price
+              : undefined
+          }
+          planLabel={
+            hasStones && priceWithTotal != null && priceWithoutTotal != null &&
+            Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
+              ? `${purityMeta(selectedPurity)?.label ?? ""} · ${withExchange ? "Lifetime Value" : "Standard"}`
+              : undefined
+          }
+          switchNudge={
+            hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
+            Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
+              ? {
+                  text: `Lifetime Value: +${inr(priceWithTotal - priceWithoutTotal)}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
+                  onSwitch: () => setWithExchange(true),
+                }
               : undefined
           }
           onAddToCart={handleAddToCart}
