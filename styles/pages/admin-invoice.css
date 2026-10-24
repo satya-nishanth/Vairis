@@ -51,7 +51,7 @@
 }
 
 .inv-doc__title {
-  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-sans-loaded), Inter, system-ui, sans-serif;
   font-size: 24px;
   letter-spacing: 0.14em;
   color: #8a6a2b;
@@ -97,7 +97,7 @@
 }
 
 .inv-doc__name {
-  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-sans-loaded), Inter, system-ui, sans-serif;
   font-size: 17px;
   letter-spacing: 0.02em;
 }
@@ -229,7 +229,7 @@
 }
 
 .inv-doc__words {
-  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-sans-loaded), Inter, system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.35;
 }
@@ -287,7 +287,7 @@
 }
 
 .inv-doc__payable strong {
-  font-family: var(--font-serif-loaded), 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-sans-loaded), Inter, system-ui, sans-serif;
   font-size: 23px;
   font-weight: 600;
 }

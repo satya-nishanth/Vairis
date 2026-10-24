@@ -81,7 +81,7 @@ function MockPayContent() {
           padding: 32,
           boxShadow: "0 12px 40px rgba(0,0,0,.12)",
           textAlign: "center",
-          fontFamily: "Georgia, serif",
+          fontFamily: "var(--font-sans)",
         }}
       >
         <p style={{ letterSpacing: 3, fontWeight: 700, marginBottom: 4 }}>VAIRIS</p>

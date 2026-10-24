@@ -28,6 +28,7 @@ export type AdminProductRow = {
   motifSizeMm?: number | null
   thicknessMm?: number | null
   metals?: string[]
+  labels?: string[]
   variantsList?: {
     metalType: string
     metalColor?: string
@@ -401,7 +402,7 @@ export function AdminProductsTable({ products: initialProducts, total, page, row
                       </span>
                     </td>
 
-                    {/* Category */}
+                    {/* Category & Filter Labels */}
                     <td style={{ padding: '12px 16px' }}>
                       <span
                         style={{
@@ -417,6 +418,26 @@ export function AdminProductsTable({ products: initialProducts, total, page, row
                       >
                         {categoryLabel(p.category)}
                       </span>
+                      {p.labels && p.labels.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4, maxWidth: 180 }}>
+                          {p.labels.map((lbl) => (
+                            <span
+                              key={lbl}
+                              style={{
+                                fontSize: '0.625rem',
+                                padding: '1px 5px',
+                                borderRadius: 4,
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                border: '1px solid #bfdbfe',
+                                fontWeight: 500,
+                              }}
+                            >
+                              {lbl}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
 
                     {/* Item Code */}
@@ -898,6 +919,26 @@ function ProductCardItem({
               {(p.metals ?? []).join(' · ')}
             </div>
           )}
+          {p.labels && p.labels.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+              {p.labels.map((lbl) => (
+                <span
+                  key={lbl}
+                  style={{
+                    fontSize: '0.6875rem',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #bfdbfe',
+                    fontWeight: 500,
+                  }}
+                >
+                  🏷️ {lbl}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Card Actions Footer */}
@@ -1251,9 +1292,36 @@ function ProductInspectModal({
 
           {/* Description snippet */}
           {p.description && (
-            <p style={{ fontSize: '0.8125rem', color: '#4b5563', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+            <p style={{ fontSize: '0.8125rem', color: '#4b5563', lineHeight: 1.5, margin: '0 0 14px 0' }}>
               {p.description}
             </p>
+          )}
+
+          {/* Linked Filter Labels */}
+          {p.labels && p.labels.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Linked Filter Labels:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {p.labels.map((lbl) => (
+                  <span
+                    key={lbl}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      border: '1px solid #bfdbfe',
+                      fontWeight: 500,
+                    }}
+                  >
+                    🏷️ {lbl}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Specifications Table */}

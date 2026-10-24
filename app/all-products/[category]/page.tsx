@@ -11,6 +11,7 @@ import { SLUG_TO_PRISMA } from "@/lib/categories";
 import { getBanner } from "@/lib/site-content";
 import { getStoreCategoryBySlug } from "@/lib/store-categories";
 import { sortProductsByPriority } from "@/lib/product-priorities";
+import { getCategoryFilters } from "@/lib/category-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +131,11 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
 
   // Admin-customizable category hero (slot plp-hero-<category>, /admin/content)
   // title -> story line 1, subtitle -> story line 2, ctaLabel -> intro, images[] -> carousel
-  const heroBanner = await getBanner(`plp-hero-${category}`);
+  const [heroBanner, categoryFilters] = await Promise.all([
+    getBanner(`plp-hero-${category}`),
+    getCategoryFilters(category).catch(() => null),
+  ]);
+
   const storyOverride =
     heroBanner?.title?.trim()
       ? {
@@ -147,13 +152,18 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         categoryIntro={storeCat?.description ?? undefined}
         prismaProducts={prismaProducts}
         heroImagesOverride={
-          heroBanner?.images?.length ? heroBanner.images : (storeCat?.image ? [storeCat.image] : undefined)
+          heroBanner?.images?.length
+            ? heroBanner.images
+            : (!isBuiltIn && storeCat?.image ? [storeCat.image] : undefined)
         }
         heroImageFits={
           heroBanner?.images?.length ? heroBanner.imageFits : undefined
         }
         storyOverride={storyOverride}
         introOverride={heroBanner?.ctaLabel ?? undefined}
+        filterGroups={categoryFilters?.groups}
+        labelProductMap={categoryFilters?.labelProductMap}
+        labelExcludedMap={categoryFilters?.labelExcludedMap}
       />
     </Suspense>
   );

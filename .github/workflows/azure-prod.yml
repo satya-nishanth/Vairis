@@ -60,7 +60,13 @@ jobs:
         shell: pwsh
 
       - name: Provision Infrastructure
-        run: azd provision --no-prompt
+        # --no-state: azd's own stored-deployment-state diffing can go stale and silently
+        # report "Didn't find new changes" even when infra/*.bicep has genuinely changed —
+        # caught this 2026-10-12 when FINANCE_EMAILS (and two neighboring secretRefs) had
+        # been committed and CI'd green for weeks but never actually reached the live
+        # container, because every provision step kept skipping. Forces a real reconcile
+        # against current Bicep every deploy instead of trusting azd's cache.
+        run: azd provision --no-prompt --no-state
 
       - name: Deploy Application
         run: azd deploy --no-prompt

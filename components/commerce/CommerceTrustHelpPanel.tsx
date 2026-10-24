@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconChevronRight, SharedIcon, ThemeIcon } from "@/components/icons/ThemeIcon";
 import { plpHelpLinks, plpTrustItemsPrimary, plpTrustItemsSecondary } from "@/lib/plp-content";
+import { serviceHrefForLabel } from "@/lib/trust-content";
 
 type TrustCardProps = {
   icon: { name: string; category: "brand" };
@@ -10,13 +11,15 @@ type TrustCardProps = {
 
 function TrustCard({ icon, label, description }: TrustCardProps) {
   return (
-    <article className="plp-trust-card">
-      <span className="plp-trust-card__icon-wrap">
-        <ThemeIcon name={icon.name} category={icon.category} size={36} className="plp-trust-card__icon" />
-      </span>
-      <h4 className="plp-trust-card__title">{label}</h4>
-      <p className="plp-trust-card__desc">{description}</p>
-    </article>
+    <Link href={serviceHrefForLabel(label)} className="plp-trust-card-link">
+      <article className="plp-trust-card">
+        <span className="plp-trust-card__icon-wrap">
+          <ThemeIcon name={icon.name} category={icon.category} size={36} className="plp-trust-card__icon" />
+        </span>
+        <h4 className="plp-trust-card__title">{label}</h4>
+        <p className="plp-trust-card__desc">{description}</p>
+      </article>
+    </Link>
   );
 }
 

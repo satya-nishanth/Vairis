@@ -415,7 +415,7 @@
   font-size: 0.6875rem;
   font-weight: 700;
   font-style: italic;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-sans-loaded), Inter, system-ui, sans-serif;
   line-height: 1;
   cursor: help;
   padding: 0;

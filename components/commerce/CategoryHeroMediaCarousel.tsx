@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { MarketingImage } from "@/components/ui/MarketingImage";
 import { fitToCssVars, type BannerImageFit } from "@/lib/banner-image-fit";
+import { getCategoryFallbackHero } from "@/lib/category-hero-images";
 
 type CategoryHeroMediaCarouselProps = {
   images: string[];
   label: string;
   imageFits?: BannerImageFit[];
+  fallbackSrc?: string;
   /** Controlled slide index (admin preview). Omit for auto-rotate on storefront. */
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
@@ -21,12 +23,14 @@ export function CategoryHeroMediaCarousel({
   images,
   label,
   imageFits,
+  fallbackSrc,
   activeIndex: controlledIndex,
   onActiveIndexChange,
   autoRotate,
 }: CategoryHeroMediaCarouselProps) {
   const [index, setIndex] = useState(0);
-  const slides = images.length > 0 ? images : [];
+  const resolvedFallback = fallbackSrc ?? getCategoryFallbackHero(label);
+  const slides = images.length > 0 ? images : (resolvedFallback ? [resolvedFallback] : []);
   const isControlled = controlledIndex !== undefined;
   const shouldAutoRotate = autoRotate ?? !isControlled;
 
@@ -66,6 +70,7 @@ export function CategoryHeroMediaCarousel({
             key={`${src}-${i}`}
             src={src}
             alt={`${label} - look ${i + 1}`}
+            fallbackSrc={resolvedFallback}
             width={1200}
             height={900}
             fill

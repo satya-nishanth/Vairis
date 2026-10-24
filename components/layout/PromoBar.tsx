@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PromoBarVariant } from "@/lib/layout-config";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { announcementBarItems, utilityBarItems } from "@/lib/promo-bar-content";
+import { serviceHrefForLabel } from "@/lib/trust-content";
 import type { BannerContent } from "@/lib/site-content";
 
 type PromoBarProps = {
@@ -75,7 +76,7 @@ export function PromoBar({ variant }: PromoBarProps) {
     <div className={barClass}>
       <div className={innerClass}>
         {items.map(({ label, icon }) => (
-          <span key={label} className={itemClass}>
+          <a key={label} href={serviceHrefForLabel(label)} className={`${itemClass} promo-bar__service-link`}>
             <ThemeIcon
               name={icon.name}
               category={icon.category}
@@ -83,7 +84,7 @@ export function PromoBar({ variant }: PromoBarProps) {
               className={`promo-bar__icon${isAnnouncement ? " promo-bar__icon--on-primary" : ""}`}
             />
             {label}
-          </span>
+          </a>
         ))}
       </div>
     </div>

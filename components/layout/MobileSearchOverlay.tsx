@@ -25,6 +25,15 @@ const categoryLinks = HEADER_NAV_CATEGORIES.map((slug) => ({
   label: CATEGORY_LABELS[slug].title,
 }));
 
+const POPULAR_SEARCHES = [
+  "Solitaire",
+  "Studs",
+  "Diamond Rings",
+  "Rose Gold",
+  "Everyday Wear",
+  "Minimal",
+];
+
 export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -32,8 +41,7 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Debounced live search — all state updates happen inside the timeout so
-  // the effect body itself never sets state synchronously.
+  // Debounced live search
   useEffect(() => {
     if (!open) return;
     const q = query.trim();
@@ -88,15 +96,44 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
     return () => clearTimeout(t);
   }, [open]);
 
+  const handleFullSearch = (qToSearch?: string) => {
+    const term = (qToSearch ?? query).trim();
+    if (!term) return;
+    onClose();
+    if (typeof window !== "undefined") {
+      window.location.href = `/search?q=${encodeURIComponent(term)}`;
+    }
+  };
+
   if (!open) return null;
 
   return (
     <div className="mobile-search" role="dialog" aria-modal="true" aria-label="Search">
+      <style>{`
+        @media (min-width: 640px) {
+          .mobile-search__panel {
+            max-width: 580px !important;
+            margin: 48px auto !important;
+            border-radius: 12px !important;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25) !important;
+            border: 1px solid var(--color-border-light, #e5e7eb) !important;
+          }
+        }
+      `}</style>
       <div className="mobile-search__backdrop" onClick={onClose} aria-hidden />
       <div className="mobile-search__panel">
-        <div className="mobile-search__head">
+        <form
+          className="mobile-search__head"
+          action="/search"
+          method="GET"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleFullSearch();
+          }}
+        >
           <input
             ref={inputRef}
+            name="q"
             type="search"
             className="mobile-search__input"
             placeholder="Search jewellery..."
@@ -105,10 +142,49 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
             onChange={(e) => setQuery(e.target.value)}
             data-testid="search-input"
           />
-          <button type="button" className="mobile-search__close" onClick={onClose} aria-label="Close search">
+          <button
+            type="button"
+            className="mobile-search__close"
+            onClick={onClose}
+            aria-label="Close search"
+          >
             <ThemeIcon name="close_modal" category="navigation" size={22} />
           </button>
-        </div>
+        </form>
+
+        {/* Quick Suggestions when empty */}
+        {!query.trim() && (
+          <div style={{ marginTop: "14px", marginBottom: "16px" }}>
+            <p className="mobile-search__hint" style={{ marginTop: 0, marginBottom: "8px" }}>
+              Popular Searches
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+              {POPULAR_SEARCHES.map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  onClick={() => {
+                    setQuery(term);
+                    inputRef.current?.focus();
+                  }}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: "16px",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    background: "var(--color-surface, #f3f4f6)",
+                    color: "var(--color-text, #374151)",
+                    border: "1px solid var(--color-border, #e5e7eb)",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {term}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading && <p className="mobile-search__hint">Searching…</p>}
 
@@ -118,33 +194,60 @@ export function MobileSearchOverlay({ open, onClose }: MobileSearchOverlayProps)
           </p>
         )}
 
+        {/* Results List */}
         {results.length > 0 && (
-          <nav className="mobile-search__results" aria-label="Search results" data-testid="search-results">
-            {results.map((r) => (
-              <Link
-                key={r.id}
-                href={`/product/${r.id}`}
-                onClick={onClose}
-                className="mobile-search__result"
-              >
-                <span className="mobile-search__result-thumb">
-                  {r.image ? (
-                    <ProductImage src={r.image} alt="" width={48} height={48} />
-                  ) : (
-                    <span aria-hidden>V</span>
-                  )}
-                </span>
-                <span className="mobile-search__result-body">
-                  <span className="mobile-search__result-name">{r.name}</span>
-                  <span className="mobile-search__result-meta">
-                    {r.itemCode ? `${r.itemCode} · ` : ""}
-                    {r.category}
-                    {r.price != null ? ` · ₹${r.price.toLocaleString("en-IN")}` : ""}
+          <div style={{ marginTop: "8px", marginBottom: "16px" }}>
+            <nav className="mobile-search__results" aria-label="Search results" data-testid="search-results">
+              {results.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/product/${r.id}`}
+                  onClick={onClose}
+                  className="mobile-search__result"
+                >
+                  <span className="mobile-search__result-thumb">
+                    {r.image ? (
+                      <ProductImage src={r.image} alt="" width={48} height={48} />
+                    ) : (
+                      <span aria-hidden>V</span>
+                    )}
                   </span>
-                </span>
-              </Link>
-            ))}
-          </nav>
+                  <span className="mobile-search__result-body">
+                    <span className="mobile-search__result-name">{r.name}</span>
+                    <span className="mobile-search__result-meta">
+                      {r.itemCode ? `${r.itemCode} · ` : ""}
+                      {r.category}
+                      {r.price != null ? ` · ₹${r.price.toLocaleString("en-IN")}` : ""}
+                    </span>
+                  </span>
+                </Link>
+              ))}
+            </nav>
+
+            <button
+              type="button"
+              onClick={() => handleFullSearch()}
+              style={{
+                width: "100%",
+                padding: "9px 14px",
+                borderRadius: "6px",
+                background: "var(--color-surface, #f9fafb)",
+                border: "1px solid var(--color-border, #e5e7eb)",
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                color: "var(--color-primary, #111827)",
+                cursor: "pointer",
+                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+            >
+              <span>View all results for &ldquo;{query.trim()}&rdquo;</span>
+              <span>→</span>
+            </button>
+          </div>
         )}
 
         <p className="mobile-search__hint">Browse by category</p>
