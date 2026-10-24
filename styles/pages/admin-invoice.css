@@ -713,3 +713,143 @@
     margin-top: 4px;
   }
 }
+
+/* ── Invoices list dashboard ─────────────────────────────────────────────── */
+
+.admin-page--invoices {
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.admin-invoices__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.admin-invoices__table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.admin-invoices__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: #111827;
+}
+
+.admin-invoices__table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.admin-invoices__table th.is-num,
+.admin-invoices__table td.is-num {
+  text-align: right;
+}
+
+.admin-invoices__table th.is-actions {
+  width: 1%;
+}
+
+.admin-invoices__table td {
+  padding: 12px 14px;
+  border-top: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.admin-invoices__table tbody tr:hover {
+  background: #fafafa;
+}
+
+.admin-invoices__number {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-invoices__item {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #374151;
+}
+
+.admin-invoices__order-link {
+  color: #032b24;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.admin-invoices__order-link:hover {
+  text-decoration: underline;
+}
+
+.admin-invoices__status {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-invoices__status.is-unpaid {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.admin-invoices__status.is-paid {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.admin-invoices__actions {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-invoices__actions a {
+  color: #4b5563;
+  text-decoration: none;
+  font-size: 0.8125rem;
+}
+
+.admin-invoices__actions a:hover {
+  color: #032b24;
+  text-decoration: underline;
+}
+
+.admin-invoices__empty {
+  padding: 20px 14px;
+  color: #6b7280;
+}
+
+@media (max-width: 720px) {
+  .admin-invoices__item {
+    max-width: 140px;
+  }
+}

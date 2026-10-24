@@ -3,6 +3,7 @@ import {
   applyInvoiceSeller,
   applyInvoiceExchangeFlag,
   invoiceFromProducts,
+  invoiceItemsLabel,
   invoiceStatusFromPayload,
   isInvoicePaymentPaid,
   lineFromOrderItem,
@@ -362,6 +363,25 @@ describe('isInvoicePaymentPaid', () => {
   it('maps invoice status enum correctly', () => {
     expect(invoiceStatusFromPayload({ payment: { status: 'Unpaid' } } as never)).toBe('UNPAID')
     expect(invoiceStatusFromPayload({ payment: { status: 'Paid in full' } } as never)).toBe('PAID')
+  })
+})
+
+describe('invoiceItemsLabel', () => {
+  it('returns dash when no named lines', () => {
+    expect(invoiceItemsLabel({ lines: [] })).toBe('—')
+    expect(invoiceItemsLabel({ lines: [{ productName: '  ' }] as never })).toBe('—')
+  })
+
+  it('shows single product name', () => {
+    expect(invoiceItemsLabel({ lines: [{ productName: 'Aura Ring' }] as never })).toBe('Aura Ring')
+  })
+
+  it('appends +N more for multi-line invoices', () => {
+    expect(
+      invoiceItemsLabel({
+        lines: [{ productName: 'Aura Ring' }, { productName: 'Pendant' }, { productName: 'Bangle' }],
+      } as never),
+    ).toBe('Aura Ring +2 more')
   })
 })
 

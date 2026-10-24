@@ -423,8 +423,7 @@
 
 @media (max-width: 640px) {
   .grid-4,
-  .grid-5,
-  .ugc-row {
+  .grid-5 {
     grid-template-columns: 1fr 1fr;
   }
 

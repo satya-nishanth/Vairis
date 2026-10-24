@@ -14,9 +14,7 @@ type CategoryPageProps = {
   heroImageFits?: BannerImageFit[];
   storyOverride?: CategoryStory | null;
   introOverride?: string | null;
-  filterGroups?: { id: "styles" | "metals"; title: string; options: string[] }[];
-  labelProductMap?: Record<string, string[]>;
-  labelExcludedMap?: Record<string, string[]>;
+  filterOptions?: { types: string[]; occasions: string[] };
 };
 
 /** Server wrapper: stable default story so admin preview matches storefront. */
@@ -29,9 +27,7 @@ export function CategoryPage({
   heroImageFits,
   storyOverride,
   introOverride,
-  filterGroups,
-  labelProductMap,
-  labelExcludedMap,
+  filterOptions,
 }: CategoryPageProps) {
   const story =
     storyOverride ??
@@ -51,9 +47,7 @@ export function CategoryPage({
       heroImagesOverride={heroImagesOverride}
       heroImageFits={heroImageFits}
       introOverride={introOverride ?? categoryIntro ?? undefined}
-      filterGroups={filterGroups}
-      labelProductMap={labelProductMap}
-      labelExcludedMap={labelExcludedMap}
+      filterOptions={filterOptions}
     />
   );
 }

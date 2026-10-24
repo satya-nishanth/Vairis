@@ -4,7 +4,6 @@ import { prismaToProduct } from '@/lib/prisma-to-product'
 import { getPricingConfig, getShowPricesGlobal } from '@/lib/pricing-data'
 import { rateLimit } from '@/lib/rate-limit'
 import { SLUG_TO_PRISMA, type PrismaCategory } from '@/lib/categories'
-import { getAllCategoryFilters } from '@/lib/category-filters'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,19 +29,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Match products linked to category filter labels (e.g. "Studs", "Solitaire", "Everyday Wear")
-  const allFilters = await getAllCategoryFilters().catch(() => ({}))
-  const matchedProductIdsFromLabels = new Set<string>()
-  for (const config of Object.values(allFilters)) {
-    if (!config?.labelProductMap) continue
-    for (const [label, productIds] of Object.entries(config.labelProductMap)) {
-      if (label.toLowerCase().includes(qLower) && Array.isArray(productIds)) {
-        for (const id of productIds) {
-          matchedProductIdsFromLabels.add(id)
-        }
-      }
-    }
-  }
+  // Match products tagged with a filter label (e.g. "Studs", "Solitaire", "Office")
+  const taggedProducts = await prisma.productTag
+    .findMany({
+      where: { value: { contains: q, mode: 'insensitive' } },
+      select: { productId: true },
+    })
+    .catch(() => [])
+  const matchedProductIdsFromLabels = new Set(taggedProducts.map((t) => t.productId))
 
   const orConditions: any[] = [
     { name: { contains: q, mode: 'insensitive' } },
@@ -91,11 +85,10 @@ export async function GET(req: NextRequest) {
   const saleMap = await autoDiscountPercentsForProducts(products)
   return NextResponse.json({
     query: q,
-    results: products.map((p, i) => {
+    results: products.map((p) => {
       const ui = prismaToProduct(
         p,
         goldRates,
-        i,
         pricingConfig,
         showPricesGlobal,
         saleMap.get(p.id),

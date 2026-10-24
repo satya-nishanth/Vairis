@@ -17,6 +17,14 @@ const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 // Self-hosted (Latin subset, variable weight) rather than next/font/google: the
 // Google fetch at build time broke Vercel's Turbopack build ("next/font/google
 // queries have exactly one entry") and ties every build to fonts.googleapis.com.
+const cormorant = localFont({
+  src: "./fonts/CormorantGaramond-latin-wght.woff2",
+  weight: "600 700",
+  display: "swap",
+  variable: "--font-serif-loaded",
+  fallback: ["Georgia", "Times New Roman", "serif"],
+});
+
 const inter = localFont({
   src: "./fonts/Inter-latin-wght.woff2",
   weight: "400 700",

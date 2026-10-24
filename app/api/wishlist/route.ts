@@ -33,7 +33,7 @@ export async function GET() {
     .filter((p): p is NonNullable<typeof p> => Boolean(p))
   const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
   const saleMap = await autoDiscountPercentsForProducts(productsForSale)
-  const responseItems = items.map((item, i) => ({
+  const responseItems = items.map((item) => ({
     id: item.id,
     userId: item.userId,
     productId: item.productId,
@@ -42,7 +42,6 @@ export async function GET() {
       ? prismaToProduct(
           item.product,
           goldRates,
-          i,
           pricingConfig,
           showPricesGlobal,
           saleMap.get(item.product.id),

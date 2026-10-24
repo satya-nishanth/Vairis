@@ -14,7 +14,7 @@ type Props = {
   onChange: (images: string[]) => void
 }
 
-/** Fixed slots — Front → Left → Right → Back → Videos → Hover. */
+/** Fixed slots — Front → Left → Right → Back → Videos → Worn. */
 const FIXED_SLOTS = [
   { label: 'Front', hint: 'Front view', accept: 'image/*', index: 0 },
   { label: 'Left', hint: 'Left side', accept: 'image/*', index: 1 },
@@ -23,7 +23,7 @@ const FIXED_SLOTS = [
   { label: 'Video 1', hint: 'Video (≤50MB)', accept: 'video/*', index: 4 },
   { label: 'Video 2', hint: 'Optional', accept: 'video/*', index: 5 },
   { label: 'Video 3', hint: 'Optional', accept: 'video/*', index: 6 },
-  { label: 'Hover', hint: 'PLP hover', accept: 'image/*', index: 7 },
+  { label: 'Worn', hint: 'Worn photo (PLP Worn view + hover)', accept: 'image/*', index: 7 },
 ] as const
 
 export default function ImageUploader({ images, onChange }: Props) {
@@ -392,7 +392,7 @@ export default function ImageUploader({ images, onChange }: Props) {
 
       <p className="uploader__note">
         Front → Left → Right → Back · Drag to swap (images↔images, videos↔videos) · Up to{' '}
-        {PRODUCT_VIDEO_SLOT_COUNT} videos · Hover image (PLP swap) · Extra images unlimited
+        {PRODUCT_VIDEO_SLOT_COUNT} videos · Worn photo (PLP swap) · Extra images unlimited
         &nbsp;·&nbsp; Images: jpg · png · webp — 1200px &nbsp;·&nbsp; Video: mp4 · mov — max 50MB ·
         720p · 15s
         {busy ? ` · ${busy}` : ''}

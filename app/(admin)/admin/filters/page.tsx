@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminFiltersPage() {
   const [storeCats, filterConfigs, dbProducts] = await Promise.all([
     getStoreCategories().catch(() => []),
-    getAllCategoryFilters().catch(() => ({})),
+    getAllCategoryFilters({ withAssignments: true }).catch(() => ({})),
     prisma.product
       .findMany({
         where: { isActive: true, status: "LIVE" },
@@ -20,8 +20,6 @@ export default async function AdminFiltersPage() {
           name: true,
           itemCode: true,
           category: true,
-          designStyle: true,
-          description: true,
         },
       })
       .catch(() => []),
@@ -60,12 +58,12 @@ export default async function AdminFiltersPage() {
       <AdminGuide
         pageKey="filters"
         title="Category Filter Labels"
-        blurb="Configure the filter labels shown to customers on the category pages (e.g. /all-products/rings). Products matching these labels will be filtered when selected by shoppers."
+        blurb="Set the Type and Occasion options shown to customers in the Filter sheet on each category page (e.g. /all-products/rings), and tag products with them."
         tips={[
-          'Add custom style labels (e.g. "Solitaire", "Cocktail", "Everyday Wear", "Bridal", "Halo") to any category.',
-          'Products with matching text in their name, style, or description automatically match the filter label.',
-          'You can also click on any label to explicitly assign or unassign specific products.',
-          'Click "Preview Storefront" to test how the filter bar looks and behaves on the live store.',
+          'Types describe the piece (Solitaire, Band); Occasions describe when it is worn (Everyday, Office, Gifting).',
+          'Click the product count next to an option to tag or untag products. You can also tag from a product\'s Filter Labels tab.',
+          'Shoppers only see options that have at least one product.',
+          'Save writes to the database, so changes survive redeploys.',
         ]}
       />
 
@@ -77,8 +75,6 @@ export default async function AdminFiltersPage() {
           name: p.name,
           itemCode: p.itemCode,
           category: p.category ? p.category.toLowerCase() : "",
-          designStyle: p.designStyle,
-          description: p.description,
         }))}
       />
     </div>

@@ -10,7 +10,7 @@ import { getPricingConfig, getShowPricesGlobal } from "@/lib/pricing-data";
 import { SLUG_TO_PRISMA } from "@/lib/categories";
 import { getBanner } from "@/lib/site-content";
 import { getStoreCategoryBySlug } from "@/lib/store-categories";
-import { sortProductsByPriority } from "@/lib/product-priorities";
+import { applySalesRank, getProductSalesUnits, sortRecommended } from "@/lib/product-sales-rank";
 import { getCategoryFilters } from "@/lib/category-filters";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +109,7 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
           include: {
             variants: true,
             stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" } },
+            tags: { select: { group: true, value: true } },
           },
           orderBy: { name: "asc" },
         }),
@@ -116,11 +117,15 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         getPricingConfig(),
         getShowPricesGlobal(),
       ]);
-      const sortedDbProducts = sortProductsByPriority(dbProducts);
+      const salesUnits = await getProductSalesUnits().catch(() => ({}) as Record<string, number>);
+      const sortedDbProducts = sortRecommended(dbProducts, salesUnits);
       const { autoDiscountPercentsForProducts } = await import('@/lib/auto-discount-display')
       const saleMap = await autoDiscountPercentsForProducts(sortedDbProducts)
-      prismaProducts = sortedDbProducts.map((p, i) =>
-        prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+      prismaProducts = applySalesRank(
+        sortedDbProducts.map((p) =>
+          prismaToProduct(p, goldRates, pricingConfig, showPricesGlobal, saleMap.get(p.id)),
+        ),
+        salesUnits,
       );
     } catch (err) {
       // e.g. Category enum value missing on DB (NECKLACES migration not applied)
@@ -161,9 +166,9 @@ export default async function AllProductsCategoryPage({ params }: PageProps) {
         }
         storyOverride={storyOverride}
         introOverride={heroBanner?.ctaLabel ?? undefined}
-        filterGroups={categoryFilters?.groups}
-        labelProductMap={categoryFilters?.labelProductMap}
-        labelExcludedMap={categoryFilters?.labelExcludedMap}
+        filterOptions={
+          categoryFilters ? { types: categoryFilters.types, occasions: categoryFilters.occasions } : undefined
+        }
       />
     </Suspense>
   );

@@ -5,8 +5,12 @@ import { getPricingConfig, getShowPricesGlobal, toStoneViews, resolvePriceVisibi
 import { computeCatalogueFromPrice } from "@/lib/product-piece-pricing";
 import { prismaToProduct } from "@/lib/prisma-to-product";
 import { sortProductsByPriority } from "@/lib/product-priorities";
-import { getAllCategoryFilters, getProductLinkedLabels } from "@/lib/category-filters";
+import { productLabelsFromTags } from "@/lib/category-filters";
 import ProductPageClient from "./ProductPageClient";
+
+// Karats always ascend (9K first, so it is the default) whatever order admin saved them in.
+const byPurity = <T extends { metalType: string }>(variants: T[]) =>
+  [...variants].sort((a, b) => Number.parseInt(a.metalType.replace("GOLD_", ""), 10) - Number.parseInt(b.metalType.replace("GOLD_", ""), 10));
 
 export const revalidate = 120;
 
@@ -22,6 +26,7 @@ const productInclude = {
   },
   variants: true,
   stones: { include: { diamondRate: true }, orderBy: { sortOrder: "asc" as const } },
+  tags: { select: { group: true, value: true } },
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -44,7 +49,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg, allFilters] = await Promise.all([
+  const [product, goldRates, pricingConfig, showPricesGlobal, reviewAgg] = await Promise.all([
     prisma.product.findUnique({
       where: { id, isActive: true, status: "LIVE" },
       include: productInclude,
@@ -57,12 +62,11 @@ export default async function ProductPage({ params }: Props) {
       _avg: { rating: true },
       _count: { id: true },
     }),
-    getAllCategoryFilters(),
   ]);
 
   if (!product) notFound();
 
-  const productLabels = getProductLinkedLabels(product, allFilters);
+  const productLabels = productLabelsFromTags(product.tags);
   const showPrice = resolvePriceVisibility(product.priceVisibility, showPricesGlobal);
 
   const relatedDbProducts = await prisma.product.findMany({
@@ -78,11 +82,10 @@ export default async function ProductPage({ params }: Props) {
   const { autoDiscountInfoForProducts } = await import('@/lib/auto-discount-display')
   const relatedSorted = sortProductsByPriority(relatedDbProducts).slice(0, 4)
   const saleMap = await autoDiscountInfoForProducts([product, ...relatedSorted])
-  const relatedProducts = relatedSorted.map((p, i) =>
+  const relatedProducts = relatedSorted.map((p) =>
     prismaToProduct(
       p,
       goldRates,
-      i,
       pricingConfig,
       showPricesGlobal,
       saleMap.get(p.id)?.percent,
@@ -145,7 +148,7 @@ export default async function ProductPage({ params }: Props) {
           vaGoldPct: p.vaGoldPct != null ? Number(p.vaGoldPct) : null,
           vaLabel: p.vaLabel,
           stones: toStoneViews(p.stones),
-          variants: p.variants.map((v) => ({
+          variants: byPurity(p.variants).map((v) => ({
             id: v.id,
             pieceId: p.id,
             metalType: v.metalType,
@@ -170,7 +173,7 @@ export default async function ProductPage({ params }: Props) {
             vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
             vaLabel: product.vaLabel,
             stones: toStoneViews(product.stones),
-            variants: product.variants.map((v) => ({
+            variants: byPurity(product.variants).map((v) => ({
               id: v.id,
               pieceId: null as string | null,
               metalType: v.metalType,
@@ -209,6 +212,9 @@ export default async function ProductPage({ params }: Props) {
           labels: productLabels,
           stoneType: product.stoneType ?? null,
           caratWeight: product.caratWeight ? product.caratWeight.toString() : null,
+          totalLengthMm: product.totalLengthMm ? product.totalLengthMm.toString() : null,
+          motifSizeMm: product.motifSizeMm ? product.motifSizeMm.toString() : null,
+          thicknessMm: product.thicknessMm ? product.thicknessMm.toString() : null,
           vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
           vaLabel: product.vaLabel,
           pieces,

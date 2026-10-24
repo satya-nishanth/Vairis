@@ -23,6 +23,7 @@ type PrismaProductWithVariants = PrismaProduct & {
   variants: ProductVariant[];
   stones?: StoneWithRate[];
   pieces?: PieceRow[];
+  tags?: { group: string; value: string }[];
 };
 
 export function formatDisplayName(
@@ -54,7 +55,6 @@ export function formatDisplayName(
 export function prismaToProduct(
   p: PrismaProductWithVariants,
   goldRates: GoldRate[],
-  index = 0,
   pricingConfig: PricingConfig = DEFAULT_PRICING_CONFIG,
   showPricesGlobal = true,
   autoDiscountPercent?: number | null,
@@ -119,13 +119,15 @@ export function prismaToProduct(
       ? "Coming Soon"
       : price != null && autoDiscountPercent && autoDiscountPercent > 0 // none on Price on Request (STG-67)
         ? `${Math.round(autoDiscountPercent)}% off`
-        : index === 0
-          ? "Best Seller"
-          : undefined,
+        : undefined,
     meta: "Insured Delivery",
     metals,
     styleText,
     inStock,
+    types: (p.tags ?? []).filter((t) => t.group === "TYPE").map((t) => t.value),
+    occasions: (p.tags ?? []).filter((t) => t.group === "OCCASION").map((t) => t.value),
+    createdAt: p.createdAt.toISOString(),
+    shape: p.stoneShape?.trim() || null,
     priceHidden,
     hasMultiplePrices,
     autoDiscountPercent:

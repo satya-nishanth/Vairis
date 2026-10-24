@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, useEffect, Suspense } from "react";
+import { useMemo, useRef, useState, useEffect, Suspense, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/layout/PageShell";
 import { CartModalProvider, useCartModal } from "@/components/commerce/CartModal";
@@ -12,10 +12,10 @@ import { WishlistButton } from "@/components/commerce/WishlistButton";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { ThemeIcon } from "@/components/icons/ThemeIcon";
 import { PdpStickyBar } from "@/components/commerce/PdpStickyBar";
+import { PdpPromises } from "@/components/commerce/PdpPromises";
 import { QuoteEnquiryModal } from "@/components/commerce/QuoteEnquiryModal";
 import { useCart } from "@/components/commerce/CartProvider";
 import { pageLayouts } from "@/lib/layout-config";
-import { compareTrustItems } from "@/lib/compare-trust-content";
 import { CATEGORY_LABELS } from "@/lib/catalogue-ui";
 import { prismaCategoryToSlug } from "@/lib/categories";
 import { CHECKOUT_ENABLED } from "@/lib/flags";
@@ -80,6 +80,9 @@ type ProductData = {
   vaGoldPct?: number | null;
   vaLabel?: string | null;
   labels?: string[];
+  totalLengthMm?: string | null;
+  motifSizeMm?: string | null;
+  thicknessMm?: string | null;
   /** Display-only automatic discount % (authoritative at checkout). */
   autoDiscountPercent?: number | null;
   /** Customer-facing reason for the discount (admin “Display name”). */
@@ -132,6 +135,36 @@ function pieceBreakdown(
     rate,
     { stones, withExchange, config },
   );
+}
+
+const COLOR_SWATCH: Record<string, string> = { YELLOW: "#D9B45A", WHITE: "#E3E3E0", ROSE: "#E8B8A0" };
+
+const DELIVERY_POINTS = [
+  { title: "Free insured shipping across India", text: "Tamper-evident packaging; the courier hands over only after OTP confirmation.", icon: "M3 6h11v10H3zM14 10h4l3 3v3h-7M5 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0" },
+  { title: "Dispatched in 2–7 business days", text: "Made-to-order pieces take longer. Delivery takes 2–5 business days after dispatch.", icon: "M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z" },
+  { title: "Track every step", text: "Courier and AWB number sent when it ships; track from My Orders.", icon: "M12 21s-6-5.5-6-11a6 6 0 1 1 12 0c0 5.5-6 11-6 11zM12 8a2 2 0 1 0 0 4 2 2 0 1 0 0-4z" },
+  { title: "15-day returns", text: "Contact us within 15 days of delivery. After a quick condition check, we refund to your original payment method.", icon: "M20 11a8 8 0 0 0-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.5L20 16M20 20v-4h-4" },
+];
+
+function AccChevron() {
+  return (
+    <svg className="pdp-acc__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function listOr(items: string[]): string {
+  const lower = items.map((x, i) => (i === 0 ? x : x.toLowerCase()));
+  return lower.length > 1 ? `${lower.slice(0, -1).join(", ")} or ${lower[lower.length - 1]}` : (lower[0] ?? "");
+}
+
+function stoneSummary(stones: StoneView[]): string {
+  const ct = stones.reduce((t, x) => t + x.caratWeight, 0);
+  const desc = stones
+    .map((x) => `${x.label ? `${x.label} — ` : ""}${x.typeLabel}${x.count ? ` × ${x.count}` : ""}`)
+    .join(", ");
+  return `${desc} · ${ct.toFixed(2)} ct · IGI`;
 }
 
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
@@ -277,6 +310,30 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
 
+  const discPct = product.autoDiscountPercent && product.autoDiscountPercent > 0 ? product.autoDiscountPercent : 0;
+  const afterDisc = (n: number) => Math.max(0, Math.round(Math.round(n) * (1 - discPct / 100)));
+  const planPrice = (n: number) =>
+    discPct ? (
+      <>
+        <s className="pdp-plan__was">{inr(n)}</s> {inr(afterDisc(n))}
+      </>
+    ) : (
+      inr(n)
+    );
+  const hasPlans =
+    product.showPrice &&
+    hasStones &&
+    priceWithTotal != null &&
+    priceWithoutTotal != null &&
+    Math.round(priceWithTotal) !== Math.round(priceWithoutTotal);
+  const careNote = hasPlans ? (withExchange ? "Included in your plan" : "With Lifetime Value") : null;
+  const breakupPieces = hasPlans ? (priceWithoutPieces ?? []) : piecePrices;
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+  // Exchange value shown under Lifetime Value: gold at 100%, diamonds at 90%.
+  const exchangeGold = (priceWithPieces ?? []).reduce((t, p) => t + p.breakdown.goldValue, 0);
+  const exchangeDiamond =
+    0.9 * (priceWithPieces ?? []).reduce((t, p) => t + p.breakdown.stoneValue, 0);
+
   // Purity + color available on every piece (same rule as set pricing).
   const purities = product.pieces.reduce<string[]>((acc, piece, i) => {
     const piecePurities = [...new Set(piece.variants.map((v) => v.metalType))];
@@ -305,6 +362,89 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     selectedVariant && colorsForSelected.includes(variantColor(selectedVariant))
       ? variantColor(selectedVariant)
       : colorsForSelected[0] ?? "YELLOW";
+
+  type BreakupLine = { label: string; amount: number };
+  const purityLabel = purityMeta(selectedPurity ?? "")?.label ?? "";
+  // Lines are pre-GST; GST is worked out on the discounted subtotal.
+  const breakupGroups = breakupPieces.map(({ piece, breakdown, weightGrams }) => {
+    const lines: BreakupLine[] = [
+      { label: `Gold, ${purityLabel} (${weightGrams.toFixed(3)} g)`, amount: Math.round(breakdown.goldValue) },
+      ...breakdown.stoneLines.map((l) => ({
+        label: `${l.typeLabel} (${l.caratWeight.toFixed(2)} ct × ₹${l.ratePerCarat.toLocaleString("en-IN")}/ct)`,
+        amount: Math.round(l.value),
+      })),
+      ...(breakdown.stoneLines.length === 0 && breakdown.stoneValue > 0
+        ? [
+            {
+              label: `${product.stoneType || "Diamond"}${
+                product.caratWeight && Number(product.caratWeight) > 0
+                  ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
+                  : ""
+              }`,
+              amount: Math.round(breakdown.stoneValue),
+            },
+          ]
+        : []),
+      { label: "Making charges", amount: Math.round(breakdown.making) },
+      ...(breakdown.goldVA > 0 ? [{ label: breakdown.vaLabel, amount: Math.round(breakdown.goldVA) }] : []),
+      ...(breakdown.certificationCharges > 0
+        ? [{ label: feeLabels.certification, amount: Math.round(breakdown.certificationCharges) }]
+        : []),
+      ...(breakdown.packagingCharges > 0
+        ? [{ label: feeLabels.packaging, amount: Math.round(breakdown.packagingCharges) }]
+        : []),
+      ...(breakdown.deliveryCharges > 0
+        ? [{ label: feeLabels.delivery, amount: Math.round(breakdown.deliveryCharges) }]
+        : []),
+      ...(breakdown.miscCharges > 0 ? [{ label: "Misc", amount: Math.round(breakdown.miscCharges) }] : []),
+    ];
+    return { id: piece.id, name: piece.name, lines };
+  });
+  const planLine =
+    hasPlans && withExchange && priceWithPieces && priceWithoutPieces
+      ? Math.round(priceWithPieces.reduce((t, x) => t + x.breakdown.taxable, 0)) -
+        Math.round(priceWithoutPieces.reduce((t, x) => t + x.breakdown.taxable, 0))
+      : 0;
+  const breakupSubtotal =
+    breakupGroups.reduce((t, g) => t + g.lines.reduce((u, l) => u + l.amount, 0), 0) + planLine;
+  const breakupDiscount = discPct > 0 ? Math.round((breakupSubtotal * discPct) / 100) : 0;
+  const breakupGst =
+    price != null ? Math.max(0, afterDisc(price) - (breakupSubtotal - breakupDiscount)) : 0;
+  const detailRows = (() => {
+    const rows: { label: string; value: string }[] = [];
+    const weight = piecePrices.reduce((t, x) => t + x.weightGrams, 0);
+    const stoneCt = allStones.reduce((t, x) => t + x.caratWeight, 0);
+    if (product.itemCode) rows.push({ label: "Item code", value: product.itemCode });
+    rows.push({ label: "Category", value: categoryLabel });
+    if (selectedPurity) {
+      rows.push({
+        label: "Gold",
+        value: `${purityMeta(selectedPurity)?.label ?? selectedPurity}${weight > 0 ? ` · ${weight.toFixed(3)} g` : ""} · BIS hallmarked`,
+      });
+    }
+    if (colorsForSelected.length > 0) {
+      rows.push({ label: "Gold colour", value: listOr(colorsForSelected.map((c) => colorMeta(c)?.shortLabel ?? c)) });
+    }
+    if (stoneCt > 0) {
+      rows.push({
+        label: "Diamonds",
+        value: allStones.map((x) => `${x.label ? `${x.label} — ` : ""}${x.typeLabel}`).join(", "),
+      });
+      rows.push({ label: "Diamond weight", value: `${stoneCt.toFixed(2)} ct total · IGI certified` });
+    } else if (product.caratWeight && Number(product.caratWeight) > 0) {
+      rows.push({ label: "Diamonds", value: product.stoneType || "Natural Diamond" });
+      rows.push({ label: "Diamond weight", value: `${Number(product.caratWeight).toFixed(2)} ct total · IGI certified` });
+    }
+    const dims: [string, string | null | undefined][] = [
+      ["Length", product.totalLengthMm],
+      ["Motif size", product.motifSizeMm],
+      ["Thickness", product.thicknessMm],
+    ];
+    for (const [label, v] of dims) {
+      if (v != null && Number(v) > 0) rows.push({ label, value: `${Number(v)} mm` });
+    }
+    return rows;
+  })();
 
   const pickVariantForMetal = (purity: string, color: string) => {
     const sameSize = primaryPiece?.variants.find(
@@ -438,6 +578,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     <PageShell {...pageLayouts.pdp} breadcrumbs={breadcrumbs}>
       <main className="container page-main pdp-page">
         <div className="pdp-layout">
+          <div className="pdp-gallery">
           <div className="pdp-gallery__thumbs">
             {gallery.map((media, i) => (
               <button
@@ -457,6 +598,13 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
           </div>
 
           <div className="pdp-gallery__main">
+            {!product.comingSoon && (
+              <WishlistButton
+                productId={product.id}
+                productName={product.name}
+                className="pdp-gallery__wish"
+              />
+            )}
             <div
               className="pdp-gallery__swipe"
               ref={swipeRef}
@@ -521,12 +669,14 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             )}
           </div>
 
+          <PdpPromises className="pdp-promises--gallery" careNote={careNote} />
+          </div>
+
           <div className="pdp-info">
-            {product.itemCode && (
-              <p className="pdp-info__meta">{product.itemCode}</p>
-            )}
+            <p className="pdp-info__meta pdp-info__eyebrow">
+              {[product.itemCode, categoryLabel].filter(Boolean).join(" · ")}
+            </p>
             <h1 className="pdp-info__title">{product.name}</h1>
-            <p className="pdp-info__tagline">{categoryLabel}</p>
 
             {product.labels && product.labels.length > 0 && (
               <div
@@ -580,38 +730,20 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             )}
 
             {product.showPrice && price != null ? (
-              <>
-                <p className="pdp-info__price">
-                  {product.autoDiscountPercent && product.autoDiscountPercent > 0 ? (
+              <div className="pdp-price">
+                <div className="pdp-price__row">
+                  <span className="pdp-price__now">{inr(afterDisc(price))}</span>
+                  {discPct > 0 && (
                     <>
-                      <span style={{ textDecoration: "line-through", opacity: 0.55, marginRight: 10 }}>
-                        ₹{price.toLocaleString("en-IN")}
-                      </span>
-                      ₹
-                      {Math.max(
-                        0,
-                        Math.round(price * (1 - product.autoDiscountPercent / 100)),
-                      ).toLocaleString("en-IN")}
-                      <span className="pdp-info__meta"> incl. GST</span>
-                    </>
-                  ) : (
-                    <>
-                      ₹{price.toLocaleString("en-IN")}
-                      <span className="pdp-info__meta"> incl. GST</span>
+                      <s className="pdp-price__was">{inr(price)}</s>
+                      <span className="pdp-price__tag">{Math.round(discPct)}% off</span>
                     </>
                   )}
-                </p>
-                {product.autoDiscountPercent && product.autoDiscountPercent > 0 && (
-                    <p
-                      className="pdp-info__discount-label"
-                      data-testid="pdp-discount-display-name"
-                    >
-                      {product.autoDiscountDisplayName
-                        ? `Discount: ${product.autoDiscountDisplayName} - ${Math.round(product.autoDiscountPercent)}% Off`
-                        : `Discount: ${Math.round(product.autoDiscountPercent)}% Off`}
-                    </p>
-                  )}
-              </>
+                </div>
+                <span className="pdp-price__note">
+                  Incl. GST{hasPlans ? ` · ${withExchange ? "Lifetime Value" : "Standard"} plan` : ""}
+                </span>
+              </div>
             ) : (
               !product.showPrice && <p className="pdp-info__price pdp-info__price--on-request">Price on Request</p>
             )}
@@ -626,76 +758,42 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               </p>
             )}
 
-            {hasStones
-              ? product.pieces.map((piece) =>
-                  piece.stones.length > 0 ? (
-                    <div
-                      key={piece.id}
-                      className="pdp-options"
-                      data-testid={multiPiece ? `pdp-stones-${piece.id}` : "pdp-stones"}
-                    >
-                      <label>{multiPiece ? `Diamonds — ${piece.name}` : "Diamonds"}</label>
-                      <ul className="pdp-info__stones">
-                        {piece.stones.map((s) => (
-                          <li key={s.id} className="pdp-info__stone">
-                            <span className="pdp-info__stone-label">
-                              <ThemeIcon
-                                name="vairis_diamond_mark"
-                                category="brand"
-                                size={16}
-                                className="pdp-info__stone-icon"
-                              />
-                              {s.label ? `${s.label} — ` : ""}
-                              {s.typeLabel}
-                              {s.count ? ` × ${s.count}` : ""}
-                            </span>
-                            <div className="pdp-info__stone-total">
-                              <span className="pdp-info__stone-total-label">Total weight</span>
-                              <span className="pdp-info__stone-carat">
-                                {s.caratWeight.toFixed(2)} ct
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null,
-                )
-              : product.caratWeight && Number(product.caratWeight) > 0 ? (
-                  <div className="pdp-options" data-testid="pdp-stones">
-                    <label>Diamonds</label>
-                    <ul className="pdp-info__stones">
-                      <li className="pdp-info__stone">
-                        <span className="pdp-info__stone-label">
-                          <ThemeIcon
-                            name="vairis_diamond_mark"
-                            category="brand"
-                            size={16}
-                            className="pdp-info__stone-icon"
-                          />
-                          {product.stoneType || "Natural Diamond"}
-                        </span>
-                        <div className="pdp-info__stone-total">
-                          <span className="pdp-info__stone-total-label">Total weight</span>
-                          <span className="pdp-info__stone-carat">
-                            {Number(product.caratWeight).toFixed(2)} ct
-                          </span>
-                        </div>
-                      </li>
-                    </ul>
+            {(hasStones || (product.caratWeight && Number(product.caratWeight) > 0)) && (
+              <dl className="pdp-rows" data-testid="pdp-stones">
+                {hasStones ? (
+                  product.pieces
+                    .filter((piece) => piece.stones.length > 0)
+                    .map((piece) => (
+                      <div key={piece.id} className="pdp-rows__row">
+                        <dt>{multiPiece ? `Diamonds — ${piece.name}` : "Diamonds"}</dt>
+                        <dd>{stoneSummary(piece.stones)}</dd>
+                      </div>
+                    ))
+                ) : (
+                  <div className="pdp-rows__row">
+                    <dt>Diamonds</dt>
+                    <dd>
+                      {product.stoneType || "Natural Diamond"} · {Number(product.caratWeight).toFixed(2)} ct · IGI
+                    </dd>
                   </div>
-                ) : null}
+                )}
+              </dl>
+            )}
 
             {purities.length > 0 && (
-              <div className="pdp-options">
-                <label>Metal</label>
-                <div className="pdp-variants">
+              <div className="pdp-opt">
+                <span className="pdp-opt__label">
+                  Gold purity
+                  <span> · {purityMeta(selectedPurity ?? "")?.label ?? selectedPurity} · BIS hallmarked</span>
+                </span>
+                <div className="pdp-opt__chips" role="radiogroup" aria-label="Gold purity">
                   {purities.map((m) => (
                     <button
                       key={m}
                       type="button"
-                      className={`btn ${m === selectedPurity ? "btn-primary" : "btn-secondary"}`}
-                      aria-pressed={m === selectedPurity}
+                      role="radio"
+                      aria-checked={m === selectedPurity}
+                      className={`pdp-chip pdp-chip--purity${m === selectedPurity ? " is-selected" : ""}`}
                       onClick={() => selectPurity(m)}
                     >
                       {purityMeta(m)?.label ?? m}
@@ -706,34 +804,46 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             )}
 
             {colorsForSelected.length > 0 && (
-              <div className="pdp-options" data-testid="pdp-metal-color">
-                <label>Color</label>
-                <div className="pdp-variants">
+              <div className="pdp-opt" data-testid="pdp-metal-color">
+                <span className="pdp-opt__label">
+                  Gold colour
+                  <span> · {colorMeta(selectedColor)?.shortLabel ?? selectedColor} gold</span>
+                </span>
+                <div className="pdp-opt__chips" role="radiogroup" aria-label="Gold colour">
                   {colorsForSelected.map((c) => (
                     <button
                       key={c}
                       type="button"
-                      className={`btn ${c === selectedColor ? "btn-primary" : "btn-secondary"}`}
-                      aria-pressed={c === selectedColor}
+                      role="radio"
+                      aria-checked={c === selectedColor}
+                      className={`pdp-chip pdp-chip--colour${c === selectedColor ? " is-selected" : ""}`}
                       onClick={() => selectColor(c)}
                     >
+                      <i style={{ background: COLOR_SWATCH[c] ?? "#ddd" }} aria-hidden="true" />
                       {colorMeta(c)?.shortLabel ?? c}
                     </button>
                   ))}
                 </div>
+                {selectedColor !== "YELLOW" && (
+                  <span className="pdp-opt__note">
+                    Photos show yellow gold. Your piece is made in{" "}
+                    {(colorMeta(selectedColor)?.shortLabel ?? selectedColor).toLowerCase()} gold.
+                  </span>
+                )}
               </div>
             )}
 
             {sizesForMetal.length > 0 && (
-              <div className="pdp-options" data-testid="pdp-sizes">
-                <label>Size</label>
-                <div className="pdp-variants">
+              <div className="pdp-opt" data-testid="pdp-sizes">
+                <span className="pdp-opt__label">Size</span>
+                <div className="pdp-opt__chips" role="radiogroup" aria-label="Size">
                   {sizesForMetal.map((v) => (
                     <button
                       key={v.id}
                       type="button"
-                      className={`btn ${v.id === selectedVariantId ? "btn-primary" : "btn-secondary"}`}
-                      aria-pressed={v.id === selectedVariantId}
+                      role="radio"
+                      aria-checked={v.id === selectedVariantId}
+                      className={`pdp-chip pdp-chip--purity${v.id === selectedVariantId ? " is-selected" : ""}`}
                       onClick={() => setSelectedVariantId(v.id)}
                     >
                       {v.size}
@@ -748,155 +858,127 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               priceWithTotal != null &&
               priceWithoutTotal != null &&
               Math.round(priceWithTotal) !== Math.round(priceWithoutTotal) && (
-              <div className="pdp-options" data-testid="pdp-exchange">
-                <label>Diamond Pricing</label>
-                <div className="pdp-variants">
+              <section className="pdp-plans" data-testid="pdp-exchange" aria-label="Choose your plan">
+                <h2 className="pdp-plans__title">Choose your plan</h2>
+                <p className="pdp-plans__intro">
+                  Same piece, same diamonds. Lifetime Value adds exchange value and lifetime
+                  care. Standard is the piece only.
+                </p>
+                <div className="pdp-plans__cards" role="radiogroup" aria-label="Plan">
                   <button
                     type="button"
-                    className={`btn ${!withExchange ? "btn-primary" : "btn-secondary"}`}
-                    aria-pressed={!withExchange}
-                    onClick={() => setWithExchange(false)}
-                  >
-                    Without Exchange — ₹{Math.round(priceWithoutTotal).toLocaleString("en-IN")}
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${withExchange ? "btn-primary" : "btn-secondary"}`}
-                    aria-pressed={withExchange}
+                    role="radio"
+                    aria-checked={withExchange}
+                    className={`pdp-plan pdp-plan--value${withExchange ? " is-selected" : ""}`}
                     onClick={() => setWithExchange(true)}
                   >
-                    With Exchange — ₹{Math.round(priceWithTotal).toLocaleString("en-IN")}
+                    <span className="pdp-plan__tag">Recommended · Most chosen</span>
+                    <span className="pdp-plan__body">
+                      <span className="pdp-plan__radio" aria-hidden="true" />
+                      <span className="pdp-plan__head">
+                        <span className="pdp-plan__name">Lifetime Value</span>
+                        <span className="pdp-plan__price">{planPrice(priceWithTotal)}</span>
+                        <span className="pdp-plan__sub">Exchange value + lifetime care</span>
+                        <span className="pdp-plan__delta">
+                          +{inr(afterDisc(priceWithTotal) - afterDisc(priceWithoutTotal))}
+                        </span>
+                      </span>
+                      <ul className="pdp-plan__perks">
+                        <li>
+                          <span>
+                            <b>100% gold value</b>{" "}towards an exchange, at that day&rsquo;s gold rate
+                          </span>
+                        </li>
+                        <li>
+                          <span>
+                            <b>90% diamond value</b>{" "}towards an exchange
+                          </span>
+                        </li>
+                        <li>
+                          <span>
+                            <b>Free service for life</b>{" "}for any damage
+                          </span>
+                        </li>
+                        <li>
+                          <span>
+                            <b>Lifetime support</b>
+                          </span>
+                        </li>
+                      </ul>
+                      <span className="pdp-plan__exch">
+                        <span>Exchange value towards your next Vairis piece, up to*</span>
+                        <b>{inr(exchangeGold + exchangeDiamond)}</b>
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!withExchange}
+                    className={`pdp-plan${!withExchange ? " is-selected" : ""}`}
+                    onClick={() => setWithExchange(false)}
+                  >
+                    <span className="pdp-plan__body">
+                      <span className="pdp-plan__radio" aria-hidden="true" />
+                      <span className="pdp-plan__head">
+                        <span className="pdp-plan__name">Standard</span>
+                        <span className="pdp-plan__price">{planPrice(priceWithoutTotal)}</span>
+                        <span className="pdp-plan__sub">Piece only</span>
+                      </span>
+                      <ul className="pdp-plan__perks">
+                        <li>IGI certified diamond, BIS hallmarked gold</li>
+                        <li>Easy returns</li>
+                      </ul>
+                    </span>
                   </button>
                 </div>
-                <p className="pdp-info__meta">
-                  With Exchange: your diamonds are priced at the higher exchange
-                  rate per carat and qualify for full-value exchange later.
-                </p>
-              </div>
-            )}
-
-            {product.showPrice && piecePrices.length > 0 && (
-              <div className="pdp-info__breakups" data-testid="pdp-breakup">
-                {piecePrices.map(({ piece, breakdown, weightGrams }) => {
-                  const roundedGold = Math.round(breakdown.goldValue);
-                  const roundedStones =
-                    breakdown.stoneLines.length > 0
-                      ? breakdown.stoneLines.reduce((sum, l) => sum + Math.round(l.value), 0)
-                      : Math.round(breakdown.stoneValue);
-                  const roundedMaking = Math.round(breakdown.making);
-                  const roundedVA = breakdown.goldVA > 0 ? Math.round(breakdown.goldVA) : 0;
-                  const roundedMisc =
-                    breakdown.miscCharges > 0 ? Math.round(breakdown.miscCharges) : 0;
-                  const roundedCert =
-                    breakdown.certificationCharges > 0
-                      ? Math.round(breakdown.certificationCharges)
-                      : 0;
-                  const roundedPack =
-                    breakdown.packagingCharges > 0
-                      ? Math.round(breakdown.packagingCharges)
-                      : 0;
-                  const roundedDel =
-                    breakdown.deliveryCharges > 0
-                      ? Math.round(breakdown.deliveryCharges)
-                      : 0;
-                  const roundedGST = Math.round(breakdown.gst);
-                  // Match header price: round once on formula total (not sum of rounded lines).
-                  const tableTotal = Math.round(breakdown.total);
-                  return (
-                    <details
-                      key={piece.id}
-                      className="pdp-info__breakup"
-                    >
-                      <summary>
-                        {multiPiece ? `Price breakup — ${piece.name}` : "Price Breakup"}
-                      </summary>
-                      <table>
-                        <tbody>
-                          <tr>
-                            <td>Gold value ({weightGrams.toFixed(3)} g)</td>
-                            <td>₹{roundedGold.toLocaleString("en-IN")}</td>
-                          </tr>
-                          {breakdown.stoneLines.map((l, i) => (
-                            <tr key={i}>
-                              <td>
-                                {l.typeLabel} ({l.caratWeight.toFixed(2)} ct × ₹
-                                {l.ratePerCarat.toLocaleString("en-IN")}/ct)
-                              </td>
-                              <td>₹{Math.round(l.value).toLocaleString("en-IN")}</td>
-                            </tr>
-                          ))}
-                          {breakdown.stoneLines.length === 0 &&
-                            (breakdown.stoneValue > 0 ||
-                              (product.caratWeight && Number(product.caratWeight) > 0)) && (
-                              <tr>
-                                <td>
-                                  {product.stoneType || "Diamond"}
-                                  {product.caratWeight && Number(product.caratWeight) > 0
-                                    ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
-                                    : ""}
-                                </td>
-                                <td>
-                                  {breakdown.stoneValue > 0
-                                    ? `₹${Math.round(breakdown.stoneValue).toLocaleString("en-IN")}`
-                                    : "Included"}
-                                </td>
-                              </tr>
-                            )}
-                          <tr>
-                            <td>Making charges</td>
-                            <td>₹{roundedMaking.toLocaleString("en-IN")}</td>
-                          </tr>
-                          {roundedVA > 0 && (
-                            <tr>
-                              <td>{breakdown.vaLabel}</td>
-                              <td>₹{roundedVA.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
-                          {roundedCert > 0 && (
-                            <tr>
-                              <td>{feeLabels.certification}</td>
-                              <td>₹{roundedCert.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
-                          {roundedPack > 0 && (
-                            <tr>
-                              <td>{feeLabels.packaging}</td>
-                              <td>₹{roundedPack.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
-                          {roundedDel > 0 && (
-                            <tr>
-                              <td>{feeLabels.delivery}</td>
-                              <td>₹{roundedDel.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
-                          {roundedMisc > 0 && (
-                            <tr>
-                              <td>Misc</td>
-                              <td>₹{roundedMisc.toLocaleString("en-IN")}</td>
-                            </tr>
-                          )}
-                          <tr>
-                            <td>GST</td>
-                            <td>₹{roundedGST.toLocaleString("en-IN")}</td>
-                          </tr>
-                          <tr className="pdp-info__breakup-total">
-                            <td>{multiPiece ? `${piece.name} total` : "Total"}</td>
-                            <td>₹{tableTotal.toLocaleString("en-IN")}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </details>
-                  );
-                })}
-                {multiPiece && price != null && (
-                  <p className="pdp-info__set-total" data-testid="pdp-set-total">
-                    Set total{" "}
-                    <strong>₹{price.toLocaleString("en-IN")}</strong>
-                    <span className="pdp-info__meta"> incl. GST</span>
+                <div className="pdp-plans__value">
+                  <p>
+                    With Lifetime Value, this piece carries up to <b>{inr(exchangeGold + exchangeDiamond)}</b> in
+                    exchange value towards your next Vairis piece*
                   </p>
-                )}
-              </div>
+                  <span>
+                    Gold {inr(exchangeGold)}* (100%) + Diamond {inr(exchangeDiamond)}* (90%)
+                  </span>
+                </div>
+                <table className="pdp-plans__table">
+                  <caption>Compare the plans</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col"><span className="sr-only">Benefit</span></th>
+                      <th scope="col">Standard</th>
+                      <th scope="col">Lifetime Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Gold exchange<span className="pdp-plans__long"> value</span>*</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ 100% · {inr(exchangeGold)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Diamond exchange<span className="pdp-plans__long"> value</span>*</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ 90% · {inr(exchangeDiamond)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Service for damage</th>
+                      <td>Paid</td>
+                      <td>✓ Free, for life</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Lifetime support</th>
+                      <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
+                      <td>✓ Included</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="pdp-plans__fine">
+                  *Exchange value is credit towards a new Vairis piece, not a cash refund. Gold is
+                  valued at the rate on the day you exchange; today&rsquo;s rate is shown. Diamond
+                  value is 90% of the Lifetime Value diamond price.
+                </p>
+              </section>
             )}
 
             {product.comingSoon ? (
@@ -912,25 +994,30 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 </div>
               </div>
             ) : (
-              <div className="pdp-actions pdp-actions--inline">
+              <div className="pdp-actions pdp-actions--inline pdp-actions--desktop">
                 {/* Self-serve checkout is behind CHECKOUT_ENABLED until
                     Razorpay is fully live, and needs a real price — WhatsApp
                     is the purchase CTA in both cases */}
                 {canAddToCart && (
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-primary pdp-actions__add"
                     onClick={handleAddToCart}
                     disabled={addingToCart || !selectedVariant}
                   >
-                    {addingToCart ? "Adding…" : "Add to Cart"}
+                    {addingToCart
+                      ? "Adding…"
+                      : `Add to cart${price != null ? ` · ${inr(afterDisc(price))}` : ""}`}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setQuoteModalOpen(true)}
-                  className={canAddToCart ? "btn btn-secondary" : "btn btn-primary"}
+                  className={`btn ${canAddToCart ? "btn-secondary" : "btn-primary"} pdp-actions__enquire`}
                 >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="1.8" aria-hidden="true">
+                    <path d="M4 20l1.3-4A8 8 0 1 1 8 18.7L4 20z" />
+                  </svg>
                   Enquire on WhatsApp
                 </button>
                 <WishlistButton
@@ -946,34 +1033,125 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               </p>
             )}
 
-            <ul className="pdp-info__trust" aria-label="Product guarantees">
-              {compareTrustItems.map(({ label }) => (
-                <li key={label} className="pdp-info__trust-label">
-                  {label}
-                </li>
-              ))}
-            </ul>
+            <PdpPromises className="pdp-promises--info" careNote={careNote} />
 
-            <div className="pdp-section pdp-section--trust-help">
-              <CommerceTrustHelpPanel className="plp-bottom--flush" />
+            <div className="pdp-acc">
+              {product.showPrice && breakupPieces.length > 0 && (
+                <details className="pdp-acc__item" data-testid="pdp-breakup">
+                  <summary>
+                    <span>Price breakup</span>
+                    <AccChevron />
+                  </summary>
+                  <dl className="pdp-acc__rows">
+                    {breakupGroups.map((g) => (
+                      <Fragment key={g.id}>
+                        {multiPiece && (
+                          <div className="pdp-acc__row pdp-acc__row--head">
+                            <dt>{g.name}</dt>
+                          </div>
+                        )}
+                        {g.lines.map((l, i) => (
+                          <div key={i} className="pdp-acc__row">
+                            <dt>{l.label}</dt>
+                            <dd>{inr(l.amount)}</dd>
+                          </div>
+                        ))}
+                      </Fragment>
+                    ))}
+                    {planLine > 0 && (
+                      <div className="pdp-acc__row">
+                        <dt>Lifetime Value plan</dt>
+                        <dd>{inr(planLine)}</dd>
+                      </div>
+                    )}
+                    {price != null && discPct > 0 && (
+                      <>
+                        <div className="pdp-acc__row">
+                          <dt>Subtotal</dt>
+                          <dd>{inr(breakupSubtotal)}</dd>
+                        </div>
+                        <div className="pdp-acc__row pdp-acc__row--discount">
+                          <dt>Discount · {Math.round(discPct)}% off</dt>
+                          <dd>−{inr(breakupDiscount)}</dd>
+                        </div>
+                      </>
+                    )}
+                    {price != null && (
+                      <>
+                        <div className="pdp-acc__row">
+                          <dt>GST</dt>
+                          <dd>{inr(breakupGst)}</dd>
+                        </div>
+                        <div className="pdp-acc__row pdp-acc__row--total" data-testid="pdp-set-total">
+                          <dt>
+                            You pay{hasPlans ? ` · ${withExchange ? "Lifetime Value" : "Standard"}` : ""}
+                          </dt>
+                          <dd>{inr(afterDisc(price))}</dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                  <p className="pdp-acc__note">
+                    {hasPlans && !withExchange && priceWithTotal != null
+                      ? `With Lifetime Value, a “Lifetime Value plan” line is added and you pay ${inr(afterDisc(priceWithTotal))}. `
+                      : ""}
+                    Prices include GST.
+                  </p>
+                </details>
+              )}
+
+              <details className="pdp-acc__item">
+                <summary>
+                  <span>Product details</span>
+                  <AccChevron />
+                </summary>
+                <dl className="pdp-acc__rows">
+                  {detailRows.map((r) => (
+                    <div key={r.label} className="pdp-acc__row">
+                      <dt>{r.label}</dt>
+                      <dd>{r.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+
+              <details className="pdp-acc__item">
+                <summary>
+                  <span>Delivery &amp; returns</span>
+                  <AccChevron />
+                </summary>
+                <ul className="pdp-acc__list">
+                  {DELIVERY_POINTS.map((d) => (
+                    <li key={d.title}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d={d.icon} />
+                      </svg>
+                      <span>
+                        <strong>{d.title}</strong>
+                        <span>{d.text}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="pdp-acc__links">
+                  <Link href="/policies/shipping">Shipping policy</Link> · <Link href="/returns">Return terms</Link>
+                </p>
+              </details>
+            </div>
+
+            <div className="pdp-section pdp-section--trust-help pdp-trust-help--info">
+              <CommerceTrustHelpPanel className="plp-bottom--flush" lifetimeCareCopy />
             </div>
           </div>
         </div>
 
+        <section className="pdp-why pdp-trust-help--band" aria-label="Why Vairis">
+          <CommerceTrustHelpPanel heading="Why Vairis" lifetimeCareCopy />
+        </section>
+
         {relatedProducts && relatedProducts.length > 0 && (
-          <section className="pdp-related" style={{ marginTop: "3.5rem", marginBottom: "3rem" }}>
-            <h2
-              style={{
-                fontFamily: "var(--font-serif, serif)",
-                fontSize: "1.75rem",
-                fontWeight: 400,
-                textAlign: "center",
-                marginBottom: "2rem",
-                color: "var(--color-text)",
-              }}
-            >
-              You May Also Like
-            </h2>
+          <section className="pdp-related">
+            <h2 className="pdp-section-title">You may also like</h2>
             <div className="plp-grid">
               {relatedProducts.map((p, i) => (
                 <ProductCard key={p.slug} product={p} showActions={i < 2} />
@@ -995,6 +1173,22 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     Math.round(price * (1 - product.autoDiscountPercent / 100)),
                   )
                 : price
+              : undefined
+          }
+          wasPrice={product.showPrice && price != null && discPct ? price : undefined}
+          planLabel={
+            hasStones && priceWithTotal != null && priceWithoutTotal != null &&
+            Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
+              ? `${purityMeta(selectedPurity)?.label ?? ""} · ${withExchange ? "Lifetime Value" : "Standard"}`
+              : undefined
+          }
+          switchNudge={
+            hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
+            Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
+              ? {
+                  text: `Lifetime Value: +${inr(afterDisc(priceWithTotal) - afterDisc(priceWithoutTotal))}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
+                  onSwitch: () => setWithExchange(true),
+                }
               : undefined
           }
           onAddToCart={handleAddToCart}

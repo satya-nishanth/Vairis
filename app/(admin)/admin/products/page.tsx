@@ -5,8 +5,8 @@ import type { Category } from '@prisma/client'
 import { AdminGuide } from '@/components/admin/AdminGuide'
 import { AdminProductsTable } from '@/components/admin/AdminProductsTable'
 import { getStoreCategories } from '@/lib/store-categories'
-import { sortProductsByPriority, getProductPriority } from '@/lib/product-priorities'
-import { getAllCategoryFilters, getProductLinkedLabels } from '@/lib/category-filters'
+import { sortProductsByPriority } from '@/lib/product-priorities'
+import { productLabelsFromTags } from '@/lib/category-filters'
 import { formatMetalShort } from '@/lib/metal'
 
 export const dynamic = 'force-dynamic'
@@ -27,13 +27,12 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
   const rows = (ROW_OPTIONS as readonly number[]).includes(rowsRaw) ? rowsRaw : 25
   const pageRaw = Math.max(1, Number(params.page ?? 1) || 1)
 
-  const [storeCategories, counts, filterConfigs] = await Promise.all([
+  const [storeCategories, counts] = await Promise.all([
     getStoreCategories(),
     prisma.product.groupBy({
       by: ['category'],
       _count: { id: true },
     }).catch(() => []),
-    getAllCategoryFilters().catch(() => ({})),
   ])
 
   const categoryTabs = [
@@ -89,6 +88,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     include: {
       variants: true,
       stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      tags: { select: { group: true, value: true } },
     },
   }).catch((err) => {
     console.error('[admin/products] findMany error:', err)
@@ -146,7 +146,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
     images: p.images ?? [],
     isActive: p.isActive,
     status: p.status,
-    priority: getProductPriority(p.id, (p as any).priority),
+    priority: p.priority,
     variantCount: p.variants.length,
     mediaCount: (p.images ?? []).filter(Boolean).length,
     description: p.description ?? '',
@@ -164,17 +164,7 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
         p.variants.map((v) => formatMetalShort(v.metalType, v.metalColor ?? 'YELLOW')),
       ),
     ),
-    labels: getProductLinkedLabels(
-      {
-        id: p.id,
-        name: p.name,
-        itemCode: p.itemCode,
-        designStyle: p.designStyle,
-        description: p.description,
-        category: p.category,
-      },
-      filterConfigs
-    ),
+    labels: productLabelsFromTags(p.tags),
     variantsList: p.variants.map((v) => ({
       metalType: v.metalType,
       metalColor: v.metalColor ?? 'YELLOW',

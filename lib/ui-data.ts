@@ -42,6 +42,15 @@ export type Product = {
   hasMultiplePrices?: boolean;
   /** Active automatic discount % for badge / strikethrough (display-only). */
   autoDiscountPercent?: number;
+  /** PLP filter tags (admin-assigned) */
+  types?: string[];
+  occasions?: string[];
+  /** ISO date — "New arrivals" sort */
+  createdAt?: string;
+  /** Stone shape — PLP Shape filter */
+  shape?: string | null;
+  /** Units sold in the ranking window — Bestsellers sort; null = never sold */
+  salesRank?: number | null;
 };
 
 const CATEGORY_DESCRIPTIONS: Partial<Record<ProductCategory, string>> = {

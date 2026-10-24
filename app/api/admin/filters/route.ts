@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 
 const filterSaveSchema = z.object({
   slug: z.string().trim().min(1, "Category slug is required"),
-  labels: z.array(z.string().trim()).default([]),
-  metals: z.array(z.string().trim()).optional(),
+  types: z.array(z.string().trim()).default([]),
+  occasions: z.array(z.string().trim()).default([]),
   labelProductMap: z.record(z.string(), z.array(z.string())).optional(),
   categoryName: z.string().trim().optional(),
 });
@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const saved = await saveCategoryFilters(parsed.data.slug, {
-      labels: parsed.data.labels,
-      metals: parsed.data.metals,
+      types: parsed.data.types,
+      occasions: parsed.data.occasions,
       labelProductMap: parsed.data.labelProductMap,
       categoryName: parsed.data.categoryName,
     });

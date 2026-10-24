@@ -4,10 +4,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireAdmin } from '@/lib/auth'
 import { assignProductToStoreCategory, toPrismaProductCategory } from '@/lib/store-categories'
-import { setProductPriority } from '@/lib/product-priorities'
 import {
-  getAllCategoryFilters,
-  getProductLinkedLabels,
+  productLabelsFromTags,
   setProductLabels,
 } from '@/lib/category-filters'
 import {
@@ -151,26 +149,24 @@ const patchSchema = z.object({
 export async function GET(_: NextRequest, { params }: { params: Params }) {
   await requireAdmin()
   const { id } = await params
-  const [product, allFilters] = await Promise.all([
-    prisma.product.findUnique({
-      where: { id },
-      include: {
-        pieces: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            variants: true,
-            stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
-          },
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      pieces: {
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          variants: true,
+          stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
         },
-        variants: true,
-        stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
       },
-    }),
-    getAllCategoryFilters(),
-  ])
+      variants: true,
+      stones: { include: { diamondRate: true }, orderBy: { sortOrder: 'asc' } },
+      tags: { select: { group: true, value: true } },
+    },
+  })
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const labels = getProductLinkedLabels(product, allFilters)
-  return NextResponse.json({ ...product, labels })
+  const { tags, ...rest } = product
+  return NextResponse.json({ ...rest, labels: productLabelsFromTags(tags) })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Params }) {
@@ -293,16 +289,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
       }
     }
 
-    if (data.priority !== undefined) {
-      setProductPriority(id, data.priority)
-    }
-
     let finalLabels: string[] | undefined
     if (data.labels !== undefined) {
       try {
         const catSlug = (data.category ?? product.category).toLowerCase().replace(/_/g, '-')
-        const savedConfig = await setProductLabels(id, catSlug, data.labels, product)
-        finalLabels = getProductLinkedLabels(product, savedConfig)
+        await setProductLabels(id, catSlug, data.labels)
+        finalLabels = productLabelsFromTags(
+          await prisma.productTag.findMany({ where: { productId: id }, select: { group: true, value: true } }),
+        )
       } catch (err) {
         console.warn('[api/admin/products/[id]] failed setting product labels:', err)
       }

@@ -350,7 +350,8 @@
 
 .admin-page--finance,
 .admin-page--discounts,
-.admin-page--promos {
+.admin-page--promos,
+.admin-page--invoices {
   width: 100%;
   max-width: 100%;
 }

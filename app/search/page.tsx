@@ -7,7 +7,6 @@ import { ProductCard } from '@/components/commerce/ProductCard'
 import { prismaToProduct } from '@/lib/prisma-to-product'
 import { getPricingConfig, getShowPricesGlobal } from '@/lib/pricing-data'
 import { SLUG_TO_PRISMA, type PrismaCategory } from '@/lib/categories'
-import { getAllCategoryFilters } from '@/lib/category-filters'
 import { sortProductsByPriority } from '@/lib/product-priorities'
 import { pageLayouts } from '@/lib/layout-config'
 import { SearchBar } from './SearchBar'
@@ -47,19 +46,14 @@ export default async function SearchPage({ searchParams }: PageProps) {
       }
     }
 
-    // Match products tagged with matching category filter labels
-    const allFilters = await getAllCategoryFilters().catch(() => ({}))
-    const matchedProductIdsFromLabels = new Set<string>()
-    for (const config of Object.values(allFilters)) {
-      if (!config?.labelProductMap) continue
-      for (const [label, productIds] of Object.entries(config.labelProductMap)) {
-        if (label.toLowerCase().includes(qLower) && Array.isArray(productIds)) {
-          for (const id of productIds) {
-            matchedProductIdsFromLabels.add(id)
-          }
-        }
-      }
-    }
+    // Match products tagged with a filter label (e.g. "Studs", "Solitaire", "Office")
+    const taggedProducts = await prisma.productTag
+      .findMany({
+        where: { value: { contains: query, mode: 'insensitive' } },
+        select: { productId: true },
+      })
+      .catch(() => [])
+    const matchedProductIdsFromLabels = new Set(taggedProducts.map((t) => t.productId))
 
     const orConditions: any[] = [
       { name: { contains: query, mode: 'insensitive' } },
@@ -95,7 +89,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
       ])
 
       const sorted = sortProductsByPriority(dbProducts)
-      products = sorted.map((p, i) => prismaToProduct(p, goldRates, i, pricingConfig, showPricesGlobal))
+      products = sorted.map((p) => prismaToProduct(p, goldRates, pricingConfig, showPricesGlobal))
     } catch (err) {
       console.error('[search] query failed:', err)
       products = []

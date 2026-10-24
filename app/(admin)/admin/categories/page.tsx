@@ -51,7 +51,9 @@ export default async function AdminCategoriesPage() {
 
   const allProductsList = Array.from(productsMap.values());
 
-  // Keep DB join productIds for edit/save. Badge count is computed in CategoriesManager.
+  // Do NOT merge enum-matched product ids into category.productIds — that poisoned
+  // edit/save (FK failures) and made delete/edit look broken for DB-backed categories.
+  // CategoriesManager computes the badge count from allProducts + assigned ids.
 
   return (
     <div className="admin-page" style={{ maxWidth: 1040 }}>

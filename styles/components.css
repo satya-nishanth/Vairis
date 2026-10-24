@@ -771,11 +771,15 @@
 }
 
 .product-card__wish.is-active {
-  background: rgba(94, 104, 78, 0.12);
-  border-color: var(--brand-olive, #5e684e);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: #dc2626;
 }
 
-.product-card__wish.is-active .theme-icon-pair {
+.product-card__wish-filled {
+  fill: #dc2626;
+}
+
+.product-card__wish.is-active .product-card__wish-filled {
   animation: wish-heart-pop 0.45s ease;
 }
 
@@ -1778,4 +1782,15 @@
 .policy-page ul {
   padding-left: 20px;
   margin: 8px 0;
+}
+
+/* Keep every main-menu item on screen between laptop and wide-laptop widths */
+@media (min-width: 1025px) and (max-width: 1600px) {
+  .site-header__nav {
+    gap: clamp(10px, 1.1vw, 22px);
+  }
+
+  .site-header__nav a {
+    letter-spacing: 0.06em;
+  }
 }
