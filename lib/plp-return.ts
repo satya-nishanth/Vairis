@@ -1,6 +1,6 @@
 /**
  * Remembers where the shopper was on a listing when they opened a product, so
- * Back (browser or in-app) restores the scroll position and flags that product.
+ * Back (browser or in-app) restores the scroll position.
  * Only a back/forward traversal restores — a fresh visit to the listing doesn't.
  */
 const KEY = "plp:return";
@@ -14,26 +14,26 @@ if (typeof window !== "undefined") {
   });
 }
 
-export function rememberPlpVisit(productId: string) {
+export function rememberPlpVisit() {
   try {
     sessionStorage.setItem(
       KEY,
-      JSON.stringify({ url: location.pathname + location.search, scrollY: window.scrollY, productId, at: Date.now() }),
+      JSON.stringify({ url: location.pathname + location.search, scrollY: window.scrollY, at: Date.now() }),
     );
   } catch {
     /* storage unavailable — Back just won't restore */
   }
 }
 
-export function takePlpReturn(): { scrollY: number; productId: string } | null {
+export function takePlpReturn(): number | null {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (!raw) return null;
     sessionStorage.removeItem(KEY);
-    const saved = JSON.parse(raw) as { url: string; scrollY: number; productId: string; at: number };
+    const saved = JSON.parse(raw) as { url: string; scrollY: number; at: number };
     const here = location.pathname + location.search;
     if (saved.url !== here || Date.now() - saved.at > FRESH_MS || Date.now() - lastPop > POP_WINDOW_MS) return null;
-    return { scrollY: saved.scrollY, productId: saved.productId };
+    return saved.scrollY;
   } catch {
     return null;
   }

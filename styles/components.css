@@ -771,11 +771,15 @@
 }
 
 .product-card__wish.is-active {
-  background: rgba(94, 104, 78, 0.12);
-  border-color: var(--brand-olive, #5e684e);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: #dc2626;
 }
 
-.product-card__wish.is-active .theme-icon-pair {
+.product-card__wish-filled {
+  fill: #dc2626;
+}
+
+.product-card__wish.is-active .product-card__wish-filled {
   animation: wish-heart-pop 0.45s ease;
 }
 

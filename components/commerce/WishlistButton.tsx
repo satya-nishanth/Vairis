@@ -45,7 +45,13 @@ export function WishlistButton({
       aria-pressed={active}
       onClick={handleClick}
     >
-      <ThemeIcon name="wishlist_heart" category="navigation" size={18} className="product-card__wish-icon" />
+      {active ? (
+        <svg className="product-card__wish-filled" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 21s-7.5-4.7-9.6-9.2C.9 8.4 2.7 4.5 6.4 4.5c2 0 3.8 1.1 5.6 3.3 1.8-2.2 3.6-3.3 5.6-3.3 3.7 0 5.5 3.9 4 7.3C19.5 16.3 12 21 12 21z" />
+        </svg>
+      ) : (
+        <ThemeIcon name="wishlist_heart" category="navigation" size={18} className="product-card__wish-icon" />
+      )}
       {burst && (
         <span className="wish-burst" aria-hidden>
           {["💕", "✨", "💖", "✨", "💕"].map((emoji, i) => (
