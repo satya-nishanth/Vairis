@@ -96,9 +96,29 @@
   background: var(--nav-olive);
 }
 
-.nav-row__item--dna {
-  gap: 7px;
+/* DNA Diamond: an outlined pill, the shared accent across the menu */
+.nav-row__item.nav-row__item--dna {
+  align-self: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 7px 15px;
+  border: 1px solid var(--nav-gold);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--nav-olive) 7%, var(--bg-page, #fff));
   color: var(--nav-olive);
+  font-weight: 600;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.nav-row__item--dna svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nav-row__item.nav-row__item--dna:hover {
+  background: var(--nav-olive);
+  border-color: var(--nav-olive);
+  color: var(--bg-page, #fff);
 }
 
 .nav-row__group--brand > button.nav-row__item {
@@ -342,11 +362,17 @@
   }
 
   .nav-row__group--brand {
-    gap: 14px;
+    gap: 17px;
   }
 
   .nav-row__item {
     font-size: 10px;
+  }
+
+  .nav-row__item.nav-row__item--dna {
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 10px;
   }
 
   .nav-mega__layout {
@@ -521,16 +547,31 @@
     gap: 13px;
     margin: 26px 0 22px;
     padding: 16px;
-    border: 1px solid var(--nav-chip);
+    border: 1px solid var(--nav-olive);
+    border-left-width: 3px;
     border-radius: 12px;
-    background: var(--nav-surface);
+    background: color-mix(in srgb, var(--nav-olive) 7%, var(--bg-page, #fff));
     color: var(--nav-olive);
+    transition: background 0.18s ease, border-color 0.18s ease;
+  }
+
+  .nav-drawer__dna:hover {
+    background: color-mix(in srgb, var(--nav-olive) 13%, var(--bg-page, #fff));
+    border-color: var(--nav-olive);
+  }
+
+  .nav-drawer__dna > svg:first-child {
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--nav-olive) 13%, var(--bg-page, #fff));
   }
 
   .nav-drawer__dna b {
     display: block;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .nav-drawer__dna small {
