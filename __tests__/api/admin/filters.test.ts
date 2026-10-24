@@ -20,8 +20,9 @@ describe("/api/admin/filters route", () => {
       rings: {
         categorySlug: "rings",
         categoryName: "Rings",
-        labels: ["Solitaire", "Cocktail"],
-        metals: ["Yellow Gold"],
+        types: ["Solitaire", "Cocktail"],
+        occasions: ["Gifting"],
+        labels: ["Solitaire", "Cocktail", "Gifting"],
         labelProductMap: {},
         updatedAt: "2026-09-28T00:00:00.000Z",
       },
@@ -31,15 +32,16 @@ describe("/api/admin/filters route", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.ok).toBe(true);
-    expect(json.data.rings.labels).toContain("Cocktail");
+    expect(json.data.rings.types).toContain("Cocktail");
   });
 
   it("POST saves updated category labels", async () => {
     const spy = jest.spyOn(categoryFilters, "saveCategoryFilters").mockResolvedValueOnce({
       categorySlug: "rings",
       categoryName: "Rings",
-      labels: ["Solitaire", "Halo", "Vintage"],
-      metals: ["Yellow Gold", "White Gold"],
+      types: ["Solitaire", "Halo", "Vintage"],
+      occasions: ["Gifting"],
+      labels: ["Solitaire", "Halo", "Vintage", "Gifting"],
       labelProductMap: { Halo: ["p1"] },
       updatedAt: "2026-09-28T00:00:00.000Z",
     });
@@ -48,8 +50,8 @@ describe("/api/admin/filters route", () => {
       method: "POST",
       body: JSON.stringify({
         slug: "rings",
-        labels: ["Solitaire", "Halo", "Vintage"],
-        metals: ["Yellow Gold", "White Gold"],
+        types: ["Solitaire", "Halo", "Vintage"],
+        occasions: ["Gifting"],
         labelProductMap: { Halo: ["p1"] },
       }),
     });
@@ -57,8 +59,8 @@ describe("/api/admin/filters route", () => {
     const res = await POST(req);
     expect(res.status).toBe(200);
     expect(spy).toHaveBeenCalledWith("rings", {
-      labels: ["Solitaire", "Halo", "Vintage"],
-      metals: ["Yellow Gold", "White Gold"],
+      types: ["Solitaire", "Halo", "Vintage"],
+      occasions: ["Gifting"],
       labelProductMap: { Halo: ["p1"] },
       categoryName: undefined,
     });
@@ -68,8 +70,9 @@ describe("/api/admin/filters route", () => {
     const spy = jest.spyOn(categoryFilters, "resetCategoryFilters").mockResolvedValueOnce({
       categorySlug: "rings",
       categoryName: "Rings",
+      types: ["Solitaire", "Stackable"],
+      occasions: [],
       labels: ["Solitaire", "Stackable"],
-      metals: ["Yellow Gold"],
       labelProductMap: {},
       updatedAt: "2026-09-28T00:00:00.000Z",
     });

@@ -165,10 +165,37 @@ model Product {
   inventoryItems InventoryItem[]
   automaticDiscountProducts AutomaticDiscountProduct[]
   promoCodeProducts         PromoCodeProduct[]
+  tags        ProductTag[]
 }
 
 /// A sellable piece within a product (e.g. Necklace + Earrings in a set).
 /// Single-item products have one piece. Each piece has its own variants & stones.
+enum ProductTagGroup {
+  TYPE
+  OCCASION
+}
+
+/// PLP filter tag on a product (Type / Occasion). Option lists live in CategoryFilterConfig.
+model ProductTag {
+  id        String          @id @default(cuid())
+  productId String
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group     ProductTagGroup
+  value     String
+
+  @@unique([productId, group, value])
+  @@index([group, value])
+}
+
+/// Ordered PLP filter option lists per category slug (admin-editable).
+model CategoryFilterConfig {
+  categorySlug String   @id
+  categoryName String?
+  types        String[]
+  occasions    String[]
+  updatedAt    DateTime @updatedAt
+}
+
 model ProductPiece {
   id        String   @id @default(cuid())
   productId String

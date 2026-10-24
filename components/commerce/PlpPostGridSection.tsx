@@ -1,53 +1,69 @@
-import { Button } from "@/components/ui/Button";
-import { SectionHeader } from "@/components/ui/Section";
-import { ProductImage } from "@/components/ui/ProductImage";
+import Link from "next/link";
 import { CommerceTrustHelpPanel } from "@/components/commerce/CommerceTrustHelpPanel";
+import { PlpPeopleRow } from "@/components/commerce/PlpPeopleRow";
 import { lifestyleScenes } from "@/lib/ui-data";
-import { marketingImages } from "@/lib/images";
 
 type PlpPostGridSectionProps = {
   category?: string;
 };
 
+const INITIALS = ["AN", "RV", "KJ"];
+const PROOF = ["IGI certified", "BIS hallmarked", "Insured delivery"];
+
+// "Office look @ananya.work" -> label + handle
+const looks = lifestyleScenes.map((scene) => {
+  const [label, handle = ""] = scene.ugcLabel.split(" @");
+  return { id: scene.id, image: scene.image, label, handle: handle ? `@${handle}` : "" };
+});
+
 export function PlpPostGridSection({ category }: PlpPostGridSectionProps) {
   const isMenCategory = category === "cufflinks";
-  const title = isMenCategory
-    ? "Refined Details. Real Everyday Style."
-    : "Real People. Real Everyday Style.";
+  const [first, second] = isMenCategory
+    ? ["Refined Details.", "Real Everyday Style."]
+    : ["Real People.", "Real Everyday Style."];
 
   return (
     <div className="plp-post-grid">
-      <SectionHeader title={title} actionLabel="Explore Pieces →" actionHref="/all-products/rings" />
-
-      <div className="ugc-row">
-        {lifestyleScenes.map((scene) => (
-          <div key={scene.id} className="ugc-item">
-            <ProductImage src={scene.image} alt={scene.label} width={500} height={500} />
-            <span>{scene.ugcLabel}</span>
-          </div>
-        ))}
-      </div>
+      <section className="plp-people" aria-labelledby="plp-people-title">
+        <div className="plp-people__head">
+          <h2 id="plp-people-title" className="plp-people__title">
+            {first}
+            <br />
+            {second}
+          </h2>
+          <Link href="/all-products/rings" className="plp-people__cta">
+            Explore pieces →
+          </Link>
+        </div>
+        <PlpPeopleRow looks={looks} />
+      </section>
 
       <CommerceTrustHelpPanel />
 
       {/* Honest trust bar — no fabricated review counts. Real per-product
           ratings render on each PDP from moderated customer reviews. */}
-      <div className="review-bar">
-        <div className="review-bar__content">
-          <div className="review-bar__avatars">
-            {marketingImages.reviews.avatars.slice(0, 3).map((src) => (
-              <ProductImage key={src} src={src} alt="" width={36} height={36} />
-            ))}
-          </div>
-          <div>
-            <strong className="review-bar__title">Crafted to be worn every day</strong>
-            <span className="review-bar__sub">IGI certified · BIS hallmarked · Insured delivery</span>
-          </div>
+      <section className="plp-crafted" aria-labelledby="plp-crafted-title">
+        <div className="plp-crafted__initials" aria-hidden="true">
+          {INITIALS.map((i) => (
+            <span key={i}>{i}</span>
+          ))}
         </div>
-        <Button href="/all-products/rings" variant="secondary" size="sm">
-          Shop the Collection
-        </Button>
-      </div>
+        <h2 id="plp-crafted-title" className="plp-crafted__title">
+          Crafted to be worn every day
+        </h2>
+        <span className="plp-crafted__rule" aria-hidden="true" />
+        <p className="plp-crafted__proof">
+          {PROOF.map((text, i) => (
+            <span key={text} className="plp-crafted__proof-item">
+              {i > 0 && <span className="plp-crafted__diamond" aria-hidden="true" />}
+              {text}
+            </span>
+          ))}
+        </p>
+        <Link href="/all-products/rings" className="plp-crafted__cta">
+          Shop the collection →
+        </Link>
+      </section>
     </div>
   );
 }
