@@ -4,6 +4,7 @@
 @import "../styles/reset.css";
 @import "../styles/layout.css";
 @import "../styles/components.css";
+@import "../styles/nav-menu.css";
 @import "../styles/pages/home.css";
 @import "../styles/pages/plp.css";
 @import "../styles/pages/pdp.css";

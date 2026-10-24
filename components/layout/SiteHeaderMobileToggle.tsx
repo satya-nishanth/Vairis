@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ThemeIcon } from "@/components/icons/ThemeIcon";
-import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
-import { HeaderPincode } from "./HeaderPincode";
-import { categoryHref } from "@/lib/catalogue-ui";
-
-type NavLink = { href: string; label: string };
-type DynamicNavCategory = { slug: string; name: string };
-type DynamicNavCollection = { slug: string; title: string };
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { NAV_PANELS, RINGS_LINKS } from "@/lib/nav-menu-content";
+import { BrandLogo } from "./BrandLogo";
+import { MobileSearchOverlay } from "./MobileSearchOverlay";
+import { NavIcon } from "./NavIcons";
+import { useNavData } from "./nav-data";
 
 function MenuIcon({ open }: { open: boolean }) {
   if (open) {
@@ -27,41 +26,24 @@ function MenuIcon({ open }: { open: boolean }) {
   );
 }
 
-type SiteHeaderMobileToggleProps = {
-  links: NavLink[];
-  showPincode?: boolean;
-  showTheme?: boolean;
-};
-
-export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHeaderMobileToggleProps) {
-  const [open, setOpen] = useState(false);
-  const [dynamicCats, setDynamicCats] = useState<DynamicNavCategory[]>([]);
-  const [dynamicCols, setDynamicCols] = useState<DynamicNavCollection[]>([]);
-
-  useEffect(() => {
-    fetch("/api/nav-categories")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: DynamicNavCategory[]) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setDynamicCats(data);
-        }
-      })
-      .catch(() => {});
-
-    fetch("/api/nav-collections", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: DynamicNavCollection[]) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setDynamicCols(data);
-        }
-      })
-      .catch(() => {});
-  }, []);
+/** Mobile menu: hamburger button and the slide-in drawer. */
+export function SiteHeaderMobileToggle() {
+  // Open belongs to the page it was opened on, so navigating closes the drawer.
+  const pathname = usePathname();
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const open = openPath === pathname;
+  const setOpen = (next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(open) : next;
+    setOpenPath(value ? pathname : null);
+  };
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { categories, collections } = useNavData();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setOpenPath(null);
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
@@ -70,6 +52,14 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  const hasRings = categories.some((c) => c.slug === "rings");
+  const others = categories.filter((c) => c.slug !== "rings");
+  const collectionLinks = [
+    ...(collections.length > 0 ? collections : NAV_PANELS.collections.links),
+    { label: "All collections", href: "/collections" },
+  ];
+  const close = () => setOpen(false);
 
   return (
     <>
@@ -86,83 +76,110 @@ export function SiteHeaderMobileToggle({ links, showPincode, showTheme }: SiteHe
 
       {open && (
         <>
-          <div className="site-header__drawer-backdrop" onClick={() => setOpen(false)} aria-hidden />
-          <nav id="site-header-mobile-drawer" className="site-header__drawer" aria-label="Mobile">
-            <div className="site-header__drawer-head">
-              <span className="site-header__drawer-title">Menu</span>
-              <button type="button" className="site-header__drawer-close" onClick={() => setOpen(false)} aria-label="Close menu">
-                <ThemeIcon name="close_modal" category="navigation" size={22} />
+          <div className="site-header__drawer-backdrop" onClick={close} aria-hidden />
+          <div id="site-header-mobile-drawer" className="nav-drawer" role="dialog" aria-modal="true" aria-label="Menu">
+            <div className="nav-drawer__head">
+              <Link href="/" onClick={close} aria-label="VAIRIS home">
+                <BrandLogo className="nav-drawer__logo" />
+              </Link>
+              <button type="button" className="nav-drawer__close" onClick={close} aria-label="Close menu">
+                <NavIcon name="close" size={22} />
               </button>
             </div>
 
-            {showPincode && (
-              <div className="site-header__drawer-pincode">
-                <HeaderPincode />
-              </div>
-            )}
+            <div className="nav-drawer__intro">
+              <p className="nav-eyebrow">EVERYDAY DIAMOND WEAR</p>
+              <h2>
+                Find a little
+                <br />
+                brilliance.
+              </h2>
+            </div>
 
-            <div className="site-header__drawer-links">
-              {dynamicCats.length > 0 ? (
-                <>
-                  {dynamicCats.map((c) => (
-                    <Link key={c.slug} href={categoryHref(c.slug)} onClick={() => setOpen(false)}>
-                      {c.name}
-                    </Link>
-                  ))}
-                  <Link href="/about" onClick={() => setOpen(false)}>
-                    About Us
-                  </Link>
-                </>
-              ) : (
-                links.map((link) => (
-                  <Link key={`${link.href}-${link.label}`} href={link.href} onClick={() => setOpen(false)}>
-                    {link.label}
-                  </Link>
-                ))
+            <button
+              type="button"
+              className="nav-drawer__search"
+              onClick={() => {
+                setOpen(false);
+                setSearchOpen(true);
+              }}
+            >
+              <NavIcon name="search" size={16} />
+              Search jewellery
+              <NavIcon name="arrow" size={16} />
+            </button>
+
+            <nav aria-label="Mobile navigation" className="nav-drawer__nav">
+              {hasRings && (
+                <details open>
+                  <summary>
+                    Rings<span aria-hidden="true" />
+                  </summary>
+                  <div className="nav-drawer__sub">
+                    {RINGS_LINKS.map((l, i) => (
+                      <Link key={l.href} href={l.href} onClick={close}>
+                        {l.label}
+                        {i === 0 && <NavIcon name="arrow" size={16} />}
+                      </Link>
+                    ))}
+                  </div>
+                </details>
               )}
-            </div>
-
-            {dynamicCols.length > 0 && (
-              <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
-                <span className="site-header__drawer-section-title" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
-                  Collections
-                </span>
-                <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>
-                  {dynamicCols.map((c) => (
-                    <Link key={c.slug} href={`/collections/${c.slug}`} onClick={() => setOpen(false)}>
-                      {c.title}
+              {others.map((c) => (
+                <Link key={c.slug} href={c.href} onClick={close}>
+                  {c.name}
+                  <NavIcon name="arrow" size={17} />
+                </Link>
+              ))}
+              <details>
+                <summary>
+                  Collections<span aria-hidden="true" />
+                </summary>
+                <div className="nav-drawer__sub">
+                  {collectionLinks.map((l) => (
+                    <Link key={l.href} href={l.href} onClick={close}>
+                      {l.label}
                     </Link>
                   ))}
-                  <Link href="/collections" onClick={() => setOpen(false)} style={{ color: 'var(--color-primary, #b45309)', fontWeight: 600 }}>
-                    All Collections →
-                  </Link>
                 </div>
-              </div>
-            )}
+              </details>
+            </nav>
 
-            <div className="site-header__drawer-section" style={{ borderTop: '1px solid var(--color-border-light)', paddingTop: '1rem', marginTop: '1rem' }}>
-              <span className="site-header__drawer-section-title" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.75rem' }}>
-                Account &amp; Support
+            <Link href="/dna-diamond" className="nav-drawer__dna" onClick={close}>
+              <NavIcon name="diamond" size={22} />
+              <span>
+                <b>DNA Diamond</b>
+                <small>A diamond with your story.</small>
               </span>
-              <div className="site-header__drawer-links" style={{ gap: '0.625rem' }}>
-                <Link href="/account" onClick={() => setOpen(false)}>My Account</Link>
-                <Link href="/account/orders" onClick={() => setOpen(false)}>My Orders</Link>
-                <Link href="/wishlist" onClick={() => setOpen(false)}>Wishlist</Link>
-                <Link href="/track-order" onClick={() => setOpen(false)}>Track Order</Link>
-                <Link href="/contact" onClick={() => setOpen(false)}>Contact &amp; Concierge</Link>
-                <Link href="/returns" onClick={() => setOpen(false)}>Returns &amp; Exchanges</Link>
-              </div>
+              <NavIcon name="arrow" size={17} />
+            </Link>
+
+            <div className="nav-drawer__footer">
+              <Link href="/about" onClick={close}>
+                Our story
+              </Link>
+              <Link href="/our-services" onClick={close}>
+                Our promises
+              </Link>
+              <Link href="/contact" onClick={close}>
+                Need help?
+              </Link>
             </div>
 
-            {showTheme && (
-              <div className="site-header__drawer-theme">
-                <span className="site-header__drawer-theme-label">Theme</span>
-                <ThemeSwitcher />
-              </div>
-            )}
-          </nav>
+            <div className="nav-drawer__bottom">
+              <Link href="/account" onClick={close}>
+                <NavIcon name="user" size={15} />
+                My account
+              </Link>
+              <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+                Switch theme
+              </button>
+            </div>
+          </div>
         </>
       )}
+
+      <MobileSearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 }
