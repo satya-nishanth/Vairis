@@ -279,6 +279,16 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       ? priceWithPieces.reduce((sum, p) => sum + p.breakdown.total, 0)
       : undefined;
 
+  const discPct = product.autoDiscountPercent && product.autoDiscountPercent > 0 ? product.autoDiscountPercent : 0;
+  const afterDisc = (n: number) => Math.max(0, Math.round(Math.round(n) * (1 - discPct / 100)));
+  const planPrice = (n: number) =>
+    discPct ? (
+      <>
+        <s className="pdp-plan__was">{inr(n)}</s> {inr(afterDisc(n))}
+      </>
+    ) : (
+      inr(n)
+    );
   const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
   // Exchange value shown under Lifetime Value: gold at 100%, diamonds at 90%.
   const exchangeGold = (priceWithPieces ?? []).reduce((t, p) => t + p.breakdown.goldValue, 0);
@@ -783,10 +793,10 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       <span className="pdp-plan__radio" aria-hidden="true" />
                       <span className="pdp-plan__head">
                         <span className="pdp-plan__name">Lifetime Value</span>
-                        <span className="pdp-plan__price">{inr(priceWithTotal)}</span>
+                        <span className="pdp-plan__price">{planPrice(priceWithTotal)}</span>
                         <span className="pdp-plan__sub">Exchange value + lifetime care</span>
                         <span className="pdp-plan__delta">
-                          +{inr(priceWithTotal - priceWithoutTotal)}
+                          +{inr(afterDisc(priceWithTotal) - afterDisc(priceWithoutTotal))}
                         </span>
                       </span>
                       <ul className="pdp-plan__perks">
@@ -811,6 +821,10 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                           </span>
                         </li>
                       </ul>
+                      <span className="pdp-plan__exch">
+                        <span>Exchange value towards your next Vairis piece, up to*</span>
+                        <b>{inr(exchangeGold + exchangeDiamond)}</b>
+                      </span>
                     </span>
                   </button>
                   <button
@@ -824,7 +838,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       <span className="pdp-plan__radio" aria-hidden="true" />
                       <span className="pdp-plan__head">
                         <span className="pdp-plan__name">Standard</span>
-                        <span className="pdp-plan__price">{inr(priceWithoutTotal)}</span>
+                        <span className="pdp-plan__price">{planPrice(priceWithoutTotal)}</span>
                         <span className="pdp-plan__sub">Piece only</span>
                       </span>
                       <ul className="pdp-plan__perks">
@@ -854,12 +868,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   </thead>
                   <tbody>
                     <tr>
-                      <th scope="row">Gold exchange value*</th>
+                      <th scope="row">Gold exchange<span className="pdp-plans__long"> value</span>*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 100% · {inr(exchangeGold)}</td>
                     </tr>
                     <tr>
-                      <th scope="row">Diamond exchange value*</th>
+                      <th scope="row">Diamond exchange<span className="pdp-plans__long"> value</span>*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 90% · {inr(exchangeDiamond)}</td>
                     </tr>
@@ -1105,6 +1119,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 : price
               : undefined
           }
+          wasPrice={product.showPrice && price != null && discPct ? price : undefined}
           planLabel={
             hasStones && priceWithTotal != null && priceWithoutTotal != null &&
             Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
@@ -1115,7 +1130,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
             Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
               ? {
-                  text: `Lifetime Value: +${inr(priceWithTotal - priceWithoutTotal)}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
+                  text: `Lifetime Value: +${inr(afterDisc(priceWithTotal) - afterDisc(priceWithoutTotal))}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
                   onSwitch: () => setWithExchange(true),
                 }
               : undefined

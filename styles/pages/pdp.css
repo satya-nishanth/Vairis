@@ -1100,11 +1100,12 @@
   color: #fff;
   font-size: 0.65625rem;
   font-weight: 700;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
   text-transform: uppercase;
   height: 26px;
   line-height: 14px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   box-sizing: border-box;
 }
 .pdp-plan__body {
@@ -1189,4 +1190,41 @@
     background: rgba(94, 104, 78, 0.14); color: inherit; cursor: pointer;
   }
   .pdp-sticky-bar__nudge b { color: var(--brand-olive); }
+}
+.pdp-plan__price { text-align: right; white-space: nowrap; }
+.pdp-plan__was { display: block; font-weight: 400; font-size: 0.8125rem; opacity: 0.55; }
+.pdp-sticky-bar__was { margin-right: 6px; font-weight: 400; font-size: 0.75rem; opacity: 0.55; }
+
+@media (max-width: 767px) {
+  .pdp-plans {
+    margin-inline: calc(50% - 50vw);
+    padding: 20px 16px;
+    border-radius: 0;
+    border-inline: 0;
+  }
+  .pdp-plans__long { display: none; }
+  .pdp-plans__table { font-size: 0.78125rem; line-height: 1.35; }
+  .pdp-plans__table th, .pdp-plans__table td { padding: 9px 10px; }
+}
+
+/* Exchange-value box: inside the Lifetime Value card on mobile, below the cards on desktop */
+.pdp-plan__exch {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(94, 104, 78, 0.12);
+  color: #3d4630;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.pdp-plan__exch b { font-size: 1.0625rem; white-space: nowrap; }
+.pdp-plans__table thead th:not(:first-child), .pdp-plans__table tbody td { text-align: center; }
+@media (max-width: 767px) {
+  .pdp-plan__exch { display: flex; }
+  .pdp-plans__value { display: none; }
 }

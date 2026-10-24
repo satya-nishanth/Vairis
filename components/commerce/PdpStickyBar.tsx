@@ -8,6 +8,7 @@ import { CHECKOUT_ENABLED } from "@/lib/flags";
 
 type PdpStickyBarProps = {
   price: number | null | undefined;
+  wasPrice?: number;
   planLabel?: string;
   switchNudge?: { text: string; onSwitch: () => void };
   onAddToCart: () => void;
@@ -22,6 +23,7 @@ type PdpStickyBarProps = {
 
 export function PdpStickyBar({
   price,
+  wasPrice,
   planLabel,
   switchNudge,
   onAddToCart,
@@ -49,6 +51,9 @@ export function PdpStickyBar({
       <div className="pdp-sticky-bar__expert">
         {price != null && (
           <span className="pdp-sticky-bar__price">
+            {wasPrice != null && (
+              <s className="pdp-sticky-bar__was">₹{wasPrice.toLocaleString("en-IN")}</s>
+            )}
             ₹{price.toLocaleString("en-IN")}
             {planLabel && <small className="pdp-sticky-bar__plan">{planLabel}</small>}
           </span>
