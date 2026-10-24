@@ -39,12 +39,7 @@ export default async function NewManualOrderPage({
     }),
     prisma.goldRate.findMany(),
     getPricingConfig(),
-    quotationId
-      ? prisma.quotation.findUnique({
-          where: { id: quotationId },
-          include: { estimates: { orderBy: { version: 'desc' }, take: 1 } },
-        })
-      : Promise.resolve(null),
+    quotationId ? prisma.quotation.findUnique({ where: { id: quotationId } }) : Promise.resolve(null),
     prisma.inventoryHolder.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -118,17 +113,6 @@ export default async function NewManualOrderPage({
           ratePerCarat: Number(r.ratePerCarat),
         }))}
         quotation={quotation}
-        estimatePrefill={
-          quotation?.estimates[0]
-            ? {
-                name: quotation.estimates[0].name,
-                version: quotation.estimates[0].version,
-                finalTotal: quotation.estimates[0].finalTotal,
-                ratesLocked: quotation.estimates[0].ratesLocked,
-                mode: quotation.estimates[0].mode,
-              }
-            : null
-        }
         isFinance={isFinance}
         feeLabels={feeLabelsFromConfig(pricingConfig)}
       />

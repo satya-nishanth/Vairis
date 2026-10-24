@@ -243,12 +243,11 @@ type Quotation = {
   id: string
   displayId: string
   orderType: string
-  status?: string
   details: string | null
   customerName: string | null
   customerMobile: string | null
   screenshotUrls: string[]
-}
+} | null
 
 type InventoryOption = {
   inventoryItemId: string
@@ -261,20 +260,11 @@ type InventoryOption = {
 
 type HolderOption = { id: string; name: string }
 
-export type QuotationEstimatePrefill = {
-  name: string
-  version: number
-  finalTotal: number
-  ratesLocked: boolean
-  mode: string
-}
-
 export function ManualOrderForm({
   variantOptions,
   holders,
   diamondRates = [],
   quotation = null,
-  estimatePrefill = null,
   isFinance = false,
   editOrder = null,
   feeLabels = DEFAULT_FEE_LABELS,
@@ -282,9 +272,7 @@ export function ManualOrderForm({
   variantOptions: VariantOption[]
   holders: HolderOption[]
   diamondRates?: DiamondRateOption[]
-  quotation?: Quotation | null
-  /** Latest Cost Estimator version for this quotation — used as unit price on first catalogue line. */
-  estimatePrefill?: QuotationEstimatePrefill | null
+  quotation?: Quotation
   isFinance?: boolean
   editOrder?: ManualOrderEditPrefill | null
   feeLabels?: FeeLabels
@@ -594,20 +582,16 @@ export function ManualOrderForm({
     const opt = variantOptions.find((v) => v.variantId === variantId)
     if (!opt) return
     const internalBuild = await fetchBuildPrefill(variantId)
-    setLines((ls) => {
-      const useEstimate = Boolean(estimatePrefill && ls.length === 0)
-      const unitPrice = useEstimate ? estimatePrefill!.finalTotal : opt.suggestedPrice
-      return [
-        ...ls,
-        {
-          variantId,
-          quantity: 1,
-          unitPrice,
-          internalBuild,
-          buildOpen: true,
-        },
-      ]
-    })
+    setLines((ls) => [
+      ...ls,
+      {
+        variantId,
+        quantity: 1,
+        unitPrice: opt.suggestedPrice,
+        internalBuild,
+        buildOpen: true,
+      },
+    ])
     setSelling((s) => bumpSellingFromVariant(s, opt, 1))
     if (opt.sellingUnit?.miscLines?.length) {
       setSellingMiscLines((prev) => bumpMiscLines(prev, opt.sellingUnit!.miscLines, 1))
@@ -847,26 +831,10 @@ export function ManualOrderForm({
           <strong style={{ fontSize: '0.875rem' }}>Converting {quotation.displayId}</strong>
           <p style={{ fontSize: '0.8125rem', margin: '8px 0 0' }}>
             <strong>Type:</strong> {quotation.orderType}
-            {quotation.status ? (
-              <>
-                {' · '}
-                <strong>Status:</strong> {quotation.status}
-              </>
-            ) : null}
           </p>
           {quotation.details && (
             <p style={{ fontSize: '0.8125rem', margin: '4px 0 0' }}>
               <strong>Details:</strong> {quotation.details}
-            </p>
-          )}
-          {estimatePrefill && (
-            <p style={{ fontSize: '0.8125rem', margin: '8px 0 0' }}>
-              <strong>Latest estimate:</strong> v{estimatePrefill.version} · {estimatePrefill.name} · ₹
-              {estimatePrefill.finalTotal.toLocaleString('en-IN')}
-              {estimatePrefill.ratesLocked ? ' · gold rate locked' : ''}
-              <span style={{ display: 'block', color: '#6b7280', marginTop: 4 }}>
-                First catalogue line uses this total as unit price (override anytime).
-              </span>
             </p>
           )}
           {quotation.screenshotUrls.length > 0 && (

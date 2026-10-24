@@ -2,11 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  CatalogueProductPicker,
-  type CatalogueProductOption,
-} from '@/components/admin/CatalogueProductPicker'
-import { METAL_COLORS, METAL_PURITIES, type MetalColorValue, type MetalPurityValue } from '@/lib/metal'
+
+type Product = { id: string; name: string; itemCode: string | null }
 
 const input: React.CSSProperties = {
   width: '100%',
@@ -29,15 +26,13 @@ const card: React.CSSProperties = {
   marginBottom: '1rem',
 }
 
-export function QuotationForm({ products }: { products: CatalogueProductOption[] }) {
+export function QuotationForm({ products }: { products: Product[] }) {
   const router = useRouter()
   const [orderType, setOrderType] = useState<'VAIRIS' | 'CUSTOMISATION' | ''>('')
   const [details, setDetails] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [customerMobile, setCustomerMobile] = useState('')
   const [productId, setProductId] = useState('')
-  const [metalType, setMetalType] = useState<MetalPurityValue | ''>('')
-  const [metalColor, setMetalColor] = useState<MetalColorValue | ''>('')
   const [screenshots, setScreenshots] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,8 +73,6 @@ export function QuotationForm({ products }: { products: CatalogueProductOption[]
           details,
           customerName: customerName || undefined,
           customerMobile: customerMobile || undefined,
-          metalType: metalType || null,
-          metalColor: metalColor || null,
           productId: productId || undefined,
           screenshotUrls,
         }),
@@ -148,61 +141,21 @@ export function QuotationForm({ products }: { products: CatalogueProductOption[]
         <input style={input} value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
 
         <label style={label}>Mobile (optional)</label>
-        <input
-          style={input}
-          value={customerMobile}
-          onChange={(e) => setCustomerMobile(e.target.value)}
-          placeholder="9876543210"
-        />
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={label}>Gold purity (optional)</label>
-            <select
-              style={input}
-              value={metalType}
-              onChange={(e) => setMetalType(e.target.value as MetalPurityValue | '')}
-            >
-              <option value="">—</option>
-              {METAL_PURITIES.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={label}>Gold color (optional)</label>
-            <select
-              style={input}
-              value={metalColor}
-              onChange={(e) => setMetalColor(e.target.value as MetalColorValue | '')}
-            >
-              <option value="">—</option>
-              {METAL_COLORS.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <input style={input} value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} placeholder="9876543210" />
 
         <label style={label}>Product reference (optional)</label>
-        <CatalogueProductPicker products={products} value={productId} onChange={setProductId} />
+        <select style={input} value={productId} onChange={(e) => setProductId(e.target.value)}>
+          <option value="">— None —</option>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.itemCode ? ` (${p.itemCode})` : ''}
+            </option>
+          ))}
+        </select>
       </div>
 
       {error && (
-        <p
-          style={{
-            fontSize: '0.8125rem',
-            color: '#b91c1c',
-            background: '#fef2f2',
-            padding: '8px 12px',
-            border: '1px solid #fecaca',
-            marginBottom: 12,
-          }}
-        >
+        <p style={{ fontSize: '0.8125rem', color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', border: '1px solid #fecaca', marginBottom: 12 }}>
           {error}
         </p>
       )}

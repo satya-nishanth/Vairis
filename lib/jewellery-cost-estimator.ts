@@ -34,20 +34,6 @@ export type EstimatorResults = {
   totalWithGst: number
 }
 
-/** Sum of PricingSettings fixed-fee defaults → single Additional Charges prefill. */
-export function defaultAdditionalFromFixedCharges(input: {
-  defaultCertificationCharges?: number | null
-  defaultPackagingCharges?: number | null
-  defaultDeliveryCharges?: number | null
-}): string {
-  const sum =
-    Math.max(0, Number(input.defaultCertificationCharges) || 0) +
-    Math.max(0, Number(input.defaultPackagingCharges) || 0) +
-    Math.max(0, Number(input.defaultDeliveryCharges) || 0)
-  if (sum <= 0) return ''
-  return Number.isInteger(sum) ? String(sum) : String(Math.round(sum * 100) / 100)
-}
-
 export function stripCommas(value: string | null | undefined): string {
   // Keep digits + one dot only — strips ASCII/Unicode commas, spaces, currency, etc.
   // Critical on mobile where locale keyboards / toLocaleString can insert non-ASCII separators.

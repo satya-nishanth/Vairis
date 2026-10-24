@@ -886,7 +886,6 @@ enum QuotationSource {
 enum QuotationStatus {
   REQUESTED
   QUOTED
-  ACCEPTED
   CONVERTED
   CANCELLED
 }
@@ -894,15 +893,6 @@ enum QuotationStatus {
 enum QuotationOrderType {
   VAIRIS
   CUSTOMISATION
-}
-
-enum QuotationEventType {
-  CREATED
-  STATUS
-  ESTIMATE
-  COMMENT
-  RESPONSE
-  NOTE
 }
 
 model Quotation {
@@ -914,111 +904,20 @@ model Quotation {
   details             String?
   customerName        String?
   customerMobile      String?
-  /// Requested gold purity (optional; for workshop / requirements sheet).
-  metalType           MetalType?
-  /// Requested gold color (optional; for workshop / requirements sheet).
-  metalColor          MetalColor?
   productId           String?            // optional picker link, no relation enforced
   screenshotUrls      String[]           @default([])
   discordThreadId     String?
-  assigneeEmail       String?
   lastReminderAt      DateTime?
   reminderCount       Int                @default(0) // pings sent while REQUESTED; drives escalation
   escalatedAt         DateTime?          // set once, when reminderCount crosses the threshold
   quotedAmount        Int?
   quotedNotes         String?
   quotedAt            DateTime?          // set on REQUESTED->QUOTED transition; staleness clock for QUOTED
-  acceptedAt          DateTime?
   orderId             String?            @unique // set on CONVERTED
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
-  estimates           QuotationEstimate[]
-  events              QuotationEvent[]
-  comments            QuotationComment[]
-
   @@index([customerMobile, status]) // dedup/attach lookups
-  @@index([assigneeEmail])
-}
-
-/// Cost Estimator snapshot saved against a quotation. Many versions; newest is current.
-model QuotationEstimate {
-  id               String    @id @default(cuid())
-  quotationId      String
-  version          Int
-  name             String
-  mode             String // standard | complex
-  ratesLocked      Boolean   @default(false)
-  lockedGoldRate24k Decimal? @db.Decimal(12, 2)
-  payload          Json // CostEstimateSnapshot-shaped input + results
-  finalTotal       Int // rupees, rounded
-  pngUrl           String?
-  createdByEmail   String?
-  createdAt        DateTime  @default(now())
-
-  quotation        Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-
-  @@unique([quotationId, version])
-  @@index([quotationId, createdAt])
-}
-
-model QuotationEvent {
-  id          String             @id @default(cuid())
-  quotationId String
-  type        QuotationEventType
-  message     String?
-  meta        Json?
-  actorEmail  String?
-  createdAt   DateTime           @default(now())
-
-  quotation   Quotation          @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-
-  @@index([quotationId, createdAt])
-}
-
-enum QuotationCommentKind {
-  INTERNAL
-  CUSTOMER_RESPONSE
-  OUR_RESPONSE
-}
-
-model QuotationComment {
-  id             String               @id @default(cuid())
-  quotationId    String
-  body           String
-  authorEmail    String
-  kind           QuotationCommentKind @default(INTERNAL)
-  attachmentUrls String[]             @default([])
-  createdAt      DateTime             @default(now())
-
-  quotation      Quotation            @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-
-  @@index([quotationId, createdAt])
-}
-
-/// Maps an @handle used in quote desk comments → Discord snowflake for <@id> mentions.
-model QuotationDiscordUser {
-  id            String   @id @default(cuid())
-  /// Tag without @: e.g. "anil" → type @anil in comments
-  handle        String   @unique
-  email         String?
-  discordUserId String
-  label         String?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([active])
-}
-
-/// Singleton Discord channel config for quotes (id always "default"). Env vars are fallback.
-model QuotationDiscordSettings {
-  id               String   @id @default("default")
-  /// Channel where new quote threads are created
-  threadChannelId  String?
-  /// Channel that receives update/@mention pings (can differ from thread channel)
-  pingChannelId    String?
-  updatedAt        DateTime @updatedAt
 }
 
 model HeroImage {

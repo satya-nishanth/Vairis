@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeOrderAmounts } from '@/lib/orders'
 import { autoSplitOrder } from '@/lib/split'
-import { closeThread, notifyQuotationUpdate, quotationMilestone } from '@/lib/quotations'
+import { closeThread } from '@/lib/quotations'
 import {
   roundMoney,
   sellingBreakdownGross,
@@ -269,17 +269,8 @@ export async function POST(req: NextRequest) {
     return row
   })
 
-  type QuotationDiscordPayload = {
-    id: string
-    displayId: string
-    discordThreadId: string | null
-    details: string | null
-  }
-  let result: {
-    order: { id: string }
-    childOrderIds: string[]
-    quotationForDiscord: QuotationDiscordPayload | null
-  }
+  let quotationThreadId: string | null = null
+  let result: { order: { id: string }; childOrderIds: string[] }
   try {
     result = await prisma.$transaction(async (tx) => {
       let quotation = null
@@ -292,7 +283,7 @@ export async function POST(req: NextRequest) {
         // UPDATEs on the same row); the loser gets count===0 and throws before ever touching
         // order creation.
         const claimed = await tx.quotation.updateMany({
-          where: { id: d.quotationId, status: 'ACCEPTED' },
+          where: { id: d.quotationId, status: 'QUOTED' },
           data: { status: 'CONVERTED' },
         })
         if (claimed.count === 0) {
@@ -372,7 +363,6 @@ export async function POST(req: NextRequest) {
       // at payment confirmation — see lib/split.ts).
       const childOrderIds = d.items.length >= 2 ? await autoSplitOrder(tx, created.id) : []
 
-      let quotationForDiscord: QuotationDiscordPayload | null = null
       if (quotation) {
         // status is already CONVERTED from the claim above — just link the orderId now that we
         // have it.
@@ -380,41 +370,13 @@ export async function POST(req: NextRequest) {
           where: { id: quotation.id },
           data: { orderId: created.id },
         })
-        await tx.quotationEvent.create({
-          data: {
-            quotationId: quotation.id,
-            type: 'STATUS',
-            message: `Converted → Order ${created.id.slice(-8)}`,
-            meta: { from: 'ACCEPTED', to: 'CONVERTED', orderId: created.id },
-            actorEmail: session.user?.email?.toLowerCase() ?? null,
-          },
-        })
-        quotationForDiscord = {
-          id: quotation.id,
-          displayId: quotation.displayId,
-          discordThreadId: quotation.discordThreadId,
-          details: quotation.details,
-        }
+        quotationThreadId = quotation.discordThreadId
       }
 
-      return { order: created, childOrderIds, quotationForDiscord }
+      return { order: created, childOrderIds }
     })
   } catch (err) {
     if (err instanceof ConvertConflictError) {
-      const status = d.quotationId
-        ? (
-            await prisma.quotation.findUnique({
-              where: { id: d.quotationId },
-              select: { status: true },
-            })
-          )?.status
-        : null
-      if (status && status !== 'CONVERTED' && status !== 'CANCELLED') {
-        return NextResponse.json(
-          { error: `Quotation must be ACCEPTED before convert (currently ${status})` },
-          { status: 409 },
-        )
-      }
       return NextResponse.json({ error: 'Quotation already converted or cancelled' }, { status: 409 })
     }
     if (err instanceof InventoryError) {
@@ -423,25 +385,9 @@ export async function POST(req: NextRequest) {
     throw err
   }
 
-  if (result.quotationForDiscord) {
-    const convertMsg = quotationMilestone(
-      'Converted',
-      `Order #${result.order.id.slice(-8)}`,
-    )
-    // One thread message via notify (also hits ping channel); archive without a second post.
+  if (quotationThreadId) {
     try {
-      await notifyQuotationUpdate(result.quotationForDiscord, convertMsg)
-    } catch (err) {
-      console.error('[api/admin/orders] Discord convert notify failed', err)
-    }
-    try {
-      const latest = await prisma.quotation.findUnique({
-        where: { id: result.quotationForDiscord.id },
-        select: { discordThreadId: true },
-      })
-      if (latest?.discordThreadId) {
-        await closeThread(latest.discordThreadId)
-      }
+      await closeThread(quotationThreadId, `✅ Converted → Order #${result.order.id.slice(-8)}`)
     } catch (err) {
       console.error('[api/admin/orders] closeThread on convert failed', err)
     }

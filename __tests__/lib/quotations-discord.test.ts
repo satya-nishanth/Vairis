@@ -1,12 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createQuoteThread, mentionAssignee, closeThread, isInternalApiAuthorized } from '@/lib/quotations'
-import { prisma } from '@/lib/prisma'
-
-jest.mock('@/lib/prisma', () => ({
-  prisma: {
-    quotationDiscordSettings: { findUnique: jest.fn() },
-  },
-}))
+import { createQuoteThread, postToThread, mentionAssignee, closeThread, isInternalApiAuthorized } from '@/lib/quotations'
 
 const originalFetch = global.fetch
 
@@ -15,7 +8,6 @@ describe('Discord REST helpers', () => {
     process.env.DISCORD_BOT_TOKEN = 'test-token'
     process.env.DISCORD_QUOTE_CHANNEL_ID = 'chan-1'
     process.env.DISCORD_QUOTE_ASSIGNEE_ID = 'user-1'
-    ;(prisma.quotationDiscordSettings.findUnique as jest.Mock).mockResolvedValue(null)
   })
 
   afterEach(() => {

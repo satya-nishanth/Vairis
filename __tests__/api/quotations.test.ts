@@ -6,7 +6,6 @@ import * as quotations from '@/lib/quotations'
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     quotation: { create: jest.fn(), update: jest.fn() },
-    quotationEvent: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn((cb) => cb(prisma)),
     $queryRaw: jest.fn(),
   },
@@ -16,13 +15,10 @@ jest.mock('@/lib/quotations', () => ({
   createQuoteThread: jest.fn(),
   postToThread: jest.fn(),
   mentionAssignee: jest.fn(() => '<@assignee>'),
-  quotationDeskUrl: jest.fn((id: string) => `/admin/quotations/${id}`),
-  notifyQuotationUpdate: jest.fn(),
 }))
 
 const mockPrisma = prisma as unknown as {
   quotation: { create: jest.Mock; update: jest.Mock }
-  quotationEvent: { create: jest.Mock }
   $queryRaw: jest.Mock
 }
 
@@ -43,9 +39,6 @@ describe('POST /api/quotations', () => {
     mockPrisma.quotation.create.mockResolvedValue({
       id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', customerMobile: '919876543210', discordThreadId: null,
     })
-    mockPrisma.quotation.update.mockResolvedValue({
-      id: 'q1', displayId: 'Q-ABCD', status: 'REQUESTED', customerMobile: '919876543210', discordThreadId: 'thread-1',
-    })
     ;(quotations.createQuoteThread as jest.Mock).mockResolvedValue('thread-1')
 
     const res = await POST(req({
@@ -54,10 +47,6 @@ describe('POST /api/quotations', () => {
     expect(res.status).toBe(201)
     expect(mockPrisma.quotation.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ orderType: 'VAIRIS', source: 'WEBSITE' }) }),
-    )
-    expect(quotations.notifyQuotationUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'q1', discordThreadId: 'thread-1' }),
-      expect.stringContaining('Quotation created'),
     )
   })
 
@@ -87,8 +76,8 @@ describe('POST /api/quotations', () => {
     }))
 
     expect(res.status).toBe(200)
-    expect(quotations.notifyQuotationUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'existing-2', discordThreadId: 'thread-old' }),
+    expect(quotations.postToThread).toHaveBeenCalledWith(
+      'thread-old',
       expect.stringContaining('Blue Topaz Heart Ring'),
     )
     expect(mockPrisma.quotation.update).toHaveBeenCalledWith(

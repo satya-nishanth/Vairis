@@ -2,7 +2,6 @@ import {
   calculateEffectiveGoldRate,
   computeComplexEstimate,
   computeStandardEstimate,
-  defaultAdditionalFromFixedCharges,
   diamondSetLineCost,
   filterDecimalInput,
   parseNum,
@@ -54,17 +53,6 @@ describe('jewellery cost estimator', () => {
     })
     expect(r.finalTotal).toBeGreaterThan(0)
     expect(r.goldCost).toBeGreaterThan(0)
-  })
-
-  it('combines store fixed-fee defaults into one additional prefill', () => {
-    expect(
-      defaultAdditionalFromFixedCharges({
-        defaultCertificationCharges: 500,
-        defaultPackagingCharges: 200,
-        defaultDeliveryCharges: 100,
-      }),
-    ).toBe('800')
-    expect(defaultAdditionalFromFixedCharges({})).toBe('')
   })
 
   it('sums multiple diamond sets in complex mode', () => {
