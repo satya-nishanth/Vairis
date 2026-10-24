@@ -134,6 +134,8 @@ function pieceBreakdown(
   );
 }
 
+const COLOR_SWATCH: Record<string, string> = { YELLOW: "#D9B45A", WHITE: "#E3E3E0", ROSE: "#E8B8A0" };
+
 function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Props) {
   const feeLabels = feeLabelsFromConfig(pricingConfig);
   const { openCartModal } = useCartModal();
@@ -693,14 +695,17 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 ) : null}
 
             {purities.length > 0 && (
-              <div className="pdp-options">
-                <label>Metal</label>
+              <div className="pdp-options pdp-gold">
+                <div className="pdp-gold__head">
+                  <label>Gold purity</label>
+                  <span>BIS hallmarked</span>
+                </div>
                 <div className="pdp-variants">
                   {purities.map((m) => (
                     <button
                       key={m}
                       type="button"
-                      className={`btn ${m === selectedPurity ? "btn-primary" : "btn-secondary"}`}
+                      className={`pdp-purity${m === selectedPurity ? " is-selected" : ""}`}
                       aria-pressed={m === selectedPurity}
                       onClick={() => selectPurity(m)}
                     >
@@ -713,18 +718,23 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
 
             {colorsForSelected.length > 0 && (
               <div className="pdp-options" data-testid="pdp-metal-color">
-                <label>Color</label>
-                <div className="pdp-variants">
+                <label>
+                  Colour
+                  {selectedColor && (
+                    <span className="pdp-colour__name"> · {colorMeta(selectedColor)?.shortLabel ?? selectedColor}</span>
+                  )}
+                </label>
+                <div className="pdp-variants pdp-colours">
                   {colorsForSelected.map((c) => (
                     <button
                       key={c}
                       type="button"
-                      className={`btn ${c === selectedColor ? "btn-primary" : "btn-secondary"}`}
+                      className={`pdp-swatch${c === selectedColor ? " is-selected" : ""}`}
+                      style={{ background: COLOR_SWATCH[c] ?? "#ddd" }}
+                      aria-label={`${colorMeta(c)?.shortLabel ?? c} gold`}
                       aria-pressed={c === selectedColor}
                       onClick={() => selectColor(c)}
-                    >
-                      {colorMeta(c)?.shortLabel ?? c}
-                    </button>
+                    />
                   ))}
                 </div>
               </div>
@@ -768,7 +778,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     className={`pdp-plan pdp-plan--value${withExchange ? " is-selected" : ""}`}
                     onClick={() => setWithExchange(true)}
                   >
-                    <span className="pdp-plan__tag">Recommended</span>
+                    <span className="pdp-plan__tag">Recommended · Most chosen</span>
                     <span className="pdp-plan__body">
                       <span className="pdp-plan__radio" aria-hidden="true" />
                       <span className="pdp-plan__head">
@@ -1089,6 +1099,15 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
             hasStones && priceWithTotal != null && priceWithoutTotal != null &&
             Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
               ? `${purityMeta(selectedPurity)?.label ?? ""} · ${withExchange ? "Lifetime Value" : "Standard"}`
+              : undefined
+          }
+          switchNudge={
+            hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
+            Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
+              ? {
+                  text: `Lifetime Value: +${inr(priceWithTotal - priceWithoutTotal)}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
+                  onSwitch: () => setWithExchange(true),
+                }
               : undefined
           }
           onAddToCart={handleAddToCart}
