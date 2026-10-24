@@ -1190,3 +1190,4 @@
   }
   .pdp-sticky-bar__nudge b { color: var(--brand-olive); }
 }
+.pdp-plan__was { font-weight: 400; font-size: 0.8125rem; opacity: 0.55; }
