@@ -1913,3 +1913,62 @@
   color: var(--color-text-inverse);
   text-decoration: underline;
 }
+
+/* Card size as in the redesign: 4:5 photo on desktop, name and price right under it */
+.plp-grid .product-card__img-wrap {
+  aspect-ratio: 4 / 5;
+}
+
+.plp-grid .product-card__body {
+  padding: 12px 0 0;
+  gap: 8px;
+}
+
+.plp-grid .product-card__title {
+  min-height: 0;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.plp-grid .product-card__price {
+  margin-top: 0;
+  font-size: 0.90625rem;
+  font-weight: 600;
+}
+
+.plp-grid .product-card__price--on-request {
+  font-size: 0.84375rem;
+}
+
+@media (max-width: 767px) {
+  /* 16px side margin like the redesign, so the two columns are 173px wide at 390px */
+  .plp-main.container,
+  body:has(.plp-main) .breadcrumbs.container {
+    max-width: none;
+    padding-inline: 16px;
+  }
+
+  .plp-grid .product-card__img-wrap {
+    aspect-ratio: auto;
+    height: 196px;
+  }
+
+  .plp-grid .product-card__body {
+    padding-top: 6px;
+    gap: 6px;
+  }
+
+  .plp-grid .product-card__title {
+    font-size: 0.84375rem;
+    line-height: 1.3;
+  }
+
+  .plp-grid .product-card__price {
+    font-size: 0.875rem;
+  }
+
+  .plp-grid .product-card__price--on-request {
+    font-size: 0.8125rem;
+  }
+}
