@@ -327,6 +327,25 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
     priceWithoutTotal != null &&
     Math.round(priceWithTotal) !== Math.round(priceWithoutTotal);
   const careNote = hasPlans ? (withExchange ? "Included in your plan" : "With Lifetime Value") : null;
+  // The Switch strip only appears once the shopper has scrolled past the Standard card
+  // (it has gone up under the header). It stays until they switch.
+  const standardCardRef = useRef<HTMLButtonElement>(null);
+  const [crossedStandard, setCrossedStandard] = useState(false);
+  useEffect(() => {
+    const el = standardCardRef.current;
+    if (!hasPlans || crossedStandard || !el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry && entry.rootBounds && entry.boundingClientRect.bottom <= entry.rootBounds.top) {
+          setCrossedStandard(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "-64px 0px 0px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasPlans, crossedStandard]);
   const breakupPieces = hasPlans ? (priceWithoutPieces ?? []) : piecePrices;
   const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
   // Exchange value shown under Lifetime Value: gold at 100%, diamonds at 90%.
@@ -915,6 +934,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     type="button"
                     role="radio"
                     aria-checked={!withExchange}
+                    ref={standardCardRef}
                     className={`pdp-plan${!withExchange ? " is-selected" : ""}`}
                     onClick={() => setWithExchange(false)}
                   >
@@ -1183,7 +1203,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
               : undefined
           }
           switchNudge={
-            hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
+            crossedStandard && hasStones && !withExchange && priceWithTotal != null && priceWithoutTotal != null &&
             Math.round(priceWithTotal) !== Math.round(priceWithoutTotal)
               ? {
                   text: `Lifetime Value: +${inr(afterDisc(priceWithTotal) - afterDisc(priceWithoutTotal))}, up to ${inr(exchangeGold + exchangeDiamond)} exchange value`,
