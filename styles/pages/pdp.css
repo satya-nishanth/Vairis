@@ -1138,7 +1138,9 @@
   font-size: 0.8125rem;
   line-height: 1.4;
 }
-.pdp-plan--value .pdp-plan__perks li::before { content: "✓ "; color: var(--brand-olive); font-weight: 700; }
+.pdp-plan__perks li { display: flex; gap: 6px; }
+.pdp-plan__perks b { display: inline; }
+.pdp-plan--value .pdp-plan__perks li::before { content: "✓"; color: var(--brand-olive); font-weight: 700; }
 .pdp-plans__value {
   margin: 0;
   padding: 10px 12px;
@@ -1149,6 +1151,7 @@
   flex-direction: column;
   gap: 2px;
 }
+.pdp-plans__value p { margin: 0; }
 .pdp-plans__value span { font-size: 0.75rem; color: var(--color-text-muted); }
 .pdp-plans__table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .pdp-plans__table caption { text-align: left; font-weight: 600; padding: 2px 0 8px; }

@@ -791,16 +791,24 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                       </span>
                       <ul className="pdp-plan__perks">
                         <li>
-                          <b>100% gold value</b> towards an exchange, at that day&rsquo;s gold rate
+                          <span>
+                            <b>100% gold value</b>{" "}towards an exchange, at that day&rsquo;s gold rate
+                          </span>
                         </li>
                         <li>
-                          <b>90% diamond value</b> towards an exchange
+                          <span>
+                            <b>90% diamond value</b>{" "}towards an exchange
+                          </span>
                         </li>
                         <li>
-                          <b>Free service for life</b> for any damage
+                          <span>
+                            <b>Free service for life</b>{" "}for any damage
+                          </span>
                         </li>
                         <li>
-                          <b>Lifetime support</b>
+                          <span>
+                            <b>Lifetime support</b>
+                          </span>
                         </li>
                       </ul>
                     </span>
@@ -826,13 +834,15 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     </span>
                   </button>
                 </div>
-                <p className="pdp-plans__value">
-                  With Lifetime Value, this piece carries up to <b>{inr(exchangeGold + exchangeDiamond)}</b>{" "}
-                  in exchange value towards your next Vairis piece*
+                <div className="pdp-plans__value">
+                  <p>
+                    With Lifetime Value, this piece carries up to <b>{inr(exchangeGold + exchangeDiamond)}</b> in
+                    exchange value towards your next Vairis piece*
+                  </p>
                   <span>
-                    Gold {inr(exchangeGold)} (100%) + Diamond {inr(exchangeDiamond)} (90%)
+                    Gold {inr(exchangeGold)}* (100%) + Diamond {inr(exchangeDiamond)}* (90%)
                   </span>
-                </p>
+                </div>
                 <table className="pdp-plans__table">
                   <caption>Compare the plans</caption>
                   <thead>
@@ -844,12 +854,12 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                   </thead>
                   <tbody>
                     <tr>
-                      <th scope="row">Gold exchange value</th>
+                      <th scope="row">Gold exchange value*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 100% · {inr(exchangeGold)}</td>
                     </tr>
                     <tr>
-                      <th scope="row">Diamond exchange value</th>
+                      <th scope="row">Diamond exchange value*</th>
                       <td><span className="pdp-plans__no" role="img" aria-label="Not included">✕</span></td>
                       <td>✓ 90% · {inr(exchangeDiamond)}</td>
                     </tr>
