@@ -8,6 +8,10 @@ import { sortProductsByPriority } from "@/lib/product-priorities";
 import { productLabelsFromTags } from "@/lib/category-filters";
 import ProductPageClient from "./ProductPageClient";
 
+// Karats always ascend (9K first, so it is the default) whatever order admin saved them in.
+const byPurity = <T extends { metalType: string }>(variants: T[]) =>
+  [...variants].sort((a, b) => Number.parseInt(a.metalType.replace("GOLD_", ""), 10) - Number.parseInt(b.metalType.replace("GOLD_", ""), 10));
+
 export const revalidate = 120;
 
 type Props = { params: Promise<{ id: string }> };
@@ -144,7 +148,7 @@ export default async function ProductPage({ params }: Props) {
           vaGoldPct: p.vaGoldPct != null ? Number(p.vaGoldPct) : null,
           vaLabel: p.vaLabel,
           stones: toStoneViews(p.stones),
-          variants: p.variants.map((v) => ({
+          variants: byPurity(p.variants).map((v) => ({
             id: v.id,
             pieceId: p.id,
             metalType: v.metalType,
@@ -169,7 +173,7 @@ export default async function ProductPage({ params }: Props) {
             vaGoldPct: product.vaGoldPct != null ? Number(product.vaGoldPct) : null,
             vaLabel: product.vaLabel,
             stones: toStoneViews(product.stones),
-            variants: product.variants.map((v) => ({
+            variants: byPurity(product.variants).map((v) => ({
               id: v.id,
               pieceId: null as string | null,
               metalType: v.metalType,
