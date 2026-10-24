@@ -1149,6 +1149,7 @@
   flex-direction: column;
   gap: 2px;
 }
+.pdp-plans__value p { margin: 0; }
 .pdp-plans__value span { font-size: 0.75rem; color: var(--color-text-muted); }
 .pdp-plans__table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
 .pdp-plans__table caption { text-align: left; font-weight: 600; padding: 2px 0 8px; }
