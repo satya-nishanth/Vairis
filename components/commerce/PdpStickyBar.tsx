@@ -76,15 +76,15 @@ export function PdpStickyBar({
       {CHECKOUT_ENABLED && canPurchase && (
         <div className="pdp-sticky-bar__actions">
           <button type="button" className="btn btn-primary" onClick={onAddToCart} disabled={addingToCart || buyingNow}>
-            {addingToCart ? "Adding…" : "Add to Cart"}
+            {addingToCart ? "Adding…" : "Add to cart"}
           </button>
           {onBuyNow ? (
             <button type="button" className="btn btn-secondary" onClick={onBuyNow} disabled={buyingNow || addingToCart}>
-              {buyingNow ? "Processing…" : "Buy Now"}
+              {buyingNow ? "Processing…" : "Buy now"}
             </button>
           ) : (
             <Link href="/checkout" className="btn btn-secondary">
-              Buy Now
+              Buy now
             </Link>
           )}
         </div>
