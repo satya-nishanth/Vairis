@@ -363,6 +363,53 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       ? variantColor(selectedVariant)
       : colorsForSelected[0] ?? "YELLOW";
 
+  type BreakupLine = { label: string; amount: number };
+  const purityLabel = purityMeta(selectedPurity ?? "")?.label ?? "";
+  // Lines are pre-GST; GST is worked out on the discounted subtotal.
+  const breakupGroups = breakupPieces.map(({ piece, breakdown, weightGrams }) => {
+    const lines: BreakupLine[] = [
+      { label: `Gold, ${purityLabel} (${weightGrams.toFixed(3)} g)`, amount: Math.round(breakdown.goldValue) },
+      ...breakdown.stoneLines.map((l) => ({
+        label: `${l.typeLabel} (${l.caratWeight.toFixed(2)} ct × ₹${l.ratePerCarat.toLocaleString("en-IN")}/ct)`,
+        amount: Math.round(l.value),
+      })),
+      ...(breakdown.stoneLines.length === 0 && breakdown.stoneValue > 0
+        ? [
+            {
+              label: `${product.stoneType || "Diamond"}${
+                product.caratWeight && Number(product.caratWeight) > 0
+                  ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
+                  : ""
+              }`,
+              amount: Math.round(breakdown.stoneValue),
+            },
+          ]
+        : []),
+      { label: "Making charges", amount: Math.round(breakdown.making) },
+      ...(breakdown.goldVA > 0 ? [{ label: breakdown.vaLabel, amount: Math.round(breakdown.goldVA) }] : []),
+      ...(breakdown.certificationCharges > 0
+        ? [{ label: feeLabels.certification, amount: Math.round(breakdown.certificationCharges) }]
+        : []),
+      ...(breakdown.packagingCharges > 0
+        ? [{ label: feeLabels.packaging, amount: Math.round(breakdown.packagingCharges) }]
+        : []),
+      ...(breakdown.deliveryCharges > 0
+        ? [{ label: feeLabels.delivery, amount: Math.round(breakdown.deliveryCharges) }]
+        : []),
+      ...(breakdown.miscCharges > 0 ? [{ label: "Misc", amount: Math.round(breakdown.miscCharges) }] : []),
+    ];
+    return { id: piece.id, name: piece.name, lines };
+  });
+  const planLine =
+    hasPlans && withExchange && priceWithPieces && priceWithoutPieces
+      ? Math.round(priceWithPieces.reduce((t, x) => t + x.breakdown.taxable, 0)) -
+        Math.round(priceWithoutPieces.reduce((t, x) => t + x.breakdown.taxable, 0))
+      : 0;
+  const breakupSubtotal =
+    breakupGroups.reduce((t, g) => t + g.lines.reduce((u, l) => u + l.amount, 0), 0) + planLine;
+  const breakupDiscount = discPct > 0 ? Math.round((breakupSubtotal * discPct) / 100) : 0;
+  const breakupGst =
+    price != null ? Math.max(0, afterDisc(price) - (breakupSubtotal - breakupDiscount)) : 0;
   const detailRows = (() => {
     const rows: { label: string; value: string }[] = [];
     const weight = piecePrices.reduce((t, x) => t + x.weightGrams, 0);
@@ -551,6 +598,13 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
           </div>
 
           <div className="pdp-gallery__main">
+            {!product.comingSoon && (
+              <WishlistButton
+                productId={product.id}
+                productName={product.name}
+                className="pdp-gallery__wish"
+              />
+            )}
             <div
               className="pdp-gallery__swipe"
               ref={swipeRef}
@@ -940,7 +994,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                 </div>
               </div>
             ) : (
-              <div className="pdp-actions pdp-actions--inline">
+              <div className="pdp-actions pdp-actions--inline pdp-actions--desktop">
                 {/* Self-serve checkout is behind CHECKOUT_ENABLED until
                     Razorpay is fully live, and needs a real price — WhatsApp
                     is the purchase CTA in both cases */}
@@ -989,104 +1043,52 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                     <AccChevron />
                   </summary>
                   <dl className="pdp-acc__rows">
-                    {breakupPieces.map(({ piece, breakdown, weightGrams }) => (
-                      <Fragment key={piece.id}>
+                    {breakupGroups.map((g) => (
+                      <Fragment key={g.id}>
                         {multiPiece && (
                           <div className="pdp-acc__row pdp-acc__row--head">
-                            <dt>{piece.name}</dt>
+                            <dt>{g.name}</dt>
                           </div>
                         )}
-                        <div className="pdp-acc__row">
-                          <dt>
-                            Gold, {purityMeta(selectedPurity ?? "")?.label ?? ""} ({weightGrams.toFixed(3)} g)
-                          </dt>
-                          <dd>{inr(breakdown.goldValue)}</dd>
-                        </div>
-                        {breakdown.stoneLines.map((l, i) => (
+                        {g.lines.map((l, i) => (
                           <div key={i} className="pdp-acc__row">
-                            <dt>
-                              {l.typeLabel} ({l.caratWeight.toFixed(2)} ct × ₹
-                              {l.ratePerCarat.toLocaleString("en-IN")}/ct)
-                            </dt>
-                            <dd>{inr(l.value)}</dd>
+                            <dt>{l.label}</dt>
+                            <dd>{inr(l.amount)}</dd>
                           </div>
                         ))}
-                        {breakdown.stoneLines.length === 0 && breakdown.stoneValue > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>
-                              {product.stoneType || "Diamond"}
-                              {product.caratWeight && Number(product.caratWeight) > 0
-                                ? ` (${Number(product.caratWeight).toFixed(2)} ct)`
-                                : ""}
-                            </dt>
-                            <dd>{inr(breakdown.stoneValue)}</dd>
-                          </div>
-                        )}
-                        <div className="pdp-acc__row">
-                          <dt>Making charges</dt>
-                          <dd>{inr(breakdown.making)}</dd>
-                        </div>
-                        {breakdown.goldVA > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>{breakdown.vaLabel}</dt>
-                            <dd>{inr(breakdown.goldVA)}</dd>
-                          </div>
-                        )}
-                        {breakdown.certificationCharges > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>{feeLabels.certification}</dt>
-                            <dd>{inr(breakdown.certificationCharges)}</dd>
-                          </div>
-                        )}
-                        {breakdown.packagingCharges > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>{feeLabels.packaging}</dt>
-                            <dd>{inr(breakdown.packagingCharges)}</dd>
-                          </div>
-                        )}
-                        {breakdown.deliveryCharges > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>{feeLabels.delivery}</dt>
-                            <dd>{inr(breakdown.deliveryCharges)}</dd>
-                          </div>
-                        )}
-                        {breakdown.miscCharges > 0 && (
-                          <div className="pdp-acc__row">
-                            <dt>Misc</dt>
-                            <dd>{inr(breakdown.miscCharges)}</dd>
-                          </div>
-                        )}
-                        <div className="pdp-acc__row">
-                          <dt>GST</dt>
-                          <dd>{inr(breakdown.gst)}</dd>
-                        </div>
                       </Fragment>
                     ))}
-                    {hasPlans && withExchange && price != null && priceWithoutTotal != null && (
+                    {planLine > 0 && (
                       <div className="pdp-acc__row">
                         <dt>Lifetime Value plan</dt>
-                        <dd>{inr(price - Math.round(priceWithoutTotal))}</dd>
+                        <dd>{inr(planLine)}</dd>
                       </div>
                     )}
                     {price != null && discPct > 0 && (
                       <>
                         <div className="pdp-acc__row">
                           <dt>Subtotal</dt>
-                          <dd>{inr(price)}</dd>
+                          <dd>{inr(breakupSubtotal)}</dd>
                         </div>
                         <div className="pdp-acc__row pdp-acc__row--discount">
                           <dt>Discount · {Math.round(discPct)}% off</dt>
-                          <dd>−{inr(price - afterDisc(price))}</dd>
+                          <dd>−{inr(breakupDiscount)}</dd>
                         </div>
                       </>
                     )}
                     {price != null && (
-                      <div className="pdp-acc__row pdp-acc__row--total" data-testid="pdp-set-total">
-                        <dt>
-                          You pay{hasPlans ? ` · ${withExchange ? "Lifetime Value" : "Standard"}` : ""}
-                        </dt>
-                        <dd>{inr(afterDisc(price))}</dd>
-                      </div>
+                      <>
+                        <div className="pdp-acc__row">
+                          <dt>GST</dt>
+                          <dd>{inr(breakupGst)}</dd>
+                        </div>
+                        <div className="pdp-acc__row pdp-acc__row--total" data-testid="pdp-set-total">
+                          <dt>
+                            You pay{hasPlans ? ` · ${withExchange ? "Lifetime Value" : "Standard"}` : ""}
+                          </dt>
+                          <dd>{inr(afterDisc(price))}</dd>
+                        </div>
+                      </>
                     )}
                   </dl>
                   <p className="pdp-acc__note">
