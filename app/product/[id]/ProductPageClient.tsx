@@ -821,6 +821,10 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
                           </span>
                         </li>
                       </ul>
+                      <span className="pdp-plan__exch">
+                        <span>Exchange value towards your next Vairis piece, up to*</span>
+                        <b>{inr(exchangeGold + exchangeDiamond)}</b>
+                      </span>
                     </span>
                   </button>
                   <button

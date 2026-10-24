@@ -1206,3 +1206,25 @@
   .pdp-plans__table { font-size: 0.78125rem; line-height: 1.35; }
   .pdp-plans__table th, .pdp-plans__table td { padding: 9px 10px; }
 }
+
+/* Exchange-value box: inside the Lifetime Value card on mobile, below the cards on desktop */
+.pdp-plan__exch {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(94, 104, 78, 0.12);
+  color: #3d4630;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.pdp-plan__exch b { font-size: 1.0625rem; white-space: nowrap; }
+.pdp-plans__table thead th:not(:first-child), .pdp-plans__table tbody td { text-align: center; }
+@media (max-width: 767px) {
+  .pdp-plan__exch { display: flex; }
+  .pdp-plans__value { display: none; }
+}
