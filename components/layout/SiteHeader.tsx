@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { HeaderVariant } from "@/lib/layout-config";
-import { CATEGORY_LABELS, categoryHref, HEADER_NAV_CATEGORIES } from "@/lib/catalogue-ui";
+import { categoryHref } from "@/lib/catalogue-ui";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { BrandLogo } from "./BrandLogo";
 import { HeaderPincode } from "./HeaderPincode";
@@ -9,22 +9,11 @@ import { HeaderWishlistLink } from "./HeaderWishlistLink";
 import { HeaderSearchButton } from "./HeaderSearchButton";
 import { SiteHeaderMobileToggle } from "./SiteHeaderMobileToggle";
 import { HeaderCartLink } from "./HeaderCartLink";
-import { NavCollections } from "./NavCollections";
-import { NavCategoryLinks } from "./NavCategoryLinks";
+import { HeaderNav } from "./HeaderNav";
 
 type SiteHeaderProps = {
   variant: Exclude<HeaderVariant, "checkout">;
 };
-
-const categoryNavLinks = HEADER_NAV_CATEGORIES.map((slug) => ({
-  href: categoryHref(slug),
-  label: CATEGORY_LABELS[slug].title,
-}));
-
-const navLinks = [
-  ...categoryNavLinks,
-  { href: "/about", label: "About Us" },
-];
 
 const minimalNavLinks = [
   { href: categoryHref("rings"), label: "Shop" },
@@ -32,7 +21,6 @@ const minimalNavLinks = [
 ];
 
 export function SiteHeader({ variant }: SiteHeaderProps) {
-  const links = variant === "minimal" ? minimalNavLinks : navLinks;
   const showAccount = variant === "full" || variant === "standard";
   const showPincode = variant === "full" || variant === "standard";
 
@@ -40,7 +28,7 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
     <header className="site-header">
       <div className="site-header__inner">
         <div className="site-header__start">
-          <SiteHeaderMobileToggle links={links} showPincode={showPincode} showTheme />
+          <SiteHeaderMobileToggle />
           <Link href="/" className="site-header__brand logo logo--image" aria-label="VAIRIS home">
             <BrandLogo className="site-header__brand-img" priority />
           </Link>
@@ -48,21 +36,15 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
 
         {showPincode && <HeaderPincode className="header-pincode--desktop" />}
 
-        <nav className="site-header__nav nav-main" aria-label="Main">
-          {variant === "minimal" ? (
-            minimalNavLinks.map((link) => (
+        {variant === "minimal" && (
+          <nav className="site-header__nav nav-main" aria-label="Main">
+            {minimalNavLinks.map((link) => (
               <Link key={`${link.href}-${link.label}`} href={link.href}>
                 {link.label}
               </Link>
-            ))
-          ) : (
-            <>
-              <NavCategoryLinks />
-              <Link href="/about">About Us</Link>
-              <NavCollections />
-            </>
-          )}
-        </nav>
+            ))}
+          </nav>
+        )}
 
         <div className="site-header__utilities">
           <HeaderSearchButton />
@@ -74,6 +56,11 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
           </div>
         </div>
       </div>
+      {variant !== "minimal" && (
+        <div className="site-header__navrow">
+          <HeaderNav />
+        </div>
+      )}
     </header>
   );
 }
