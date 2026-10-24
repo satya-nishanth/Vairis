@@ -1191,5 +1191,6 @@
   }
   .pdp-sticky-bar__nudge b { color: var(--brand-olive); }
 }
-.pdp-plan__was { font-weight: 400; font-size: 0.8125rem; opacity: 0.55; }
+.pdp-plan__price { text-align: right; white-space: nowrap; }
+.pdp-plan__was { display: block; font-weight: 400; font-size: 0.8125rem; opacity: 0.55; }
 .pdp-sticky-bar__was { margin-right: 6px; font-weight: 400; font-size: 0.75rem; opacity: 0.55; }

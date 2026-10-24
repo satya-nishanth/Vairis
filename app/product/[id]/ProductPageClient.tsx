@@ -280,7 +280,7 @@ function PdpContent({ product, goldRates, pricingConfig, relatedProducts }: Prop
       : undefined;
 
   const discPct = product.autoDiscountPercent && product.autoDiscountPercent > 0 ? product.autoDiscountPercent : 0;
-  const afterDisc = (n: number) => Math.max(0, Math.round(n * (1 - discPct / 100)));
+  const afterDisc = (n: number) => Math.max(0, Math.round(Math.round(n) * (1 - discPct / 100)));
   const planPrice = (n: number) =>
     discPct ? (
       <>
